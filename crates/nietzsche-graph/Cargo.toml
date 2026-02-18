@@ -2,17 +2,21 @@
 name = "nietzsche-graph"
 version = "0.1.0"
 edition = "2021"
-description = "Hyperbolic graph engine: nodes, edges, adjacency, traversal"
+description = "Hyperbolic graph engine: nodes, edges, adjacency, traversal, storage, WAL"
 
 [dependencies]
 hyperspace-core = { workspace = true }
-uuid = { workspace = true }
-dashmap = { workspace = true }
-rocksdb = { workspace = true }
-bincode = { workspace = true }
-serde = { workspace = true }
-serde_json = "1.0"
-thiserror = { workspace = true }
-tokio = { workspace = true }
-ordered-float = { workspace = true }
-rand = { workspace = true }
+uuid            = { workspace = true }
+dashmap         = { workspace = true }
+rocksdb         = { workspace = true }
+bincode         = { workspace = true }
+serde           = { workspace = true }
+serde_json      = "1.0"
+thiserror       = { workspace = true }
+tokio           = { workspace = true }
+ordered-float   = { workspace = true }
+rand            = { workspace = true }
+crc32fast       = "1.4"
+
+[dev-dependencies]
+tempfile = "3"
