@@ -245,9 +245,9 @@ impl GraphStorage {
 
     // ── Internal helpers ───────────────────────────────
 
-    fn read_uuid_list(
+    fn read_uuid_list<T: rocksdb::AsColumnFamilyRef>(
         &self,
-        cf: &rocksdb::BoundColumnFamily,
+        cf: &T,
         key: &Uuid,
     ) -> Result<Vec<Uuid>, GraphError> {
         match self.db.get_cf(cf, key.as_bytes())

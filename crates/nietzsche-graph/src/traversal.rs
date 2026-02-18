@@ -108,7 +108,7 @@ pub fn bfs(
             visited.insert(neighbor_id);
 
             // Energy gate — load node only to check energy
-            match storage.get_node(neighbor_id)? {
+            match storage.get_node(&neighbor_id)? {
                 Some(n) if n.energy >= config.energy_min => {
                     queue.push_back((neighbor_id, depth + 1));
                 }
@@ -155,13 +155,13 @@ pub fn dijkstra(
             continue;
         }
 
-        let node = match storage.get_node(node_id)? {
+        let node = match storage.get_node(&node_id)? {
             Some(n) => n,
             None    => continue,
         };
 
         for neighbor_id in adjacency.neighbors_out(&node_id) {
-            let neighbor = match storage.get_node(neighbor_id)? {
+            let neighbor = match storage.get_node(&neighbor_id)? {
                 Some(n) => n,
                 None    => continue,
             };
@@ -228,13 +228,13 @@ pub fn shortest_path(
             continue;
         }
 
-        let node = match storage.get_node(node_id)? {
+        let node = match storage.get_node(&node_id)? {
             Some(n) => n,
             None    => continue,
         };
 
         for neighbor_id in adjacency.neighbors_out(&node_id) {
-            let neighbor = match storage.get_node(neighbor_id)? {
+            let neighbor = match storage.get_node(&neighbor_id)? {
                 Some(n) => n,
                 None    => continue,
             };
@@ -300,7 +300,7 @@ pub fn diffusion_walk(
         // Build (candidate, weight) pairs
         let mut candidates: Vec<(Uuid, f64)> = Vec::with_capacity(entries.len());
         for entry in &entries {
-            if let Some(neighbor) = storage.get_node(entry.neighbor_id)? {
+            if let Some(neighbor) = storage.get_node(&entry.neighbor_id)? {
                 let w = (entry.weight as f64)
                     * ((neighbor.energy as f64 * config.energy_bias as f64).exp());
                 if w > 0.0 {

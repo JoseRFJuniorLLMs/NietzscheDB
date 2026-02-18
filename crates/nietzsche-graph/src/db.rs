@@ -144,7 +144,7 @@ impl<V: VectorStore> NietzscheDB<V> {
 
     /// Retrieve a node by ID.
     pub fn get_node(&self, id: Uuid) -> Result<Option<Node>, GraphError> {
-        self.storage.get_node(id)
+        self.storage.get_node(&id)
     }
 
     /// Soft-delete a node: sets energy = 0 and marks all its edges as Pruned.
@@ -156,7 +156,7 @@ impl<V: VectorStore> NietzscheDB<V> {
         self.wal.append(&GraphWalEntry::PruneNode(id))?;
 
         // 2. Fetch, modify, re-persist
-        if let Some(mut node) = self.storage.get_node(id)? {
+        if let Some(mut node) = self.storage.get_node(&id)? {
             node.energy = 0.0;
             self.storage.put_node(&node)?;
         }
@@ -179,15 +179,17 @@ impl<V: VectorStore> NietzscheDB<V> {
         self.wal.append(&GraphWalEntry::DeleteNode(id))?;
 
         // 2. Remove incident edges first (RocksDB)
-        let out_edges = self.storage.edge_ids_from(id)?;
-        let in_edges  = self.storage.edge_ids_to(id)?;
+        let out_edges = self.storage.edge_ids_from(&id)?;
+        let in_edges  = self.storage.edge_ids_to(&id)?;
         for eid in out_edges.iter().chain(in_edges.iter()) {
             self.wal.append(&GraphWalEntry::DeleteEdge(*eid))?;
-            self.storage.delete_edge(*eid)?;
+            if let Some(edge) = self.storage.get_edge(eid)? {
+                self.storage.delete_edge(&edge)?;
+            }
         }
 
         // 3. Remove node
-        self.storage.delete_node(id)?;
+        self.storage.delete_node(&id)?;
 
         // 4. In-memory adjacency
         self.adjacency.remove_node(&id);
@@ -202,7 +204,7 @@ impl<V: VectorStore> NietzscheDB<V> {
     pub fn update_energy(&mut self, node_id: Uuid, energy: f32) -> Result<(), GraphError> {
         self.wal.append(&GraphWalEntry::UpdateNodeEnergy { node_id, energy })?;
 
-        if let Some(mut node) = self.storage.get_node(node_id)? {
+        if let Some(mut node) = self.storage.get_node(&node_id)? {
             node.energy = energy;
             self.storage.put_node(&node)?;
         }
@@ -214,7 +216,7 @@ impl<V: VectorStore> NietzscheDB<V> {
     pub fn update_hausdorff(&mut self, node_id: Uuid, hausdorff: f32) -> Result<(), GraphError> {
         self.wal.append(&GraphWalEntry::UpdateHausdorff { node_id, hausdorff })?;
 
-        if let Some(mut node) = self.storage.get_node(node_id)? {
+        if let Some(mut node) = self.storage.get_node(&node_id)? {
             node.hausdorff_local = hausdorff;
             self.storage.put_node(&node)?;
         }
@@ -233,7 +235,7 @@ impl<V: VectorStore> NietzscheDB<V> {
             embedding: embedding.clone(),
         })?;
 
-        if let Some(mut node) = self.storage.get_node(node_id)? {
+        if let Some(mut node) = self.storage.get_node(&node_id)? {
             node.embedding = embedding.clone();
             self.storage.put_node(&node)?;
         }
@@ -261,7 +263,7 @@ impl<V: VectorStore> NietzscheDB<V> {
 
     /// Retrieve an edge by ID.
     pub fn get_edge(&self, id: Uuid) -> Result<Option<Edge>, GraphError> {
-        self.storage.get_edge(id)
+        self.storage.get_edge(&id)
     }
 
     /// Hard-delete an edge and update the adjacency index.
@@ -269,13 +271,11 @@ impl<V: VectorStore> NietzscheDB<V> {
         // 1. WAL
         self.wal.append(&GraphWalEntry::DeleteEdge(id))?;
 
-        // 2. Remove from adjacency before RocksDB so we can read the edge
-        if let Some(edge) = self.storage.get_edge(id)? {
+        // 2. Fetch edge, remove from adjacency index, then delete from RocksDB
+        if let Some(edge) = self.storage.get_edge(&id)? {
             self.adjacency.remove_edge(&edge);
+            self.storage.delete_edge(&edge)?;
         }
-
-        // 3. RocksDB
-        self.storage.delete_edge(id)?;
 
         Ok(())
     }
