@@ -17,3 +17,4 @@ tracing         = { workspace = true }
 rand            = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 anyhow = "1.0"
+tonic-reflection = "0.10"
