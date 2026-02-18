@@ -1,6 +1,17 @@
-//! nietzsche-graph: Hyperbolic graph engine: nodes, edges, adjacency, traversal
-//! FASE 0 � stub placeholder
+//! # nietzsche-graph
+//!
+//! Hyperbolic graph engine for NietzscheDB.
+//!
+//! Provides the core data model and in-memory index for the knowledge graph:
+//! - [`model::PoincareVector`] — points in the Poincaré ball (‖x‖ < 1.0)
+//! - [`model::Node`]          — hyperbolic graph node with energy + Hausdorff fields
+//! - [`model::Edge`]          — directed typed edge
+//! - [`adjacency::AdjacencyIndex`] — lock-free bidirectional adjacency index
 
-#![allow(dead_code, unused_variables)]
+pub mod adjacency;
+pub mod error;
+pub mod model;
 
-pub mod prelude {}
+pub use adjacency::AdjacencyIndex;
+pub use error::GraphError;
+pub use model::{Edge, EdgeType, Node, NodeType, PoincareVector};

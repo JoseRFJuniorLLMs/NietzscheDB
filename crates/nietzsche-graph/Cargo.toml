@@ -11,6 +11,7 @@ dashmap = { workspace = true }
 rocksdb = { workspace = true }
 bincode = { workspace = true }
 serde = { workspace = true }
+serde_json = "1.0"
 thiserror = { workspace = true }
 tokio = { workspace = true }
 ordered-float = { workspace = true }
