@@ -40,6 +40,9 @@ pub struct Config {
 
     /// Maximum concurrent gRPC connections (passed to tonic concurrency limit).
     pub max_connections: usize,
+
+    /// HTTP dashboard listen port (0 = disabled).
+    pub dashboard_port: u16,
 }
 
 impl Config {
@@ -55,6 +58,7 @@ impl Config {
             sleep_adam_steps:    env_parse("NIETZSCHE_SLEEP_ADAM_STEPS", 10),
             hausdorff_threshold: env_parse("NIETZSCHE_HAUSDORFF_THRESHOLD", 0.15_f32),
             max_connections:     env_parse("NIETZSCHE_MAX_CONNECTIONS", 1024),
+            dashboard_port:      env_parse("NIETZSCHE_DASHBOARD_PORT", 8080_u16),
         }
     }
 }
