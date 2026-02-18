@@ -5,11 +5,13 @@ edition = "2021"
 description = "Reconsolidation sleep cycle: Riemannian perturbation + Hausdorff verification"
 
 [dependencies]
-nietzsche-graph = { workspace = true }
-nietzsche-pregel = { workspace = true }
-hyperspace-core = { workspace = true }
-uuid = { workspace = true }
-serde = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
-rand = { workspace = true }
+nietzsche-graph   = { workspace = true }
+nietzsche-lsystem = { workspace = true }
+uuid              = { workspace = true }
+serde             = { workspace = true }
+serde_json        = "1.0"
+thiserror         = { workspace = true }
+rand              = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
