@@ -1,21 +1,25 @@
 //! HTTP dashboard server — REST API + embedded web UI.
 //!
-//! Exposes a JSON REST API on top of the shared NietzscheDB instance and
-//! serves a single-page HTML dashboard that includes graph visualization,
-//! CRUD forms, NQL console and stats panel.
+//! Exposes a JSON REST API backed by the shared [`CollectionManager`] and
+//! serves a single-page HTML dashboard for graph visualization, CRUD forms,
+//! NQL console, and stats panel.
+//!
+//! All data-plane endpoints target the `"default"` collection.  A `?collection=`
+//! query parameter can be added in the future (Fase B+).
 //!
 //! Endpoints:
-//!   GET  /                    → dashboard HTML
-//!   GET  /api/stats           → node/edge counts + version
-//!   GET  /api/health          → liveness probe
-//!   GET  /api/graph           → all nodes + edges (scan, limited to 500)
-//!   GET  /api/node/:id        → single node
-//!   POST /api/node            → insert node
-//!   DELETE /api/node/:id      → delete node
-//!   POST /api/edge            → insert edge
-//!   DELETE /api/edge/:id      → delete edge
-//!   POST /api/query           → NQL query
-//!   POST /api/sleep           → trigger sleep cycle
+//!   GET  /                        → dashboard HTML
+//!   GET  /api/stats               → total node/edge counts + version
+//!   GET  /api/health              → liveness probe
+//!   GET  /api/collections         → list all collections
+//!   GET  /api/graph               → default collection: all nodes + edges (≤500 each)
+//!   GET  /api/node/:id            → single node (default collection)
+//!   POST /api/node                → insert node (default collection)
+//!   DELETE /api/node/:id          → delete node (default collection)
+//!   POST /api/edge                → insert edge (default collection)
+//!   DELETE /api/edge/:id          → delete edge (default collection)
+//!   POST /api/query               → NQL query (default collection)
+//!   POST /api/sleep               → trigger sleep cycle (default collection)
 
 use std::sync::Arc;
 use std::net::SocketAddr;
@@ -28,22 +32,22 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
 use tower_http::cors::CorsLayer;
 use tracing::{info, warn};
 use uuid::Uuid;
 
 use nietzsche_graph::{
-    Edge, EdgeType, MockVectorStore, NietzscheDB, Node, NodeType, PoincareVector,
+    CollectionManager,
+    Edge, EdgeType, Node, NodeType, PoincareVector,
 };
 use nietzsche_query::{parse as nql_parse, execute as nql_execute, Params, QueryResult};
 use nietzsche_sleep::{SleepConfig, SleepCycle};
 
 use crate::html::DASHBOARD_HTML;
 
-// ── Shared state ─────────────────────────────────────────────────────────────
+// ── Shared state ──────────────────────────────────────────────────────────────
 
-type Db = Arc<Mutex<NietzscheDB<MockVectorStore>>>;
+type Db = Arc<CollectionManager>;
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -54,6 +58,7 @@ pub async fn serve(db: Db, port: u16) {
         .route("/", get(root))
         .route("/api/stats", get(stats))
         .route("/api/health", get(health))
+        .route("/api/collections", get(list_collections))
         .route("/api/graph", get(graph))
         .route("/api/node/:id", get(get_node))
         .route("/api/node", post(insert_node))
@@ -77,26 +82,46 @@ pub async fn serve(db: Db, port: u16) {
     }
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Get the default collection, or return 500 if somehow unavailable.
+macro_rules! default_col {
+    ($cm:expr) => {
+        match $cm.get_or_default("default") {
+            Some(db) => db,
+            None => return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "default collection unavailable"})),
+            ).into_response(),
+        }
+    };
+}
+
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
 async fn root() -> Html<&'static str> {
     Html(DASHBOARD_HTML)
 }
 
-// GET /api/stats
+// GET /api/stats — aggregate across all collections
 #[derive(Serialize)]
 struct StatsResponse {
     node_count: usize,
     edge_count: usize,
+    collections: usize,
     version: &'static str,
 }
 
-async fn stats(State(db): State<Db>) -> impl IntoResponse {
-    let db = db.lock().await;
+async fn stats(State(cm): State<Db>) -> impl IntoResponse {
+    let infos = cm.list();
+    let (nodes, edges) = infos.iter().fold((0, 0), |(n, e), i| {
+        (n + i.node_count, e + i.edge_count)
+    });
     Json(StatsResponse {
-        node_count: db.node_count().unwrap_or(0),
-        edge_count: db.edge_count().unwrap_or(0),
-        version: env!("CARGO_PKG_VERSION"),
+        node_count:  nodes,
+        edge_count:  edges,
+        collections: infos.len(),
+        version:     env!("CARGO_PKG_VERSION"),
     })
 }
 
@@ -105,15 +130,37 @@ async fn health() -> impl IntoResponse {
     Json(serde_json::json!({"status": "ok"}))
 }
 
-// GET /api/graph — scan all nodes + edges (max 500 each)
+// GET /api/collections
+#[derive(Serialize)]
+struct CollectionJson {
+    name:       String,
+    dim:        usize,
+    metric:     String,
+    node_count: usize,
+    edge_count: usize,
+}
+
+async fn list_collections(State(cm): State<Db>) -> impl IntoResponse {
+    let list: Vec<CollectionJson> = cm.list().into_iter().map(|i| CollectionJson {
+        name:       i.name,
+        dim:        i.dim,
+        metric:     i.metric,
+        node_count: i.node_count,
+        edge_count: i.edge_count,
+    }).collect();
+    Json(list)
+}
+
+// GET /api/graph — default collection, max 500 nodes + edges
 #[derive(Serialize)]
 struct GraphResponse {
     nodes: Vec<NodeJson>,
     edges: Vec<EdgeJson>,
 }
 
-async fn graph(State(db): State<Db>) -> impl IntoResponse {
-    let db = db.lock().await;
+async fn graph(State(cm): State<Db>) -> impl IntoResponse {
+    let shared = default_col!(cm);
+    let db = shared.lock().await;
     let nodes: Vec<NodeJson> = db
         .storage()
         .scan_nodes()
@@ -130,19 +177,20 @@ async fn graph(State(db): State<Db>) -> impl IntoResponse {
         .take(500)
         .map(EdgeJson::from)
         .collect();
-    Json(GraphResponse { nodes, edges })
+    Json(GraphResponse { nodes, edges }).into_response()
 }
 
 // GET /api/node/:id
 async fn get_node(
-    State(db): State<Db>,
+    State(cm): State<Db>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     let uuid = match id.parse::<Uuid>() {
-        Ok(u) => u,
+        Ok(u)  => u,
         Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid uuid"}))).into_response(),
     };
-    let db = db.lock().await;
+    let shared = default_col!(cm);
+    let db = shared.lock().await;
     match db.get_node(uuid) {
         Ok(Some(n)) => Json(NodeJson::from(n)).into_response(),
         Ok(None)    => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error":"not found"}))).into_response(),
@@ -161,7 +209,7 @@ struct InsertNodeRequest {
 }
 
 async fn insert_node(
-    State(db): State<Db>,
+    State(cm): State<Db>,
     Json(req): Json<InsertNodeRequest>,
 ) -> impl IntoResponse {
     let id = req.id
@@ -185,7 +233,8 @@ async fn insert_node(
     node.node_type = node_type;
     if let Some(e) = req.energy { node.energy = e; }
 
-    let mut db = db.lock().await;
+    let shared = default_col!(cm);
+    let mut db = shared.lock().await;
     match db.insert_node(node) {
         Ok(_)  => Json(serde_json::json!({"id": id.to_string()})).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
@@ -194,14 +243,15 @@ async fn insert_node(
 
 // DELETE /api/node/:id
 async fn delete_node(
-    State(db): State<Db>,
+    State(cm): State<Db>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     let uuid = match id.parse::<Uuid>() {
-        Ok(u) => u,
+        Ok(u)  => u,
         Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid uuid"}))).into_response(),
     };
-    let mut db = db.lock().await;
+    let shared = default_col!(cm);
+    let mut db = shared.lock().await;
     match db.delete_node(uuid) {
         Ok(_)  => Json(serde_json::json!({"deleted": uuid.to_string()})).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
@@ -218,15 +268,15 @@ struct InsertEdgeRequest {
 }
 
 async fn insert_edge(
-    State(db): State<Db>,
+    State(cm): State<Db>,
     Json(req): Json<InsertEdgeRequest>,
 ) -> impl IntoResponse {
     let from = match req.from.parse::<Uuid>() {
-        Ok(u) => u,
+        Ok(u)  => u,
         Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid from uuid"}))).into_response(),
     };
     let to = match req.to.parse::<Uuid>() {
-        Ok(u) => u,
+        Ok(u)  => u,
         Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid to uuid"}))).into_response(),
     };
     let edge_type = match req.edge_type.as_deref().unwrap_or("Association") {
@@ -235,11 +285,11 @@ async fn insert_edge(
         "Pruned"           => EdgeType::Pruned,
         _                  => EdgeType::Association,
     };
-    let weight = req.weight.unwrap_or(1.0);
-    let mut edge = Edge::new(from, to, edge_type, weight);
+    let edge = Edge::new(from, to, edge_type, req.weight.unwrap_or(1.0));
+    let id   = edge.id;
 
-    let mut db = db.lock().await;
-    let id = edge.id;
+    let shared = default_col!(cm);
+    let mut db = shared.lock().await;
     match db.insert_edge(edge) {
         Ok(_)  => Json(serde_json::json!({"id": id.to_string()})).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
@@ -248,33 +298,35 @@ async fn insert_edge(
 
 // DELETE /api/edge/:id
 async fn delete_edge(
-    State(db): State<Db>,
+    State(cm): State<Db>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     let uuid = match id.parse::<Uuid>() {
-        Ok(u) => u,
+        Ok(u)  => u,
         Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid uuid"}))).into_response(),
     };
-    let mut db = db.lock().await;
+    let shared = default_col!(cm);
+    let mut db = shared.lock().await;
     match db.delete_edge(uuid) {
         Ok(_)  => Json(serde_json::json!({"deleted": uuid.to_string()})).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
     }
 }
 
-// POST /api/query  — NQL via nietzsche-query executor
+// POST /api/query
 #[derive(Deserialize)]
 struct QueryRequest { nql: String }
 
 async fn query_nql(
-    State(db): State<Db>,
+    State(cm): State<Db>,
     Json(req): Json<QueryRequest>,
 ) -> impl IntoResponse {
     let query = match nql_parse(&req.nql) {
         Ok(q)  => q,
         Err(e) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
     };
-    let db = db.lock().await;
+    let shared = default_col!(cm);
+    let db     = shared.lock().await;
     let params = Params::new();
     match nql_execute(&query, db.storage(), db.adjacency(), &params) {
         Ok(results) => {
@@ -296,7 +348,7 @@ struct SleepRequest {
 }
 
 async fn trigger_sleep(
-    State(db): State<Db>,
+    State(cm): State<Db>,
     Json(req): Json<SleepRequest>,
 ) -> impl IntoResponse {
     let cfg = SleepConfig {
@@ -305,7 +357,8 @@ async fn trigger_sleep(
         adam_lr:             5e-3,
         hausdorff_threshold: req.hausdorff_threshold.unwrap_or(0.15),
     };
-    let mut db  = db.lock().await;
+    let shared   = default_col!(cm);
+    let mut db   = shared.lock().await;
     let seed: u64 = rand::random();
     let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(seed);
     match SleepCycle::run(&cfg, &mut *db, &mut rng) {

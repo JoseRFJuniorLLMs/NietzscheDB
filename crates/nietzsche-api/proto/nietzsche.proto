@@ -5,6 +5,7 @@ package nietzsche;
 // ── NietzscheDB unified gRPC API ──────────────────────────────────────────
 //
 // Exposes all core subsystems over a single service:
+//   • Collection management (create, drop, list)
 //   • Graph CRUD  (nodes + edges)
 //   • NQL queries (Nietzsche Query Language, Phase 4)
 //   • Vector KNN  (Poincaré ball nearest-neighbour search)
@@ -12,8 +13,17 @@ package nietzsche;
 //   • Diffusion   (Chebyshev heat-kernel, Phase 6)
 //   • Sleep cycle (Riemannian reconsolidation, Phase 8)
 //   • Admin       (stats, health)
+//
+// ## Multi-collection (Fase B)
+// Every data-plane RPC carries an optional `collection` field.
+// An empty string routes to the "default" collection.
 
 service NietzscheDB {
+
+  // ── Collection management ──────────────────────────────────────────────
+  rpc CreateCollection (CreateCollectionRequest)  returns (CreateCollectionResponse);
+  rpc DropCollection   (DropCollectionRequest)    returns (StatusResponse);
+  rpc ListCollections  (Empty)                    returns (ListCollectionsResponse);
 
   // ── Node CRUD ─────────────────────────────────────────────────────────
   rpc InsertNode   (InsertNodeRequest)    returns (NodeResponse);
@@ -66,48 +76,81 @@ message PoincareVector {
   uint32          dim    = 2;
 }
 
+// ── Collection management messages ────────────────────────────────────────
+
+message CreateCollectionRequest {
+  string collection = 1;  // collection name (must be non-empty)
+  uint32 dim        = 2;  // vector dimension; 0 → server default (3072)
+  string metric     = 3;  // "cosine" | "euclidean" | "poincare"; empty → "cosine"
+}
+
+message CreateCollectionResponse {
+  bool   created    = 1;  // false if collection already existed (idempotent)
+  string collection = 2;  // echoed collection name
+}
+
+message DropCollectionRequest {
+  string collection = 1;  // cannot be "default"
+}
+
+message CollectionInfoProto {
+  string collection = 1;
+  uint32 dim        = 2;
+  string metric     = 3;
+  uint64 node_count = 4;
+  uint64 edge_count = 5;
+}
+
+message ListCollectionsResponse {
+  repeated CollectionInfoProto collections = 1;
+}
+
 // ── Node messages ──────────────────────────────────────────────────────────
 
 // Supported values: "Semantic", "Episodic", "Concept", "DreamSnapshot"
 // Defaults to "Semantic" if empty.
 message InsertNodeRequest {
-  string         id        = 1;  // UUIDv4 as string; server auto-generates if empty
-  PoincareVector embedding = 2;
-  bytes          content   = 3;  // arbitrary JSON bytes
-  string         node_type = 4;
-  float          energy    = 5;  // default 1.0
+  string         id         = 1;  // UUIDv4 as string; server auto-generates if empty
+  PoincareVector embedding  = 2;
+  bytes          content    = 3;  // arbitrary JSON bytes
+  string         node_type  = 4;
+  float          energy     = 5;  // default 1.0
+  string         collection = 6;  // empty → "default"
 }
 
 message NodeIdRequest {
-  string id = 1;
+  string id         = 1;
+  string collection = 2;  // empty → "default"
 }
 
 message UpdateEnergyRequest {
-  string node_id = 1;
-  float  energy  = 2;
+  string node_id    = 1;
+  float  energy     = 2;
+  string collection = 3;  // empty → "default"
 }
 
 message NodeResponse {
-  bool           found          = 1;
-  string         id             = 2;
-  PoincareVector embedding      = 3;
-  float          energy         = 4;
-  float          depth          = 5;
-  float          hausdorff_local= 6;
-  int64          created_at     = 7;  // Unix seconds
-  bytes          content        = 8;  // JSON bytes
-  string         node_type      = 9;
+  bool           found           = 1;
+  string         id              = 2;
+  PoincareVector embedding       = 3;
+  float          energy          = 4;
+  float          depth           = 5;
+  float          hausdorff_local = 6;
+  int64          created_at      = 7;  // Unix seconds
+  bytes          content         = 8;  // JSON bytes
+  string         node_type       = 9;
 }
 
 // ── Edge messages ──────────────────────────────────────────────────────────
 
 // Supported values: "Association", "Hierarchical", "LSystemGenerated", "Pruned"
 message InsertEdgeRequest {
-  string id        = 1;  // UUIDv4; auto-generated if empty
-  string from      = 2;
-  string to        = 3;
-  string edge_type = 4;
-  double weight    = 5;
+  string id         = 1;  // UUIDv4; auto-generated if empty
+  string from       = 2;
+  string to         = 3;
+  string edge_type  = 4;
+  double weight     = 5;
+  string collection = 6;  // empty → "default"
 }
 
 message EdgeResponse {
@@ -116,7 +159,8 @@ message EdgeResponse {
 }
 
 message EdgeIdRequest {
-  string id = 1;
+  string id         = 1;
+  string collection = 2;  // empty → "default"
 }
 
 // ── NQL messages ───────────────────────────────────────────────────────────
@@ -140,6 +184,7 @@ message QueryRequest {
   string nql = 1;  // full NQL query string
   // Bind $param_name → value.  Keys are param names WITHOUT the leading $.
   map<string, QueryParamValue> params = 2;
+  string collection = 3;  // empty → "default"
 }
 
 message ScalarEntry {
@@ -154,14 +199,14 @@ message ScalarEntry {
 }
 
 message QueryResponse {
-  repeated NodeResponse nodes      = 1;
+  repeated NodeResponse nodes       = 1;
   // Node pairs returned by edge-traversal queries
-  repeated NodePair     node_pairs = 2;
+  repeated NodePair     node_pairs  = 2;
   // UUIDs returned by DIFFUSE queries
-  repeated string       path_ids   = 3;
-  string                error      = 4;
+  repeated string       path_ids    = 3;
+  string                error       = 4;
   // EXPLAIN plan text
-  string                explain    = 5;
+  string                explain     = 5;
   // Aggregation / scalar rows
   repeated ScalarRow    scalar_rows = 6;
 }
@@ -180,6 +225,7 @@ message NodePair {
 message KnnRequest {
   repeated double query_coords = 1;
   uint32          k            = 2;
+  string          collection   = 3;  // empty → "default"
 }
 
 message KnnResult {
@@ -199,6 +245,7 @@ message TraversalRequest {
   double max_cost      = 3;   // Dijkstra max cumulative distance (0 = ∞)
   float  energy_min    = 4;   // skip nodes below this energy
   uint32 max_nodes     = 5;   // hard cap on visited nodes (0 = default 1000)
+  string collection    = 6;   // empty → "default"
 }
 
 message TraversalResponse {
@@ -212,12 +259,13 @@ message DiffusionRequest {
   repeated string source_ids  = 1;   // seed node UUIDs
   repeated double t_values    = 2;   // diffusion times (e.g. [0.1, 1.0, 10.0])
   uint32          k_chebyshev = 3;   // polynomial order (0 = default 10)
+  string          collection  = 4;   // empty → "default"
 }
 
 message DiffusionScale {
-  double          t            = 1;
-  repeated string node_ids     = 2;
-  repeated double scores       = 3;   // parallel to node_ids
+  double          t        = 1;
+  repeated string node_ids = 2;
+  repeated double scores   = 3;   // parallel to node_ids
 }
 
 message DiffusionResponse {
@@ -227,67 +275,68 @@ message DiffusionResponse {
 // ── Sleep cycle messages ──────────────────────────────────────────────────
 
 message SleepRequest {
-  double noise                = 1;   // perturbation magnitude (default 0.02)
-  uint32 adam_steps           = 2;   // Adam steps per node (default 10)
-  double adam_lr              = 3;   // Adam learning rate (default 5e-3)
-  float  hausdorff_threshold  = 4;   // max |ΔH| to commit (default 0.15)
-  uint64 rng_seed             = 5;   // 0 = non-deterministic
+  double noise               = 1;   // perturbation magnitude (default 0.02)
+  uint32 adam_steps          = 2;   // Adam steps per node (default 10)
+  double adam_lr             = 3;   // Adam learning rate (default 5e-3)
+  float  hausdorff_threshold = 4;   // max |ΔH| to commit (default 0.15)
+  uint64 rng_seed            = 5;   // 0 = non-deterministic
+  string collection          = 6;   // empty → "default"
 }
 
 message SleepResponse {
-  float  hausdorff_before  = 1;
-  float  hausdorff_after   = 2;
-  float  hausdorff_delta   = 3;
-  bool   committed         = 4;
-  uint32 nodes_perturbed   = 5;
-  uint32 snapshot_nodes    = 6;
+  float  hausdorff_before = 1;
+  float  hausdorff_after  = 2;
+  float  hausdorff_delta  = 3;
+  bool   committed        = 4;
+  uint32 nodes_perturbed  = 5;
+  uint32 snapshot_nodes   = 6;
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────
 
 message StatsResponse {
-  uint64 node_count     = 1;
-  uint64 edge_count     = 2;
-  string version        = 3;
-  uint64 sensory_count  = 4;  // Phase 11: total nodes with sensory data
+  uint64 node_count    = 1;
+  uint64 edge_count    = 2;
+  string version       = 3;
+  uint64 sensory_count = 4;  // Phase 11: total nodes with sensory data
 }
 
 // ── Sensory Compression Layer messages (Phase 11) ─────────────────────────
 
 // Supported modality values: "text", "audio", "image", "fused"
 message InsertSensoryRequest {
-  string node_id            = 1;   // existing node UUID to attach sensory to
-  string modality           = 2;   // "text" | "audio" | "image" | "fused"
-  repeated float latent     = 3;   // pre-compressed Euclidean vector (from Krylov/EnCodec)
-  bytes  original_shape     = 4;   // JSON-encoded OriginalShape metadata
-  uint32 original_bytes     = 5;   // size of the original raw data
-  uint32 encoder_version    = 6;   // encoder version for decoder compatibility
-  // Modality-specific metadata (JSON)
-  bytes  modality_meta      = 7;   // e.g. {"sample_rate":16000,"duration_ms":5000}
+  string         node_id         = 1;   // existing node UUID to attach sensory to
+  string         modality        = 2;   // "text" | "audio" | "image" | "fused"
+  repeated float latent          = 3;   // pre-compressed Euclidean vector
+  bytes          original_shape  = 4;   // JSON-encoded OriginalShape metadata
+  uint32         original_bytes  = 5;   // size of the original raw data
+  uint32         encoder_version = 6;   // encoder version for decoder compatibility
+  bytes          modality_meta   = 7;   // e.g. {"sample_rate":16000,"duration_ms":5000}
+  string         collection      = 8;   // empty → "default"
 }
 
 message SensoryResponse {
-  bool   found                 = 1;
-  string node_id               = 2;
-  string modality              = 3;
-  uint32 dim                   = 4;
-  string quant_level           = 5;   // "f32" | "f16" | "int8" | "pq" | "gone"
-  float  reconstruction_quality= 6;
-  float  compression_ratio     = 7;
-  uint32 encoder_version       = 8;
-  uint32 byte_size             = 9;   // current storage size
+  bool   found                  = 1;
+  string node_id                = 2;
+  string modality               = 3;
+  uint32 dim                    = 4;
+  string quant_level            = 5;   // "f32" | "f16" | "int8" | "pq" | "gone"
+  float  reconstruction_quality = 6;
+  float  compression_ratio      = 7;
+  uint32 encoder_version        = 8;
+  uint32 byte_size              = 9;   // current storage size
 }
 
 message ReconstructRequest {
-  string node_id  = 1;
-  string quality  = 2;   // "full" | "degraded" | "best_available"
+  string node_id = 1;
+  string quality = 2;   // "full" | "degraded" | "best_available"
 }
 
 message ReconstructResponse {
-  bool           found     = 1;
-  string         node_id   = 2;
-  repeated float latent    = 3;   // f32 representation for decoder input
-  string         modality  = 4;
-  float          quality   = 5;   // actual quality of the returned latent
-  bytes          original_shape = 6;  // JSON for decoder to know output dimensions
+  bool           found          = 1;
+  string         node_id        = 2;
+  repeated float latent         = 3;   // f32 representation for decoder input
+  string         modality       = 4;
+  float          quality        = 5;   // actual quality of the returned latent
+  bytes          original_shape = 6;   // JSON for decoder to know output dimensions
 }

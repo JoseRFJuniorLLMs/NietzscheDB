@@ -3,34 +3,37 @@
 //! Unified gRPC API exposing all NietzscheDB subsystems over a single
 //! `NietzscheDB` service defined in `proto/nietzsche.proto`.
 //!
+//! ## Multi-collection (Fase B)
+//! The server is backed by a [`CollectionManager`] which routes each RPC to
+//! the collection named in the request's `collection` field (empty → `"default"`).
+//!
 //! ## Subsystems exposed
 //!
-//! | RPC              | Phase | Description                              |
-//! |------------------|-------|------------------------------------------|
-//! | InsertNode/GetNode/DeleteNode/UpdateEnergy | 1 | Graph CRUD |
-//! | InsertEdge/DeleteEdge | 1 | Edge CRUD |
-//! | Query            | 4     | Nietzsche Query Language (NQL)            |
-//! | KnnSearch        | 1     | Hyperbolic k-nearest-neighbour search     |
-//! | Bfs / Dijkstra   | 3     | Graph traversal                           |
-//! | Diffuse          | 6     | Chebyshev heat-kernel diffusion           |
-//! | TriggerSleep     | 8     | Riemannian reconsolidation cycle          |
-//! | GetStats         | —     | Node / edge counts + version              |
-//! | HealthCheck      | —     | Liveness probe                            |
+//! | RPC group         | Description                                      |
+//! |-------------------|--------------------------------------------------|
+//! | CreateCollection / DropCollection / ListCollections | Collection management |
+//! | InsertNode / GetNode / DeleteNode / UpdateEnergy | Graph CRUD          |
+//! | InsertEdge / DeleteEdge    | Edge CRUD                                |
+//! | Query             | Nietzsche Query Language (NQL)                   |
+//! | KnnSearch         | Hyperbolic k-nearest-neighbour search            |
+//! | Bfs / Dijkstra    | Graph traversal                                  |
+//! | Diffuse           | Chebyshev heat-kernel diffusion                  |
+//! | TriggerSleep      | Riemannian reconsolidation cycle                 |
+//! | GetStats          | Aggregate node / edge counts + version           |
+//! | HealthCheck       | Liveness probe                                   |
 //!
 //! ## Quick start
 //!
 //! ```rust,ignore
 //! use nietzsche_api::server::NietzscheServer;
-//! use nietzsche_graph::{MockVectorStore, NietzscheDB};
-//! use std::{net::SocketAddr, path::Path, sync::Arc};
-//! use tokio::sync::Mutex;
+//! use nietzsche_graph::CollectionManager;
+//! use std::{net::SocketAddr, path::Path};
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
-//!     let db = NietzscheDB::open(Path::new("/data/nietzsche"), MockVectorStore::default())?;
-//!     let shared = Arc::new(Mutex::new(db));
+//!     let cm   = CollectionManager::open(Path::new("/data/nietzsche"))?;
 //!     let addr: SocketAddr = "[::1]:50051".parse()?;
-//!     NietzscheServer::new(shared).serve(addr).await?;
+//!     NietzscheServer::new(cm).serve(addr).await?;
 //!     Ok(())
 //! }
 //! ```

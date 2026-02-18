@@ -165,24 +165,82 @@ Eight new crates built on top of the foundation:
 - **Traversal engine** (`traversal.rs`): energy-gated BFS, Poincaré-distance Dijkstra, shortest-path reconstruction, energy-biased `DiffusionWalk` with seeded RNG
 
 #### `nietzsche-query` — NQL Query Language *(Phase 4 — COMPLETE)*
-Nietzsche Query Language — a declarative query language with first-class hyperbolic primitives:
+Nietzsche Query Language — a declarative query language with first-class hyperbolic primitives. Parser built with `pest` (PEG grammar). 19 unit + integration tests.
+
+**→ [Full NQL Reference: docs/NQL.md](docs/NQL.md)**
+
+Query types:
+
+| Type | Description |
+|---|---|
+| `MATCH` | Pattern matching on nodes/paths with hyperbolic conditions |
+| `DIFFUSE` | Multi-scale heat-kernel activation propagation |
+| `RECONSTRUCT` | Decode sensory data from latent vector (Phase 11) |
+| `EXPLAIN` | Return execution plan without running |
 
 ```sql
--- Hyperbolic semantic search
+-- Hyperbolic nearest-neighbor search with depth filter
 MATCH (m:Memory)
-WHERE HYPERBOLIC_DIST(m.embedding, $query_vec) < 0.5
+WHERE HYPERBOLIC_DIST(m.embedding, $q) < 0.5
   AND m.depth > 0.6
-RETURN m ORDER BY HYPERBOLIC_DIST(m.embedding, $query_vec) ASC
+  AND NOT m.node_type = "Pruned"
+RETURN m
+ORDER BY HYPERBOLIC_DIST(m.embedding, $q) ASC
 LIMIT 10
 
--- Multi-scale diffusion
-DIFFUSE FROM $node
+-- Graph traversal: hierarchical expansion
+MATCH (c:Concept)-[:Hierarchical]->(child)
+WHERE c.energy > 0.7
+RETURN child ORDER BY child.depth DESC LIMIT 20
+
+-- IN / BETWEEN / string operators
+MATCH (n)
+WHERE n.node_type IN ("Semantic", "Episodic")
+  AND n.energy BETWEEN 0.3 AND 0.9
+  AND n.node_type STARTS_WITH "S"
+RETURN n LIMIT 50
+
+-- Aggregation with GROUP BY
+MATCH (n)
+RETURN n.node_type, COUNT(*) AS total, AVG(n.energy) AS avg_e
+GROUP BY n.node_type
+ORDER BY total DESC
+
+-- Mathematician-named geometric functions
+MATCH (n)
+WHERE RIEMANN_CURVATURE(n) > 0.3      -- Ollivier-Ricci curvature
+  AND HAUSDORFF_DIM(n) BETWEEN 1.2 AND 1.8
+  AND DIRICHLET_ENERGY(n) < 0.1
+RETURN n ORDER BY RIEMANN_CURVATURE(n) DESC LIMIT 10
+
+-- Multi-scale heat-kernel diffusion
+DIFFUSE FROM $seed
   WITH t = [0.1, 1.0, 10.0]
-  MAX_HOPS 5
-RETURN activated_nodes, activation_scores
+  MAX_HOPS 6
+RETURN path
+
+-- Execution plan inspection
+EXPLAIN MATCH (n) WHERE n.energy > 0.5 RETURN n LIMIT 10
 ```
 
-Parser built with `pest` (PEG grammar). Executor routes to vector scan, graph traversal, diffusion, or hybrid plan depending on the query structure. 19 unit + integration tests.
+**Built-in geometric functions:**
+
+| Function | Named after | Computes |
+|---|---|---|
+| `HYPERBOLIC_DIST(n.e, $q)` | — | Poincaré ball geodesic distance |
+| `POINCARE_DIST(n, $q)` | Henri Poincaré | Same — explicit model name |
+| `KLEIN_DIST(n, $q)` | Felix Klein | Beltrami-Klein distance |
+| `RIEMANN_CURVATURE(n)` | Bernhard Riemann | Ollivier-Ricci curvature |
+| `HAUSDORFF_DIM(n)` | Felix Hausdorff | Local fractal dimension |
+| `GAUSS_KERNEL(n, t)` | Carl Friedrich Gauss | Heat kernel `exp(-d²/4t)` |
+| `CHEBYSHEV_COEFF(n, k)` | Pafnuty Chebyshev | Chebyshev polynomial T_k |
+| `DIRICHLET_ENERGY(n)` | P.G.L. Dirichlet | Local Dirichlet energy |
+| `EULER_CHAR(n)` | Leonhard Euler | V − E characteristic |
+| `LAPLACIAN_SCORE(n)` | P.-S. Laplace | Graph Laplacian diagonal |
+| `LOBACHEVSKY_ANGLE(n, $p)` | N. Lobachevsky | Angle of parallelism |
+| `MINKOWSKI_NORM(n)` | H. Minkowski | Conformal factor |
+| `RAMANUJAN_EXPANSION(n)` | S. Ramanujan | Spectral expansion ratio |
+| `FOURIER_COEFF(n, k)` | J. Fourier | Graph Fourier coefficient |
 
 #### `nietzsche-lsystem` — Fractal Growth Engine *(Phase 5 — COMPLETE)*
 The knowledge graph is not static — it grows by **L-System production rules**:
@@ -215,30 +273,53 @@ EVA-Mind sleeps. During sleep:
 
 This prevents catastrophic forgetting while allowing genuine memory reorganization.
 
-#### `nietzsche-api` — Unified gRPC API *(Phase 9 — COMPLETE)*
-Single endpoint for all NietzscheDB capabilities — 14 RPCs over a single `NietzscheDB` service:
+#### `nietzsche-api` — Unified gRPC API *(Fase A+B — COMPLETE)*
+Single endpoint for all NietzscheDB capabilities — **17 RPCs** over a single `NietzscheDB` service. Every data-plane RPC accepts a `collection` field; empty → `"default"`.
 
 ```protobuf
 service NietzscheDB {
+  // ── Collection management (Fase B) ──────────────────────────────
+  rpc CreateCollection(CreateCollectionRequest)   returns (CreateCollectionResponse);
+  rpc DropCollection(DropCollectionRequest)       returns (StatusResponse);
+  rpc ListCollections(ListCollectionsRequest)     returns (ListCollectionsResponse);
+
+  // ── Graph CRUD ──────────────────────────────────────────────────
   rpc InsertNode(InsertNodeRequest)     returns (NodeResponse);
-  rpc GetNode(GetNodeRequest)           returns (NodeResponse);
-  rpc DeleteNode(DeleteNodeRequest)     returns (StatusResponse);
+  rpc GetNode(NodeIdRequest)            returns (NodeResponse);
+  rpc DeleteNode(NodeIdRequest)         returns (StatusResponse);
   rpc UpdateEnergy(UpdateEnergyRequest) returns (StatusResponse);
-  rpc InsertEdge(InsertEdgeRequest)     returns (StatusResponse);
-  rpc DeleteEdge(DeleteEdgeRequest)     returns (StatusResponse);
+  rpc InsertEdge(InsertEdgeRequest)     returns (EdgeResponse);
+  rpc DeleteEdge(EdgeIdRequest)         returns (StatusResponse);
+
+  // ── Query & Search ──────────────────────────────────────────────
   rpc Query(QueryRequest)               returns (QueryResponse);
   rpc KnnSearch(KnnRequest)             returns (KnnResponse);
+
+  // ── Traversal ───────────────────────────────────────────────────
   rpc Bfs(TraversalRequest)             returns (TraversalResponse);
   rpc Dijkstra(TraversalRequest)        returns (TraversalResponse);
   rpc Diffuse(DiffusionRequest)         returns (DiffusionResponse);
+
+  // ── Lifecycle ───────────────────────────────────────────────────
   rpc TriggerSleep(SleepRequest)        returns (SleepResponse);
   rpc GetStats(StatsRequest)            returns (StatsResponse);
   rpc HealthCheck(HealthRequest)        returns (HealthResponse);
 }
 ```
 
-Full input validation layer: embedding inside unit ball, energy ∈ [0,1], NQL ≤ 8192 bytes,
+Full input validation: embedding inside unit ball, energy ∈ [0,1], NQL ≤ 8192 bytes,
 k ∈ [1, 10 000], t_values > 0, source_ids ≤ 1024. Structured tracing on all write handlers.
+
+**Multi-collection example:**
+```python
+# Create a named collection with explicit dimension + metric
+db.create_collection("patients", dim=1536, metric="cosine")
+db.create_collection("core",     dim=768,  metric="cosine")
+
+# All subsequent operations route to named collection
+db.insert_node(embedding=[...], collection="patients")
+results = db.query("MATCH (n) RETURN n LIMIT 5", collection="core")
+```
 
 #### `nietzsche-sdk` — Python & TypeScript SDKs *(Phase 9 — COMPLETE)*
 ```python
@@ -349,13 +430,34 @@ NietzscheDB is deployed in production as part of the **EVA-Mind** infrastructure
 | gRPC endpoint | `localhost:50051` (internal to EVA-Mind) |
 | Data volume | `nietzsche_data` (Docker named volume) |
 | Sleep cycle | every 3600 s (autonomous reconsolidation) |
-| Co-deployed with | Neo4j · Qdrant · Redis (EVA-Mind stack) |
+| Co-deployed with | NietzscheDB (replaces 2×Neo4j + Qdrant + Redis) |
 
 ---
 
 ## Production Deployment
 
-### Docker
+### Docker Compose (EVA-Mind VM — recommended)
+
+```yaml
+# docker-compose.infra.yml — excerpt
+services:
+  nietzsche-server:
+    image: us-central1-docker.pkg.dev/PROJECT/nietzsche/nietzsche-server:latest
+    container_name: eva-nietzsche
+    restart: unless-stopped
+    ports:
+      - "50051:50051"   # gRPC
+      - "8082:8080"     # HTTP dashboard
+    environment:
+      NIETZSCHE_DATA_DIR:            /data/nietzsche
+      NIETZSCHE_PORT:                "50051"
+      NIETZSCHE_DASHBOARD_PORT:      "8080"
+      NIETZSCHE_SLEEP_INTERVAL_SECS: "300"
+    volumes:
+      - nietzsche_data:/data/nietzsche
+```
+
+### Docker (standalone)
 
 ```bash
 # Build
@@ -364,9 +466,11 @@ docker build -t nietzsche-db:latest .
 # Run
 docker run -d \
   -p 50051:50051 \
+  -p 8082:8080 \
   -v /data/nietzsche:/data/nietzsche \
   -e NIETZSCHE_LOG_LEVEL=info \
-  -e NIETZSCHE_SLEEP_INTERVAL_SECS=3600 \
+  -e NIETZSCHE_SLEEP_INTERVAL_SECS=300 \
+  -e NIETZSCHE_DASHBOARD_PORT=8080 \
   --name nietzsche-db \
   nietzsche-db:latest
 ```
@@ -375,31 +479,50 @@ docker run -d \
 
 | Variable | Default | Description |
 |---|---|---|
-| `NIETZSCHE_DATA_DIR` | `/data/nietzsche` | RocksDB + WAL storage path |
+| `NIETZSCHE_DATA_DIR` | `/data/nietzsche` | RocksDB + WAL + collections root |
 | `NIETZSCHE_PORT` | `50051` | gRPC listen port |
+| `NIETZSCHE_DASHBOARD_PORT` | `8080` | HTTP dashboard port (0 = disabled) |
 | `NIETZSCHE_LOG_LEVEL` | `info` | Tracing filter (`trace`, `debug`, `info`, `warn`, `error`) |
 | `NIETZSCHE_SLEEP_INTERVAL_SECS` | `0` | Sleep cycle interval in seconds (0 = disabled) |
 | `NIETZSCHE_SLEEP_NOISE` | `0.02` | Tangent-space perturbation magnitude |
 | `NIETZSCHE_SLEEP_ADAM_STEPS` | `10` | RiemannianAdam steps per sleep cycle |
 | `NIETZSCHE_HAUSDORFF_THRESHOLD` | `0.15` | Max Δhausdorff before rollback |
 | `NIETZSCHE_MAX_CONNECTIONS` | `1024` | Maximum concurrent gRPC connections |
+| `NIETZSCHE_VECTOR_BACKEND` | `embedded` | `embedded` (HNSW) or `mock` (in-memory) |
 
 ### Health Check
 
 ```bash
+# gRPC health (requires grpcurl)
 grpcurl -plaintext localhost:50051 nietzsche.NietzscheDB/HealthCheck
+
+# HTTP dashboard health (always available)
+curl http://localhost:8082/api/health
+
+# List all collections
+curl http://localhost:8082/api/collections
 ```
 
-### CI
+### CI / CD
 
-GitHub Actions pipeline (`.github/workflows/ci.yml`):
+**`.github/workflows/ci.yml`** — runs on every PR:
 
 | Job | What it does |
 |---|---|
 | `lint` | `cargo fmt --check` + `cargo clippy -D warnings` |
-| `test` | `cargo test --workspace` |
+| `test` | `cargo test --workspace` (requires `protoc` + `libclang`) |
 | `bench-dry-run` | `cargo bench --no-run --workspace` (compile check) |
-| `docker` | `docker build` (image not pushed on PRs) |
+| `docker` | `docker build` (validates Dockerfile; no push on PRs) |
+
+**`.github/workflows/deploy-gcp.yml`** — runs on push to `main`:
+
+| Job | What it does |
+|---|---|
+| `build-and-push` | Builds Docker image, pushes to GCP Artifact Registry via WIF |
+| `deploy` | SSH into GCP VM via OS Login, runs `docker compose up -d` |
+| Health check | Verifies `GET /api/health` returns 200 |
+
+Setup: run `deploy/scripts/setup-wif.sh` once to configure Workload Identity Federation and Artifact Registry, then add the printed values as GitHub Secrets.
 
 ---
 

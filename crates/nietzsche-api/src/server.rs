@@ -1,30 +1,30 @@
-//! gRPC server implementation for the NietzscheDB API.
+//! gRPC service implementation for NietzscheDB.
 //!
-//! Implements the `NietzscheDb` service generated from `proto/nietzsche.proto`.
+//! [`NietzscheServer`] wraps an [`Arc<CollectionManager>`] and dispatches every
+//! data-plane RPC to the collection named in the `collection` field of the
+//! request (empty string → `"default"`).
 //!
-//! ## Usage
-//!
-//! ```rust,ignore
-//! use nietzsche_api::server::NietzscheServer;
-//! use nietzsche_graph::{MockVectorStore, NietzscheDB};
-//! use std::{path::Path, sync::Arc};
-//! use tokio::sync::Mutex;
-//!
-//! let db = NietzscheDB::open(Path::new("/data/nietzsche"), MockVectorStore::default())?;
-//! let server = NietzscheServer::new(Arc::new(Mutex::new(db)));
-//! server.serve("[::1]:50051".parse()?).await?;
+//! ## Multi-collection routing
+//! ```text
+//! RPC request { collection: "memories", ... }
+//!       │
+//!       ▼
+//! CollectionManager::get_or_default("memories")
+//!       │  returns Arc<Mutex<NietzscheDB<AnyVectorStore>>>
+//!       ▼
+//! db.lock().await   →   NietzscheDB method
 //! ```
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use tonic::{Request, Response, Status};
-use tokio::sync::Mutex;
 use tracing::{debug, instrument, warn};
 use uuid::Uuid;
 
 use nietzsche_graph::{
-    Edge, EdgeType, GraphError, NietzscheDB, Node, PoincareVector, VectorStore,
+    CollectionConfig, CollectionManager,
+    Edge, EdgeType, GraphError, Node, PoincareVector,
     traversal::{BfsConfig, DijkstraConfig},
     bfs, dijkstra,
 };
@@ -41,12 +41,9 @@ use crate::validation::{
     validate_nql, validate_sleep_params, validate_source_count, validate_t_values,
 };
 
-// Re-export the tonic server wrapper for convenience
 pub use nietzsche::nietzsche_db_server::NietzscheDbServer as TonicServer;
 
-// ─────────────────────────────────────────────
-// Conversion helpers
-// ─────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn graph_err(e: GraphError) -> Status {
     Status::internal(e.to_string())
@@ -91,17 +88,27 @@ fn ok_status() -> nietzsche::StatusResponse {
     nietzsche::StatusResponse { status: "ok".into(), error: String::new() }
 }
 
-fn err_status(msg: impl ToString) -> nietzsche::StatusResponse {
-    nietzsche::StatusResponse { status: "error".into(), error: msg.to_string() }
+/// Resolve `collection` field: empty → `"default"`.
+#[inline]
+fn col(s: &str) -> &str {
+    if s.is_empty() { "default" } else { s }
 }
 
-// ─────────────────────────────────────────────
-// NQL param marshaling
-// ─────────────────────────────────────────────
+/// Look up a collection, returning `Status::not_found` if missing.
+macro_rules! get_col {
+    ($cm:expr, $name:expr) => {{
+        match $cm.get_or_default(col($name)) {
+            Some(db) => db,
+            None => return Err(Status::not_found(format!(
+                "collection '{}' not found", col($name)
+            ))),
+        }
+    }};
+}
 
-/// Convert proto `QueryParamValue` map into executor `Params`.
+/// Marshal proto `QueryParamValue` map into executor `Params`.
 fn marshal_params(
-    proto: &std::collections::HashMap<String, nietzsche::QueryParamValue>,
+    proto: &HashMap<String, nietzsche::QueryParamValue>,
 ) -> Result<Params, Status> {
     let mut params = Params::new();
     for (key, pv) in proto {
@@ -129,26 +136,22 @@ fn marshal_params(
     Ok(params)
 }
 
-// ─────────────────────────────────────────────
-// NietzscheServer
-// ─────────────────────────────────────────────
+// ── NietzscheServer ───────────────────────────────────────────────────────────
 
-/// gRPC service handler wrapping a shared `NietzscheDB<V>`.
+/// gRPC service handler backed by a [`CollectionManager`].
 ///
-/// The inner DB is protected by a `tokio::sync::Mutex` so multiple concurrent
-/// RPCs can access it safely.  For production use, consider a reader-writer
-/// lock or sharding by node ID range.
-pub struct NietzscheServer<V: VectorStore + 'static> {
-    db: Arc<Mutex<NietzscheDB<V>>>,
+/// Each RPC extracts the `collection` field (empty → `"default"`) and
+/// dispatches to the corresponding isolated `NietzscheDB<AnyVectorStore>`.
+pub struct NietzscheServer {
+    cm: Arc<CollectionManager>,
 }
 
-impl<V: VectorStore + 'static> NietzscheServer<V> {
-    pub fn new(db: Arc<Mutex<NietzscheDB<V>>>) -> Self {
-        Self { db }
+impl NietzscheServer {
+    pub fn new(cm: Arc<CollectionManager>) -> Self {
+        Self { cm }
     }
 
-    /// Wrap this server in a tonic [`NietzscheDbServer`] ready to be passed
-    /// to `tonic::transport::Server::add_service`.
+    /// Wrap this server in a tonic [`NietzscheDbServer`].
     pub fn into_service(self) -> NietzscheDbServer<Self> {
         NietzscheDbServer::new(self)
     }
@@ -166,14 +169,62 @@ impl<V: VectorStore + 'static> NietzscheServer<V> {
     }
 }
 
-// ─────────────────────────────────────────────
-// gRPC trait implementation
-// ─────────────────────────────────────────────
+// ── gRPC trait implementation ─────────────────────────────────────────────────
 
 #[tonic::async_trait]
-impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> {
+impl NietzscheDb for NietzscheServer {
 
-    // ── Node CRUD ────────────────────────────────────────────────────────
+    // ── Collection management ─────────────────────────────────────────────
+
+    async fn create_collection(
+        &self,
+        req: Request<nietzsche::CreateCollectionRequest>,
+    ) -> Result<Response<nietzsche::CreateCollectionResponse>, Status> {
+        let r = req.into_inner();
+        if r.collection.is_empty() {
+            return Err(Status::invalid_argument("collection name must not be empty"));
+        }
+        let already_exists = self.cm.get(&r.collection).is_some();
+
+        let dim    = if r.dim > 0 { r.dim as usize } else { 3072 };
+        let metric = if r.metric.is_empty() { "cosine".to_string() } else { r.metric.clone() };
+
+        let cfg = CollectionConfig { name: r.collection.clone(), dim, metric };
+        self.cm.create_collection(cfg).map_err(graph_err)?;
+
+        Ok(Response::new(nietzsche::CreateCollectionResponse {
+            created:    !already_exists,
+            collection: r.collection,
+        }))
+    }
+
+    async fn drop_collection(
+        &self,
+        req: Request<nietzsche::DropCollectionRequest>,
+    ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        let r = req.into_inner();
+        self.cm.drop_collection(&r.collection).map_err(graph_err)?;
+        Ok(Response::new(ok_status()))
+    }
+
+    async fn list_collections(
+        &self,
+        _req: Request<nietzsche::Empty>,
+    ) -> Result<Response<nietzsche::ListCollectionsResponse>, Status> {
+        let collections = self.cm.list()
+            .into_iter()
+            .map(|i| nietzsche::CollectionInfoProto {
+                collection: i.name,
+                dim:        i.dim as u32,
+                metric:     i.metric,
+                node_count: i.node_count as u64,
+                edge_count: i.edge_count as u64,
+            })
+            .collect();
+        Ok(Response::new(nietzsche::ListCollectionsResponse { collections }))
+    }
+
+    // ── Node CRUD ─────────────────────────────────────────────────────────
 
     #[instrument(skip(self, req), fields(node_id))]
     async fn insert_node(
@@ -182,24 +233,15 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
     ) -> Result<Response<nietzsche::NodeResponse>, Status> {
         let r = req.into_inner();
 
-        // Resolve ID (auto-generate if empty)
-        let id = if r.id.is_empty() {
-            Uuid::new_v4()
-        } else {
-            parse_uuid(&r.id, "id")?
-        };
+        let id = if r.id.is_empty() { Uuid::new_v4() } else { parse_uuid(&r.id, "id")? };
 
         let emb_proto = r.embedding.ok_or_else(|| {
             Status::invalid_argument("embedding is required")
         })?;
-
-        // Validate embedding before accepting
         validate_embedding(&emb_proto)?;
         if r.energy != 0.0 { validate_energy(r.energy)?; }
 
-        let coords: Vec<f64> = emb_proto.coords;
-        let embedding = PoincareVector::new(coords);
-
+        let embedding = PoincareVector::new(emb_proto.coords);
         let content: serde_json::Value = if r.content.is_empty() {
             serde_json::Value::Null
         } else {
@@ -209,9 +251,10 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
 
         let mut node = Node::new(id, embedding, content);
         if r.energy > 0.0 { node.energy = r.energy; }
-        debug!(node_id = %id, "inserting node");
+        debug!(node_id = %id, collection = %col(&r.collection), "inserting node");
 
-        let mut db = self.db.lock().await;
+        let shared = get_col!(self.cm, &r.collection);
+        let mut db = shared.lock().await;
         db.insert_node(node.clone()).map_err(graph_err)?;
 
         Ok(Response::new(node_to_proto(node)))
@@ -221,8 +264,11 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
         &self,
         req: Request<nietzsche::NodeIdRequest>,
     ) -> Result<Response<nietzsche::NodeResponse>, Status> {
-        let id = parse_uuid(&req.into_inner().id, "id")?;
-        let db = self.db.lock().await;
+        let r  = req.into_inner();
+        let id = parse_uuid(&r.id, "id")?;
+
+        let shared = get_col!(self.cm, &r.collection);
+        let db = shared.lock().await;
         match db.get_node(id).map_err(graph_err)? {
             Some(node) => Ok(Response::new(node_to_proto(node))),
             None       => Ok(Response::new(not_found())),
@@ -233,8 +279,11 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
         &self,
         req: Request<nietzsche::NodeIdRequest>,
     ) -> Result<Response<nietzsche::StatusResponse>, Status> {
-        let id = parse_uuid(&req.into_inner().id, "id")?;
-        let mut db = self.db.lock().await;
+        let r  = req.into_inner();
+        let id = parse_uuid(&r.id, "id")?;
+
+        let shared = get_col!(self.cm, &r.collection);
+        let mut db = shared.lock().await;
         db.delete_node(id).map_err(graph_err)?;
         Ok(Response::new(ok_status()))
     }
@@ -243,9 +292,11 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
         &self,
         req: Request<nietzsche::UpdateEnergyRequest>,
     ) -> Result<Response<nietzsche::StatusResponse>, Status> {
-        let r = req.into_inner();
+        let r  = req.into_inner();
         let id = parse_uuid(&r.node_id, "node_id")?;
-        let mut db = self.db.lock().await;
+
+        let shared = get_col!(self.cm, &r.collection);
+        let mut db = shared.lock().await;
         db.update_energy(id, r.energy).map_err(graph_err)?;
         Ok(Response::new(ok_status()))
     }
@@ -260,27 +311,28 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
 
         let id   = if r.id.is_empty() { Uuid::new_v4() } else { parse_uuid(&r.id, "id")? };
         let from = parse_uuid(&r.from, "from")?;
-        let to   = parse_uuid(&r.to, "to")?;
+        let to   = parse_uuid(&r.to,   "to")?;
 
         let mut edge = Edge::new(from, to, parse_edge_type(&r.edge_type), r.weight as f32);
-        edge.id = id;
+        edge.id       = id;
         edge.metadata = HashMap::new();
 
-        let mut db = self.db.lock().await;
+        let shared = get_col!(self.cm, &r.collection);
+        let mut db = shared.lock().await;
         db.insert_edge(edge).map_err(graph_err)?;
 
-        Ok(Response::new(nietzsche::EdgeResponse {
-            success: true,
-            id:      id.to_string(),
-        }))
+        Ok(Response::new(nietzsche::EdgeResponse { success: true, id: id.to_string() }))
     }
 
     async fn delete_edge(
         &self,
         req: Request<nietzsche::EdgeIdRequest>,
     ) -> Result<Response<nietzsche::StatusResponse>, Status> {
-        let id = parse_uuid(&req.into_inner().id, "id")?;
-        let mut db = self.db.lock().await;
+        let r  = req.into_inner();
+        let id = parse_uuid(&r.id, "id")?;
+
+        let shared = get_col!(self.cm, &r.collection);
+        let mut db = shared.lock().await;
         db.delete_edge(id).map_err(graph_err)?;
         Ok(Response::new(ok_status()))
     }
@@ -295,14 +347,13 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
         let inner = req.into_inner();
         validate_nql(&inner.nql)?;
 
-        let ast = parse(&inner.nql).map_err(|e| {
+        let ast    = parse(&inner.nql).map_err(|e| {
             Status::invalid_argument(format!("NQL parse error: {e}"))
         })?;
-
-        // Marshal proto params → executor Params
         let params = marshal_params(&inner.params)?;
 
-        let db = self.db.lock().await;
+        let shared  = get_col!(self.cm, &inner.collection);
+        let db      = shared.lock().await;
         let results = execute(&ast, db.storage(), db.adjacency(), &params)
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -323,21 +374,17 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
                 QueryResult::DiffusionPath(ids) =>
                     path_ids.extend(ids.iter().map(|u| u.to_string())),
                 QueryResult::ReconstructRequest { node_id, modality, quality } => {
-                    // For NQL-driven RECONSTRUCT, return the target info in path_ids
-                    // (the actual reconstruction is handled by the Reconstruct RPC)
                     path_ids.push(format!("reconstruct:{}:{}:{}",
                         node_id,
                         modality.unwrap_or_default(),
                         quality.unwrap_or_default(),
                     ));
                 }
-                QueryResult::ExplainPlan(plan) => {
-                    explain = plan;
-                }
+                QueryResult::ExplainPlan(plan) => { explain = plan; }
                 QueryResult::Scalar(row) => {
-                    let entries = row.into_iter().map(|(col, val)| {
+                    let entries = row.into_iter().map(|(col_name, val)| {
                         let mut entry = nietzsche::ScalarEntry {
-                            column: col,
+                            column:  col_name,
                             is_null: false,
                             ..Default::default()
                         };
@@ -373,19 +420,20 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
         }))
     }
 
-    // ── KNN search ───────────────────────────────────────────────────────
+    // ── KNN search ────────────────────────────────────────────────────────
 
     #[instrument(skip(self, req))]
     async fn knn_search(
         &self,
         req: Request<nietzsche::KnnRequest>,
     ) -> Result<Response<nietzsche::KnnResponse>, Status> {
-        let r = req.into_inner();
+        let r     = req.into_inner();
         validate_k(r.k)?;
         let query = PoincareVector::new(r.query_coords);
         let k     = r.k as usize;
 
-        let db      = self.db.lock().await;
+        let shared  = get_col!(self.cm, &r.collection);
+        let db      = shared.lock().await;
         let results = db.knn(&query, k).map_err(graph_err)?;
 
         Ok(Response::new(nietzsche::KnnResponse {
@@ -408,12 +456,13 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
         let start = parse_uuid(&r.start_node_id, "start_node_id")?;
 
         let config = BfsConfig {
-            max_depth:  if r.max_depth  > 0 { r.max_depth  as usize } else { 10 },
-            max_nodes:  if r.max_nodes  > 0 { r.max_nodes  as usize } else { 1_000 },
+            max_depth:  if r.max_depth > 0 { r.max_depth as usize } else { 10 },
+            max_nodes:  if r.max_nodes > 0 { r.max_nodes as usize } else { 1_000 },
             energy_min: r.energy_min,
         };
 
-        let db      = self.db.lock().await;
+        let shared  = get_col!(self.cm, &r.collection);
+        let db      = shared.lock().await;
         let visited = bfs(db.storage(), db.adjacency(), start, &config)
             .map_err(graph_err)?;
 
@@ -436,11 +485,11 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
             max_distance: if r.max_cost > 0.0 { r.max_cost } else { f64::INFINITY },
         };
 
-        let db      = self.db.lock().await;
-        let costs   = dijkstra(db.storage(), db.adjacency(), start, &config)
+        let shared = get_col!(self.cm, &r.collection);
+        let db     = shared.lock().await;
+        let costs  = dijkstra(db.storage(), db.adjacency(), start, &config)
             .map_err(graph_err)?;
 
-        // Sort by cost for a deterministic response
         let mut entries: Vec<(Uuid, f64)> = costs.into_iter().collect();
         entries.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
@@ -458,7 +507,6 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
         req: Request<nietzsche::DiffusionRequest>,
     ) -> Result<Response<nietzsche::DiffusionResponse>, Status> {
         let r = req.into_inner();
-
         validate_source_count(r.source_ids.len())?;
 
         let sources: Vec<Uuid> = r.source_ids.iter()
@@ -473,10 +521,11 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
         };
 
         let k_chebyshev = if r.k_chebyshev > 0 { r.k_chebyshev as usize } else { 10 };
-        let config = DiffusionConfig { k_chebyshev, ..Default::default() };
+        let config      = DiffusionConfig { k_chebyshev, ..Default::default() };
 
-        let db = self.db.lock().await;
-        let engine = DiffusionEngine::new(config);
+        let shared  = get_col!(self.cm, &r.collection);
+        let db      = shared.lock().await;
+        let engine  = DiffusionEngine::new(config);
         let results = engine
             .diffuse(db.storage(), db.adjacency(), &sources, &t_values)
             .map_err(|e| Status::internal(e.to_string()))?;
@@ -499,31 +548,33 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
         &self,
         req: Request<nietzsche::SleepRequest>,
     ) -> Result<Response<nietzsche::SleepResponse>, Status> {
-        let r = req.into_inner();
-        let noise_val  = if r.noise > 0.0   { r.noise }   else { 0.02 };
-        let lr_val     = if r.adam_lr > 0.0 { r.adam_lr } else { 5e-3 };
+        let r         = req.into_inner();
+        let noise_val = if r.noise > 0.0   { r.noise }   else { 0.02 };
+        let lr_val    = if r.adam_lr > 0.0 { r.adam_lr } else { 5e-3 };
         validate_sleep_params(noise_val, lr_val)?;
 
         let config = SleepConfig {
             noise:               noise_val,
             adam_steps:          if r.adam_steps > 0 { r.adam_steps as usize } else { 10 },
             adam_lr:             lr_val,
-            hausdorff_threshold: if r.hausdorff_threshold > 0.0 { r.hausdorff_threshold } else { 0.15 },
+            hausdorff_threshold: if r.hausdorff_threshold > 0.0 {
+                r.hausdorff_threshold
+            } else {
+                0.15
+            },
         };
         warn!(
-            noise = config.noise,
+            noise      = config.noise,
             adam_steps = config.adam_steps,
-            "triggering sleep cycle — DB will be locked"
+            collection = %col(&r.collection),
+            "triggering sleep cycle — collection will be locked"
         );
 
-        let seed = if r.rng_seed == 0 {
-            rand::random::<u64>()
-        } else {
-            r.rng_seed
-        };
+        let seed = if r.rng_seed == 0 { rand::random::<u64>() } else { r.rng_seed };
         let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(seed);
 
-        let mut db = self.db.lock().await;
+        let shared = get_col!(self.cm, &r.collection);
+        let mut db = shared.lock().await;
         let report = SleepCycle::run(&config, &mut *db, &mut rng)
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -543,14 +594,18 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
         &self,
         _req: Request<nietzsche::Empty>,
     ) -> Result<Response<nietzsche::StatsResponse>, Status> {
-        let db = self.db.lock().await;
-        let node_count = db.node_count().map_err(graph_err)? as u64;
-        let edge_count = db.edge_count().map_err(graph_err)? as u64;
+        // Aggregate node/edge counts across all collections
+        let infos = self.cm.list();
+        let (node_count, edge_count) = infos
+            .iter()
+            .fold((0u64, 0u64), |(n, e), i| {
+                (n + i.node_count as u64, e + i.edge_count as u64)
+            });
 
         Ok(Response::new(nietzsche::StatsResponse {
             node_count,
             edge_count,
-            version: env!("CARGO_PKG_VERSION").to_string(),
+            version:       env!("CARGO_PKG_VERSION").to_string(),
             sensory_count: 0,
         }))
     }
