@@ -20,6 +20,7 @@ use std::sync::Arc;
 
 use tonic::{Request, Response, Status};
 use tokio::sync::Mutex;
+use tracing::{debug, instrument, warn};
 use uuid::Uuid;
 
 use nietzsche_graph::{
@@ -35,6 +36,10 @@ use crate::proto::nietzsche::{
     self,
     nietzsche_db_server::{NietzscheDb, NietzscheDbServer},
 };
+use crate::validation::{
+    parse_uuid as val_uuid, validate_embedding, validate_energy, validate_k,
+    validate_nql, validate_sleep_params, validate_source_count, validate_t_values,
+};
 
 // Re-export the tonic server wrapper for convenience
 pub use nietzsche::nietzsche_db_server::NietzscheDbServer as TonicServer;
@@ -48,13 +53,7 @@ fn graph_err(e: GraphError) -> Status {
 }
 
 fn parse_uuid(s: &str, field: &str) -> Result<Uuid, Status> {
-    Uuid::parse_str(s).map_err(|_| {
-        Status::invalid_argument(format!("invalid UUID for field '{field}': {s}"))
-    })
-}
-
-fn parse_uuid_opt(s: &str) -> Option<Uuid> {
-    Uuid::parse_str(s).ok()
+    val_uuid(s, field)
 }
 
 fn parse_edge_type(s: &str) -> EdgeType {
@@ -142,6 +141,7 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
 
     // ── Node CRUD ────────────────────────────────────────────────────────
 
+    #[instrument(skip(self, req), fields(node_id))]
     async fn insert_node(
         &self,
         req: Request<nietzsche::InsertNodeRequest>,
@@ -159,6 +159,10 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
             Status::invalid_argument("embedding is required")
         })?;
 
+        // Validate embedding before accepting
+        validate_embedding(&emb_proto)?;
+        if r.energy != 0.0 { validate_energy(r.energy)?; }
+
         let coords: Vec<f64> = emb_proto.coords;
         let embedding = PoincareVector::new(coords);
 
@@ -171,6 +175,7 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
 
         let mut node = Node::new(id, embedding, content);
         if r.energy > 0.0 { node.energy = r.energy; }
+        debug!(node_id = %id, "inserting node");
 
         let mut db = self.db.lock().await;
         db.insert_node(node.clone()).map_err(graph_err)?;
@@ -253,11 +258,13 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
 
     // ── NQL query ─────────────────────────────────────────────────────────
 
+    #[instrument(skip(self, req))]
     async fn query(
         &self,
         req: Request<nietzsche::QueryRequest>,
     ) -> Result<Response<nietzsche::QueryResponse>, Status> {
         let nql = req.into_inner().nql;
+        validate_nql(&nql)?;
 
         let ast = parse(&nql).map_err(|e| {
             Status::invalid_argument(format!("NQL parse error: {e}"))
@@ -296,11 +303,13 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
 
     // ── KNN search ───────────────────────────────────────────────────────
 
+    #[instrument(skip(self, req))]
     async fn knn_search(
         &self,
         req: Request<nietzsche::KnnRequest>,
     ) -> Result<Response<nietzsche::KnnResponse>, Status> {
         let r = req.into_inner();
+        validate_k(r.k)?;
         let query = PoincareVector::new(r.query_coords);
         let k     = r.k as usize;
 
@@ -371,11 +380,14 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
 
     // ── Diffusion ─────────────────────────────────────────────────────────
 
+    #[instrument(skip(self, req))]
     async fn diffuse(
         &self,
         req: Request<nietzsche::DiffusionRequest>,
     ) -> Result<Response<nietzsche::DiffusionResponse>, Status> {
         let r = req.into_inner();
+
+        validate_source_count(r.source_ids.len())?;
 
         let sources: Vec<Uuid> = r.source_ids.iter()
             .map(|s| parse_uuid(s, "source_ids"))
@@ -384,6 +396,7 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
         let t_values = if r.t_values.is_empty() {
             vec![0.1, 1.0, 10.0]
         } else {
+            validate_t_values(&r.t_values)?;
             r.t_values
         };
 
@@ -409,18 +422,27 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
 
     // ── Sleep cycle ───────────────────────────────────────────────────────
 
+    #[instrument(skip(self, req))]
     async fn trigger_sleep(
         &self,
         req: Request<nietzsche::SleepRequest>,
     ) -> Result<Response<nietzsche::SleepResponse>, Status> {
         let r = req.into_inner();
+        let noise_val  = if r.noise > 0.0   { r.noise }   else { 0.02 };
+        let lr_val     = if r.adam_lr > 0.0 { r.adam_lr } else { 5e-3 };
+        validate_sleep_params(noise_val, lr_val)?;
 
         let config = SleepConfig {
-            noise:               if r.noise > 0.0  { r.noise }      else { 0.02 },
+            noise:               noise_val,
             adam_steps:          if r.adam_steps > 0 { r.adam_steps as usize } else { 10 },
-            adam_lr:             if r.adam_lr > 0.0 { r.adam_lr }   else { 5e-3 },
+            adam_lr:             lr_val,
             hausdorff_threshold: if r.hausdorff_threshold > 0.0 { r.hausdorff_threshold } else { 0.15 },
         };
+        warn!(
+            noise = config.noise,
+            adam_steps = config.adam_steps,
+            "triggering sleep cycle — DB will be locked"
+        );
 
         let seed = if r.rng_seed == 0 {
             rand::random::<u64>()

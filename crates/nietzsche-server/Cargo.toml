@@ -1,0 +1,19 @@
+[package]
+name = "nietzsche-server"
+version = "0.1.0"
+edition = "2021"
+description = "NietzscheDB production gRPC server binary"
+
+[[bin]]
+name = "nietzsche-server"
+path = "src/main.rs"
+
+[dependencies]
+nietzsche-api   = { workspace = true }
+nietzsche-graph = { workspace = true }
+nietzsche-sleep = { workspace = true }
+tokio           = { workspace = true }
+tracing         = { workspace = true }
+rand            = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+anyhow = "1.0"

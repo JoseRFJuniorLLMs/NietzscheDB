@@ -45,6 +45,12 @@ pub mod proto {
 }
 
 pub mod server;
+pub mod validation;
 
 pub use server::NietzscheServer;
 pub use proto::nietzsche as pb;
+pub use validation::{
+    validate_embedding, validate_energy, validate_k, validate_nql,
+    validate_sleep_params, validate_source_count, validate_t_values,
+    parse_uuid as validate_uuid,
+};
