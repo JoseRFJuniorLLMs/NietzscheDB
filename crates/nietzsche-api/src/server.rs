@@ -551,6 +551,7 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
             node_count,
             edge_count,
             version: env!("CARGO_PKG_VERSION").to_string(),
+            sensory_count: 0,
         }))
     }
 
@@ -559,5 +560,35 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
         _req: Request<nietzsche::Empty>,
     ) -> Result<Response<nietzsche::StatusResponse>, Status> {
         Ok(Response::new(ok_status()))
+    }
+
+    // ── Sensory Compression Layer (Phase 11) — stubs ──────────────────────
+
+    async fn insert_sensory(
+        &self,
+        _req: Request<nietzsche::InsertSensoryRequest>,
+    ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        Err(Status::unimplemented("InsertSensory not yet available in this build"))
+    }
+
+    async fn get_sensory(
+        &self,
+        _req: Request<nietzsche::NodeIdRequest>,
+    ) -> Result<Response<nietzsche::SensoryResponse>, Status> {
+        Err(Status::unimplemented("GetSensory not yet available in this build"))
+    }
+
+    async fn reconstruct(
+        &self,
+        _req: Request<nietzsche::ReconstructRequest>,
+    ) -> Result<Response<nietzsche::ReconstructResponse>, Status> {
+        Err(Status::unimplemented("Reconstruct not yet available in this build"))
+    }
+
+    async fn degrade_sensory(
+        &self,
+        _req: Request<nietzsche::NodeIdRequest>,
+    ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        Err(Status::unimplemented("DegradeSensory not yet available in this build"))
     }
 }
