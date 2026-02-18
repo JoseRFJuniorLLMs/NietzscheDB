@@ -164,7 +164,7 @@ impl<V: VectorStore> NietzscheDB<V> {
         self.vector_store.delete(id)?;
 
         // 4. Remove from in-memory adjacency (no traversal from pruned nodes)
-        self.adjacency.remove_node(id);
+        self.adjacency.remove_node(&id);
 
         Ok(())
     }
@@ -189,7 +189,7 @@ impl<V: VectorStore> NietzscheDB<V> {
         self.storage.delete_node(id)?;
 
         // 4. In-memory adjacency
-        self.adjacency.remove_node(id);
+        self.adjacency.remove_node(&id);
 
         // 5. Vector store
         self.vector_store.delete(id)?;
@@ -283,13 +283,18 @@ impl<V: VectorStore> NietzscheDB<V> {
 
     /// Return outgoing neighbour IDs for `node_id` (from in-memory index).
     pub fn neighbors_out(&self, node_id: Uuid) -> Vec<Uuid> {
-        self.adjacency.neighbors_out(node_id)
+        self.adjacency.neighbors_out(&node_id)
     }
 
     /// Return incoming neighbour IDs for `node_id` (from in-memory index).
     pub fn neighbors_in(&self, node_id: Uuid) -> Vec<Uuid> {
-        self.adjacency.neighbors_in(node_id)
+        self.adjacency.neighbors_in(&node_id)
     }
+
+    // ── Accessors for traversal engine ─────────────────
+
+    pub fn storage(&self) -> &GraphStorage { &self.storage }
+    pub fn adjacency(&self) -> &AdjacencyIndex { &self.adjacency }
 
     /// k-nearest-neighbour search in the vector store.
     pub fn knn(
