@@ -44,6 +44,10 @@ pub mod proto {
     }
 }
 
+/// Encoded protobuf file descriptor set — used to register gRPC reflection.
+pub const NIETZSCHE_DESCRIPTOR: &[u8] =
+    tonic::include_file_descriptor_set!("nietzsche_descriptor");
+
 pub mod server;
 pub mod validation;
 

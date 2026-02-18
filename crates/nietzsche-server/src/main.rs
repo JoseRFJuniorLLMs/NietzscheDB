@@ -115,10 +115,19 @@ async fn main() -> anyhow::Result<()> {
     let addr: SocketAddr = format!("[::]:{}", config.port).parse()?;
     let server           = NietzscheServer::new(Arc::clone(&shared_db));
 
+    let reflection = tonic_reflection::server::Builder::configure()
+        .register_encoded_file_descriptor_set(nietzsche_api::NIETZSCHE_DESCRIPTOR)
+        .build()
+        .expect("failed to build gRPC reflection service");
+
     info!(%addr, "gRPC server listening");
 
     tokio::select! {
-        result = server.serve(addr) => {
+        result = tonic::transport::Server::builder()
+            .add_service(reflection)
+            .add_service(server.into_service())
+            .serve(addr) =>
+        {
             if let Err(e) = result {
                 error!(error = %e, "gRPC server error");
                 return Err(anyhow::anyhow!(e));
