@@ -1,8 +1,9 @@
 //! NietzscheDB production gRPC server.
 //!
 //! Reads configuration from environment variables (see [`config::Config`]),
-//! opens (or creates) the RocksDB + WAL data directory, starts an optional
-//! background sleep-cycle scheduler, then serves the gRPC API until SIGINT.
+//! opens (or creates) a [`CollectionManager`] at the data directory,
+//! optionally starts a background sleep-cycle scheduler against the `"default"`
+//! collection, then serves the gRPC API + HTTP dashboard until SIGINT.
 //!
 //! ## Quick start
 //!
@@ -18,6 +19,7 @@
 //! NIETZSCHE_DATA_DIR=/mnt/data \
 //! NIETZSCHE_SLEEP_INTERVAL_SECS=300 \
 //! NIETZSCHE_LOG_LEVEL=debug \
+//! NIETZSCHE_VECTOR_BACKEND=embedded \
 //!   cargo run --bin nietzsche-server --release
 //! ```
 
@@ -26,12 +28,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 
 use nietzsche_api::NietzscheServer;
-use nietzsche_graph::{MockVectorStore, NietzscheDB};
+use nietzsche_graph::CollectionManager;
 use nietzsche_sleep::{SleepConfig, SleepCycle};
 
 mod config;
@@ -41,7 +42,7 @@ use config::Config;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // ── Tracing ──────────────────────────────────────────────────────────────
+    // ── Tracing ───────────────────────────────────────────────────────────────
     let config = Config::from_env();
 
     let filter = EnvFilter::try_new(&config.log_level)
@@ -55,28 +56,32 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     info!(
-        version   = env!("CARGO_PKG_VERSION"),
-        data_dir  = %config.data_dir,
-        port      = config.port,
+        version  = env!("CARGO_PKG_VERSION"),
+        data_dir = %config.data_dir,
+        port     = config.port,
         "NietzscheDB starting"
     );
 
-    // ── Open DB ───────────────────────────────────────────────────────────────
+    // ── Open CollectionManager ────────────────────────────────────────────────
     let db_path = PathBuf::from(&config.data_dir);
     std::fs::create_dir_all(&db_path)?;
 
-    let db = NietzscheDB::open(&db_path, MockVectorStore::default())
-        .map_err(|e| anyhow::anyhow!("failed to open DB at {}: {e}", config.data_dir))?;
+    let cm = CollectionManager::open(&db_path)
+        .map_err(|e| anyhow::anyhow!("failed to open CollectionManager at {}: {e}", config.data_dir))?;
 
-    info!(
-        nodes = db.node_count().unwrap_or(0),
-        edges = db.edge_count().unwrap_or(0),
-        "database opened"
-    );
+    // Log collection inventory
+    for col in cm.list() {
+        info!(
+            collection = %col.name,
+            dim        = col.dim,
+            metric     = %col.metric,
+            nodes      = col.node_count,
+            edges      = col.edge_count,
+            "collection loaded"
+        );
+    }
 
-    let shared_db = Arc::new(Mutex::new(db));
-
-    // ── Sleep scheduler (optional background task) ─────────────────────────
+    // ── Sleep scheduler — runs against the "default" collection ───────────────
     if config.sleep_interval_secs > 0 {
         let interval  = Duration::from_secs(config.sleep_interval_secs);
         let sleep_cfg = SleepConfig {
@@ -85,24 +90,29 @@ async fn main() -> anyhow::Result<()> {
             adam_lr:             5e-3,
             hausdorff_threshold: config.hausdorff_threshold,
         };
-        let db_clone = Arc::clone(&shared_db);
+        let cm_sleep = Arc::clone(&cm);
 
         tokio::spawn(async move {
-            info!(interval_secs = config.sleep_interval_secs, "sleep scheduler started");
+            info!(interval_secs = config.sleep_interval_secs, "sleep scheduler started (default collection)");
             loop {
                 tokio::time::sleep(interval).await;
 
-                let mut db  = db_clone.lock().await;
+                let Some(shared) = cm_sleep.get_or_default("default") else {
+                    warn!("sleep scheduler: 'default' collection not found — skipping");
+                    continue;
+                };
+
+                let mut db    = shared.lock().await;
                 let seed: u64 = rand::random();
                 let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(seed);
 
                 match SleepCycle::run(&sleep_cfg, &mut *db, &mut rng) {
                     Ok(r) => info!(
-                        hausdorff_before  = r.hausdorff_before,
-                        hausdorff_after   = r.hausdorff_after,
-                        hausdorff_delta   = r.hausdorff_delta,
-                        committed         = r.committed,
-                        nodes_perturbed   = r.nodes_perturbed,
+                        hausdorff_before = r.hausdorff_before,
+                        hausdorff_after  = r.hausdorff_after,
+                        hausdorff_delta  = r.hausdorff_delta,
+                        committed        = r.committed,
+                        nodes_perturbed  = r.nodes_perturbed,
                         "sleep cycle complete"
                     ),
                     Err(e) => warn!(error = %e, "sleep cycle failed"),
@@ -115,16 +125,16 @@ async fn main() -> anyhow::Result<()> {
 
     // ── HTTP dashboard ────────────────────────────────────────────────────────
     if config.dashboard_port > 0 {
-        let db_dash = Arc::clone(&shared_db);
+        let cm_dash = Arc::clone(&cm);
         let port    = config.dashboard_port;
-        tokio::spawn(async move { dashboard::serve(db_dash, port).await });
+        tokio::spawn(async move { dashboard::serve(cm_dash, port).await });
     } else {
         info!("dashboard disabled (NIETZSCHE_DASHBOARD_PORT=0)");
     }
 
     // ── gRPC server ───────────────────────────────────────────────────────────
     let addr: SocketAddr = format!("[::]:{}", config.port).parse()?;
-    let server           = NietzscheServer::new(Arc::clone(&shared_db));
+    let server = NietzscheServer::new(Arc::clone(&cm));
 
     let reflection = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(nietzsche_api::NIETZSCHE_DESCRIPTOR)

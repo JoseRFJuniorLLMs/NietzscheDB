@@ -16,7 +16,9 @@
 //! - [`transaction::Transaction`]  — ACID saga transaction (Phase 7)
 
 pub mod adjacency;
+pub mod collection_manager;
 pub mod db;
+pub mod embedded_vector_store;
 pub mod error;
 pub mod model;
 pub mod storage;
@@ -25,7 +27,9 @@ pub mod traversal;
 pub mod wal;
 
 pub use adjacency::AdjacencyIndex;
+pub use collection_manager::{CollectionConfig, CollectionInfo, CollectionManager};
 pub use db::{MockVectorStore, NietzscheDB, VectorStore};
+pub use embedded_vector_store::{AnyVectorStore, EmbeddedVectorStore, VectorMetric};
 pub use error::GraphError;
 pub use model::{Edge, EdgeType, Node, NodeType, PoincareVector};
 pub use storage::{GraphStorage, NodeIterator, EdgeIterator};
