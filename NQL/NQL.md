@@ -1,3 +1,5 @@
+![NQL Graph](graph.png)
+
 # NQL — Nietzsche Query Language
 
 ## Manual de Referencia Completo

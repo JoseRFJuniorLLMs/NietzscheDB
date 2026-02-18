@@ -7,6 +7,7 @@ tokio = { version = "1.35", features = ["full"] }
 tonic = "0.10"
 prost = "0.12"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 tracing = "0.1"
 thiserror = "1.0"
 uuid = { version = "1.6", features = ["v4", "serde"] }
@@ -30,8 +31,9 @@ nietzsche-pregel   = { path = "crates/nietzsche-pregel" }
 nietzsche-sleep    = { path = "crates/nietzsche-sleep" }
 nietzsche-api      = { path = "crates/nietzsche-api" }
 nietzsche-sdk      = { path = "crates/nietzsche-sdk" }
-nietzsche-hyp-ops  = { path = "crates/nietzsche-hyp-ops" }
-nietzsche-sensory  = { path = "crates/nietzsche-sensory" }
+nietzsche-hyp-ops      = { path = "crates/nietzsche-hyp-ops" }
+nietzsche-sensory      = { path = "crates/nietzsche-sensory" }
+nietzsche-zaratustra   = { path = "crates/nietzsche-zaratustra" }
 memmap2 = "0.9"
 parking_lot = "0.12"
 ratatui = "0.24"

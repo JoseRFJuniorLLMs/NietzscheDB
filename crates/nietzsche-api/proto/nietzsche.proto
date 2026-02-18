@@ -57,6 +57,9 @@ service NietzscheDB {
   rpc Reconstruct     (ReconstructRequest)     returns (ReconstructResponse);
   rpc DegradeSensory  (NodeIdRequest)          returns (StatusResponse);
 
+  // ── Zaratustra — autonomous evolution engine (Phase Z) ───────────────
+  rpc InvokeZaratustra (ZaratustraRequest)  returns (ZaratustraResponse);
+
   // ── Admin ─────────────────────────────────────────────────────────────
   rpc GetStats (Empty) returns (StatsResponse);
   rpc HealthCheck (Empty) returns (StatusResponse);
@@ -339,4 +342,40 @@ message ReconstructResponse {
   string         modality       = 4;
   float          quality        = 5;   // actual quality of the returned latent
   bytes          original_shape = 6;   // JSON for decoder to know output dimensions
+}
+
+// ── Zaratustra messages (Phase Z) ─────────────────────────────────────────
+//
+// Invoke the three-phase Zaratustra evolution cycle:
+//   Phase 1 · Will to Power   — energy propagation (α × neighbour mean)
+//   Phase 2 · Eternal Recurrence — temporal echo snapshots for high-energy nodes
+//   Phase 3 · Übermensch       — elite tier identification (top fraction by energy)
+
+message ZaratustraRequest {
+  string collection = 1;   // empty → "default"
+  // Override defaults from ZARATUSTRA_* env vars for this single invocation.
+  float  alpha      = 2;   // propagation coefficient (0 = use server default)
+  float  decay      = 3;   // energy decay rate       (0 = use server default)
+  uint32 cycles     = 4;   // number of complete cycles to run (0 = 1)
+}
+
+message ZaratustraResponse {
+  // Will to Power stats
+  uint64 nodes_updated       = 1;
+  float  mean_energy_before  = 2;
+  float  mean_energy_after   = 3;
+  float  total_energy_delta  = 4;
+  // Eternal Recurrence stats
+  uint64 echoes_created      = 5;
+  uint64 echoes_evicted      = 6;
+  uint64 total_echoes        = 7;
+  // Übermensch stats
+  uint64 elite_count         = 8;
+  float  elite_threshold     = 9;
+  float  mean_elite_energy   = 10;
+  float  mean_base_energy    = 11;
+  repeated string elite_node_ids = 12;  // top-tier node UUIDs
+  // Timing
+  uint64 duration_ms         = 13;
+  uint32 cycles_run          = 14;
 }

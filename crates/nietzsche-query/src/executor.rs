@@ -196,6 +196,12 @@ fn execute_node_match(
         sort_nodes(&mut filtered, alias, order, params, storage, adjacency)?;
     }
 
+    // Apply DISTINCT before SKIP/LIMIT so pagination is over the deduplicated set.
+    if query.ret.distinct {
+        let mut seen = std::collections::HashSet::new();
+        filtered.retain(|n| seen.insert(n.id));
+    }
+
     // Apply SKIP
     if let Some(skip) = query.ret.skip {
         if skip < filtered.len() {
@@ -208,12 +214,6 @@ fn execute_node_match(
     // Apply LIMIT
     if let Some(limit) = query.ret.limit {
         filtered.truncate(limit);
-    }
-
-    // Apply DISTINCT (by node ID)
-    if query.ret.distinct {
-        let mut seen = std::collections::HashSet::new();
-        filtered.retain(|n| seen.insert(n.id));
     }
 
     // Check if this is an aggregation query
@@ -240,7 +240,7 @@ fn execute_path_match(
     let from_alias = &pp.from.alias;
     let to_alias   = &pp.to.alias;
 
-    let mut results = Vec::new();
+    let mut pairs: Vec<(Node, Node)> = Vec::new();
     let edges = storage.scan_edges()?;
 
     for edge in edges {
@@ -273,20 +273,52 @@ fn execute_path_match(
             (to_alias.as_str(),   &to_node),
         ];
         if eval_conditions(&query.conditions, &binding, params, storage, adjacency)? {
-            results.push(QueryResult::NodePair {
-                from: from_node,
-                to:   to_node,
-            });
-        }
-
-        if let Some(limit) = query.ret.limit {
-            if results.len() >= limit {
-                break;
-            }
+            pairs.push((from_node, to_node));
         }
     }
 
-    Ok(results)
+    // ORDER BY — sort by the "to" node's sort key (the primary RETURN alias)
+    if let Some(order) = &query.ret.order_by {
+        let mut keyed: Vec<(f64, (Node, Node))> = pairs
+            .drain(..)
+            .map(|(f, t)| {
+                let key = compute_order_key(&order.expr, to_alias, &t, params, storage, adjacency)
+                    .unwrap_or(f64::MAX);
+                (key, (f, t))
+            })
+            .collect();
+        if order.dir == OrderDir::Asc {
+            keyed.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        } else {
+            keyed.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        }
+        pairs.extend(keyed.into_iter().map(|(_, p)| p));
+    }
+
+    // DISTINCT — deduplicate by (from_id, to_id) pair
+    if query.ret.distinct {
+        let mut seen = std::collections::HashSet::new();
+        pairs.retain(|(f, t)| seen.insert((f.id, t.id)));
+    }
+
+    // SKIP
+    if let Some(skip) = query.ret.skip {
+        if skip < pairs.len() {
+            pairs = pairs.split_off(skip);
+        } else {
+            pairs.clear();
+        }
+    }
+
+    // LIMIT
+    if let Some(limit) = query.ret.limit {
+        pairs.truncate(limit);
+    }
+
+    Ok(pairs
+        .into_iter()
+        .map(|(from, to)| QueryResult::NodePair { from, to })
+        .collect())
 }
 
 // ─────────────────────────────────────────────
