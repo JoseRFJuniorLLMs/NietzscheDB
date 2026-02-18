@@ -35,6 +35,8 @@ use nietzsche_graph::{MockVectorStore, NietzscheDB};
 use nietzsche_sleep::{SleepConfig, SleepCycle};
 
 mod config;
+mod dashboard;
+mod html;
 use config::Config;
 
 #[tokio::main]
@@ -109,6 +111,15 @@ async fn main() -> anyhow::Result<()> {
         });
     } else {
         info!("sleep scheduler disabled (NIETZSCHE_SLEEP_INTERVAL_SECS=0)");
+    }
+
+    // ── HTTP dashboard ────────────────────────────────────────────────────────
+    if config.dashboard_port > 0 {
+        let db_dash = Arc::clone(&shared_db);
+        let port    = config.dashboard_port;
+        tokio::spawn(async move { dashboard::serve(db_dash, port).await });
+    } else {
+        info!("dashboard disabled (NIETZSCHE_DASHBOARD_PORT=0)");
     }
 
     // ── gRPC server ───────────────────────────────────────────────────────────
