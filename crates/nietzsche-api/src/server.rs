@@ -228,14 +228,9 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
         let from = parse_uuid(&r.from, "from")?;
         let to   = parse_uuid(&r.to, "to")?;
 
-        let edge = Edge {
-            id,
-            from,
-            to,
-            edge_type: parse_edge_type(&r.edge_type),
-            weight:    r.weight,
-            metadata:  HashMap::new(),
-        };
+        let mut edge = Edge::new(from, to, parse_edge_type(&r.edge_type), r.weight as f32);
+        edge.id = id;
+        edge.metadata = HashMap::new();
 
         let mut db = self.db.lock().await;
         db.insert_edge(edge).map_err(graph_err)?;
