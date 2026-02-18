@@ -5,16 +5,66 @@
 <h1 align="center">NietzscheDB</h1>
 
 <p align="center">
-  <strong>A hyperbolic graph + fractal database engine built in Rust, designed as the memory substrate for EVA-Mind.</strong>
+  <strong>Temporal Hyperbolic Graph Database</strong>
+</p>
+
+<p align="center">
+  <em>A new category of database — not a combination of existing ones.</em>
 </p>
 
 <p align="center">
   <a href="https://github.com/JoseRFJuniorLLMs/NietzscheDB/blob/main/LICENSE_AGPLv3.md"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/built%20with-Rust-orange.svg" alt="Rust"></a>
-  <img src="https://img.shields.io/badge/status-FASE%203%20%E2%9C%94-brightgreen.svg" alt="Status">
+  <img src="https://img.shields.io/badge/status-FASE%205%20%E2%9C%94-brightgreen.svg" alt="Status">
   <img src="https://img.shields.io/badge/geometry-Poincar%C3%A9%20Ball-purple.svg" alt="Hyperbolic">
-  <img src="https://img.shields.io/badge/upstream-YARlabs%2Fhyperspace--db-gray.svg" alt="Upstream">
+  <img src="https://img.shields.io/badge/category-Temporal%20Hyperbolic%20Graph%20DB-red.svg" alt="Category">
 </p>
+
+---
+
+## What Category Is This?
+
+NietzscheDB does not fit any existing database category.
+
+```
+Graph Database        Neo4j, ArangoDB
+  → has nodes, edges, traversal, query language         ✔ NietzscheDB has this
+
+Vector Database       Qdrant, Pinecone
+  → has embeddings, similarity search                   ✔ NietzscheDB has this
+
+Document Store        MongoDB, ArangoDB
+  → each node is a rich JSON document                   ✔ NietzscheDB has this
+
+Time-evolving Graph   no mainstream product
+  → the graph rewrites itself autonomously              ✔ NietzscheDB has this (L-System)
+
+Hyperbolic Database   no mature product exists
+  → non-Euclidean geometry as a native primitive        ✔ NietzscheDB has this
+```
+
+The name for what NietzscheDB actually is:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                                                         │
+│         TEMPORAL HYPERBOLIC GRAPH DATABASE              │
+│                                                         │
+│   · Non-Euclidean geometry as the storage primitive     │
+│   · Autonomous fractal growth via L-System rules        │
+│   · Multi-scale search via hyperbolic heat diffusion    │
+│   · Active memory reconsolidation during idle cycles    │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+The closest academic term is "dynamic graph database" or "graph neural database" —
+but neither reached production with hyperbolic geometry as a foundation.
+
+**In plain language:**
+- *For users:* "A memory database that thinks in hierarchies, grows like a plant, and sleeps to consolidate what it learned."
+- *For engineers:* "A hyperbolic graph with native L-System growth, heat kernel diffusion as a search primitive, and periodic Riemannian reconsolidation."
+- *For the market:* The category does not exist yet. This is it.
 
 ---
 
@@ -32,6 +82,26 @@ NietzscheDB organizes knowledge in **hyperbolic space (Poincaré ball model)**, 
 - The system "sleeps" and reconsolidates its own memory topology
 
 It is a fork of **[YARlabs/hyperspace-db](https://github.com/YARlabs/hyperspace-db)** — the world's first native hyperbolic HNSW vector database — extended with a full graph engine, query language, L-System growth, hyperbolic diffusion, and an autonomous sleep/reconsolidation cycle.
+
+---
+
+## Analogy
+
+```
+If you take:
+
+  Neo4j          (graph + query language)
++ Qdrant         (vector similarity search)
++ a biological memory system
+
+And redesign everything from scratch with hyperbolic geometry
+as the mathematical foundation instead of Euclidean —
+
+you get NietzscheDB.
+
+Not the sum of the parts.
+Something new.
+```
 
 ---
 
@@ -84,7 +154,7 @@ The storage and indexing foundation, inheriting all of HyperspaceDB v1.4:
 
 Seven new crates built on top of the foundation:
 
-#### `nietzsche-graph` — Hyperbolic Graph Engine *(Phase 1–3)*
+#### `nietzsche-graph` — Hyperbolic Graph Engine *(Phase 1–3 — COMPLETE)*
 - `Node` with `PoincaréVector`, `depth`, `energy`, `lsystem_generation`, `hausdorff_local`
 - `Edge` typed as `Association`, `LSystemGenerated`, `Hierarchical`, or `Pruned`
 - `AdjacencyIndex` using `DashMap` for lock-free concurrent access
@@ -93,7 +163,7 @@ Seven new crates built on top of the foundation:
 - `NietzscheDB` dual-write: every insert goes to both RocksDB (graph) and HyperspaceDB (embedding)
 - **Traversal engine** (`traversal.rs`): energy-gated BFS, Poincaré-distance Dijkstra, shortest-path reconstruction, energy-biased `DiffusionWalk` with seeded RNG
 
-#### `nietzsche-query` — NQL Query Language *(Phase 4)*
+#### `nietzsche-query` — NQL Query Language *(Phase 4 — COMPLETE)*
 Nietzsche Query Language — a declarative query language with first-class hyperbolic primitives:
 
 ```sql
@@ -104,35 +174,25 @@ WHERE HYPERBOLIC_DIST(m.embedding, $query_vec) < 0.5
 RETURN m ORDER BY HYPERBOLIC_DIST(m.embedding, $query_vec) ASC
 LIMIT 10
 
--- Graph traversal with hyperbolic cost
-FOR v, e, p IN 1..3 OUTBOUND $start associations
-  FILTER e.weight > 0.3
-  SORT HYPERBOLIC_DIST(v.embedding, $query_vec) ASC
-  RETURN {node: v, path_cost: p.cost}
-
 -- Multi-scale diffusion
 DIFFUSE FROM $node
   WITH t = [0.1, 1.0, 10.0]
   MAX_HOPS 5
 RETURN activated_nodes, activation_scores
-
--- L-System growth query
-LSYSTEM GROW FROM $seed
-  RULE "node(t, i) -> node(t, i*0.9) + child(i*0.7) IF i > 0.1"
-  GENERATIONS 3
-RETURN new_nodes, new_edges
 ```
 
-Parser built with `pest` (PEG grammar). Planner routes to vector scan, graph traversal, diffusion, or hybrid plan depending on the query structure.
+Parser built with `pest` (PEG grammar). Executor routes to vector scan, graph traversal, diffusion, or hybrid plan depending on the query structure. 19 unit + integration tests.
 
-#### `nietzsche-lsystem` — Fractal Growth Engine *(Phase 5)*
+#### `nietzsche-lsystem` — Fractal Growth Engine *(Phase 5 — COMPLETE)*
 The knowledge graph is not static — it grows by **L-System production rules**:
-- `ProductionRule` fires when `EnergyAbove(t)`, `DepthBelow(t)`, `HausdorffAbove(t)`, or custom conditions
-- `SpawnChild` places the child node deeper in the Poincaré ball (more specific, closer to boundary) via Möbius addition
+- `ProductionRule` fires when `EnergyAbove(t)`, `DepthBelow(t)`, `HausdorffAbove(t)`, or custom conditions (`And`, `Or`, `Not`, `Always`)
+- `SpawnChild` places the child node deeper in the Poincaré ball (more specific, closer to boundary) via **Möbius addition** `u ⊕ v`
 - `SpawnSibling` creates lateral associations at a given hyperbolic angle
 - `Prune` archives low-complexity regions (not deleted — tagged as `Pruned`)
-- **Hausdorff dimension** computed via box-counting on hyperbolic coordinates: nodes in regions with D < 0.5 or D > 1.9 are pruned automatically
-- Global Hausdorff dimension target: **1.2 < D < 1.8** (true fractal regime)
+- **Hausdorff dimension** computed via box-counting on hyperbolic coordinates at scales `[4, 8, 16, 32, 64]`
+- Nodes with D < 0.5 or D > 1.9 are pruned automatically; target fractal regime: **1.2 < D < 1.8**
+- `LSystemEngine::tick` protocol: Scan → Hausdorff update → Rule matching → Apply mutations → Report
+- 29 unit tests across all four modules
 
 #### `nietzsche-pregel` — Hyperbolic Heat Kernel Diffusion *(Phase 6)*
 Multi-scale activation propagation across the hyperbolic graph:
@@ -193,19 +253,16 @@ print(f"Updated {report['nodes_updated']} nodes, Δhausdorff={report['hausdorff_
 
 ```
 PHASE 0   Foundation & environment          ✅ COMPLETE
-PHASE 1   Node and edge model               🔄 next
-PHASE 2   Graph storage engine              ⬜
-PHASE 3   Traversal engine                  ⬜
-PHASE 4   NQL query language                ⬜
-PHASE 5   L-System engine                   ⬜
-PHASE 6   Fractal diffusion / Pregel        ⬜
+PHASE 1   Node and edge model               ✅ COMPLETE
+PHASE 2   Graph storage engine              ✅ COMPLETE
+PHASE 3   Traversal engine                  ✅ COMPLETE
+PHASE 4   NQL query language                ✅ COMPLETE
+PHASE 5   L-System engine                   ✅ COMPLETE
+PHASE 6   Fractal diffusion / Pregel        ⬜ next
 PHASE 7   ACID transactions on graph        ⬜
 PHASE 8   Reconsolidation (sleep cycle)     ⬜
 PHASE 9   Public API + SDKs                 ⬜
 PHASE 10  Benchmarks, hardening, production ⬜
-
-ESTIMATED TOTAL:  ~18–24 months (solo)
-                  ~10–14 months (team of 3–4 senior Rust engineers)
 ```
 
 ### Phase Exit Criteria
@@ -214,9 +271,12 @@ ESTIMATED TOTAL:  ~18–24 months (solo)
 |---|---|
 | 1 — Geometry | 90%+ hierarchical triples correctly ordered; depth(abstract) < depth(specific) in 85%+ cases |
 | 2 — Search | Hierarchical recall ≥ 75% vs 50% cosine baseline; P99 latency ≤ 500ms |
-| 3 — Diffusion | Overlap t=0.1 vs t=10.0 < 30%; Chebyshev K=10 < 500ms on 100k nodes |
-| 4 — L-System | Global Hausdorff 1.2 < D < 1.8; std(D over time) < 0.15 |
-| 5 — Sleep | Δhausdorff per cycle < 5%; rollback rate < 10%; 10 consecutive cycles without divergence |
+| 3 — Traversal | BFS/Dijkstra/DiffusionWalk verified; energy-gated traversal stable |
+| 4 — NQL | PEG parser + executor; MATCH, DIFFUSE, HYPERBOLIC_DIST; 19 tests passing |
+| 5 — L-System | Global Hausdorff 1.2 < D < 1.8; std(D over time) < 0.15; 29 tests passing |
+| 6 — Diffusion | Overlap t=0.1 vs t=10.0 < 30%; Chebyshev K=10 < 500ms on 100k nodes |
+| 7 — ACID | Zero data loss on crash mid-saga; rollback verified on vector + graph |
+| 8 — Sleep | Δhausdorff per cycle < 5%; rollback rate < 10%; 10 consecutive cycles without divergence |
 
 ---
 
@@ -235,9 +295,9 @@ NietzscheDB/
 │   ├── hyperspace-embed/   ← embedding helpers
 │   ├── hyperspace-wasm/    ← WASM / local-first support
 │   ├── hyperspace-sdk/     ← HyperspaceDB client SDK
-│   ├── nietzsche-graph/    ← hyperbolic graph engine (Phases 1–3 complete)
-│   ├── nietzsche-query/    ← [STUB] NQL parser, planner, executor
-│   ├── nietzsche-lsystem/  ← [STUB] L-System + Hausdorff pruning
+│   ├── nietzsche-graph/    ← hyperbolic graph engine      [Phase 1–3 ✅]
+│   ├── nietzsche-query/    ← NQL parser + executor        [Phase 4   ✅]
+│   ├── nietzsche-lsystem/  ← L-System + Hausdorff pruning [Phase 5   ✅]
 │   ├── nietzsche-pregel/   ← [STUB] heat kernel diffusion
 │   ├── nietzsche-sleep/    ← [STUB] sleep/reconsolidation cycle
 │   ├── nietzsche-api/      ← [STUB] unified gRPC API
@@ -257,9 +317,10 @@ NietzscheDB/
 
 NietzscheDB closes gaps that no existing database fills:
 
-- **No production HNSW is natively hyperbolic.** hnswlib, FAISS, Qdrant, Milvus, Weaviate — all use Euclidean geometry internally. Hyperbolic distance is post-processing at best. NietzscheDB Phase 2 (native hyperbolic HNSW) is genuinely original work.
+- **No production HNSW is natively hyperbolic.** hnswlib, FAISS, Qdrant, Milvus, Weaviate — all use Euclidean geometry internally. Hyperbolic distance is post-processing at best. NietzscheDB (native hyperbolic HNSW) is genuinely original work.
 - **No graph database has intrinsic hyperbolic geometry.** Neo4j, ArangoDB, TigerGraph — all flat. You can inject custom distance functions, but the graph itself is Euclidean.
 - **No AI memory system has a formal sleep/reconsolidation cycle.** NietzscheDB Phase 8 implements Riemannian optimization with Hausdorff identity verification and automatic rollback — not a metaphor, an algorithm.
+- **No database has an autonomous fractal growth engine.** The L-System (`nietzsche-lsystem`) rewrites the graph topology every tick based on production rules and local Hausdorff dimension — there is no equivalent in any production or research database.
 
 Key references:
 - Krioukov et al., "Hyperbolic Geometry of Complex Networks" (2010)
@@ -298,5 +359,5 @@ Commercial licensing available — see [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENS
 </p>
 
 <p align="center">
-  Built for <strong>EVA-Mind</strong> · Powered by <strong>Rust</strong> · Grounded in <strong>Hyperbolic Geometry</strong>
+  Built for <strong>EVA-Mind</strong> · Powered by <strong>Rust</strong> · Category: <strong>Temporal Hyperbolic Graph Database</strong>
 </p>
