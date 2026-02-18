@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────
-// nql.pest  —  Nietzsche Query Language (PEG grammar)
+// nql.pest  —  Nietzsche Query Language v2 (PEG grammar)
 //
 // Operator precedence in conditions (high → low):
 //   NOT  >  AND  >  OR
@@ -8,6 +8,8 @@
 //   MATCH (n) WHERE … RETURN …
 //   MATCH (a)-[:TYPE]->(b) WHERE … RETURN …
 //   DIFFUSE FROM $node WITH t=[…] MAX_HOPS n RETURN …
+//   RECONSTRUCT $node_id MODALITY … QUALITY …   (Phase 11)
+//   EXPLAIN <any query>
 // ─────────────────────────────────────────────────────────
 
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
@@ -19,19 +21,29 @@ ident_tail = _{ ASCII_ALPHANUMERIC | "_" }
 
 // ── Keywords  (silent — do not appear in parse tree) ────
 
-kw_match    = _{ "MATCH"    ~ !ident_tail }
-kw_where    = _{ "WHERE"    ~ !ident_tail }
-kw_return   = _{ "RETURN"   ~ !ident_tail }
-kw_order    = _{ "ORDER"    ~ !ident_tail }
-kw_by       = _{ "BY"       ~ !ident_tail }
-kw_limit    = _{ "LIMIT"    ~ !ident_tail }
-kw_and      = _{ "AND"      ~ !ident_tail }
-kw_or       = _{ "OR"       ~ !ident_tail }
-kw_not      = _{ "NOT"      ~ !ident_tail }
-kw_diffuse  = _{ "DIFFUSE"  ~ !ident_tail }
-kw_from     = _{ "FROM"     ~ !ident_tail }
-kw_with     = _{ "WITH"     ~ !ident_tail }
-kw_max_hops = _{ "MAX_HOPS" ~ !ident_tail }
+kw_match       = _{ "MATCH"       ~ !ident_tail }
+kw_where       = _{ "WHERE"       ~ !ident_tail }
+kw_return      = _{ "RETURN"      ~ !ident_tail }
+kw_order       = _{ "ORDER"       ~ !ident_tail }
+kw_by          = _{ "BY"          ~ !ident_tail }
+kw_limit       = _{ "LIMIT"       ~ !ident_tail }
+kw_skip        = _{ "SKIP"        ~ !ident_tail }
+kw_and         = _{ "AND"         ~ !ident_tail }
+kw_or          = _{ "OR"          ~ !ident_tail }
+kw_not         = _{ "NOT"         ~ !ident_tail }
+kw_in          = _{ "IN"          ~ !ident_tail }
+kw_between     = _{ "BETWEEN"     ~ !ident_tail }
+kw_distinct    = _{ "DISTINCT"    ~ !ident_tail }
+kw_as          = _{ "AS"          ~ !ident_tail }
+kw_diffuse     = _{ "DIFFUSE"     ~ !ident_tail }
+kw_from        = _{ "FROM"        ~ !ident_tail }
+kw_with        = _{ "WITH"        ~ !ident_tail }
+kw_max_hops    = _{ "MAX_HOPS"    ~ !ident_tail }
+kw_reconstruct = _{ "RECONSTRUCT" ~ !ident_tail }
+kw_modality    = _{ "MODALITY"    ~ !ident_tail }
+kw_quality     = _{ "QUALITY"     ~ !ident_tail }
+kw_group       = _{ "GROUP"       ~ !ident_tail }
+kw_explain     = _{ "EXPLAIN"     ~ !ident_tail }
 
 // ── Terminals ────────────────────────────────────────────
 
@@ -51,31 +63,83 @@ prop = ${ ident ~ "." ~ ident }
 number   = { float | integer }
 num_list = { "[" ~ number ~ ("," ~ number)* ~ "]" }
 
-// ── Built-in function ────────────────────────────────────
+// ── Built-in distance functions ─────────────────────────
 
 hdist_arg       = { param | num_list }
 hyperbolic_dist = { "HYPERBOLIC_DIST" ~ "(" ~ prop ~ "," ~ hdist_arg ~ ")" }
 
-// ── Atom  (leaf operand) ─────────────────────────────────
+// Phase 11: sensory distance between a node's latent and a query latent
+sdist_arg    = { param }
+sensory_dist = { "SENSORY_DIST" ~ "(" ~ prop ~ "," ~ sdist_arg ~ ")" }
 
-atom = { hyperbolic_dist | boolean | float | integer | string | param | prop }
+// ── Mathematician-named built-in functions ────────────────
+//
+// These functions honour the mathematicians whose work underpins
+// NietzscheDB's hyperbolic geometry, spectral diffusion, and
+// graph-theoretic foundations.
+//
+// Signature categories:
+//   dist(prop, arg)      — POINCARE_DIST, KLEIN_DIST, LOBACHEVSKY_ANGLE
+//   norm(prop)           — MINKOWSKI_NORM
+//   node(alias)          — RIEMANN_CURVATURE, HAUSDORFF_DIM, EULER_CHAR,
+//                          LAPLACIAN_SCORE, DIRICHLET_ENERGY, RAMANUJAN_EXPANSION
+//   node(alias, scalar)  — GAUSS_KERNEL, CHEBYSHEV_COEFF, FOURIER_COEFF
 
-// ── Comparison operators ─────────────────────────────────
+math_func_name = @{
+    ( "POINCARE_DIST"
+    | "KLEIN_DIST"
+    | "MINKOWSKI_NORM"
+    | "LOBACHEVSKY_ANGLE"
+    | "RIEMANN_CURVATURE"
+    | "GAUSS_KERNEL"
+    | "CHEBYSHEV_COEFF"
+    | "RAMANUJAN_EXPANSION"
+    | "HAUSDORFF_DIM"
+    | "EULER_CHAR"
+    | "LAPLACIAN_SCORE"
+    | "FOURIER_COEFF"
+    | "DIRICHLET_ENERGY"
+    ) ~ !ident_tail
+}
+
+math_func_arg = { param | num_list | number | prop | ident }
+math_func     = { math_func_name ~ "(" ~ math_func_arg ~ ("," ~ math_func_arg)* ~ ")" }
+
+// ── Aggregation functions ───────────────────────────────
+
+agg_func_name = @{ ("COUNT" | "SUM" | "AVG" | "MIN" | "MAX") ~ !ident_tail }
+star          = { "*" }
+agg_arg       = { prop | star | ident }
+agg_func      = { agg_func_name ~ "(" ~ agg_arg ~ ")" }
+
+// ── Atom  (leaf operand) ────────────────────────────────
+
+atom = { math_func | hyperbolic_dist | sensory_dist | boolean | float | integer | string | param | prop }
+
+// ── Comparison operators ────────────────────────────────
 
 comp_op = { "<=" | ">=" | "!=" | "<" | ">" | "=" }
 
-// ── Conditions ───────────────────────────────────────────
+// ── String match operators ──────────────────────────────
+
+string_op = @{ ("CONTAINS" | "STARTS_WITH" | "ENDS_WITH") ~ !ident_tail }
+
+// ── Conditions ──────────────────────────────────────────
 
 comparison   = { atom ~ comp_op ~ atom }
+in_list      = { "(" ~ atom ~ ("," ~ atom)* ~ ")" }
+in_cond      = { atom ~ kw_in ~ in_list }
+between_cond = { atom ~ kw_between ~ atom ~ kw_and ~ atom }
+string_cond  = { atom ~ string_op ~ atom }
 not_cond     = { kw_not ~ primary_cond }
 paren_cond   = { "(" ~ or_cond ~ ")" }
-primary_cond = { not_cond | paren_cond | comparison }
+primary_cond = { not_cond | paren_cond | in_cond | between_cond | string_cond | comparison }
 and_cond     = { primary_cond ~ (kw_and ~ primary_cond)* }
 or_cond      = { and_cond ~ (kw_or ~ and_cond)* }
 conditions   = { or_cond }
 where_clause = { kw_where ~ conditions }
 
-// ── Graph patterns ───────────────────────────────────────
+// ── Graph patterns ──────────────────────────────────────
 
 // (alias) or (alias:Label)
 node_pattern = { "(" ~ ident ~ (":" ~ ident)? ~ ")" }
@@ -93,25 +157,38 @@ path_pattern = { node_pattern ~ edge_dir ~ node_pattern }
 pattern      = { path_pattern | node_pattern }
 match_clause = { kw_match ~ pattern }
 
-// ── RETURN ───────────────────────────────────────────────
+// ── RETURN ──────────────────────────────────────────────
 
 // ORDER BY expr [ASC|DESC]
 order_dir  = { "DESC" | "ASC" }
-order_expr = { hyperbolic_dist | prop | ident }
+order_expr = { math_func | hyperbolic_dist | sensory_dist | prop | ident }
 order_by   = { kw_order ~ kw_by ~ order_expr ~ order_dir? }
 
-// LIMIT n
+// LIMIT n / SKIP n
 limit_clause = { kw_limit ~ integer }
+skip_clause  = { kw_skip ~ integer }
 
-// Items: n, n.energy, …
-return_item   = { prop | ident }
+// Items: n, n.energy, COUNT(n.energy), n.energy AS e
+as_alias     = { kw_as ~ ident }
+return_item  = { (agg_func | prop | ident) ~ as_alias? }
+
+// GROUP BY
+group_by_item = { prop | ident }
+group_by      = { kw_group ~ kw_by ~ group_by_item ~ ("," ~ group_by_item)* }
+
+// DISTINCT marker (non-silent so we detect its presence)
+distinct_kw = { kw_distinct }
+
 return_clause = {
-    kw_return ~ return_item ~ ("," ~ return_item)*
+    kw_return ~ distinct_kw?
+    ~ return_item ~ ("," ~ return_item)*
+    ~ group_by?
     ~ order_by?
     ~ limit_clause?
+    ~ skip_clause?
 }
 
-// ── DIFFUSE query ────────────────────────────────────────
+// ── DIFFUSE query ───────────────────────────────────────
 
 diffuse_from  = { param | ident }
 diffuse_t     = { kw_with ~ "t" ~ "=" ~ num_list }
@@ -123,7 +200,7 @@ diffuse_query = {
     ~ return_clause?
 }
 
-// ── MATCH query ──────────────────────────────────────────
+// ── MATCH query ─────────────────────────────────────────
 
 match_query = {
     match_clause
@@ -131,6 +208,21 @@ match_query = {
     ~ return_clause
 }
 
-// ── Top-level ────────────────────────────────────────────
+// ── RECONSTRUCT query (Phase 11) ────────────────────────
 
-query = { SOI ~ (diffuse_query | match_query) ~ EOI }
+reconstruct_target  = { param | ident }
+modality_name       = @{ ident }
+quality_level       = @{ ident }
+reconstruct_query   = {
+    kw_reconstruct ~ reconstruct_target
+    ~ (kw_modality ~ modality_name)?
+    ~ (kw_quality  ~ quality_level)?
+}
+
+// ── EXPLAIN query ───────────────────────────────────────
+
+explain_query = { kw_explain ~ (reconstruct_query | diffuse_query | match_query) }
+
+// ── Top-level ───────────────────────────────────────────
+
+query = { SOI ~ (explain_query | reconstruct_query | diffuse_query | match_query) ~ EOI }

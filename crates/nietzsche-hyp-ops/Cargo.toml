@@ -1,0 +1,17 @@
+[package]
+name = "nietzsche-hyp-ops"
+version = "0.1.0"
+edition = "2021"
+description = "Hyperbolic geometry operations for the Poincaré ball model — the mathematical foundation of NietzscheDB"
+
+[dependencies]
+thiserror = { workspace = true }
+serde     = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+rand      = { workspace = true }
+
+[[bench]]
+name    = "hyp_ops_bench"
+harness = false

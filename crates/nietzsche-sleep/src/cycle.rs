@@ -6,11 +6,13 @@
 //! Step 1  Scan all nodes from RocksDB
 //! Step 2  Compute global Hausdorff dimension  (H_before)
 //! Step 3  Take embedding snapshot             (rollback point)
+//! Step 3b [Phase 11] Snapshot sensory latents
 //! Step 4  Perturb each node by random_tangent + exp_map
 //! Step 5  RiemannianAdam: pull each node toward its neighbors
+//! Step 5b [Phase 11] Consolidate sensory (decoder fine-tune, latent replay)
 //! Step 6  Compute global Hausdorff dimension  (H_after)
 //! Step 7  |H_after − H_before| ≤ threshold  →  commit
-//!          else                               →  restore snapshot
+//!          else                               →  restore snapshot + sensory
 //! ```
 //!
 //! The coherence loss is the mean squared Euclidean distance from a node
@@ -94,54 +96,110 @@ pub struct SleepReport {
 
     /// Number of node embeddings captured in the rollback snapshot.
     pub snapshot_nodes: usize,
+
+    /// Phase 11: number of nodes whose sensory data was consolidated.
+    pub sensory_consolidated: usize,
 }
 
 // ─────────────────────────────────────────────
 // SleepCycle
 // ─────────────────────────────────────────────
 
-/// Executes the 7-step reconsolidation sleep cycle on a live NietzscheDB.
+/// Phase 11: hook for sensory latent consolidation during the sleep cycle.
+///
+/// Implement this to plug sensory snapshot/rollback and optional decoder
+/// fine-tuning into the reconsolidation loop. The sleep cycle calls:
+///
+/// 1. `snapshot_sensory()` — before perturbation (alongside embedding snapshot)
+/// 2. `consolidate_sensory()` — after perturbation (fine-tune decoders, replay latents)
+/// 3. `restore_sensory()` — on rollback (undo any sensory changes)
+pub trait SensoryConsolidator {
+    /// Snapshot all sensory latents for the given node IDs.
+    fn snapshot_sensory(&self, node_ids: &[uuid::Uuid]) -> Result<(), SleepError>;
+
+    /// Consolidate sensory data during the sleep cycle.
+    ///
+    /// This is where decoder fine-tuning (LoRA), latent replay, and
+    /// reconstruction quality improvement happen. Returns the number
+    /// of nodes whose sensory data was consolidated.
+    fn consolidate_sensory(&self, node_ids: &[uuid::Uuid]) -> Result<usize, SleepError>;
+
+    /// Restore sensory latents from the snapshot (rollback).
+    fn restore_sensory(&self) -> Result<usize, SleepError>;
+}
+
+/// No-op consolidator used by the plain `run()` method.
+struct NoopConsolidator;
+
+impl SensoryConsolidator for NoopConsolidator {
+    fn snapshot_sensory(&self, _node_ids: &[uuid::Uuid]) -> Result<(), SleepError> { Ok(()) }
+    fn consolidate_sensory(&self, _node_ids: &[uuid::Uuid]) -> Result<usize, SleepError> { Ok(0) }
+    fn restore_sensory(&self) -> Result<usize, SleepError> { Ok(0) }
+}
+
+/// Executes the reconsolidation sleep cycle on a live NietzscheDB.
 pub struct SleepCycle;
 
 impl SleepCycle {
-    /// Run one full sleep cycle.
-    ///
-    /// # Arguments
-    /// * `config` — cycle parameters
-    /// * `db`     — mutable handle to the graph (WAL + RocksDB + vector store)
-    /// * `rng`    — random number generator for perturbation
+    /// Run one full sleep cycle (original protocol, no sensory hooks).
     pub fn run<V: VectorStore>(
         config: &SleepConfig,
         db:     &mut NietzscheDB<V>,
         rng:    &mut impl Rng,
     ) -> Result<SleepReport, SleepError> {
+        Self::run_inner(db, config, rng, None::<&NoopConsolidator>)
+    }
+
+    /// Run one full sleep cycle with Phase 11 sensory consolidation.
+    ///
+    /// Extended protocol:
+    /// 1. Scan all nodes
+    /// 2. Hausdorff before
+    /// 3. Snapshot embeddings **+ snapshot sensory latents**
+    /// 4. Perturb embeddings (geodesic)
+    /// 5. RiemannianAdam (coherence loss)
+    /// 6. **Consolidate sensory** (decoder fine-tune, latent replay)
+    /// 7. Hausdorff after
+    /// 8. Commit or rollback **(includes sensory rollback)**
+    pub fn run_with_sensory<V: VectorStore, S: SensoryConsolidator>(
+        config:       &SleepConfig,
+        db:           &mut NietzscheDB<V>,
+        rng:          &mut impl Rng,
+        consolidator: &S,
+    ) -> Result<SleepReport, SleepError> {
+        Self::run_inner(db, config, rng, Some(consolidator))
+    }
+
+    fn run_inner<V: VectorStore, S: SensoryConsolidator>(
+        db:           &mut NietzscheDB<V>,
+        config:       &SleepConfig,
+        rng:          &mut impl Rng,
+        consolidator: Option<&S>,
+    ) -> Result<SleepReport, SleepError> {
         // ── Step 1: scan all nodes ──────────────────────────────
         let nodes_before = db.storage().scan_nodes()?;
-        let node_count   = nodes_before.len();
 
         // ── Step 2: Hausdorff before ────────────────────────────
         let hausdorff_before = global_hausdorff(&nodes_before);
 
-        // ── Step 3: snapshot ────────────────────────────────────
-        // Re-use the already-scanned vec to build the snapshot map
-        let snapshot = {
-            let embeddings = nodes_before.iter()
-                .map(|n| (n.id, n.embedding.clone()))
-                .collect::<std::collections::HashMap<_, _>>();
-            Snapshot::take(db)?  // full scan again — keeps borrow clean
-        };
+        // ── Step 3: snapshot embeddings (+ sensory latents) ─────
+        let snapshot = Snapshot::take(db)?;
         let snapshot_nodes = snapshot.node_count();
+
+        // Phase 11: snapshot sensory latents alongside embeddings
+        let mut sensory_consolidated = 0usize;
+        if let Some(consolidator) = consolidator {
+            let node_ids: Vec<uuid::Uuid> = nodes_before.iter().map(|n| n.id).collect();
+            consolidator.snapshot_sensory(&node_ids)?;
+        }
 
         // ── Steps 4 + 5: perturb + optimise each node ──────────
         let adam = RiemannianAdam::new(config.adam_lr);
         let mut nodes_perturbed = 0usize;
 
-        // Work from the pre-scan list; embeddings in `snapshot` are the
-        // pre-perturbation reference for the coherence gradient.
         for node in &nodes_before {
             let dim = node.embedding.dim;
 
-            // Collect pre-perturbation neighbor coordinates from snapshot
             let neighbor_coords: Vec<Vec<f64>> = db
                 .neighbors_out(node.id)
                 .into_iter()
@@ -153,9 +211,6 @@ impl SleepCycle {
             let mut coords = exp_map(&node.embedding.coords, &tangent);
 
             // Step 5 — Riemannian Adam: minimise coherence loss
-            //
-            // Loss:  L(x) = (1/N) · Σ_j ‖x − p_j‖²    (Euclidean approx.)
-            // Grad:  ∂L/∂x = (2/N) · Σ_j (x − p_j)
             let mut adam_state = AdamState::new(dim);
             for _ in 0..config.adam_steps {
                 let eucl_grad: Vec<f64> = if neighbor_coords.is_empty() {
@@ -175,9 +230,16 @@ impl SleepCycle {
                 coords = adam.step(&coords, &eucl_grad, &mut adam_state);
             }
 
-            // Persist the updated embedding
             db.update_embedding(node.id, PoincareVector::new(coords))?;
             nodes_perturbed += 1;
+        }
+
+        // ── Step 5b (Phase 11): consolidate sensory ─────────────
+        // Decoder fine-tuning, latent replay, reconstruction improvement.
+        // Only after embeddings have been perturbed + optimized.
+        if let Some(consolidator) = consolidator {
+            let node_ids: Vec<uuid::Uuid> = nodes_before.iter().map(|n| n.id).collect();
+            sensory_consolidated = consolidator.consolidate_sensory(&node_ids)?;
         }
 
         // ── Step 6: Hausdorff after ─────────────────────────────
@@ -190,6 +252,10 @@ impl SleepCycle {
 
         if !committed {
             snapshot.restore(db)?;
+            // Phase 11: also rollback sensory latents
+            if let Some(consolidator) = consolidator {
+                consolidator.restore_sensory()?;
+            }
         }
 
         Ok(SleepReport {
@@ -199,6 +265,7 @@ impl SleepCycle {
             committed,
             nodes_perturbed,
             snapshot_nodes,
+            sensory_consolidated,
         })
     }
 }

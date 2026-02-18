@@ -41,6 +41,12 @@ service NietzscheDB {
   // ── Reconsolidation sleep cycle (Phase 8) ────────────────────────────
   rpc TriggerSleep (SleepRequest) returns (SleepResponse);
 
+  // ── Sensory Compression Layer (Phase 11) ─────────────────────────────
+  rpc InsertSensory   (InsertSensoryRequest)   returns (StatusResponse);
+  rpc GetSensory      (NodeIdRequest)          returns (SensoryResponse);
+  rpc Reconstruct     (ReconstructRequest)     returns (ReconstructResponse);
+  rpc DegradeSensory  (NodeIdRequest)          returns (StatusResponse);
+
   // ── Admin ─────────────────────────────────────────────────────────────
   rpc GetStats (Empty) returns (StatsResponse);
   rpc HealthCheck (Empty) returns (StatusResponse);
@@ -115,8 +121,36 @@ message EdgeIdRequest {
 
 // ── NQL messages ───────────────────────────────────────────────────────────
 
+// Typed query parameter — allows clients to bind $variables in NQL queries.
+message QueryParamValue {
+  oneof value {
+    string string_val   = 1;
+    double float_val    = 2;
+    int64  int_val      = 3;
+    string uuid_val     = 4;   // UUID as string
+    VectorParam vec_val = 5;   // for HYPERBOLIC_DIST / SENSORY_DIST
+  }
+}
+
+message VectorParam {
+  repeated double coords = 1;
+}
+
 message QueryRequest {
   string nql = 1;  // full NQL query string
+  // Bind $param_name → value.  Keys are param names WITHOUT the leading $.
+  map<string, QueryParamValue> params = 2;
+}
+
+message ScalarEntry {
+  string column = 1;
+  oneof  value {
+    double float_val  = 2;
+    int64  int_val    = 3;
+    string string_val = 4;
+    bool   bool_val   = 5;
+  }
+  bool   is_null = 6;
 }
 
 message QueryResponse {
@@ -126,6 +160,14 @@ message QueryResponse {
   // UUIDs returned by DIFFUSE queries
   repeated string       path_ids   = 3;
   string                error      = 4;
+  // EXPLAIN plan text
+  string                explain    = 5;
+  // Aggregation / scalar rows
+  repeated ScalarRow    scalar_rows = 6;
+}
+
+message ScalarRow {
+  repeated ScalarEntry entries = 1;
 }
 
 message NodePair {
@@ -204,7 +246,48 @@ message SleepResponse {
 // ── Stats ─────────────────────────────────────────────────────────────────
 
 message StatsResponse {
-  uint64 node_count = 1;
-  uint64 edge_count = 2;
-  string version    = 3;
+  uint64 node_count     = 1;
+  uint64 edge_count     = 2;
+  string version        = 3;
+  uint64 sensory_count  = 4;  // Phase 11: total nodes with sensory data
+}
+
+// ── Sensory Compression Layer messages (Phase 11) ─────────────────────────
+
+// Supported modality values: "text", "audio", "image", "fused"
+message InsertSensoryRequest {
+  string node_id            = 1;   // existing node UUID to attach sensory to
+  string modality           = 2;   // "text" | "audio" | "image" | "fused"
+  repeated float latent     = 3;   // pre-compressed Euclidean vector (from Krylov/EnCodec)
+  bytes  original_shape     = 4;   // JSON-encoded OriginalShape metadata
+  uint32 original_bytes     = 5;   // size of the original raw data
+  uint32 encoder_version    = 6;   // encoder version for decoder compatibility
+  // Modality-specific metadata (JSON)
+  bytes  modality_meta      = 7;   // e.g. {"sample_rate":16000,"duration_ms":5000}
+}
+
+message SensoryResponse {
+  bool   found                 = 1;
+  string node_id               = 2;
+  string modality              = 3;
+  uint32 dim                   = 4;
+  string quant_level           = 5;   // "f32" | "f16" | "int8" | "pq" | "gone"
+  float  reconstruction_quality= 6;
+  float  compression_ratio     = 7;
+  uint32 encoder_version       = 8;
+  uint32 byte_size             = 9;   // current storage size
+}
+
+message ReconstructRequest {
+  string node_id  = 1;
+  string quality  = 2;   // "full" | "degraded" | "best_available"
+}
+
+message ReconstructResponse {
+  bool           found     = 1;
+  string         node_id   = 2;
+  repeated float latent    = 3;   // f32 representation for decoder input
+  string         modality  = 4;
+  float          quality   = 5;   // actual quality of the returned latent
+  bytes          original_shape = 6;  // JSON for decoder to know output dimensions
 }

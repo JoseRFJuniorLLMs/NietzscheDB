@@ -1,0 +1,17 @@
+[package]
+name = "nietzsche-sensory"
+version = "0.1.0"
+edition = "2021"
+description = "Sensory Compression Layer — Phase 11. Stores latent vectors for audio, text, and image modalities with progressive degradation."
+
+[dependencies]
+nietzsche-hyp-ops = { workspace = true }
+nietzsche-graph   = { workspace = true }
+thiserror = { workspace = true }
+serde     = { workspace = true }
+bincode   = { workspace = true }
+uuid      = { workspace = true }
+rocksdb   = { workspace = true }
+
+[dev-dependencies]
+rand = { workspace = true }

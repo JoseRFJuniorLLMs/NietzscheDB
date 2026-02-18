@@ -30,7 +30,7 @@ pub mod cycle;
 pub mod riemannian;
 pub mod snapshot;
 
-pub use cycle::{SleepConfig, SleepCycle, SleepError, SleepReport};
+pub use cycle::{SensoryConsolidator, SleepConfig, SleepCycle, SleepError, SleepReport};
 pub use riemannian::{
     conformal_factor, exp_map, project_into_ball, random_tangent, riemannian_grad, AdamState,
     RiemannianAdam,
