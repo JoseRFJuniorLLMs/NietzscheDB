@@ -16,6 +16,7 @@
   <a href="https://github.com/JoseRFJuniorLLMs/NietzscheDB/blob/main/LICENSE_AGPLv3.md"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/built%20with-Rust-orange.svg" alt="Rust"></a>
   <img src="https://img.shields.io/badge/status-FASE%2010%20%E2%9C%94-brightgreen.svg" alt="Status">
+  <img src="https://img.shields.io/badge/production-EVA--Mind%20VM%20%E2%9C%94-success.svg" alt="Production">
   <img src="https://img.shields.io/badge/geometry-Poincar%C3%A9%20Ball-purple.svg" alt="Hyperbolic">
   <img src="https://img.shields.io/badge/category-Temporal%20Hyperbolic%20Graph%20DB-red.svg" alt="Category">
 </p>
@@ -333,6 +334,22 @@ Individual suites:
 | `riemannian/adam_10_steps` | dim=64 | ~6.2 µs |
 | `chebyshev/apply_heat_kernel` | ring-40 | ~210 µs |
 | `chebyshev/laplacian_build` | ring-50 | ~390 µs |
+
+---
+
+## Production Status
+
+NietzscheDB is deployed in production as part of the **EVA-Mind** infrastructure on Google Cloud Platform:
+
+| Component | Value |
+|---|---|
+| Platform | GCP `africa-south1-a` (South Africa) |
+| Instance | `malaria-vm` · e2-standard-2 · Ubuntu 22.04 |
+| Container | `eva-nietzsche` · `docker-compose.infra.yml` |
+| gRPC endpoint | `localhost:50051` (internal to EVA-Mind) |
+| Data volume | `nietzsche_data` (Docker named volume) |
+| Sleep cycle | every 3600 s (autonomous reconsolidation) |
+| Co-deployed with | Neo4j · Qdrant · Redis (EVA-Mind stack) |
 
 ---
 
