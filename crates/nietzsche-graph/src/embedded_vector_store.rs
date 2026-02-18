@@ -201,11 +201,32 @@ impl EmbeddedVectorStore {
 
     /// Create with explicit dimension and metric.
     /// Vector data is persisted under `data_dir/hnsw/`.
+    ///
+    /// # Known limitation — metric is advisory only
+    /// The underlying HNSW index always uses `CosineMetric` (L2 on unit-normalised
+    /// vectors) regardless of the requested `metric`.  Euclidean and Poincaré metrics
+    /// are **not** yet backed by dedicated HNSW wrappers.  For `Euclidean`, vectors
+    /// are L2-normalised before insertion (changing their semantics).  For
+    /// `PoincareBall`, cosine distance is used instead of the true Poincaré metric.
+    ///
+    /// This is tracked as `BUG-EVS-001`.  The fix requires adding
+    /// `HnswEuclideanWrapper<N>` and `HnswPoincareWrapper<N>` variants to
+    /// `make_*_hnsw()` and updating `DynHnsw::hnsw_insert` to skip normalisation
+    /// for Euclidean data.
     pub fn new(data_dir: &Path, dim: usize, metric: VectorMetric) -> Result<Self, String> {
         // Keep HNSW files in a dedicated sub-directory to avoid collisions with RocksDB.
         let storage_dir: PathBuf = data_dir.join("hnsw");
         std::fs::create_dir_all(&storage_dir)
             .map_err(|e| format!("cannot create HNSW storage dir {}: {e}", storage_dir.display()))?;
+
+        if metric != VectorMetric::Cosine {
+            eprintln!(
+                "[nietzsche] WARN BUG-EVS-001: metric '{:?}' requested but the HNSW index \
+                 currently uses CosineMetric for all collections. \
+                 Distance results may be incorrect for non-cosine embeddings.",
+                metric
+            );
+        }
 
         let inner = make_cosine_hnsw(dim, &storage_dir)?;
         Ok(Self {

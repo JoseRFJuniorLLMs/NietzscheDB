@@ -5,11 +5,12 @@ edition = "2021"
 description = "Unified gRPC API exposing all NietzscheDB capabilities"
 
 [dependencies]
-nietzsche-graph   = { workspace = true }
-nietzsche-query   = { workspace = true }
-nietzsche-lsystem = { workspace = true }
-nietzsche-pregel  = { workspace = true }
-nietzsche-sleep   = { workspace = true }
+nietzsche-graph       = { workspace = true }
+nietzsche-query       = { workspace = true }
+nietzsche-lsystem     = { workspace = true }
+nietzsche-pregel      = { workspace = true }
+nietzsche-sleep       = { workspace = true }
+nietzsche-zaratustra  = { workspace = true }
 tonic             = { workspace = true }
 prost             = { workspace = true }
 serde             = { workspace = true }
@@ -22,3 +23,4 @@ uuid              = { workspace = true }
 
 [build-dependencies]
 tonic-build = "0.10"
+protoc-bin-vendored = "3"

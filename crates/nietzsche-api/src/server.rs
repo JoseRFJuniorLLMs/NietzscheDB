@@ -31,6 +31,7 @@ use nietzsche_graph::{
 use nietzsche_pregel::{DiffusionConfig, DiffusionEngine};
 use nietzsche_query::{ParamValue, Params, execute, parse};
 use nietzsche_sleep::{SleepConfig, SleepCycle};
+use nietzsche_zaratustra::{ZaratustraConfig, ZaratustraEngine};
 
 use crate::proto::nietzsche::{
     self,
@@ -585,6 +586,67 @@ impl NietzscheDb for NietzscheServer {
             committed:        report.committed,
             nodes_perturbed:  report.nodes_perturbed as u32,
             snapshot_nodes:   report.snapshot_nodes  as u32,
+        }))
+    }
+
+    // ── Zaratustra (Phase Z) ──────────────────────────────────────────────
+
+    #[instrument(skip(self, req))]
+    async fn invoke_zaratustra(
+        &self,
+        req: Request<nietzsche::ZaratustraRequest>,
+    ) -> Result<Response<nietzsche::ZaratustraResponse>, Status> {
+        let r = req.into_inner();
+
+        let mut cfg = ZaratustraConfig::from_env();
+        if r.alpha > 0.0 { cfg.alpha = r.alpha; }
+        if r.decay > 0.0 { cfg.decay = r.decay; }
+        let cycles = if r.cycles == 0 { 1 } else { r.cycles as usize };
+
+        let engine = ZaratustraEngine::new(cfg);
+        let shared = get_col!(self.cm, &r.collection);
+        let db = shared.lock().await;
+
+        let mut last_report = None;
+        for _ in 0..cycles {
+            let report = engine
+                .run_cycle(db.storage(), db.adjacency())
+                .map_err(|e| Status::internal(format!("Zaratustra error: {e}")))?;
+            last_report = Some(report);
+        }
+
+        let report = last_report.unwrap();
+        let elite_ids: Vec<String> = report
+            .ubermensch
+            .elite_node_ids
+            .iter()
+            .map(|u| u.to_string())
+            .collect();
+
+        warn!(
+            collection = %col(&r.collection),
+            cycles = cycles,
+            duration_ms = report.duration_ms,
+            elite_count = report.ubermensch.elite_count,
+            echoes_created = report.eternal_recurrence.echoes_created,
+            "Zaratustra cycle completed"
+        );
+
+        Ok(Response::new(nietzsche::ZaratustraResponse {
+            nodes_updated:      report.will_to_power.nodes_updated,
+            mean_energy_before: report.will_to_power.mean_energy_before,
+            mean_energy_after:  report.will_to_power.mean_energy_after,
+            total_energy_delta: report.will_to_power.total_energy_delta,
+            echoes_created:     report.eternal_recurrence.echoes_created,
+            echoes_evicted:     report.eternal_recurrence.echoes_evicted,
+            total_echoes:       report.eternal_recurrence.total_echoes,
+            elite_count:        report.ubermensch.elite_count,
+            elite_threshold:    report.ubermensch.energy_threshold,
+            mean_elite_energy:  report.ubermensch.mean_elite_energy,
+            mean_base_energy:   report.ubermensch.mean_base_energy,
+            elite_node_ids:     elite_ids,
+            duration_ms:        report.duration_ms,
+            cycles_run:         cycles as u32,
         }))
     }
 

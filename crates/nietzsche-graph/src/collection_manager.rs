@@ -173,13 +173,30 @@ impl CollectionManager {
     /// Drop a collection by name.
     ///
     /// The `"default"` collection cannot be dropped.
-    /// Data files remain on disk (safe tombstone-only drop).
+    ///
+    /// Removes the in-memory entry **and** renames `collection.json` to
+    /// `collection.json.dropped` so the collection is not re-discovered on
+    /// the next [`CollectionManager::open`].  All raw data (RocksDB, HNSW)
+    /// is kept on disk for manual recovery if needed.
     pub fn drop_collection(&self, name: &str) -> Result<(), GraphError> {
         if name == "default" {
             return Err(GraphError::Storage(
                 "cannot drop the 'default' collection".to_string(),
             ));
         }
+
+        // Rename collection.json so the collection is not re-opened on restart.
+        let cfg_path     = self.collection_dir(name).join("collection.json");
+        let dropped_path = self.collection_dir(name).join("collection.json.dropped");
+        if cfg_path.exists() {
+            std::fs::rename(&cfg_path, &dropped_path).map_err(|e| {
+                GraphError::Storage(format!(
+                    "failed to mark collection '{}' as dropped: {e}", name
+                ))
+            })?;
+        }
+
+        // Remove from in-memory map after the file operation succeeds.
         self.collections.remove(name);
         Ok(())
     }

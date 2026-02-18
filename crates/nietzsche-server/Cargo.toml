@@ -9,10 +9,11 @@ name = "nietzsche-server"
 path = "src/main.rs"
 
 [dependencies]
-nietzsche-api   = { workspace = true }
-nietzsche-graph = { workspace = true }
-nietzsche-sleep = { workspace = true }
-nietzsche-query = { workspace = true }
+nietzsche-api         = { workspace = true }
+nietzsche-graph       = { workspace = true }
+nietzsche-sleep       = { workspace = true }
+nietzsche-query       = { workspace = true }
+nietzsche-zaratustra  = { workspace = true }
 tokio           = { workspace = true }
 tonic           = { workspace = true }
 tracing         = { workspace = true }

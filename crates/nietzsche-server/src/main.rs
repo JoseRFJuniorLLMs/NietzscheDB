@@ -34,6 +34,7 @@ use tracing_subscriber::{fmt, EnvFilter};
 use nietzsche_api::NietzscheServer;
 use nietzsche_graph::CollectionManager;
 use nietzsche_sleep::{SleepConfig, SleepCycle};
+use nietzsche_zaratustra::ZaratustraEngine;
 
 mod config;
 mod dashboard;
@@ -121,6 +122,59 @@ async fn main() -> anyhow::Result<()> {
         });
     } else {
         info!("sleep scheduler disabled (NIETZSCHE_SLEEP_INTERVAL_SECS=0)");
+    }
+
+    // ── Zaratustra scheduler ──────────────────────────────────────────────────
+    // Reads `ZARATUSTRA_INTERVAL_SECS` (default 600 = 10 min, 0 = disabled).
+    // Runs the three-phase Zaratustra cycle against the "default" collection.
+    let zaratustra_interval: u64 = std::env::var("ZARATUSTRA_INTERVAL_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(600);
+
+    if zaratustra_interval > 0 {
+        let engine     = ZaratustraEngine::from_env();
+        let cm_zara    = Arc::clone(&cm);
+        let interval_z = Duration::from_secs(zaratustra_interval);
+
+        tokio::spawn(async move {
+            info!(
+                interval_secs = zaratustra_interval,
+                alpha  = engine.config.alpha,
+                decay  = engine.config.decay,
+                "Zaratustra scheduler started"
+            );
+            loop {
+                tokio::time::sleep(interval_z).await;
+
+                let Some(shared) = cm_zara.get_or_default("default") else {
+                    warn!("zaratustra: 'default' collection not found — skipping");
+                    continue;
+                };
+
+                // Hold the exclusive lock for the full cycle to prevent
+                // concurrent writes from racing with Zaratustra propagation.
+                let db        = shared.lock().await;
+                let storage   = db.storage();
+                let adjacency = db.adjacency();
+
+                match engine.run_cycle(storage, adjacency) {
+                    Ok(r) => info!(
+                        nodes_updated    = r.will_to_power.nodes_updated,
+                        energy_before    = r.will_to_power.mean_energy_before,
+                        energy_after     = r.will_to_power.mean_energy_after,
+                        echoes_created   = r.eternal_recurrence.echoes_created,
+                        elite_count      = r.ubermensch.elite_count,
+                        elite_threshold  = r.ubermensch.energy_threshold,
+                        duration_ms      = r.duration_ms,
+                        "Zaratustra cycle complete"
+                    ),
+                    Err(e) => warn!(error = %e, "Zaratustra cycle failed"),
+                }
+            }
+        });
+    } else {
+        info!("Zaratustra scheduler disabled (ZARATUSTRA_INTERVAL_SECS=0)");
     }
 
     // ── HTTP dashboard ────────────────────────────────────────────────────────
