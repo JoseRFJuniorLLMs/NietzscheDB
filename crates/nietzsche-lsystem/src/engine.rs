@@ -6,13 +6,17 @@
 //! 1. **Scan** — collect all live nodes (owned copy; no borrow held).
 //! 2. **Hausdorff** — recompute local dimension for every node; persist via
 //!    `NietzscheDB::update_hausdorff`.
-//! 3. **Match** — for each node, find the first matching production rule and
+//! 3. **Sensory degrade** *(Phase 11, optional)* — for each node with sensory
+//!    data, degrade the latent vector based on current energy level
+//!    (f32 → f16 → int8 → PQ → gone). Only runs when [`tick_with_sensory`]
+//!    is used with a [`SensoryDegrader`] implementation.
+//! 4. **Match** — for each node, find the first matching production rule and
 //!    record a `PendingAction` (no mutations yet — avoids borrow conflicts).
 //!    Nodes outside the Hausdorff target `[hausdorff_lo, hausdorff_hi]` are
 //!    auto-queued for pruning.
-//! 4. **Apply** — consume the pending list: insert child/sibling nodes +
+//! 5. **Apply** — consume the pending list: insert child/sibling nodes +
 //!    L-System edges, prune candidates, update energies.
-//! 5. **Report** — return a [`LSystemReport`] with counts and global D.
+//! 6. **Report** — return a [`LSystemReport`] with counts and global D.
 
 use std::collections::HashSet;
 
@@ -36,6 +40,23 @@ use crate::rules::{check_condition, ProductionRule, RuleAction};
 pub const DEFAULT_HAUSDORFF_LO: f32 = 0.5;
 /// Default upper bound for the Hausdorff auto-prune gate.
 pub const DEFAULT_HAUSDORFF_HI: f32 = 1.9;
+
+/// Trait for optional Phase 11 sensory degradation during L-System ticks.
+///
+/// Implement this to plug sensory degradation into the tick loop.
+/// The engine calls `degrade_node_sensory` for each node after Hausdorff
+/// update but before rule matching.
+pub trait SensoryDegrader {
+    /// Degrade the sensory latent for a node based on its current energy.
+    ///
+    /// Returns `true` if the node's sensory data was actually degraded
+    /// (i.e., the quantization level changed). Implementations should:
+    /// - Look up the node's sensory data in the `sensory` CF
+    /// - Call `LatentVector::degrade(energy)` if the target level is lower
+    /// - Persist the updated sensory data
+    /// - Mark sensory as irrecoverable if energy < 0.1
+    fn degrade_node_sensory(&self, node_id: Uuid, energy: f32) -> Result<bool, LSystemError>;
+}
 
 /// L-System fractal growth engine.
 ///
@@ -65,6 +86,35 @@ impl LSystemEngine {
     ///
     /// Returns a [`LSystemReport`] describing the mutations performed.
     pub fn tick<V: VectorStore>(&self, db: &mut NietzscheDB<V>) -> Result<LSystemReport, LSystemError> {
+        self.tick_inner(db, None::<&NoopDegrader>)
+    }
+
+    /// Run one generation tick with Phase 11 sensory degradation.
+    ///
+    /// Same as [`tick`], but between Hausdorff update and rule matching,
+    /// degrades sensory latents for every node based on current energy.
+    ///
+    /// ## Extended tick protocol
+    ///
+    /// 1. Scan all nodes
+    /// 2. Recompute local Hausdorff
+    /// 3. **Phase 11: degrade sensory latents** (energy → quantization)
+    /// 4. Match rules → build pending list
+    /// 5. Apply mutations
+    /// 6. Report
+    pub fn tick_with_sensory<V: VectorStore, S: SensoryDegrader>(
+        &self,
+        db: &mut NietzscheDB<V>,
+        degrader: &S,
+    ) -> Result<LSystemReport, LSystemError> {
+        self.tick_inner(db, Some(degrader))
+    }
+
+    fn tick_inner<V: VectorStore, S: SensoryDegrader>(
+        &self,
+        db: &mut NietzscheDB<V>,
+        degrader: Option<&S>,
+    ) -> Result<LSystemReport, LSystemError> {
         let mut rng = rand::thread_rng();
 
         // ── Step 1: collect all nodes ────────────────────────────────────
@@ -76,10 +126,28 @@ impl LSystemEngine {
             db.update_hausdorff(node.id, h)?;
         }
 
-        // ── Step 3: re-scan (Hausdorff values now persisted) ────────────
+        // ── Step 3 (Phase 11): degrade sensory latents ──────────────────
+        let mut sensory_degraded = 0usize;
+        if let Some(degrader) = degrader {
+            for node in &all_nodes {
+                match degrader.degrade_node_sensory(node.id, node.energy) {
+                    Ok(true) => sensory_degraded += 1,
+                    Ok(false) => {}
+                    Err(e) => {
+                        // Non-fatal: log and continue. Sensory degradation
+                        // must not block graph evolution.
+                        #[cfg(feature = "tracing")]
+                        tracing::warn!("sensory degrade failed for {}: {e}", node.id);
+                        let _ = e;
+                    }
+                }
+            }
+        }
+
+        // ── Step 4: re-scan (Hausdorff values now persisted) ────────────
         let all_nodes: Vec<Node> = db.storage().scan_nodes()?;
 
-        // ── Step 4: match rules → build pending list ─────────────────────
+        // ── Step 5: match rules → build pending list ─────────────────────
         let mut pending: Vec<PendingAction> = Vec::new();
 
         for node in &all_nodes {
@@ -108,10 +176,10 @@ impl LSystemEngine {
             }
         }
 
-        // ── Step 5: apply mutations ──────────────────────────────────────
+        // ── Step 6: apply mutations ──────────────────────────────────────
         let (nodes_spawned, nodes_pruned, edges_created) = apply_pending(db, pending)?;
 
-        // ── Step 6: global Hausdorff on post-tick state ──────────────────
+        // ── Step 7: global Hausdorff on post-tick state ──────────────────
         let final_nodes: Vec<Node> = db.storage().scan_nodes()?;
         let global_d = global_hausdorff(&final_nodes);
 
@@ -121,6 +189,7 @@ impl LSystemEngine {
             edges_created,
             global_hausdorff: global_d,
             total_nodes: final_nodes.len(),
+            sensory_degraded,
         })
     }
 }
@@ -132,11 +201,13 @@ impl LSystemEngine {
 /// Statistics returned by [`LSystemEngine::tick`].
 #[derive(Debug, Clone)]
 pub struct LSystemReport {
-    pub nodes_spawned:    usize,
-    pub nodes_pruned:     usize,
-    pub edges_created:    usize,
-    pub global_hausdorff: f32,
-    pub total_nodes:      usize,
+    pub nodes_spawned:      usize,
+    pub nodes_pruned:       usize,
+    pub edges_created:      usize,
+    pub global_hausdorff:   f32,
+    pub total_nodes:        usize,
+    /// Phase 11: number of nodes whose sensory latents were degraded this tick.
+    pub sensory_degraded:   usize,
 }
 
 impl LSystemReport {
@@ -154,6 +225,15 @@ impl LSystemReport {
 pub enum LSystemError {
     #[error("graph error: {0}")]
     Graph(#[from] GraphError),
+}
+
+/// No-op degrader used by the plain `tick()` method.
+struct NoopDegrader;
+
+impl SensoryDegrader for NoopDegrader {
+    fn degrade_node_sensory(&self, _node_id: Uuid, _energy: f32) -> Result<bool, LSystemError> {
+        Ok(false)
+    }
 }
 
 // ─────────────────────────────────────────────

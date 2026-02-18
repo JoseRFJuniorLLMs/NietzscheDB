@@ -28,7 +28,7 @@ pub use adjacency::AdjacencyIndex;
 pub use db::{MockVectorStore, NietzscheDB, VectorStore};
 pub use error::GraphError;
 pub use model::{Edge, EdgeType, Node, NodeType, PoincareVector};
-pub use storage::GraphStorage;
+pub use storage::{GraphStorage, NodeIterator, EdgeIterator};
 pub use transaction::{Transaction, TxError, TxOp, TxReport};
 pub use traversal::{
     bfs, diffusion_walk, dijkstra, shortest_path, BfsConfig, DiffusionConfig, DijkstraConfig,

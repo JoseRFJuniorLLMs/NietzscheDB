@@ -30,6 +30,8 @@ nietzsche-pregel   = { path = "crates/nietzsche-pregel" }
 nietzsche-sleep    = { path = "crates/nietzsche-sleep" }
 nietzsche-api      = { path = "crates/nietzsche-api" }
 nietzsche-sdk      = { path = "crates/nietzsche-sdk" }
+nietzsche-hyp-ops  = { path = "crates/nietzsche-hyp-ops" }
+nietzsche-sensory  = { path = "crates/nietzsche-sensory" }
 memmap2 = "0.9"
 parking_lot = "0.12"
 ratatui = "0.24"

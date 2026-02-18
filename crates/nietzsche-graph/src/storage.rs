@@ -91,15 +91,16 @@ impl GraphStorage {
 
     /// Scan all nodes. Returns a Vec (full table scan — use sparingly in production).
     pub fn scan_nodes(&self) -> Result<Vec<Node>, GraphError> {
+        self.iter_nodes().collect()
+    }
+
+    /// Iterator-based node scan — yields `Result<Node>` without loading all into memory.
+    /// Preferred over `scan_nodes()` for large datasets.
+    pub fn iter_nodes(&self) -> NodeIterator<'_> {
         let cf = self.db.cf_handle(CF_NODES).unwrap();
-        let mut nodes = Vec::new();
-        let iter = self.db.iterator_cf(&cf, rocksdb::IteratorMode::Start);
-        for item in iter {
-            let (_, value) = item.map_err(|e| GraphError::Storage(e.to_string()))?;
-            let node: Node = bincode::deserialize(&value)?;
-            nodes.push(node);
+        NodeIterator {
+            inner: self.db.iterator_cf(&cf, rocksdb::IteratorMode::Start),
         }
-        Ok(nodes)
     }
 
     // ── Edge operations ────────────────────────────────
@@ -179,15 +180,15 @@ impl GraphStorage {
 
     /// Scan all edges (full table scan).
     pub fn scan_edges(&self) -> Result<Vec<Edge>, GraphError> {
+        self.iter_edges().collect()
+    }
+
+    /// Iterator-based edge scan — yields `Result<Edge>` without loading all into memory.
+    pub fn iter_edges(&self) -> EdgeIterator<'_> {
         let cf = self.db.cf_handle(CF_EDGES).unwrap();
-        let mut edges = Vec::new();
-        let iter = self.db.iterator_cf(&cf, rocksdb::IteratorMode::Start);
-        for item in iter {
-            let (_, value) = item.map_err(|e| GraphError::Storage(e.to_string()))?;
-            let edge: Edge = bincode::deserialize(&value)?;
-            edges.push(edge);
+        EdgeIterator {
+            inner: self.db.iterator_cf(&cf, rocksdb::IteratorMode::Start),
         }
-        Ok(edges)
     }
 
     // ── Metadata ───────────────────────────────────────
@@ -256,6 +257,46 @@ impl GraphStorage {
             Some(bytes) => Ok(bincode::deserialize(&bytes)?),
             None => Ok(Vec::new()),
         }
+    }
+}
+
+// ─────────────────────────────────────────────
+// Lazy iterators (avoid full table scans)
+// ─────────────────────────────────────────────
+
+/// Lazy iterator over nodes in RocksDB.
+pub struct NodeIterator<'a> {
+    inner: rocksdb::DBIteratorWithThreadMode<'a, DB>,
+}
+
+impl<'a> Iterator for NodeIterator<'a> {
+    type Item = Result<Node, GraphError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let item = self.inner.next()?;
+        Some(item
+            .map_err(|e| GraphError::Storage(e.to_string()))
+            .and_then(|(_, value)| {
+                bincode::deserialize(&value).map_err(Into::into)
+            }))
+    }
+}
+
+/// Lazy iterator over edges in RocksDB.
+pub struct EdgeIterator<'a> {
+    inner: rocksdb::DBIteratorWithThreadMode<'a, DB>,
+}
+
+impl<'a> Iterator for EdgeIterator<'a> {
+    type Item = Result<Edge, GraphError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let item = self.inner.next()?;
+        Some(item
+            .map_err(|e| GraphError::Storage(e.to_string()))
+            .and_then(|(_, value)| {
+                bincode::deserialize(&value).map_err(Into::into)
+            }))
     }
 }
 

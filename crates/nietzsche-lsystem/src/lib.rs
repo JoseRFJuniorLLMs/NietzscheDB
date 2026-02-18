@@ -31,7 +31,7 @@ pub mod rules;
 
 // ── Engine ────────────────────────────────────────────────────────────────────
 pub use engine::{
-    LSystemEngine, LSystemError, LSystemReport,
+    LSystemEngine, LSystemError, LSystemReport, SensoryDegrader,
     DEFAULT_HAUSDORFF_HI, DEFAULT_HAUSDORFF_LO,
 };
 

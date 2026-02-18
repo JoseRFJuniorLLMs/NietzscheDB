@@ -29,7 +29,7 @@ use nietzsche_graph::{
     bfs, dijkstra,
 };
 use nietzsche_pregel::{DiffusionConfig, DiffusionEngine};
-use nietzsche_query::{Params, execute, parse};
+use nietzsche_query::{ParamValue, Params, execute, parse};
 use nietzsche_sleep::{SleepConfig, SleepCycle};
 
 use crate::proto::nietzsche::{
@@ -93,6 +93,40 @@ fn ok_status() -> nietzsche::StatusResponse {
 
 fn err_status(msg: impl ToString) -> nietzsche::StatusResponse {
     nietzsche::StatusResponse { status: "error".into(), error: msg.to_string() }
+}
+
+// ─────────────────────────────────────────────
+// NQL param marshaling
+// ─────────────────────────────────────────────
+
+/// Convert proto `QueryParamValue` map into executor `Params`.
+fn marshal_params(
+    proto: &std::collections::HashMap<String, nietzsche::QueryParamValue>,
+) -> Result<Params, Status> {
+    let mut params = Params::new();
+    for (key, pv) in proto {
+        let val = match &pv.value {
+            Some(nietzsche::query_param_value::Value::StringVal(s)) =>
+                ParamValue::Str(s.clone()),
+            Some(nietzsche::query_param_value::Value::FloatVal(f)) =>
+                ParamValue::Float(*f),
+            Some(nietzsche::query_param_value::Value::IntVal(i)) =>
+                ParamValue::Int(*i),
+            Some(nietzsche::query_param_value::Value::UuidVal(s)) => {
+                let u = Uuid::parse_str(s).map_err(|_| {
+                    Status::invalid_argument(format!("param '{key}': invalid UUID '{s}'"))
+                })?;
+                ParamValue::Uuid(u)
+            }
+            Some(nietzsche::query_param_value::Value::VecVal(v)) =>
+                ParamValue::Vector(v.coords.clone()),
+            None => return Err(Status::invalid_argument(
+                format!("param '{key}' has no value set")
+            )),
+        };
+        params.insert(key.clone(), val);
+    }
+    Ok(params)
 }
 
 // ─────────────────────────────────────────────
@@ -258,33 +292,74 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
         &self,
         req: Request<nietzsche::QueryRequest>,
     ) -> Result<Response<nietzsche::QueryResponse>, Status> {
-        let nql = req.into_inner().nql;
-        validate_nql(&nql)?;
+        let inner = req.into_inner();
+        validate_nql(&inner.nql)?;
 
-        let ast = parse(&nql).map_err(|e| {
+        let ast = parse(&inner.nql).map_err(|e| {
             Status::invalid_argument(format!("NQL parse error: {e}"))
         })?;
 
-        let db = self.db.lock().await;
-        let params = Params::new();
+        // Marshal proto params → executor Params
+        let params = marshal_params(&inner.params)?;
 
+        let db = self.db.lock().await;
         let results = execute(&ast, db.storage(), db.adjacency(), &params)
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        use nietzsche_query::QueryResult;
-        let mut nodes      = Vec::new();
-        let mut node_pairs = Vec::new();
-        let mut path_ids   = Vec::new();
+        use nietzsche_query::{QueryResult, ScalarValue};
+        let mut nodes       = Vec::new();
+        let mut node_pairs  = Vec::new();
+        let mut path_ids    = Vec::new();
+        let mut explain     = String::new();
+        let mut scalar_rows = Vec::new();
 
         for r in results {
             match r {
-                QueryResult::Node(n)              => nodes.push(node_to_proto(n)),
+                QueryResult::Node(n) => nodes.push(node_to_proto(n)),
                 QueryResult::NodePair { from, to } => node_pairs.push(nietzsche::NodePair {
                     from: Some(node_to_proto(from)),
                     to:   Some(node_to_proto(to)),
                 }),
-                QueryResult::DiffusionPath(ids)   =>
+                QueryResult::DiffusionPath(ids) =>
                     path_ids.extend(ids.iter().map(|u| u.to_string())),
+                QueryResult::ReconstructRequest { node_id, modality, quality } => {
+                    // For NQL-driven RECONSTRUCT, return the target info in path_ids
+                    // (the actual reconstruction is handled by the Reconstruct RPC)
+                    path_ids.push(format!("reconstruct:{}:{}:{}",
+                        node_id,
+                        modality.unwrap_or_default(),
+                        quality.unwrap_or_default(),
+                    ));
+                }
+                QueryResult::ExplainPlan(plan) => {
+                    explain = plan;
+                }
+                QueryResult::Scalar(row) => {
+                    let entries = row.into_iter().map(|(col, val)| {
+                        let mut entry = nietzsche::ScalarEntry {
+                            column: col,
+                            is_null: false,
+                            ..Default::default()
+                        };
+                        match val {
+                            ScalarValue::Float(f) => entry.value = Some(
+                                nietzsche::scalar_entry::Value::FloatVal(f)
+                            ),
+                            ScalarValue::Int(i) => entry.value = Some(
+                                nietzsche::scalar_entry::Value::IntVal(i)
+                            ),
+                            ScalarValue::Str(s) => entry.value = Some(
+                                nietzsche::scalar_entry::Value::StringVal(s)
+                            ),
+                            ScalarValue::Bool(b) => entry.value = Some(
+                                nietzsche::scalar_entry::Value::BoolVal(b)
+                            ),
+                            ScalarValue::Null => entry.is_null = true,
+                        }
+                        entry
+                    }).collect();
+                    scalar_rows.push(nietzsche::ScalarRow { entries });
+                }
             }
         }
 
@@ -293,6 +368,8 @@ impl<V: VectorStore + Send + Sync + 'static> NietzscheDb for NietzscheServer<V> 
             node_pairs,
             path_ids,
             error: String::new(),
+            explain,
+            scalar_rows,
         }))
     }
 
