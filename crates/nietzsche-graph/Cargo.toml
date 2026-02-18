@@ -1,0 +1,17 @@
+[package]
+name = "nietzsche-graph"
+version = "0.1.0"
+edition = "2021"
+description = "Hyperbolic graph engine: nodes, edges, adjacency, traversal"
+
+[dependencies]
+hyperspace-core = { workspace = true }
+uuid = { workspace = true }
+dashmap = { workspace = true }
+rocksdb = { workspace = true }
+bincode = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+ordered-float = { workspace = true }
+rand = { workspace = true }

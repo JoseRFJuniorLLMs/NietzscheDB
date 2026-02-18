@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>HyperspaceDB WASM Demo</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            background: #646cff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: #4b5563;
+        }
+
+        button.success {
+            background: #10b981;
+        }
+
+        pre {
+            background: #333;
+            padding: 10px;
+            border-radius: 4px;
+            overflow: auto;
+            max-height: 400px;
+            font-size: 14px;
+        }
+
+        .success {
+            color: #4ade80;
+        }
+
+        .error {
+            color: #f87171;
+        }
+
+        .info {
+            color: #60a5fa;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>HyperspaceDB Edge (WASM)</h1>
+    <p>Running entirely in your browser memory (Local-First AI).</p>
+
+    <div style="margin-bottom: 20px; display:flex; flex-wrap:wrap; gap:10px;">
+        <button id="initBtn">1. Init New (Empty)</button>
+        <button id="loadBtn" class="secondary">1b. Init & Load (Persistence)</button>
+        <div style="flex-basis: 100%; height: 0;"></div>
+        <button id="insertBtn" disabled>2. Insert 100 Vectors</button>
+        <button id="searchBtn" disabled>3. Search</button>
+        <button id="saveBtn" class="success" disabled>💾 Save to IndexedDB</button>
+    </div>
+
+    <h3>Status: <span id="status">Not initialized</span></h3>
+
+    <h3>Logs</h3>
+    <pre id="logs"></pre>
+
+    <p><i>To test persistence: Insert data -> Save -> Refresh Page -> Click "Init & Load"</i></p>
+
+    <script type="module">
+        import init, { HyperspaceDB } from './pkg/hyperspace_wasm.js';
+
+        let db = null;
+        const logEl = document.getElementById('logs');
+        const statusEl = document.getElementById('status');
+
+        function log(msg) {
+            logEl.textContent += '> ' + msg + '\n';
+            console.log(msg);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        async function initWasm() {
+            if (db) return;
+            try {
+                statusEl.textContent = 'Loading WASM...';
+                await init();
+                db = new HyperspaceDB();
+                log('WASM Module loaded & DB created (RAM).');
+                return true;
+            } catch (e) {
+                statusEl.innerHTML = '<span class="error">Failed to load</span>';
+                log('Error loading WASM: ' + e);
+                return false;
+            }
+        }
+
+        function enableButtons() {
+            document.getElementById('insertBtn').disabled = false;
+            document.getElementById('saveBtn').disabled = false;
+            document.getElementById('initBtn').disabled = true;
+            document.getElementById('loadBtn').disabled = true;
+        }
+
+        document.getElementById('initBtn').onclick = async () => {
+            if (await initWasm()) {
+                statusEl.innerHTML = '<span class="success">Ready (Empty)</span>';
+                enableButtons();
+            }
+        };
+
+        document.getElementById('loadBtn').onclick = async () => {
+            if (await initWasm()) {
+                statusEl.textContent = 'Loading from IndexedDB...';
+                try {
+                    const found = await db.load();
+                    if (found) {
+                        statusEl.innerHTML = '<span class="success">Restored from Disk</span>';
+                        log('Successfully loaded persisted data!');
+                        document.getElementById('searchBtn').disabled = false; // Searchable immediately
+                    } else {
+                        statusEl.innerHTML = '<span class="info">Ready (No saved data found)</span>';
+                        log('No Saved Data found. Starting empty.');
+                    }
+                    enableButtons();
+                } catch (e) {
+                    log('Load Failed: ' + e);
+                    statusEl.innerHTML = '<span class="error">Load Failed</span>';
+                }
+            }
+        };
+
+        document.getElementById('insertBtn').onclick = () => {
+            if (!db) return;
+            statusEl.textContent = 'Inserting...';
+            setTimeout(() => {
+                const start = performance.now();
+                try {
+                    for (let i = 0; i < 100; i++) {
+                        const vec = new Float64Array(1024);
+                        for (let j = 0; j < 1024; j++) vec[j] = Math.random();
+                        vec[0] = i * 1.0;
+                        db.insert(i, vec);
+                    }
+                    const took = performance.now() - start;
+                    log(`Inserted 100 vectors in ${took.toFixed(2)}ms`);
+                    statusEl.innerHTML = '<span class="success">Data Loaded (Unsaved)</span>';
+                    document.getElementById('searchBtn').disabled = false;
+                } catch (e) {
+                    log('Insert Error: ' + e);
+                }
+            }, 10);
+        };
+
+        document.getElementById('searchBtn').onclick = () => {
+            if (!db) return;
+            const query = new Float64Array(1024).fill(0.1);
+            query[0] = 50.0;
+            const start = performance.now();
+            const results = db.search(query, 5);
+            const took = performance.now() - start;
+            log(`Search found ${results.length} results in ${took.toFixed(2)}ms`);
+            log('Top: ' + JSON.stringify(results[0]));
+        };
+
+        document.getElementById('saveBtn').onclick = async () => {
+            if (!db) return;
+            statusEl.textContent = 'Saving...';
+            try {
+                const start = performance.now();
+                await db.save();
+                const took = performance.now() - start;
+                log(`Saved to IndexedDB in ${took.toFixed(2)}ms`);
+                statusEl.innerHTML = '<span class="success">Saved (Persistent)</span>';
+            } catch (e) {
+                log('Save Error: ' + e);
+                statusEl.innerHTML = '<span class="error">Save Failed</span>';
+            }
+        };
+
+    </script>
+</body>
+
+</html>

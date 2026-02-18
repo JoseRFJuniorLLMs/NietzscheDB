@@ -1,0 +1,12 @@
+[package]
+name = "nietzsche-sdk"
+version = "0.1.0"
+edition = "2021"
+description = "Auto-generated Python and TypeScript SDK stubs"
+
+[dependencies]
+nietzsche-api = { workspace = true }
+tonic = { workspace = true }
+prost = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
