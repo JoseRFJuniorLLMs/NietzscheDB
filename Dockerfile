@@ -1,64 +1,66 @@
-# === Stage 1: UI Builder ===
-FROM node:slim AS ui-builder
-WORKDIR /app/dashboard
-COPY dashboard/package*.json ./
-RUN npm install
-COPY dashboard/ .
-RUN npm run build
+# ── Stage 1: builder ─────────────────────────────────────────────────────────
+#
+# Build nietzsche-server with full LTO + stripped symbols.
+# RocksDB links statically via the `rocksdb` crate — no shared .so needed at
+# runtime.
+FROM rust:1.75-slim-bullseye AS builder
 
-# === Stage 2: Rust Builder ===
-FROM rustlang/rust:nightly AS builder
+# System dependencies for RocksDB + tonic-build (protoc)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        protobuf-compiler \
+        libclang-dev \
+        clang \
+        cmake \
+        pkg-config \
+        libssl-dev \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install protobuf compiler
-RUN apt-get update && apt-get install -y protobuf-compiler cmake clang build-essential pkg-config
+WORKDIR /build
 
-WORKDIR /app
-COPY . .
-# Copy built UI assets to correct location
-COPY --from=ui-builder /app/dashboard/dist ./dashboard/dist
+# Copy workspace manifests + lock file first → better layer caching.
+COPY Cargo.toml Cargo.lock ./
+COPY crates/ crates/
 
-# Remove toolchain file
-RUN rm -f rust-toolchain.toml
+# Build the production binary.
+# [profile.release] is already configured in workspace Cargo.toml:
+#   lto = true, codegen-units = 1, strip = true, panic = "abort"
+RUN cargo build --release --bin nietzsche-server
 
-# Build Release
-# WARNING: 'native' optimizes for the BUILD machine's CPU. 
-# If build & run machines differ significantly, this may cause crashes.
-# For public images, use '-C target-cpu=x86-64-v3' instead.
-ENV RUSTFLAGS="-C target-cpu=native"
-RUN cargo build --release --workspace --features nightly-simd
+# ── Stage 2: runtime ──────────────────────────────────────────────────────────
+FROM debian:bullseye-slim AS runtime
 
-# Strip binaries to reduce size
-RUN strip target/release/hyperspace-server
-RUN strip target/release/hyperspace-cli
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        libssl1.1 \
+    && rm -rf /var/lib/apt/lists/*
 
-# === Stage 3: Runtime ===
-FROM debian:bookworm-slim
+# Non-root user
+RUN useradd -ms /bin/bash nietzsche
+USER nietzsche
+WORKDIR /home/nietzsche
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+# Stripped production binary
+COPY --from=builder /build/target/release/nietzsche-server ./nietzsche-server
 
-# Create a non-root user
-RUN useradd -m -u 1000 -U -s /bin/sh -d /app hyperspace
+# ── Configuration (override at docker run / Kubernetes env) ──────────────────
+ENV NIETZSCHE_DATA_DIR=/data/nietzsche
+ENV NIETZSCHE_PORT=50051
+ENV NIETZSCHE_LOG_LEVEL=info
+ENV NIETZSCHE_SLEEP_INTERVAL_SECS=300
+ENV NIETZSCHE_SLEEP_NOISE=0.02
+ENV NIETZSCHE_SLEEP_ADAM_STEPS=10
+ENV NIETZSCHE_HAUSDORFF_THRESHOLD=0.15
+ENV NIETZSCHE_MAX_CONNECTIONS=1024
 
-WORKDIR /app
+# Persistent data directory — mount a volume here
+VOLUME ["/data/nietzsche"]
 
-# Copy binaries
-COPY --from=builder /app/target/release/hyperspace-server /usr/local/bin/
-COPY --from=builder /app/target/release/hyperspace-cli /usr/local/bin/
-
-# Create data dir
-RUN mkdir -p /app/data && chown -R hyperspace:hyperspace /app
-
-# Switch to non-root user
-USER hyperspace
-
-ENV RUST_LOG=info
-
-# Label the image
-LABEL org.opencontainers.image.source=https://github.com/yarlabs/hyperspace-db
-
-# Expose ports
+# gRPC port
 EXPOSE 50051
-EXPOSE 50050
 
-# Default command
-CMD ["hyperspace-server"]
+LABEL org.opencontainers.image.title="NietzscheDB Server"
+LABEL org.opencontainers.image.description="Temporal Hyperbolic Graph Database — production gRPC server"
+LABEL org.opencontainers.image.source="https://github.com/JoseRFJuniorLLMs/NietzscheDB"
+
+ENTRYPOINT ["./nietzsche-server"]
