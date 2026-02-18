@@ -141,7 +141,7 @@ async fn main() -> anyhow::Result<()> {
         {
             if let Err(e) = result {
                 error!(error = %e, "gRPC server error");
-                return Err(anyhow::anyhow!(e));
+                return Err(anyhow::anyhow!("{}", e));
             }
         }
         _ = tokio::signal::ctrl_c() => {
