@@ -1,0 +1,136 @@
+// ─────────────────────────────────────────────────────────
+// nql.pest  —  Nietzsche Query Language (PEG grammar)
+//
+// Operator precedence in conditions (high → low):
+//   NOT  >  AND  >  OR
+//
+// Supported query forms:
+//   MATCH (n) WHERE … RETURN …
+//   MATCH (a)-[:TYPE]->(b) WHERE … RETURN …
+//   DIFFUSE FROM $node WITH t=[…] MAX_HOPS n RETURN …
+// ─────────────────────────────────────────────────────────
+
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+COMMENT    = _{ "--" ~ (!"\n" ~ ANY)* }
+
+// ── Character classes ────────────────────────────────────
+
+ident_tail = _{ ASCII_ALPHANUMERIC | "_" }
+
+// ── Keywords  (silent — do not appear in parse tree) ────
+
+kw_match    = _{ "MATCH"    ~ !ident_tail }
+kw_where    = _{ "WHERE"    ~ !ident_tail }
+kw_return   = _{ "RETURN"   ~ !ident_tail }
+kw_order    = _{ "ORDER"    ~ !ident_tail }
+kw_by       = _{ "BY"       ~ !ident_tail }
+kw_limit    = _{ "LIMIT"    ~ !ident_tail }
+kw_and      = _{ "AND"      ~ !ident_tail }
+kw_or       = _{ "OR"       ~ !ident_tail }
+kw_not      = _{ "NOT"      ~ !ident_tail }
+kw_diffuse  = _{ "DIFFUSE"  ~ !ident_tail }
+kw_from     = _{ "FROM"     ~ !ident_tail }
+kw_with     = _{ "WITH"     ~ !ident_tail }
+kw_max_hops = _{ "MAX_HOPS" ~ !ident_tail }
+
+// ── Terminals ────────────────────────────────────────────
+
+integer = @{ ASCII_DIGIT+ }
+float   = @{ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+string  = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+boolean = @{ ("true" | "false") ~ !ident_tail }
+param   = @{ "$" ~ ident_tail+ }
+ident   = @{ ASCII_ALPHA ~ ident_tail* }
+
+// Property access: alias.field
+// Compound-atomic ($) — no whitespace between the three parts
+prop = ${ ident ~ "." ~ ident }
+
+// ── Numeric list  [0.1, 1.0, 10.0] ─────────────────────
+
+number   = { float | integer }
+num_list = { "[" ~ number ~ ("," ~ number)* ~ "]" }
+
+// ── Built-in function ────────────────────────────────────
+
+hdist_arg       = { param | num_list }
+hyperbolic_dist = { "HYPERBOLIC_DIST" ~ "(" ~ prop ~ "," ~ hdist_arg ~ ")" }
+
+// ── Atom  (leaf operand) ─────────────────────────────────
+
+atom = { hyperbolic_dist | boolean | float | integer | string | param | prop }
+
+// ── Comparison operators ─────────────────────────────────
+
+comp_op = { "<=" | ">=" | "!=" | "<" | ">" | "=" }
+
+// ── Conditions ───────────────────────────────────────────
+
+comparison   = { atom ~ comp_op ~ atom }
+not_cond     = { kw_not ~ primary_cond }
+paren_cond   = { "(" ~ or_cond ~ ")" }
+primary_cond = { not_cond | paren_cond | comparison }
+and_cond     = { primary_cond ~ (kw_and ~ primary_cond)* }
+or_cond      = { and_cond ~ (kw_or ~ and_cond)* }
+conditions   = { or_cond }
+where_clause = { kw_where ~ conditions }
+
+// ── Graph patterns ───────────────────────────────────────
+
+// (alias) or (alias:Label)
+node_pattern = { "(" ~ ident ~ (":" ~ ident)? ~ ")" }
+
+// Edge direction — typed or anonymous
+edge_label = @{ ident }
+edge_out   = { "-[:" ~ edge_label ~ "]->" | "-->" }
+edge_in    = { "<-[:" ~ edge_label ~ "]-" | "<--" }
+edge_dir   = { edge_out | edge_in }
+
+// (a)-[:TYPE]->(b) or (a)-->(b)
+path_pattern = { node_pattern ~ edge_dir ~ node_pattern }
+
+// Either a path or a lone node
+pattern      = { path_pattern | node_pattern }
+match_clause = { kw_match ~ pattern }
+
+// ── RETURN ───────────────────────────────────────────────
+
+// ORDER BY expr [ASC|DESC]
+order_dir  = { "DESC" | "ASC" }
+order_expr = { hyperbolic_dist | prop | ident }
+order_by   = { kw_order ~ kw_by ~ order_expr ~ order_dir? }
+
+// LIMIT n
+limit_clause = { kw_limit ~ integer }
+
+// Items: n, n.energy, …
+return_item   = { prop | ident }
+return_clause = {
+    kw_return ~ return_item ~ ("," ~ return_item)*
+    ~ order_by?
+    ~ limit_clause?
+}
+
+// ── DIFFUSE query ────────────────────────────────────────
+
+diffuse_from  = { param | ident }
+diffuse_t     = { kw_with ~ "t" ~ "=" ~ num_list }
+diffuse_hops  = { kw_max_hops ~ integer }
+diffuse_query = {
+    kw_diffuse ~ kw_from ~ diffuse_from
+    ~ diffuse_t?
+    ~ diffuse_hops?
+    ~ return_clause?
+}
+
+// ── MATCH query ──────────────────────────────────────────
+
+match_query = {
+    match_clause
+    ~ where_clause?
+    ~ return_clause
+}
+
+// ── Top-level ────────────────────────────────────────────
+
+query = { SOI ~ (diffuse_query | match_query) ~ EOI }
