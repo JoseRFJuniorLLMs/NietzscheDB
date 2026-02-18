@@ -6,6 +6,7 @@ use crate::adjacency::AdjacencyIndex;
 use crate::error::GraphError;
 use crate::model::{Edge, Node, PoincareVector};
 use crate::storage::GraphStorage;
+use crate::transaction::Transaction;
 use crate::wal::{GraphWal, GraphWalEntry};
 
 // ─────────────────────────────────────────────
@@ -309,6 +310,80 @@ impl<V: VectorStore> NietzscheDB<V> {
 
     pub fn node_count(&self) -> Result<usize, GraphError> { self.storage.node_count() }
     pub fn edge_count(&self) -> Result<usize, GraphError> { self.storage.edge_count() }
+
+    // ── Transaction API ────────────────────────────────
+
+    /// Begin a new ACID transaction.
+    ///
+    /// All mutations on the returned [`Transaction`] are buffered in memory.
+    /// Call [`Transaction::commit`] to apply them atomically, or
+    /// [`Transaction::rollback`] to discard.
+    ///
+    /// Only one transaction can be active at a time (enforced by the
+    /// `&mut self` borrow on both `begin_transaction` and the `Transaction`).
+    pub fn begin_transaction(&mut self) -> Transaction<'_, V> {
+        Transaction::new(Uuid::new_v4(), self)
+    }
+
+    // ── pub(crate) WAL access for Transaction ─────────
+
+    /// Append a WAL entry. Used by the transaction coordinator only.
+    pub(crate) fn wal_append(&mut self, entry: &GraphWalEntry) -> Result<(), GraphError> {
+        self.wal.append(entry)
+    }
+
+    // ── pub(crate) storage primitives (no WAL write) ──
+
+    /// Apply an `InsertNode` directly to storage and vector store.
+    /// The WAL entry must have been written by the caller.
+    pub(crate) fn apply_insert_node(&mut self, node: &Node) -> Result<(), GraphError> {
+        self.storage.put_node(node)?;
+        self.vector_store.upsert(node.id, &node.embedding)?;
+        Ok(())
+    }
+
+    /// Apply an `InsertEdge` directly to storage and adjacency index.
+    pub(crate) fn apply_insert_edge(&mut self, edge: &Edge) {
+        let _ = self.storage.put_edge(edge);
+        self.adjacency.add_edge(edge);
+    }
+
+    /// Apply a `PruneNode` (energy → 0) directly to storage.
+    pub(crate) fn apply_prune_node(&mut self, id: Uuid) -> Result<(), GraphError> {
+        if let Some(mut node) = self.storage.get_node(&id)? {
+            node.energy = 0.0;
+            self.storage.put_node(&node)?;
+        }
+        self.vector_store.delete(id)?;
+        self.adjacency.remove_node(&id);
+        Ok(())
+    }
+
+    /// Apply a `DeleteNode` directly to storage.
+    pub(crate) fn apply_delete_node(&mut self, id: Uuid) -> Result<(), GraphError> {
+        self.storage.delete_node(&id)?;
+        self.vector_store.delete(id)?;
+        self.adjacency.remove_node(&id);
+        Ok(())
+    }
+
+    /// Apply a `DeleteEdge` directly to storage.
+    pub(crate) fn apply_delete_edge(&mut self, id: Uuid) -> Result<(), GraphError> {
+        if let Some(edge) = self.storage.get_edge(&id)? {
+            self.adjacency.remove_edge(&edge);
+            self.storage.delete_edge(&edge)?;
+        }
+        Ok(())
+    }
+
+    /// Apply an `UpdateEnergy` directly to storage.
+    pub(crate) fn apply_update_energy(&mut self, node_id: Uuid, energy: f32) -> Result<(), GraphError> {
+        if let Some(mut node) = self.storage.get_node(&node_id)? {
+            node.energy = energy;
+            self.storage.put_node(&node)?;
+        }
+        Ok(())
+    }
 }
 
 // ─────────────────────────────────────────────
