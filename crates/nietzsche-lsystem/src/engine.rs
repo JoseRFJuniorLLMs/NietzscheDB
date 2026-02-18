@@ -1,0 +1,476 @@
+//! [`LSystemEngine`] — applies production rules to the hyperbolic graph
+//! and manages Hausdorff-based auto-pruning.
+//!
+//! ## Tick protocol
+//!
+//! 1. **Scan** — collect all live nodes (owned copy; no borrow held).
+//! 2. **Hausdorff** — recompute local dimension for every node; persist via
+//!    `NietzscheDB::update_hausdorff`.
+//! 3. **Match** — for each node, find the first matching production rule and
+//!    record a `PendingAction` (no mutations yet — avoids borrow conflicts).
+//!    Nodes outside the Hausdorff target `[hausdorff_lo, hausdorff_hi]` are
+//!    auto-queued for pruning.
+//! 4. **Apply** — consume the pending list: insert child/sibling nodes +
+//!    L-System edges, prune candidates, update energies.
+//! 5. **Report** — return a [`LSystemReport`] with counts and global D.
+
+use std::collections::HashSet;
+
+use rand::Rng;
+use uuid::Uuid;
+
+use nietzsche_graph::{
+    Edge, EdgeType, GraphError, Node, PoincareVector, VectorStore,
+    db::NietzscheDB,
+};
+
+use crate::hausdorff::{global_hausdorff, local_hausdorff, LOCAL_K};
+use crate::mobius::{spawn_child, spawn_sibling};
+use crate::rules::{check_condition, ProductionRule, RuleAction};
+
+// ─────────────────────────────────────────────
+// Engine
+// ─────────────────────────────────────────────
+
+/// Default lower bound for the Hausdorff auto-prune gate.
+pub const DEFAULT_HAUSDORFF_LO: f32 = 0.5;
+/// Default upper bound for the Hausdorff auto-prune gate.
+pub const DEFAULT_HAUSDORFF_HI: f32 = 1.9;
+
+/// L-System fractal growth engine.
+///
+/// Holds a list of [`ProductionRule`]s applied each tick. The engine is
+/// stateless (no internal counter) — callers track the generation number.
+#[derive(Debug, Default)]
+pub struct LSystemEngine {
+    /// Rules evaluated in order; first match wins per node per tick.
+    pub rules:          Vec<ProductionRule>,
+    /// Auto-prune nodes with local Hausdorff D < `hausdorff_lo`.
+    pub hausdorff_lo:   f32,
+    /// Auto-prune nodes with local Hausdorff D > `hausdorff_hi`.
+    pub hausdorff_hi:   f32,
+}
+
+impl LSystemEngine {
+    /// Construct an engine with the global Hausdorff target `[0.5, 1.9]`.
+    pub fn new(rules: Vec<ProductionRule>) -> Self {
+        Self {
+            rules,
+            hausdorff_lo: DEFAULT_HAUSDORFF_LO,
+            hausdorff_hi: DEFAULT_HAUSDORFF_HI,
+        }
+    }
+
+    /// Run one generation tick against `db`.
+    ///
+    /// Returns a [`LSystemReport`] describing the mutations performed.
+    pub fn tick<V: VectorStore>(&self, db: &mut NietzscheDB<V>) -> Result<LSystemReport, LSystemError> {
+        let mut rng = rand::thread_rng();
+
+        // ── Step 1: collect all nodes ────────────────────────────────────
+        let all_nodes: Vec<Node> = db.storage().scan_nodes()?;
+
+        // ── Step 2: recompute local Hausdorff ───────────────────────────
+        for node in &all_nodes {
+            let h = local_hausdorff(node, &all_nodes, LOCAL_K);
+            db.update_hausdorff(node.id, h)?;
+        }
+
+        // ── Step 3: re-scan (Hausdorff values now persisted) ────────────
+        let all_nodes: Vec<Node> = db.storage().scan_nodes()?;
+
+        // ── Step 4: match rules → build pending list ─────────────────────
+        let mut pending: Vec<PendingAction> = Vec::new();
+
+        for node in &all_nodes {
+            // Hausdorff auto-prune (takes priority over user rules)
+            if node.hausdorff_local < self.hausdorff_lo
+                || node.hausdorff_local > self.hausdorff_hi
+            {
+                pending.push(PendingAction::Prune { node_id: node.id });
+                continue;
+            }
+
+            // First matching user rule
+            for rule in &self.rules {
+                if check_condition(
+                    node.energy,
+                    node.depth,
+                    node.hausdorff_local,
+                    node.lsystem_generation,
+                    &rule.condition,
+                ) {
+                    if let Some(action) = make_pending(node, rule, &mut rng) {
+                        pending.push(action);
+                    }
+                    break;
+                }
+            }
+        }
+
+        // ── Step 5: apply mutations ──────────────────────────────────────
+        let (nodes_spawned, nodes_pruned, edges_created) = apply_pending(db, pending)?;
+
+        // ── Step 6: global Hausdorff on post-tick state ──────────────────
+        let final_nodes: Vec<Node> = db.storage().scan_nodes()?;
+        let global_d = global_hausdorff(&final_nodes);
+
+        Ok(LSystemReport {
+            nodes_spawned,
+            nodes_pruned,
+            edges_created,
+            global_hausdorff: global_d,
+            total_nodes: final_nodes.len(),
+        })
+    }
+}
+
+// ─────────────────────────────────────────────
+// Report
+// ─────────────────────────────────────────────
+
+/// Statistics returned by [`LSystemEngine::tick`].
+#[derive(Debug, Clone)]
+pub struct LSystemReport {
+    pub nodes_spawned:    usize,
+    pub nodes_pruned:     usize,
+    pub edges_created:    usize,
+    pub global_hausdorff: f32,
+    pub total_nodes:      usize,
+}
+
+impl LSystemReport {
+    /// `true` if the graph is within the target fractal regime `(1.2, 1.8)`.
+    pub fn is_fractal(&self) -> bool {
+        self.global_hausdorff > 1.2 && self.global_hausdorff < 1.8
+    }
+}
+
+// ─────────────────────────────────────────────
+// Error
+// ─────────────────────────────────────────────
+
+#[derive(Debug, thiserror::Error)]
+pub enum LSystemError {
+    #[error("graph error: {0}")]
+    Graph(#[from] GraphError),
+}
+
+// ─────────────────────────────────────────────
+// Pending action (pre-computed, no borrow of db)
+// ─────────────────────────────────────────────
+
+enum PendingAction {
+    SpawnChild {
+        parent_id:         Uuid,
+        parent_generation: u32,
+        child_coords:      Vec<f64>,
+        weight:            f32,
+        content:           serde_json::Value,
+        rule_name:         String,
+    },
+    SpawnSibling {
+        parent_id:          Uuid,
+        parent_generation:  u32,
+        sibling_coords:     Vec<f64>,
+        weight:             f32,
+        content:            serde_json::Value,
+        rule_name:          String,
+    },
+    Prune { node_id: Uuid },
+    UpdateEnergy { node_id: Uuid, new_energy: f32 },
+}
+
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
+
+/// Convert a rule action into a `PendingAction`, pre-computing new positions.
+fn make_pending(
+    node: &Node,
+    rule: &ProductionRule,
+    rng:  &mut impl Rng,
+) -> Option<PendingAction> {
+    match &rule.action {
+        RuleAction::SpawnChild { depth_offset, weight, content } => {
+            let coords = spawn_child(&node.embedding.coords, *depth_offset, rng);
+            Some(PendingAction::SpawnChild {
+                parent_id:         node.id,
+                parent_generation: node.lsystem_generation,
+                child_coords:      coords,
+                weight:            *weight,
+                content:           content.clone(),
+                rule_name:         rule.name.clone(),
+            })
+        }
+        RuleAction::SpawnSibling { angle, distance, weight, content } => {
+            let coords = spawn_sibling(&node.embedding.coords, *angle, *distance, rng);
+            Some(PendingAction::SpawnSibling {
+                parent_id:         node.id,
+                parent_generation: node.lsystem_generation,
+                sibling_coords:    coords,
+                weight:            *weight,
+                content:           content.clone(),
+                rule_name:         rule.name.clone(),
+            })
+        }
+        RuleAction::Prune => Some(PendingAction::Prune { node_id: node.id }),
+        RuleAction::UpdateEnergy { delta } => {
+            let new_energy = (node.energy + delta).clamp(0.0, 1.0);
+            Some(PendingAction::UpdateEnergy { node_id: node.id, new_energy })
+        }
+    }
+}
+
+/// Execute all pending actions against `db`.
+///
+/// Returns `(nodes_spawned, nodes_pruned, edges_created)`.
+fn apply_pending<V: VectorStore>(
+    db:      &mut NietzscheDB<V>,
+    pending: Vec<PendingAction>,
+) -> Result<(usize, usize, usize), LSystemError> {
+    let mut nodes_spawned = 0usize;
+    let mut nodes_pruned  = 0usize;
+    let mut edges_created = 0usize;
+    let mut pruned: HashSet<Uuid> = HashSet::new();
+
+    for action in pending {
+        match action {
+            PendingAction::SpawnChild {
+                parent_id, parent_generation, child_coords, weight, content, rule_name,
+            } => {
+                if pruned.contains(&parent_id) {
+                    continue; // parent was pruned earlier in this tick
+                }
+                let emb = PoincareVector::new(child_coords);
+                if !emb.is_valid() {
+                    continue; // numeric drift — skip
+                }
+                let mut child = Node::new(Uuid::new_v4(), emb, content);
+                child.lsystem_generation = parent_generation + 1;
+                let child_id = child.id;
+
+                db.insert_node(child)?;
+                nodes_spawned += 1;
+
+                let mut edge = Edge::new(parent_id, child_id, EdgeType::LSystemGenerated, weight);
+                edge.lsystem_rule = Some(rule_name);
+                db.insert_edge(edge)?;
+                edges_created += 1;
+            }
+
+            PendingAction::SpawnSibling {
+                parent_id, parent_generation, sibling_coords, weight, content, rule_name,
+            } => {
+                if pruned.contains(&parent_id) {
+                    continue;
+                }
+                let emb = PoincareVector::new(sibling_coords);
+                if !emb.is_valid() {
+                    continue;
+                }
+                let mut sibling = Node::new(Uuid::new_v4(), emb, content);
+                sibling.lsystem_generation = parent_generation + 1;
+                let sibling_id = sibling.id;
+
+                db.insert_node(sibling)?;
+                nodes_spawned += 1;
+
+                let mut edge = Edge::new(parent_id, sibling_id, EdgeType::LSystemGenerated, weight);
+                edge.lsystem_rule = Some(rule_name);
+                db.insert_edge(edge)?;
+                edges_created += 1;
+            }
+
+            PendingAction::Prune { node_id } => {
+                if pruned.insert(node_id) {
+                    db.prune_node(node_id)?;
+                    nodes_pruned += 1;
+                }
+            }
+
+            PendingAction::UpdateEnergy { node_id, new_energy } => {
+                if !pruned.contains(&node_id) {
+                    db.update_energy(node_id, new_energy)?;
+                }
+            }
+        }
+    }
+
+    Ok((nodes_spawned, nodes_pruned, edges_created))
+}
+
+// ─────────────────────────────────────────────
+// Tests
+// ─────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nietzsche_graph::{MockVectorStore, Node, PoincareVector};
+    use tempfile::TempDir;
+
+    fn tmp() -> TempDir { TempDir::new().unwrap() }
+
+    fn open_db(dir: &TempDir) -> NietzscheDB<MockVectorStore> {
+        NietzscheDB::open(dir.path(), MockVectorStore::default()).unwrap()
+    }
+
+    fn seed_node(x: f64, energy: f32) -> Node {
+        let mut n = Node::new(
+            Uuid::new_v4(),
+            PoincareVector::new(vec![x, 0.0]),
+            serde_json::json!({}),
+        );
+        n.energy = energy;
+        n
+    }
+
+    #[test]
+    fn tick_spawns_children_for_high_energy_nodes() {
+        let dir = tmp();
+        let mut db = open_db(&dir);
+
+        let seed = seed_node(0.2, 0.9);
+        db.insert_node(seed.clone()).unwrap();
+
+        let engine = LSystemEngine::new(vec![
+            ProductionRule::growth_child("grow", 3),
+        ]);
+
+        let report = engine.tick(&mut db).unwrap();
+        assert!(report.nodes_spawned >= 1, "expected at least one child spawned");
+        assert!(report.edges_created >= 1);
+    }
+
+    #[test]
+    fn tick_prunes_low_energy_nodes() {
+        let dir = tmp();
+        let mut db = open_db(&dir);
+
+        let fading = seed_node(0.3, 0.05); // energy below prune threshold
+        db.insert_node(fading.clone()).unwrap();
+
+        let engine = LSystemEngine::new(vec![
+            ProductionRule::prune_fading("prune", 0.1),
+        ]);
+
+        let report = engine.tick(&mut db).unwrap();
+        assert!(report.nodes_pruned >= 1);
+
+        // Node still exists but energy = 0
+        let node = db.get_node(fading.id).unwrap().unwrap();
+        assert_eq!(node.energy, 0.0);
+    }
+
+    #[test]
+    fn generation_limit_prevents_unbounded_growth() {
+        let dir = tmp();
+        let mut db = open_db(&dir);
+
+        let seed = seed_node(0.1, 0.9);
+        db.insert_node(seed).unwrap();
+
+        let engine = LSystemEngine::new(vec![
+            ProductionRule::growth_child("grow", 1), // max gen = 1
+        ]);
+
+        // Tick 1: seed (gen=0) spawns a child (gen=1)
+        let r1 = engine.tick(&mut db).unwrap();
+        assert_eq!(r1.nodes_spawned, 1);
+
+        // Tick 2: seed (gen=0) still matches; child (gen=1) does NOT
+        let r2 = engine.tick(&mut db).unwrap();
+        // Only the original seed node can still fire (if energy stays high)
+        // Child nodes (gen=1) are blocked by GenerationBelow(1)
+        assert!(r2.nodes_spawned <= 1, "child should not grow: spawned {}", r2.nodes_spawned);
+    }
+
+    #[test]
+    fn spawned_child_is_deeper_than_parent() {
+        let dir = tmp();
+        let mut db = open_db(&dir);
+
+        let seed = seed_node(0.3, 0.9);
+        let parent_depth = seed.depth;
+        db.insert_node(seed).unwrap();
+
+        let engine = LSystemEngine::new(vec![
+            ProductionRule::growth_child("grow", 3),
+        ]);
+
+        engine.tick(&mut db).unwrap();
+
+        // Scan for nodes with generation == 1
+        let all = db.storage().scan_nodes().unwrap();
+        let children: Vec<_> = all.iter().filter(|n| n.lsystem_generation == 1).collect();
+        assert!(!children.is_empty());
+        for child in children {
+            assert!(
+                child.depth > parent_depth,
+                "child.depth {} should exceed parent.depth {}", child.depth, parent_depth
+            );
+        }
+    }
+
+    #[test]
+    fn sibling_spawning_rule() {
+        let dir = tmp();
+        let mut db = open_db(&dir);
+
+        let seed = seed_node(0.4, 0.8);
+        db.insert_node(seed).unwrap();
+
+        let engine = LSystemEngine::new(vec![
+            ProductionRule::lateral_association("lateral", 3),
+        ]);
+
+        let report = engine.tick(&mut db).unwrap();
+        assert!(report.nodes_spawned >= 1);
+        assert!(report.edges_created >= 1);
+
+        // Sibling edges should be LSystemGenerated
+        let all_edges = db.storage().scan_edges().unwrap();
+        let lsys_edges: Vec<_> = all_edges.iter()
+            .filter(|e| e.edge_type == EdgeType::LSystemGenerated)
+            .collect();
+        assert!(!lsys_edges.is_empty());
+    }
+
+    #[test]
+    fn report_global_hausdorff_is_in_range() {
+        let dir = tmp();
+        let mut db = open_db(&dir);
+
+        // Seed a few nodes
+        for i in 0..5 {
+            db.insert_node(seed_node(0.1 * (i as f64 + 1.0), 0.9)).unwrap();
+        }
+
+        let engine = LSystemEngine::new(vec![
+            ProductionRule::growth_child("grow", 2),
+        ]);
+
+        let report = engine.tick(&mut db).unwrap();
+        assert!(
+            report.global_hausdorff >= 0.0 && report.global_hausdorff <= 3.0,
+            "Hausdorff out of range: {}",
+            report.global_hausdorff
+        );
+    }
+
+    #[test]
+    fn no_rules_no_mutations() {
+        let dir = tmp();
+        let mut db = open_db(&dir);
+        db.insert_node(seed_node(0.2, 1.0)).unwrap();
+
+        let engine = LSystemEngine::new(vec![]); // empty rule set
+        let report = engine.tick(&mut db).unwrap();
+
+        // No rules = no spawns; only Hausdorff auto-prune could fire
+        // (default node has hausdorff_local = 1.0 which is within [0.5, 1.9])
+        assert_eq!(report.nodes_spawned, 0);
+        assert_eq!(report.edges_created, 0);
+    }
+}
