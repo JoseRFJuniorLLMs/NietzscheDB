@@ -1,0 +1,20 @@
+[package]
+name = "hyperspace-core"
+version = "2.0.0"
+edition = "2021"
+
+[dependencies]
+thiserror = { workspace = true }
+rand = { workspace = true }
+async-trait = "0.1.89"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "metric_bench"
+harness = false
+
+[features]
+default = []
+nightly-simd = []

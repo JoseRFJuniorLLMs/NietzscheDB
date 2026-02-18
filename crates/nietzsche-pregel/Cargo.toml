@@ -1,0 +1,14 @@
+[package]
+name = "nietzsche-pregel"
+version = "0.1.0"
+edition = "2021"
+description = "Hyperbolic diffusion / heat kernel via Chebyshev approximation"
+
+[dependencies]
+nietzsche-graph = { workspace = true }
+hyperspace-core = { workspace = true }
+uuid = { workspace = true }
+ordered-float = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }

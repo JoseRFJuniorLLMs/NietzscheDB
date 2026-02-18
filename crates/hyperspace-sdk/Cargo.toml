@@ -1,0 +1,24 @@
+[package]
+name = "hyperspace-sdk"
+version = "2.0.0"
+edition = "2021"
+description = "Official Rust SDK for HyperspaceDB gRPC API"
+readme = "README.md"
+license = "AGPL-3.0-only"
+keywords = ["vector-database", "ann", "grpc", "hnsw", "hyperspace"]
+categories = ["database", "api-bindings"]
+
+[features]
+default = []
+embedders = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait"]
+
+[dependencies]
+hyperspace-proto = { workspace = true }
+tonic = { workspace = true }
+tokio = { workspace = true }
+
+# Embedder dependencies (Optional)
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+async-trait = { version = "0.1", optional = true }

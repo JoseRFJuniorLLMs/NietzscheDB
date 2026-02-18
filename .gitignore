@@ -1,0 +1,22 @@
+/target/
+**/target/
+sdks/python/venv
+__pycache__
+**/*.pyc
+.DS_Store
+Cargo.lock
+# Data files (Exclude everywhere)
+**/*.hyp
+**/*.snap
+**/*.log
+**/*.bin
+**/*.tar.gz
+**/TODO*.md
+# Directories
+**/venv/
+venv/
+data/
+docs/book/
+node_modules/
+dist/
+package-lock.json
