@@ -3,7 +3,7 @@
 # Build nietzsche-server with full LTO + stripped symbols.
 # RocksDB links statically via the `rocksdb` crate — no shared .so needed at
 # runtime.
-FROM rust:1.85-slim-bookworm AS builder
+FROM rustlang/rust:nightly-slim AS builder
 
 # System dependencies for RocksDB + tonic-build (protoc)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -33,6 +33,7 @@ FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         libssl3 \
+        libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root user
