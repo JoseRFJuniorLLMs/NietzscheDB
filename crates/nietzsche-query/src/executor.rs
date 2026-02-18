@@ -153,11 +153,11 @@ fn execute_path_match(
             }
         }
 
-        let from_node = match storage.get_node(from_id)? {
+        let from_node = match storage.get_node(&from_id)? {
             Some(n) => n,
             None    => continue,
         };
-        let to_node = match storage.get_node(to_id)? {
+        let to_node = match storage.get_node(&to_id)? {
             Some(n) => n,
             None    => continue,
         };
