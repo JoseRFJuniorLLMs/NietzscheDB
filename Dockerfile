@@ -18,8 +18,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# Copy workspace manifests + lock file first → better layer caching.
-COPY Cargo.toml Cargo.lock ./
+# Copy workspace manifests (Cargo.lock* makes it optional if not committed).
+COPY Cargo.toml Cargo.lock* ./
 COPY crates/ crates/
 
 # Build the production binary.
