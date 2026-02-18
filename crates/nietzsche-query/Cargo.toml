@@ -1,14 +1,17 @@
 [package]
-name = "nietzsche-query"
-version = "0.1.0"
-edition = "2021"
-description = "NQL - Nietzsche Query Language parser, planner and executor"
+name        = "nietzsche-query"
+version     = "0.1.0"
+edition     = "2021"
+description = "NQL — Nietzsche Query Language: PEG parser, planner, and executor"
 
 [dependencies]
 nietzsche-graph = { workspace = true }
-hyperspace-core = { workspace = true }
-pest = { workspace = true }
-pest_derive = { workspace = true }
-serde = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
+pest            = { workspace = true }
+pest_derive     = { workspace = true }
+serde           = { workspace = true }
+thiserror       = { workspace = true }
+uuid            = { workspace = true }
+serde_json      = "1.0"
+
+[dev-dependencies]
+tempfile = "3"
