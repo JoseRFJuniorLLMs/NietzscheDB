@@ -2,11 +2,13 @@
 name = "nietzsche-sdk"
 version = "0.1.0"
 edition = "2021"
-description = "Auto-generated Python and TypeScript SDK stubs"
+description = "Rust async client SDK for NietzscheDB (gRPC)"
 
 [dependencies]
 nietzsche-api = { workspace = true }
-tonic = { workspace = true }
-prost = { workspace = true }
-serde = { workspace = true }
-tokio = { workspace = true }
+tonic         = { workspace = true }
+prost         = { workspace = true }
+serde         = { workspace = true }
+serde_json    = "1.0"
+tokio         = { workspace = true }
+uuid          = { workspace = true }

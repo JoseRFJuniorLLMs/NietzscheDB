@@ -1,0 +1,210 @@
+syntax = "proto3";
+
+package nietzsche;
+
+// ── NietzscheDB unified gRPC API ──────────────────────────────────────────
+//
+// Exposes all core subsystems over a single service:
+//   • Graph CRUD  (nodes + edges)
+//   • NQL queries (Nietzsche Query Language, Phase 4)
+//   • Vector KNN  (Poincaré ball nearest-neighbour search)
+//   • Traversal   (BFS, Dijkstra)
+//   • Diffusion   (Chebyshev heat-kernel, Phase 6)
+//   • Sleep cycle (Riemannian reconsolidation, Phase 8)
+//   • Admin       (stats, health)
+
+service NietzscheDB {
+
+  // ── Node CRUD ─────────────────────────────────────────────────────────
+  rpc InsertNode   (InsertNodeRequest)    returns (NodeResponse);
+  rpc GetNode      (NodeIdRequest)        returns (NodeResponse);
+  rpc DeleteNode   (NodeIdRequest)        returns (StatusResponse);
+  rpc UpdateEnergy (UpdateEnergyRequest)  returns (StatusResponse);
+
+  // ── Edge CRUD ─────────────────────────────────────────────────────────
+  rpc InsertEdge (InsertEdgeRequest) returns (EdgeResponse);
+  rpc DeleteEdge (EdgeIdRequest)     returns (StatusResponse);
+
+  // ── NQL query (Nietzsche Query Language) ─────────────────────────────
+  rpc Query (QueryRequest) returns (QueryResponse);
+
+  // ── Vector search (hyperbolic KNN) ───────────────────────────────────
+  rpc KnnSearch (KnnRequest) returns (KnnResponse);
+
+  // ── Graph traversal ───────────────────────────────────────────────────
+  rpc Bfs      (TraversalRequest) returns (TraversalResponse);
+  rpc Dijkstra (TraversalRequest) returns (TraversalResponse);
+
+  // ── Heat-kernel diffusion (Phase 6) ──────────────────────────────────
+  rpc Diffuse (DiffusionRequest) returns (DiffusionResponse);
+
+  // ── Reconsolidation sleep cycle (Phase 8) ────────────────────────────
+  rpc TriggerSleep (SleepRequest) returns (SleepResponse);
+
+  // ── Admin ─────────────────────────────────────────────────────────────
+  rpc GetStats (Empty) returns (StatsResponse);
+  rpc HealthCheck (Empty) returns (StatusResponse);
+}
+
+// ── Common primitives ──────────────────────────────────────────────────────
+
+message Empty {}
+
+message StatusResponse {
+  string status = 1;   // "ok" | "error"
+  string error  = 2;   // set only when status == "error"
+}
+
+message PoincareVector {
+  repeated double coords = 1;
+  uint32          dim    = 2;
+}
+
+// ── Node messages ──────────────────────────────────────────────────────────
+
+// Supported values: "Semantic", "Episodic", "Concept", "DreamSnapshot"
+// Defaults to "Semantic" if empty.
+message InsertNodeRequest {
+  string         id        = 1;  // UUIDv4 as string; server auto-generates if empty
+  PoincareVector embedding = 2;
+  bytes          content   = 3;  // arbitrary JSON bytes
+  string         node_type = 4;
+  float          energy    = 5;  // default 1.0
+}
+
+message NodeIdRequest {
+  string id = 1;
+}
+
+message UpdateEnergyRequest {
+  string node_id = 1;
+  float  energy  = 2;
+}
+
+message NodeResponse {
+  bool           found          = 1;
+  string         id             = 2;
+  PoincareVector embedding      = 3;
+  float          energy         = 4;
+  float          depth          = 5;
+  float          hausdorff_local= 6;
+  int64          created_at     = 7;  // Unix seconds
+  bytes          content        = 8;  // JSON bytes
+  string         node_type      = 9;
+}
+
+// ── Edge messages ──────────────────────────────────────────────────────────
+
+// Supported values: "Association", "Hierarchical", "LSystemGenerated", "Pruned"
+message InsertEdgeRequest {
+  string id        = 1;  // UUIDv4; auto-generated if empty
+  string from      = 2;
+  string to        = 3;
+  string edge_type = 4;
+  double weight    = 5;
+}
+
+message EdgeResponse {
+  bool   success = 1;
+  string id      = 2;
+}
+
+message EdgeIdRequest {
+  string id = 1;
+}
+
+// ── NQL messages ───────────────────────────────────────────────────────────
+
+message QueryRequest {
+  string nql = 1;  // full NQL query string
+}
+
+message QueryResponse {
+  repeated NodeResponse nodes      = 1;
+  // Node pairs returned by edge-traversal queries
+  repeated NodePair     node_pairs = 2;
+  // UUIDs returned by DIFFUSE queries
+  repeated string       path_ids   = 3;
+  string                error      = 4;
+}
+
+message NodePair {
+  NodeResponse from = 1;
+  NodeResponse to   = 2;
+}
+
+// ── KNN messages ──────────────────────────────────────────────────────────
+
+message KnnRequest {
+  repeated double query_coords = 1;
+  uint32          k            = 2;
+}
+
+message KnnResult {
+  string id       = 1;
+  double distance = 2;
+}
+
+message KnnResponse {
+  repeated KnnResult results = 1;
+}
+
+// ── Traversal messages ────────────────────────────────────────────────────
+
+message TraversalRequest {
+  string start_node_id = 1;
+  uint32 max_depth     = 2;   // BFS max hops; Dijkstra: max settled nodes
+  double max_cost      = 3;   // Dijkstra max cumulative distance (0 = ∞)
+  float  energy_min    = 4;   // skip nodes below this energy
+  uint32 max_nodes     = 5;   // hard cap on visited nodes (0 = default 1000)
+}
+
+message TraversalResponse {
+  repeated string visited_ids = 1;  // node UUIDs in visit order
+  repeated double costs       = 2;  // parallel to visited_ids (Dijkstra only)
+}
+
+// ── Diffusion messages ────────────────────────────────────────────────────
+
+message DiffusionRequest {
+  repeated string source_ids  = 1;   // seed node UUIDs
+  repeated double t_values    = 2;   // diffusion times (e.g. [0.1, 1.0, 10.0])
+  uint32          k_chebyshev = 3;   // polynomial order (0 = default 10)
+}
+
+message DiffusionScale {
+  double          t            = 1;
+  repeated string node_ids     = 2;
+  repeated double scores       = 3;   // parallel to node_ids
+}
+
+message DiffusionResponse {
+  repeated DiffusionScale scales = 1;
+}
+
+// ── Sleep cycle messages ──────────────────────────────────────────────────
+
+message SleepRequest {
+  double noise                = 1;   // perturbation magnitude (default 0.02)
+  uint32 adam_steps           = 2;   // Adam steps per node (default 10)
+  double adam_lr              = 3;   // Adam learning rate (default 5e-3)
+  float  hausdorff_threshold  = 4;   // max |ΔH| to commit (default 0.15)
+  uint64 rng_seed             = 5;   // 0 = non-deterministic
+}
+
+message SleepResponse {
+  float  hausdorff_before  = 1;
+  float  hausdorff_after   = 2;
+  float  hausdorff_delta   = 3;
+  bool   committed         = 4;
+  uint32 nodes_perturbed   = 5;
+  uint32 snapshot_nodes    = 6;
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────
+
+message StatsResponse {
+  uint64 node_count = 1;
+  uint64 edge_count = 2;
+  string version    = 3;
+}
