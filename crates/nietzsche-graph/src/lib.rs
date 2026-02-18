@@ -19,6 +19,7 @@ pub mod db;
 pub mod error;
 pub mod model;
 pub mod storage;
+pub mod traversal;
 pub mod wal;
 
 pub use adjacency::AdjacencyIndex;
@@ -26,4 +27,7 @@ pub use db::{MockVectorStore, NietzscheDB, VectorStore};
 pub use error::GraphError;
 pub use model::{Edge, EdgeType, Node, NodeType, PoincareVector};
 pub use storage::GraphStorage;
+pub use traversal::{
+    bfs, diffusion_walk, dijkstra, shortest_path, BfsConfig, DiffusionConfig, DijkstraConfig,
+};
 pub use wal::{GraphWal, GraphWalEntry};
