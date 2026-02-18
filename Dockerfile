@@ -3,7 +3,7 @@
 # Build nietzsche-server with full LTO + stripped symbols.
 # RocksDB links statically via the `rocksdb` crate — no shared .so needed at
 # runtime.
-FROM rust:1.75-slim-bullseye AS builder
+FROM rust:1.85-slim-bookworm AS builder
 
 # System dependencies for RocksDB + tonic-build (protoc)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -28,11 +28,11 @@ COPY crates/ crates/
 RUN cargo build --release --bin nietzsche-server
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
-FROM debian:bullseye-slim AS runtime
+FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
-        libssl1.1 \
+        libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root user
