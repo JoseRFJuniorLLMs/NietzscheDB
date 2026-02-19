@@ -129,20 +129,31 @@ Quando ‖x‖ → 1.0 (nós episódicos na fronteira), este denominador → 0. 
 
 ### 2.3 Análise quantitativa do risco
 
+> **Correção (parecer Grok, 2026-02-19)**: o "erro de 0.008 por coordenada" pertence ao **ITEM D (Int8)**, não ao f32. O risco real do cast f32→f64 é muito menor.
+
 ```
-Caso: ‖x‖ = 0.99 (nó episódico típico)
+Caso: ‖x‖ = 0.99, dim = 3072
+
+Erro real de representação f32 por coordenada: ε ≈ ±5.96 × 10⁻⁸
+Erro acumulado na norma (3072 dims, simulação Grok):
+  → típico: 10⁻⁹ a 4×10⁻⁷
+  → piores 1% dos nós episódicos: até 4×10⁻⁷
 
 Com f64 (sem erro):
   (1 − 0.99²) = 0.0199
 
-Com f32, erro típico de uma coordenada: ε = ±5.96 × 10⁻⁸
-Em 3072 dimensões, acúmulo de erro na norma: ≈ 0.001 a 0.01
+Com f32 cast (erro realista ε = 4×10⁻⁷ na norma):
+  (1 − (0.99² + 4×10⁻⁷)) ≈ 0.01990 - 4×10⁻⁷ ≈ 0.01990
 
-Pior caso (erro de 0.008 em uma coord):
-  (1 − (0.99 + 0.008)²) = 0.0040
+Distorção relativa na distância hiperbólica:
+  → maioria dos casos: < 0.002%
+  → piores 1% dos nós episódicos: < 0.1%
 
-Diferença no denominador: 0.0199 / 0.0040 = 4.975×
-→ A distância hiperbólica calculada pode diferir em até 5× do valor correto
+Com mitigação poincare_sums_f32_to_f64: praticamente zero.
+
+[COMPARATIVO: ITEM D (Int8), erro 0.008 por coord:]
+  (1 − (0.99 + 0.008)²) = 0.0040 → diferença 5× no denominador
+  ← ESTE é o risco de 5×, não o f32
 ```
 
 ### 2.4 Mitigação disponível
@@ -170,12 +181,14 @@ fn poincare_sums_f32_to_f64(u: &[f32], v: &[f32]) -> (f64, f64, f64) {
 
 ### 2.5 Risco residual após mitigação
 
-| Cenário | Sem mitigação | Com mitigação |
-|---------|--------------|---------------|
+> Números corrigidos pela simulação do Grok (3072 dims, 2026-02-19).
+
+| Cenário | Sem mitigação | Com mitigação `poincare_sums_f32_to_f64` |
+|---------|--------------|-------------------------------------------|
 | Nós centrais (‖x‖ < 0.5) | negligível | **ZERO** |
-| Nós intermediários (‖x‖ ∈ [0.5, 0.9]) | baixo | **ZERO** |
-| Nós episódicos (‖x‖ > 0.95) | 5× erro | **BAIXO** — erro de representação f32, não de cálculo |
-| Adam optimizer (gradientes) | médio | Revisar separadamente — gradientes precisam de f64 |
+| Nós intermediários (‖x‖ ∈ [0.5, 0.9]) | < 0.002% distorção | **ZERO** |
+| Nós episódicos (‖x‖ > 0.95) | < 0.1% distorção (piores 1%) | **PRATICAMENTE ZERO** — promoção f64 antes do kernel |
+| Adam optimizer (gradientes Riemannianos) | médio | **Manter gradientes em f64 completo** — converter para f32 só ao persistir no store |
 
 ### 2.6 Dependências
 
@@ -487,5 +500,84 @@ Estas otimizações têm risco hiperbólico zero e podem ser implementadas imedi
 ---
 
 *Cruzamento gerado em 2026-02-19 — fontes: `risco_hiperbolico.md` v1.0 + `md/hiperbolica.md` (revisão externa)*
+
+---
+
+## PARTE 9 — PARECER GROK / TIME TÉCNICO (md/hiperbolica2.md)
+
+> Parecer de: Grok (líder técnico), em nome de Harper, Benjamin, Lucas.
+> Data: 2026-02-19, 11:27 WET.
+> Nota sobre dados históricos: **ambiente de dev — dados podem ser apagados e recriados. Preocupação de reindexação HNSW irrelevante.**
+
+---
+
+### Correção ao nosso documento (ITEM C — seção 2.3)
+
+**Erro identificado pelo Grok**: o valor "0.008 de erro em uma coordenada" citado na seção 2.3 pertence ao **ITEM D (Int8)**, não ao f32.
+
+Simulação numérica real (3072 dims, ‖x‖=0.99):
+
+| Métrica | f32 (cast direto) | Int8 (quantizado) |
+|---------|-------------------|--------------------|
+| Erro típico na norma | 10⁻⁹ a 4×10⁻⁷ | ±0.008 por coordenada |
+| Distorção relativa na distância hiperbólica | **< 0.002%** (maioria dos casos) | até **5×** sem oversampling |
+| Piores 1% nós episódicos | **< 0.1%** | degradação severa |
+| Com mitigação (`poincare_sums_f32_to_f64`) | **praticamente zero** | requer oversampling 8–10× |
+
+**Conclusão**: o risco hiperbólico do ITEM C foi **superestimado** neste documento. Com `poincare_sums_f32_to_f64`, o risco cai para praticamente zero mesmo para nós episódicos extremos.
+
+---
+
+### Tabela 4 — Cruzamento completo das três fontes
+
+| Item | Nosso doc<br>*(risco_hiperbolico.md)* | Revisão 1<br>*(hiperbolica.md)* | Grok<br>*(hiperbolica2.md)* | Consenso das 3 fontes | Decisão final |
+|------|--------------------------------------|----------------------------------|------------------------------|------------------------|---------------|
+| **BUG A** NodeMeta | Aprovar — Sprint 3b | Aprovar — prioridade #1 | **APROVAR — prioridade absoluta** | ✅ Unânime | **SPRINT 3b — fazer primeiro** |
+| **ITEM C** f32+kernel f64 | Aprovar com mitigação | Aprovar com ressalva Adam | **APROVAR** — melhor custo-benefício | ✅ Unânime | **APROVAR — junto com BUG A** |
+| **ITEM D** Int8 oversampling | Aprovar condicional (8–10×) | Aprovar condicional (5–10×) | **APROVAR** como índice secundário (5× adaptativo) | ✅ Unânime | **APROVAR — Sprint 3c, após A+C** |
+| **ITEM F** Binary Quant | Rejeitar como primário | Rejeitar como primário | **REJEITAR** — "Sign(x) destrói a magnitude = hierarquia" | ✅ Unânime | **REJEITAR como métrica nativa** |
+| **ITEM E** Filtered KNN | Aprovar Fase 3a | Aprovar já (prioridade 3) | **APROVAR já** | ✅ Unânime | **SPRINT 3a — imediato** |
+| **ITEM E+** Visited pool | Aprovar Fase 3a | Aprovar já (prioridade 4) | **APROVAR já** | ✅ Unânime | **SPRINT 3a — imediato** |
+| **Risco ITEM C** (magnitude) | BAIXO — erro 0.008 (incorreto) | BAIXO — mitigável | **MUITO BAIXO** — corrige nosso doc: erro real f32 < 0.002% | ⚠️ Nosso doc exagerou | **Risco f32 é menor que documentado** |
+| **Adam optimizer** (sleep) | Não mencionado | Risco médio — análise separada | **Manter gradientes em f64**, converter para f32 só ao escrever | ➕ Grok resolve o problema | **Gradientes riemannianos sempre em f64** |
+| **Dados históricos HNSW** | N/A | Reindexação O(N log N) | **Irrelevante (dev)** — apaga e recria | ✅ User confirmou: ambiente dev | **Sem preocupação — recriar do zero** |
+
+---
+
+### Sugestões técnicas do Grok (alto valor, baixo custo)
+
+| Sugestão | Onde implementar | Impacto | Custo |
+|----------|-----------------|---------|-------|
+| **`norm_cached: f32` em `NodeMeta`** | `model.rs` — adicionar ao struct `NodeMeta` durante migração BUG A | Filtros ultra-rápidos semântico/episódico sem tocar no embedding | Trivial — 1 field, 4 bytes por nó |
+| **Gradientes Riemannianos sempre em f64** | `sleep/riemannian.rs` — Adam optimizer. Converter f32→f64 no início, f64→f32 só ao persistir | Evita divergência numérica do sleep cycle em nós episódicos | Revisão localizada no optimizer |
+| **Soft clamping ‖x‖ > 0.999 → 0.999** | `model.rs` — `project_into_ball()` ou operações de retraction | Evita underflow catastrófico no denominador `(1−‖x‖²)` no longo prazo | Uma linha de código |
+| **"Hyperbolic Invariant Test Suite"** | Nova crate `nietzsche-invariant-tests` ou CI nightly | Mede nightly: recall@10 hiperbólico, drift médio de ‖x‖, % nós > 0.995, erro médio de distância após cada otimização | 1–2 dias de setup, valor permanente |
+
+---
+
+### Backlog consolidado — Sprint por Sprint (versão final)
+
+```
+Sprint 3a — IMEDIATO (sem breaking changes, sem migração)
+  1. Filtered KNN via energy_idx  → ganho 5–50× queries filtradas
+  2. Pool de visited lists (BFS)  → ganho 10–30% latência traversal
+  3. Soft clamping ‖x‖ > 0.999   → 1 linha, proteção permanente
+
+Sprint 3b — DEDICADO (1–2 semanas, migração única de dados)
+  4. BUG A: NodeMeta + norm_cached: f32 no struct
+  5. ITEM C: f32 storage + poincare_sums_f32_to_f64
+  6. Revisão Adam optimizer (gradientes em f64)
+
+Sprint 3c — APÓS 3b ESTABILIZADO
+  7. ITEM D: Int8 scalar quantization + oversampling adaptativo por ‖query‖
+
+Nunca como métrica primária
+  8. Binary Quantization
+```
+
+---
+
+*Parecer Grok recebido em 2026-02-19 — adicionado à PARTE 9 desta revisão*
 *Documento preparado pela auditoria técnica interna — 2026-02-19*
 *Referências: `AUDITORIA_PERFORMANCE.md`, `pesquisar1.md`, código-fonte Qdrant commit 9f433b1*
+*Revisões: `md/hiperbolica.md` (revisão 1), `md/hiperbolica2.md` (parecer Grok)*
