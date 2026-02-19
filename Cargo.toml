@@ -34,6 +34,7 @@ nietzsche-sdk      = { path = "crates/nietzsche-sdk" }
 nietzsche-hyp-ops      = { path = "crates/nietzsche-hyp-ops" }
 nietzsche-sensory      = { path = "crates/nietzsche-sensory" }
 nietzsche-zaratustra   = { path = "crates/nietzsche-zaratustra" }
+nietzsche-cluster      = { path = "crates/nietzsche-cluster" }
 memmap2 = "0.9"
 parking_lot = "0.12"
 ratatui = "0.24"

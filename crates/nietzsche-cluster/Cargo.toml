@@ -1,0 +1,26 @@
+[package]
+name = "nietzsche-cluster"
+version = "0.1.0"
+edition = "2021"
+description = "Distributed foundation for NietzscheDB: cluster registry, node discovery, and request routing"
+
+# Phase G — Distributed Foundation
+#
+# Architecture: eventual consistency via gossip protocol.
+# No full Raft consensus in this phase — each shard is authoritative for
+# its data partition; the registry tracks live nodes and routes requests.
+#
+# Three layers:
+#   ClusterNode    — identity, role, health of a single DB process
+#   ClusterRegistry — in-memory view of all cluster peers (gossip-updated)
+#   ClusterRouter  — deterministic shard selection for a given collection key
+
+[dependencies]
+serde     = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid      = { workspace = true }
+tracing   = { workspace = true }
+tokio     = { workspace = true }
+rand      = { workspace = true }
+dashmap   = { workspace = true }

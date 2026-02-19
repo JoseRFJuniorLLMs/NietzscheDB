@@ -14,8 +14,9 @@ const CF_EDGES:   &str = "edges";    // key: edge_id (16 bytes) → Edge (bincod
 const CF_ADJ_OUT: &str = "adj_out";  // key: node_id → Vec<Uuid> outgoing edge ids
 const CF_ADJ_IN:  &str = "adj_in";   // key: node_id → Vec<Uuid> incoming edge ids
 const CF_META:    &str = "meta";     // key: &str → arbitrary bytes
+const CF_SENSORY: &str = "sensory";  // key: node_id (16 bytes) → SensoryMemory (bincode)
 
-const ALL_CFS: &[&str] = &[CF_NODES, CF_EDGES, CF_ADJ_OUT, CF_ADJ_IN, CF_META];
+const ALL_CFS: &[&str] = &[CF_NODES, CF_EDGES, CF_ADJ_OUT, CF_ADJ_IN, CF_META, CF_SENSORY];
 
 // ─────────────────────────────────────────────
 // GraphStorage
@@ -242,6 +243,17 @@ impl GraphStorage {
             count += 1;
         }
         Ok(count)
+    }
+
+    // ── Raw DB handle (for SensoryStorage) ────────────────
+
+    /// Expose the underlying RocksDB handle so that `SensoryStorage`
+    /// (in `nietzsche-sensory`) can borrow it directly.
+    ///
+    /// The `"sensory"` column family is always open (registered in `ALL_CFS`)
+    /// so `SensoryStorage::new(storage.db_handle())` is always safe.
+    pub fn db_handle(&self) -> &DB {
+        &self.db
     }
 
     // ── Internal helpers ───────────────────────────────

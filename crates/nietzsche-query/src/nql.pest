@@ -10,6 +10,10 @@
 //   DIFFUSE FROM $node WITH t=[…] MAX_HOPS n RETURN …
 //   RECONSTRUCT $node_id MODALITY … QUALITY …   (Phase 11)
 //   EXPLAIN <any query>
+//   INVOKE ZARATUSTRA [IN "col"] [CYCLES n] [ALPHA f] [DECAY f]  (Phase C)
+//   BEGIN                                                          (Phase F)
+//   COMMIT                                                         (Phase F)
+//   ROLLBACK                                                       (Phase F)
 // ─────────────────────────────────────────────────────────
 
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
@@ -44,6 +48,14 @@ kw_modality    = _{ "MODALITY"    ~ !ident_tail }
 kw_quality     = _{ "QUALITY"     ~ !ident_tail }
 kw_group       = _{ "GROUP"       ~ !ident_tail }
 kw_explain     = _{ "EXPLAIN"     ~ !ident_tail }
+kw_invoke      = _{ "INVOKE"      ~ !ident_tail }
+kw_zaratustra  = _{ "ZARATUSTRA"  ~ !ident_tail }
+kw_cycles      = _{ "CYCLES"      ~ !ident_tail }
+kw_alpha       = _{ "ALPHA"       ~ !ident_tail }
+kw_decay       = _{ "DECAY"       ~ !ident_tail }
+kw_begin       = _{ "BEGIN"       ~ !ident_tail }
+kw_commit      = _{ "COMMIT"      ~ !ident_tail }
+kw_rollback    = _{ "ROLLBACK"    ~ !ident_tail }
 
 // ── Terminals ────────────────────────────────────────────
 
@@ -223,6 +235,31 @@ reconstruct_query   = {
 
 explain_query = { kw_explain ~ (reconstruct_query | diffuse_query | match_query) }
 
+// ── INVOKE ZARATUSTRA query (Phase C) ───────────────────
+//
+// Examples:
+//   INVOKE ZARATUSTRA
+//   INVOKE ZARATUSTRA IN "memories" CYCLES 3 ALPHA 0.15 DECAY 0.01
+
+zaratustra_in     = { kw_in ~ string }
+zaratustra_cycles = { kw_cycles ~ integer }
+zaratustra_alpha  = { kw_alpha  ~ float }
+zaratustra_decay  = { kw_decay  ~ float }
+
+invoke_zaratustra_query = {
+    kw_invoke ~ kw_zaratustra
+    ~ zaratustra_in?
+    ~ zaratustra_cycles?
+    ~ zaratustra_alpha?
+    ~ zaratustra_decay?
+}
+
+// ── Transaction control queries (Phase F) ───────────────
+
+begin_tx_query    = { kw_begin }
+commit_tx_query   = { kw_commit }
+rollback_tx_query = { kw_rollback }
+
 // ── Top-level ───────────────────────────────────────────
 
-query = { SOI ~ (explain_query | reconstruct_query | diffuse_query | match_query) ~ EOI }
+query = { SOI ~ (explain_query | invoke_zaratustra_query | begin_tx_query | commit_tx_query | rollback_tx_query | reconstruct_query | diffuse_query | match_query) ~ EOI }

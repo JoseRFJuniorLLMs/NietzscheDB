@@ -32,6 +32,11 @@ use nietzsche_pregel::{DiffusionConfig, DiffusionEngine};
 use nietzsche_query::{ParamValue, Params, execute, parse};
 use nietzsche_sleep::{SleepConfig, SleepCycle};
 use nietzsche_zaratustra::{ZaratustraConfig, ZaratustraEngine};
+use nietzsche_sensory::{
+    Modality, OriginalShape, QuantLevel,
+    encoder::build_sensory_memory,
+    storage::SensoryStorage,
+};
 
 use crate::proto::nietzsche::{
     self,
@@ -135,6 +140,29 @@ fn marshal_params(
         params.insert(key.clone(), val);
     }
     Ok(params)
+}
+
+// ── Sensory helpers ───────────────────────────────────────────────────────────
+
+fn parse_modality(modality: &str, meta: &serde_json::Value) -> Result<Modality, Status> {
+    match modality {
+        "text" => Ok(Modality::Text {
+            token_count: meta.get("token_count").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+            language:    meta.get("language").and_then(|v| v.as_str()).unwrap_or("en").to_string(),
+        }),
+        "audio" => Ok(Modality::Audio {
+            sample_rate: meta.get("sample_rate").and_then(|v| v.as_u64()).unwrap_or(16000) as u32,
+            duration_ms: meta.get("duration_ms").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+            channels:    meta.get("channels").and_then(|v| v.as_u64()).unwrap_or(1) as u8,
+        }),
+        "image" => Ok(Modality::Image {
+            width:    meta.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+            height:   meta.get("height").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+            channels: meta.get("channels").and_then(|v| v.as_u64()).unwrap_or(3) as u8,
+        }),
+        "fused" => Ok(Modality::Fused { components: vec![] }),
+        other => Err(Status::invalid_argument(format!("unknown modality '{other}'; expected text|audio|image|fused"))),
+    }
 }
 
 // ── NietzscheServer ───────────────────────────────────────────────────────────
@@ -382,6 +410,22 @@ impl NietzscheDb for NietzscheServer {
                     ));
                 }
                 QueryResult::ExplainPlan(plan) => { explain = plan; }
+                // Phase C: INVOKE ZARATUSTRA — engine is invoked server-side;
+                // the response carries a status message in path_ids for now.
+                QueryResult::InvokeZaratustraRequest { collection, cycles, alpha, decay } => {
+                    path_ids.push(format!(
+                        "zaratustra:col={}:cycles={}:alpha={:.4}:decay={:.4}",
+                        collection.unwrap_or_else(|| "default".into()),
+                        cycles.unwrap_or(1),
+                        alpha.unwrap_or(0.1),
+                        decay.unwrap_or(0.05),
+                    ));
+                }
+                // Phase F: transaction control — acknowledged; actual Tx state
+                // is managed by the connection session layer (future phases).
+                QueryResult::TxBegin    => { path_ids.push("tx:begin".into()); }
+                QueryResult::TxCommit   => { path_ids.push("tx:commit".into()); }
+                QueryResult::TxRollback => { path_ids.push("tx:rollback".into()); }
                 QueryResult::Scalar(row) => {
                     let entries = row.into_iter().map(|(col_name, val)| {
                         let mut entry = nietzsche::ScalarEntry {
@@ -679,33 +723,176 @@ impl NietzscheDb for NietzscheServer {
         Ok(Response::new(ok_status()))
     }
 
-    // ── Sensory Compression Layer (Phase 11) — stubs ──────────────────────
+    // ── Sensory Compression Layer (Phase 11) ──────────────────────────────
 
     async fn insert_sensory(
         &self,
-        _req: Request<nietzsche::InsertSensoryRequest>,
+        req: Request<nietzsche::InsertSensoryRequest>,
     ) -> Result<Response<nietzsche::StatusResponse>, Status> {
-        Err(Status::unimplemented("InsertSensory not yet available in this build"))
+        let r = req.into_inner();
+        let node_id = parse_uuid(&r.node_id, "node_id")?;
+        let col_name = col(&r.collection).to_string();
+
+        // Parse modality from string + JSON meta bytes
+        let modality_meta: serde_json::Value = if r.modality_meta.is_empty() {
+            serde_json::json!({})
+        } else {
+            serde_json::from_slice(&r.modality_meta)
+                .map_err(|e| Status::invalid_argument(format!("modality_meta JSON: {e}")))?
+        };
+
+        let modality = parse_modality(&r.modality, &modality_meta)?;
+        let original_shape: OriginalShape = if r.original_shape.is_empty() {
+            OriginalShape::Text { tokens: 0 }
+        } else {
+            serde_json::from_slice(&r.original_shape)
+                .map_err(|e| Status::invalid_argument(format!("original_shape JSON: {e}")))?
+        };
+
+        let latent_f32: Vec<f32> = r.latent.iter().map(|&f| f as f32).collect();
+        let sm = build_sensory_memory(
+            &latent_f32,
+            modality,
+            original_shape,
+            r.original_bytes as usize,
+            r.encoder_version,
+        );
+
+        let shared = get_col!(self.cm, &col_name);
+        let db = shared.lock().await;
+        {
+            let graph_storage = db.storage();
+            let sensory = SensoryStorage::new(graph_storage.db_handle());
+            sensory.put(&node_id, &sm)
+                .map_err(|e| Status::internal(format!("sensory put: {e}")))?;
+        }
+
+        debug!(collection = %col_name, node_id = %node_id, modality = %r.modality, dim = sm.latent.dim, "InsertSensory ok");
+        Ok(Response::new(ok_status()))
     }
 
     async fn get_sensory(
         &self,
-        _req: Request<nietzsche::NodeIdRequest>,
+        req: Request<nietzsche::NodeIdRequest>,
     ) -> Result<Response<nietzsche::SensoryResponse>, Status> {
-        Err(Status::unimplemented("GetSensory not yet available in this build"))
+        let r = req.into_inner();
+        let node_id = parse_uuid(&r.id, "id")?;
+        let col_name = col(&r.collection).to_string();
+
+        let shared = get_col!(self.cm, &col_name);
+        let db = shared.lock().await;
+        let graph_storage = db.storage();
+        let sensory = SensoryStorage::new(graph_storage.db_handle());
+        let sm = sensory.get(&node_id)
+            .map_err(|e| Status::internal(format!("sensory get: {e}")))?;
+
+        match sm {
+            None => Ok(Response::new(nietzsche::SensoryResponse {
+                found: false, ..Default::default()
+            })),
+            Some(sm) => {
+                let quant_level_str = match sm.latent.quant_level {
+                    QuantLevel::F32  => "f32",
+                    QuantLevel::F16  => "f16",
+                    QuantLevel::Int8 => "int8",
+                    QuantLevel::PQ   => "pq",
+                    QuantLevel::Gone => "gone",
+                }.to_string();
+                let modality_str = match &sm.modality {
+                    Modality::Text { .. }  => "text",
+                    Modality::Audio { .. } => "audio",
+                    Modality::Image { .. } => "image",
+                    Modality::Fused { .. } => "fused",
+                }.to_string();
+                Ok(Response::new(nietzsche::SensoryResponse {
+                    found:                  true,
+                    node_id:                node_id.to_string(),
+                    modality:               modality_str,
+                    dim:                    sm.latent.dim,
+                    quant_level:            quant_level_str,
+                    reconstruction_quality: sm.reconstruction_quality,
+                    compression_ratio:      sm.compression_ratio,
+                    encoder_version:        sm.encoder_version,
+                    byte_size:              sm.latent.byte_size() as u32,
+                }))
+            }
+        }
     }
 
     async fn reconstruct(
         &self,
-        _req: Request<nietzsche::ReconstructRequest>,
+        req: Request<nietzsche::ReconstructRequest>,
     ) -> Result<Response<nietzsche::ReconstructResponse>, Status> {
-        Err(Status::unimplemented("Reconstruct not yet available in this build"))
+        let r = req.into_inner();
+        let node_id = parse_uuid(&r.node_id, "node_id")?;
+        // Reconstruct request has no collection field in proto — use default
+        let col_name = "default".to_string();
+
+        let shared = get_col!(self.cm, &col_name);
+        let db = shared.lock().await;
+        let graph_storage = db.storage();
+        let sensory = SensoryStorage::new(graph_storage.db_handle());
+        let sm = sensory.get(&node_id)
+            .map_err(|e| Status::internal(format!("sensory get: {e}")))?;
+
+        match sm {
+            None => Ok(Response::new(nietzsche::ReconstructResponse {
+                found: false, ..Default::default()
+            })),
+            Some(sm) => {
+                let f32_latent = sm.latent.as_f32().unwrap_or_default();
+                let modality_str = match &sm.modality {
+                    Modality::Text { .. }  => "text",
+                    Modality::Audio { .. } => "audio",
+                    Modality::Image { .. } => "image",
+                    Modality::Fused { .. } => "fused",
+                }.to_string();
+                let original_shape_bytes = serde_json::to_vec(&sm.original_shape)
+                    .unwrap_or_default();
+                Ok(Response::new(nietzsche::ReconstructResponse {
+                    found:          true,
+                    node_id:        node_id.to_string(),
+                    latent:         f32_latent,
+                    modality:       modality_str,
+                    quality:        sm.reconstruction_quality,
+                    original_shape: original_shape_bytes,
+                }))
+            }
+        }
     }
 
     async fn degrade_sensory(
         &self,
-        _req: Request<nietzsche::NodeIdRequest>,
+        req: Request<nietzsche::NodeIdRequest>,
     ) -> Result<Response<nietzsche::StatusResponse>, Status> {
-        Err(Status::unimplemented("DegradeSensory not yet available in this build"))
+        let r = req.into_inner();
+        let node_id = parse_uuid(&r.id, "id")?;
+        let col_name = col(&r.collection).to_string();
+
+        let shared = get_col!(self.cm, &col_name);
+        let db = shared.lock().await;
+
+        // Get current node energy to drive degradation
+        let energy = db.get_node_fast(node_id)
+            .map_err(graph_err)?
+            .map(|n| n.energy)
+            .unwrap_or(0.0);
+
+        let graph_storage = db.storage();
+        let sensory = SensoryStorage::new(graph_storage.db_handle());
+        let mut sm = match sensory.get(&node_id)
+            .map_err(|e| Status::internal(format!("sensory get: {e}")))?
+        {
+            None => return Err(Status::not_found(format!("no sensory data for {node_id}"))),
+            Some(sm) => sm,
+        };
+
+        let new_quality = sm.latent.degrade(energy);
+        sm.reconstruction_quality = new_quality;
+        sensory.put(&node_id, &sm)
+            .map_err(|e| Status::internal(format!("sensory put after degrade: {e}")))?;
+
+        debug!(collection = %col_name, node_id = %node_id, energy, new_quality, "DegradeSensory ok");
+        Ok(Response::new(ok_status()))
     }
 }

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use uuid::Uuid;
 use nietzsche_graph::{
-    AdjacencyIndex, GraphError, GraphStorage, Node, PoincareVector,
+    AdjacencyIndex, GraphStorage, Node, PoincareVector,
     traversal::{diffusion_walk, DiffusionConfig},
 };
 
@@ -58,6 +58,20 @@ pub enum QueryResult {
     ExplainPlan(String),
     /// Scalar results from aggregation queries (COUNT, SUM, AVG, etc.).
     Scalar(Vec<(String, ScalarValue)>),
+    /// Phase C: Result of `INVOKE ZARATUSTRA …` — the server handles execution.
+    /// The executor only forwards the parsed parameters to the gRPC layer.
+    InvokeZaratustraRequest {
+        collection: Option<String>,
+        cycles:     Option<u32>,
+        alpha:      Option<f64>,
+        decay:      Option<f64>,
+    },
+    /// Phase F: `BEGIN` was parsed — caller must open a new transaction.
+    TxBegin,
+    /// Phase F: `COMMIT` was parsed — caller must commit the active transaction.
+    TxCommit,
+    /// Phase F: `ROLLBACK` was parsed — caller must rollback the active transaction.
+    TxRollback,
 }
 
 /// A typed scalar value returned by aggregation or property-projection queries.
@@ -82,10 +96,19 @@ pub fn execute(
     params:    &Params,
 ) -> Result<Vec<QueryResult>, QueryError> {
     match query {
-        Query::Match(m)       => execute_match(m, storage, adjacency, params),
-        Query::Diffuse(d)     => execute_diffuse(d, storage, adjacency, params),
-        Query::Reconstruct(r) => execute_reconstruct(r, params),
-        Query::Explain(inner) => execute_explain(inner, storage, adjacency, params),
+        Query::Match(m)              => execute_match(m, storage, adjacency, params),
+        Query::Diffuse(d)            => execute_diffuse(d, storage, adjacency, params),
+        Query::Reconstruct(r)        => execute_reconstruct(r, params),
+        Query::Explain(inner)        => execute_explain(inner, storage, adjacency, params),
+        Query::InvokeZaratustra(iz)  => Ok(vec![QueryResult::InvokeZaratustraRequest {
+            collection: iz.collection.clone(),
+            cycles:     iz.cycles,
+            alpha:      iz.alpha,
+            decay:      iz.decay,
+        }]),
+        Query::BeginTx               => Ok(vec![QueryResult::TxBegin]),
+        Query::CommitTx              => Ok(vec![QueryResult::TxCommit]),
+        Query::RollbackTx            => Ok(vec![QueryResult::TxRollback]),
     }
 }
 
@@ -139,8 +162,18 @@ fn execute_explain(
         Query::Diffuse(d) => {
             format!("DiffusionWalk(max_hops={}, t_scales={})", d.max_hops, d.t_values.len())
         }
-        Query::Reconstruct(_) => "ReconstructLatent".into(),
-        Query::Explain(_)     => "Explain(nested — not supported)".into(),
+        Query::Reconstruct(_)        => "ReconstructLatent".into(),
+        Query::Explain(_)            => "Explain(nested — not supported)".into(),
+        Query::InvokeZaratustra(iz)  => format!(
+            "InvokeZaratustra(collection={}, cycles={}, alpha={}, decay={})",
+            iz.collection.as_deref().unwrap_or("default"),
+            iz.cycles.unwrap_or(1),
+            iz.alpha.unwrap_or(0.10),
+            iz.decay.unwrap_or(0.02),
+        ),
+        Query::BeginTx               => "BeginTransaction".into(),
+        Query::CommitTx              => "CommitTransaction".into(),
+        Query::RollbackTx            => "RollbackTransaction".into(),
     };
     Ok(vec![QueryResult::ExplainPlan(plan)])
 }

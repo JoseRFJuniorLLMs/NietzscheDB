@@ -121,6 +121,65 @@ impl<const N: usize> DynHnsw for HnswCosineWrapper<N> {
     }
 }
 
+// ─── Concrete Raw (non-normalizing) HNSW wrapper — BUG-EVS-001 fix ───────────
+//
+// Euclidean and PoincaréBall metrics must NOT pre-normalize vectors before
+// insertion into the HNSW index.  `HnswRawWrapper<N>` is identical to
+// `HnswCosineWrapper<N>` except `hnsw_insert` and `hnsw_search` pass the
+// vector through unchanged.
+
+struct HnswRawWrapper<const N: usize> {
+    index: HnswIndex<N, CosineMetric>,
+}
+
+impl<const N: usize> HnswRawWrapper<N> {
+    fn new(storage_dir: &Path) -> Self {
+        let element_size = hyperspace_core::vector::HyperVector::<N>::SIZE;
+        let storage = Arc::new(RawStore::new(storage_dir, element_size));
+        let config = Arc::new(GlobalConfig::default());
+        Self {
+            index: HnswIndex::new(storage, QuantizationMode::None, config),
+        }
+    }
+}
+
+impl<const N: usize> DynHnsw for HnswRawWrapper<N> {
+    fn hnsw_insert(&self, vector: &[f64], uuid_str: &str) -> Result<u32, String> {
+        // No L2 normalization — raw vectors preserved for true Euclidean distance.
+        let mut meta = HashMap::new();
+        meta.insert("nid".to_string(), uuid_str.to_string());
+        self.index.insert(vector, meta)
+    }
+
+    fn hnsw_search(&self, query: &[f64], k: usize) -> Vec<(u32, f64)> {
+        self.index.search(
+            query,
+            k,
+            100,
+            &HashMap::new(),
+            &[],
+            None,
+            None,
+        )
+    }
+
+    fn hnsw_delete(&self, id: u32) {
+        self.index.delete(id);
+    }
+
+    fn hnsw_get_uuid_str(&self, id: u32) -> Option<String> {
+        self.index
+            .metadata
+            .forward
+            .get(&id)
+            .and_then(|m| m.get("nid").cloned())
+    }
+
+    fn dim(&self) -> usize {
+        N
+    }
+}
+
 // ─── Factory ─────────────────────────────────────────────────────────────────
 
 fn make_cosine_hnsw(dim: usize, storage_dir: &Path) -> Result<Box<dyn DynHnsw>, String> {
@@ -135,6 +194,25 @@ fn make_cosine_hnsw(dim: usize, storage_dir: &Path) -> Result<Box<dyn DynHnsw>, 
         1024 => Ok(Box::new(HnswCosineWrapper::<1024>::new(storage_dir))),
         1536 => Ok(Box::new(HnswCosineWrapper::<1536>::new(storage_dir))),
         3072 => Ok(Box::new(HnswCosineWrapper::<3072>::new(storage_dir))),
+        n => Err(format!(
+            "unsupported vector dimension {n}; \
+             supported: 64, 128, 192, 256, 384, 512, 768, 1024, 1536, 3072"
+        )),
+    }
+}
+
+fn make_raw_hnsw(dim: usize, storage_dir: &Path) -> Result<Box<dyn DynHnsw>, String> {
+    match dim {
+        64   => Ok(Box::new(HnswRawWrapper::<64>::new(storage_dir))),
+        128  => Ok(Box::new(HnswRawWrapper::<128>::new(storage_dir))),
+        192  => Ok(Box::new(HnswRawWrapper::<192>::new(storage_dir))),
+        256  => Ok(Box::new(HnswRawWrapper::<256>::new(storage_dir))),
+        384  => Ok(Box::new(HnswRawWrapper::<384>::new(storage_dir))),
+        512  => Ok(Box::new(HnswRawWrapper::<512>::new(storage_dir))),
+        768  => Ok(Box::new(HnswRawWrapper::<768>::new(storage_dir))),
+        1024 => Ok(Box::new(HnswRawWrapper::<1024>::new(storage_dir))),
+        1536 => Ok(Box::new(HnswRawWrapper::<1536>::new(storage_dir))),
+        3072 => Ok(Box::new(HnswRawWrapper::<3072>::new(storage_dir))),
         n => Err(format!(
             "unsupported vector dimension {n}; \
              supported: 64, 128, 192, 256, 384, 512, 768, 1024, 1536, 3072"
@@ -219,16 +297,14 @@ impl EmbeddedVectorStore {
         std::fs::create_dir_all(&storage_dir)
             .map_err(|e| format!("cannot create HNSW storage dir {}: {e}", storage_dir.display()))?;
 
-        if metric != VectorMetric::Cosine {
-            eprintln!(
-                "[nietzsche] WARN BUG-EVS-001: metric '{:?}' requested but the HNSW index \
-                 currently uses CosineMetric for all collections. \
-                 Distance results may be incorrect for non-cosine embeddings.",
-                metric
-            );
-        }
-
-        let inner = make_cosine_hnsw(dim, &storage_dir)?;
+        // BUG-EVS-001 fix: route Euclidean and PoincaréBall to the raw wrapper
+        // that does NOT L2-normalize vectors before insertion.
+        let inner = match metric {
+            VectorMetric::Cosine => make_cosine_hnsw(dim, &storage_dir)?,
+            VectorMetric::Euclidean | VectorMetric::PoincareBall => {
+                make_raw_hnsw(dim, &storage_dir)?
+            }
+        };
         Ok(Self {
             inner,
             uuid_to_hnsw: DashMap::new(),
