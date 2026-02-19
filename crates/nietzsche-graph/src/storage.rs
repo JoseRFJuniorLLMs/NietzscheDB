@@ -170,6 +170,41 @@ impl GraphStorage {
             .map_err(|e| GraphError::Storage(e.to_string()))
     }
 
+    /// Update a node whose energy value has changed.
+    ///
+    /// **Must be used instead of `put_node()` when energy changes**, because
+    /// `put_node()` only *adds* a new energy_idx key — it does not remove the
+    /// old one. Stale energy_idx entries would corrupt range scans.
+    ///
+    /// Atomically in one WriteBatch:
+    /// 1. Deletes the old energy_idx key (keyed on `old_energy`)
+    /// 2. Writes the updated node to CF_NODES
+    /// 3. Writes the new energy_idx key (keyed on `node.energy`)
+    pub fn put_node_update_energy(
+        &self,
+        node: &Node,
+        old_energy: f32,
+    ) -> Result<(), GraphError> {
+        let mut batch = rocksdb::WriteBatch::default();
+
+        // Primary node record (overwrites)
+        let value = bincode::serialize(node)?;
+        batch.put_cf(&self.cf_nodes(), node.id.as_bytes(), &value);
+
+        // Remove old energy key (if energy actually changed)
+        if (old_energy - node.energy).abs() > f32::EPSILON {
+            let old_key = energy_index_key(old_energy, &node.id);
+            batch.delete_cf(&self.cf_energy(), &old_key);
+        }
+
+        // Insert new energy key
+        let new_key = energy_index_key(node.energy, &node.id);
+        batch.put_cf(&self.cf_energy(), &new_key, &[]);
+
+        self.db.write(batch)
+            .map_err(|e| GraphError::Storage(e.to_string()))
+    }
+
     /// Batch-insert multiple nodes in a single RocksDB write (10× faster than individual puts).
     pub fn put_nodes_batch(&self, nodes: &[Node]) -> Result<(), GraphError> {
         let mut batch = rocksdb::WriteBatch::default();
