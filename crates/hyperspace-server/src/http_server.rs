@@ -8,11 +8,14 @@ use axum::{
     Json, Router,
 };
 use hyperspace_core::SearchParams;
+use nietzsche_api::pb::nietzsche_db_client::NietzscheDbClient;
+use nietzsche_api::pb::QueryRequest;
 use rust_embed::RustEmbed;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::OnceLock;
+use tonic::transport::Channel;
 use std::time::Instant;
 use sysinfo::{Pid, System};
 #[cfg(not(windows))]
@@ -134,6 +137,7 @@ pub async fn start_http_server(
         )
         .route("/api/admin/vacuum", post(trigger_vacuum_http))
         .route("/api/admin/usage", get(get_usage_report_http))
+        .route("/api/nietzsche/graph", get(get_nietzsche_graph))
         .layer(middleware::from_fn_with_state(
             api_key_hash.clone(),
             validate_api_key,
@@ -688,4 +692,155 @@ async fn get_usage_report_http(
     }
     let report = manager.get_usage_report();
     Json(report).into_response()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NietzscheDB graph proxy  (GET /api/nietzsche/graph)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Lazy-connected gRPC client shared across requests (connect_lazy = no TCP until
+/// first RPC; cloning is cheap — shares the underlying connection pool).
+static NIETZSCHE: OnceLock<NietzscheDbClient<Channel>> = OnceLock::new();
+
+fn nietzsche_client() -> NietzscheDbClient<Channel> {
+    NIETZSCHE
+        .get_or_init(|| {
+            let addr = std::env::var("NIETZSCHE_ADDR")
+                .unwrap_or_else(|_| "http://[::1]:50051".to_string());
+            let uri: tonic::transport::Uri =
+                addr.parse().expect("NIETZSCHE_ADDR must be a valid URI");
+            NietzscheDbClient::new(Channel::builder(uri).connect_lazy())
+        })
+        .clone()
+}
+
+#[derive(serde::Deserialize)]
+struct GraphQueryParams {
+    collection: Option<String>,
+    node_limit: Option<u32>,
+    edge_limit: Option<u32>,
+}
+
+#[derive(serde::Serialize)]
+struct CosmoNode {
+    id:         String,
+    label:      String,
+    energy:     f32,
+    node_type:  String,
+    color:      String,
+    x:          f64,
+    y:          f64,
+    created_at: i64,
+}
+
+#[derive(serde::Serialize)]
+struct CosmoLink {
+    source: String,
+    target: String,
+}
+
+#[derive(serde::Serialize)]
+struct CosmoGraph {
+    nodes:     Vec<CosmoNode>,
+    links:     Vec<CosmoLink>,
+    reachable: bool,
+}
+
+fn node_type_color(t: &str) -> &'static str {
+    match t {
+        "Semantic"      => "#6366f1",
+        "Episodic"      => "#06b6d4",
+        "Concept"       => "#f59e0b",
+        "DreamSnapshot" => "#8b5cf6",
+        _               => "#64748b",
+    }
+}
+
+async fn get_nietzsche_graph(
+    Query(params): Query<GraphQueryParams>,
+) -> impl IntoResponse {
+    let collection = params.collection.unwrap_or_default();
+    let node_limit = params.node_limit.unwrap_or(500);
+    let edge_limit = params.edge_limit.unwrap_or(2000);
+
+    let mut client = nietzsche_client();
+
+    // ── Fetch nodes ──────────────────────────────────────────────────────────
+    let node_nql = format!("MATCH (n) RETURN n LIMIT {node_limit}");
+    let node_resp = match client
+        .query(QueryRequest {
+            nql:        node_nql,
+            params:     Default::default(),
+            collection: collection.clone(),
+        })
+        .await
+    {
+        Ok(r)  => r.into_inner(),
+        Err(e) => {
+            return Json(serde_json::json!({
+                "nodes": [], "links": [], "reachable": false,
+                "error": e.to_string()
+            }))
+            .into_response();
+        }
+    };
+
+    let nodes: Vec<CosmoNode> = node_resp
+        .nodes
+        .into_iter()
+        .map(|n| {
+            let (x, y) = n
+                .embedding
+                .as_ref()
+                .filter(|e| e.coords.len() >= 2)
+                .map(|e| (e.coords[0], e.coords[1]))
+                .unwrap_or((0.0, 0.0));
+
+            let label = serde_json::from_slice::<serde_json::Value>(&n.content)
+                .ok()
+                .and_then(|v| v.get("text").and_then(|t| t.as_str()).map(String::from))
+                .unwrap_or_else(|| {
+                    let short = if n.id.len() >= 8 { &n.id[..8] } else { &n.id };
+                    format!("{} · {}", n.node_type, short)
+                });
+
+            CosmoNode {
+                color:      node_type_color(&n.node_type).to_string(),
+                id:         n.id,
+                label,
+                energy:     n.energy,
+                node_type:  n.node_type,
+                x,
+                y,
+                created_at: n.created_at,
+            }
+        })
+        .collect();
+
+    // ── Fetch edges (node pairs from path pattern) ───────────────────────────
+    let edge_nql = format!("MATCH (a)-[]->(b) RETURN a, b LIMIT {edge_limit}");
+    let edge_resp = client
+        .query(QueryRequest {
+            nql:        edge_nql,
+            params:     Default::default(),
+            collection,
+        })
+        .await
+        .map(|r| r.into_inner())
+        .unwrap_or_default();
+
+    let links: Vec<CosmoLink> = edge_resp
+        .node_pairs
+        .into_iter()
+        .filter_map(|pair| {
+            let src = pair.from?.id;
+            let dst = pair.to?.id;
+            if src.is_empty() || dst.is_empty() {
+                return None;
+            }
+            Some(CosmoLink { source: src, target: dst })
+        })
+        .collect();
+
+    Json(CosmoGraph { nodes, links, reachable: true }).into_response()
 }

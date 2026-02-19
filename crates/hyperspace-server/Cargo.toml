@@ -28,6 +28,7 @@ mime_guess = "2.0.5"
 tower-http = { version = "0.6.8", features = ["cors", "trace", "fs"] }
 sysinfo = "0.32"
 hyperspace-embed = { path = "../hyperspace-embed", optional = true }
+nietzsche-api    = { workspace = true }
 uuid = { version = "1.7", features = ["v4", "serde"] }
 parking_lot.workspace = true
 async-trait = "0.1.89"
