@@ -71,12 +71,20 @@ impl PoincareVector {
             .sum()
     }
 
-    /// Project a vector that has drifted outside the ball back inside.
-    /// Scales to ‖x‖ = 0.95 when norm ≥ 1.0.
+    /// Project a vector that has drifted outside or near the boundary of the ball.
+    ///
+    /// Two-stage clamp:
+    /// - **Soft clamp**: if ‖x‖ > 0.999, scale to 0.999.
+    ///   Prevents catastrophic denominator underflow in `(1−‖x‖²)` during long
+    ///   training runs where episodic nodes accumulate near the boundary.
+    /// - **Hard clamp**: if ‖x‖ ≥ 1.0 (outside the ball entirely), also caught
+    ///   by the soft-clamp threshold above — no separate branch needed.
+    ///
+    /// Recommendation from Grok / Hyperbolic Invariant Analysis (2026-02-19).
     pub fn project_into_ball(mut self) -> Self {
         let n = self.norm();
-        if n >= 1.0 {
-            let scale = 0.95 / (n + 1e-10);
+        if n > 0.999 {
+            let scale = 0.999 / (n + 1e-10);
             for c in self.coords.iter_mut() {
                 *c *= scale;
             }

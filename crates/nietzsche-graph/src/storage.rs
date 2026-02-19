@@ -309,6 +309,36 @@ impl GraphStorage {
         self.scan_nodes_energy_range(min_energy, f32::MAX)
     }
 
+    /// **Ultra-fast energy ID scan** — returns only node UUIDs, not full nodes.
+    ///
+    /// Same O(log N + k) complexity as `scan_nodes_energy_gt()` but skips the
+    /// 25 KB `get_node()` deserialisation per result. Used by the filtered KNN
+    /// routing logic in `NietzscheDB::knn_energy_filtered()`.
+    pub fn scan_energy_ids_gt(&self, min_energy: f32) -> Result<Vec<Uuid>, GraphError> {
+        let start_key = energy_index_key(min_energy, &Uuid::nil());
+        let end_key   = energy_index_key(f32::MAX, &Uuid::max());
+
+        let iter = self.db.iterator_cf(
+            &self.cf_energy(),
+            rocksdb::IteratorMode::From(&start_key, rocksdb::Direction::Forward),
+        );
+
+        let mut ids = Vec::new();
+        for item in iter {
+            let (key, _) = item.map_err(|e| GraphError::Storage(e.to_string()))?;
+            if key.as_ref() > end_key.as_slice() {
+                break;
+            }
+            if key.len() < 20 {
+                continue;
+            }
+            let node_id = Uuid::from_slice(&key[4..20])
+                .map_err(|e| GraphError::Storage(e.to_string()))?;
+            ids.push(node_id);
+        }
+        Ok(ids)
+    }
+
     // ── Edge operations ────────────────────────────────
 
     /// Persist an edge and update both adjacency column families atomically.

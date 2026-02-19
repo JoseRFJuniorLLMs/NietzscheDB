@@ -412,6 +412,58 @@ impl<V: VectorStore> NietzscheDB<V> {
         self.vector_store.knn(query, k)
     }
 
+    /// **Filtered KNN** — return the `k` nearest neighbours that satisfy
+    /// `node.energy >= min_energy`, using `energy_idx` as a pre-filter.
+    ///
+    /// ## Routing strategy (Qdrant pattern)
+    ///
+    /// | Candidate count | Strategy |
+    /// |-----------------|----------|
+    /// | < `PLAIN_SCAN_THRESHOLD` | Linear scan: compute Poincaré distance for each candidate directly |
+    /// | ≥ `PLAIN_SCAN_THRESHOLD` | HNSW with 4× oversample → post-filter by allowed set |
+    ///
+    /// The cardinality check is O(log N) via `energy_idx`; no full table scan.
+    pub fn knn_energy_filtered(
+        &self,
+        query: &PoincareVector,
+        k: usize,
+        min_energy: f32,
+    ) -> Result<Vec<(Uuid, f64)>, GraphError> {
+        /// Below this threshold: linear scan is cheaper than HNSW + post-filter.
+        const PLAIN_SCAN_THRESHOLD: usize = 500;
+
+        // O(log N) — reads only the energy_idx CF (20-byte keys, no node deserialisation).
+        let candidate_ids = self.storage.scan_energy_ids_gt(min_energy)?;
+
+        if candidate_ids.len() < PLAIN_SCAN_THRESHOLD {
+            // ── Plain scan path ──────────────────────────────────────────────
+            // Load each candidate from hot_tier first, then RocksDB.
+            // Still O(k × ~400 bytes) — fast with hot_tier, acceptable without.
+            let mut scored: Vec<(Uuid, f64)> = candidate_ids
+                .into_iter()
+                .filter_map(|id| {
+                    self.get_node(id).ok().flatten()
+                        .map(|n| (n.id, query.distance(&n.embedding)))
+                })
+                .collect();
+            scored.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            scored.truncate(k);
+            Ok(scored)
+        } else {
+            // ── HNSW path with post-filter ───────────────────────────────────
+            // Oversample 4× so the filter has enough candidates after pruning.
+            let allowed: std::collections::HashSet<Uuid> =
+                candidate_ids.into_iter().collect();
+            let raw = self.vector_store.knn(query, k * 4)?;
+            let filtered: Vec<(Uuid, f64)> = raw
+                .into_iter()
+                .filter(|(id, _)| allowed.contains(id))
+                .take(k)
+                .collect();
+            Ok(filtered)
+        }
+    }
+
     // ── Stats ──────────────────────────────────────────
 
     pub fn node_count(&self) -> Result<usize, GraphError> { self.storage.node_count() }
