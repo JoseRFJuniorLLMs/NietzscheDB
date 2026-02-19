@@ -38,7 +38,7 @@ use nietzsche_api::pb::{
     SleepRequest, SleepResponse, StatsResponse, StatusResponse,
     TraversalRequest, TraversalResponse, UpdateEnergyRequest,
 };
-use tonic::transport::Channel;
+use tonic::transport::{Channel, Uri};
 use uuid::Uuid;
 
 // ─────────────────────────────────────────────
@@ -134,9 +134,10 @@ impl NietzscheClient {
 
     /// Connect to a NietzscheDB gRPC endpoint.
     ///
-    /// `endpoint` should be a URI such as `"http://[::1]:50051"`.
-    pub async fn connect(endpoint: impl Into<tonic::transport::Endpoint>) -> Result<Self, tonic::transport::Error> {
-        let channel = endpoint.into().connect().await?;
+    /// `uri` should be a string such as `"http://[::1]:50051"` or `"http://127.0.0.1:50051"`.
+    pub async fn connect(uri: impl AsRef<str>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let parsed: Uri = uri.as_ref().parse()?;
+        let channel = Channel::builder(parsed).connect().await?;
         Ok(Self { inner: NietzscheDbClient::new(channel) })
     }
 
@@ -149,27 +150,28 @@ impl NietzscheClient {
     ) -> Result<NodeResponse, tonic::Status> {
         let content_bytes = serde_json::to_vec(&params.content).unwrap_or_default();
         let req = InsertNodeRequest {
-            id:        params.id.map(|u| u.to_string()).unwrap_or_default(),
-            embedding: Some(pb::PoincareVector {
+            id:         params.id.map(|u| u.to_string()).unwrap_or_default(),
+            embedding:  Some(pb::PoincareVector {
                 coords: params.coords,
                 dim:    0, // server infers from coords length
             }),
-            content:   content_bytes,
-            node_type: params.node_type,
-            energy:    params.energy,
+            content:    content_bytes,
+            node_type:  params.node_type,
+            energy:     params.energy,
+            collection: String::new(), // empty → "default"
         };
         self.inner.insert_node(req).await.map(|r| r.into_inner())
     }
 
     /// Retrieve a node by UUID.
     pub async fn get_node(&mut self, id: Uuid) -> Result<NodeResponse, tonic::Status> {
-        let req = NodeIdRequest { id: id.to_string() };
+        let req = NodeIdRequest { id: id.to_string(), collection: String::new() };
         self.inner.get_node(req).await.map(|r| r.into_inner())
     }
 
     /// Hard-delete a node (and all its edges).
     pub async fn delete_node(&mut self, id: Uuid) -> Result<StatusResponse, tonic::Status> {
-        let req = NodeIdRequest { id: id.to_string() };
+        let req = NodeIdRequest { id: id.to_string(), collection: String::new() };
         self.inner.delete_node(req).await.map(|r| r.into_inner())
     }
 
@@ -179,7 +181,7 @@ impl NietzscheClient {
         node_id: Uuid,
         energy:  f32,
     ) -> Result<StatusResponse, tonic::Status> {
-        let req = UpdateEnergyRequest { node_id: node_id.to_string(), energy };
+        let req = UpdateEnergyRequest { node_id: node_id.to_string(), energy, collection: String::new() };
         self.inner.update_energy(req).await.map(|r| r.into_inner())
     }
 
@@ -191,18 +193,19 @@ impl NietzscheClient {
         params: InsertEdgeParams,
     ) -> Result<EdgeResponse, tonic::Status> {
         let req = InsertEdgeRequest {
-            id:        params.id.map(|u| u.to_string()).unwrap_or_default(),
-            from:      params.from.to_string(),
-            to:        params.to.to_string(),
-            edge_type: params.edge_type,
-            weight:    params.weight,
+            id:         params.id.map(|u| u.to_string()).unwrap_or_default(),
+            from:       params.from.to_string(),
+            to:         params.to.to_string(),
+            edge_type:  params.edge_type,
+            weight:     params.weight,
+            collection: String::new(), // empty → "default"
         };
         self.inner.insert_edge(req).await.map(|r| r.into_inner())
     }
 
     /// Delete an edge by UUID.
     pub async fn delete_edge(&mut self, id: Uuid) -> Result<StatusResponse, tonic::Status> {
-        let req = EdgeIdRequest { id: id.to_string() };
+        let req = EdgeIdRequest { id: id.to_string(), collection: String::new() };
         self.inner.delete_edge(req).await.map(|r| r.into_inner())
     }
 
@@ -210,7 +213,7 @@ impl NietzscheClient {
 
     /// Execute a Nietzsche Query Language (NQL) statement.
     pub async fn query(&mut self, nql: &str) -> Result<QueryResponse, tonic::Status> {
-        let req = QueryRequest { nql: nql.to_string() };
+        let req = QueryRequest { nql: nql.to_string(), params: Default::default(), collection: String::new() };
         self.inner.query(req).await.map(|r| r.into_inner())
     }
 
@@ -222,7 +225,7 @@ impl NietzscheClient {
         coords: Vec<f64>,
         k:      u32,
     ) -> Result<KnnResponse, tonic::Status> {
-        let req = KnnRequest { query_coords: coords, k };
+        let req = KnnRequest { query_coords: coords, k, collection: String::new() };
         self.inner.knn_search(req).await.map(|r| r.into_inner())
     }
 
@@ -241,6 +244,7 @@ impl NietzscheClient {
             max_nodes,
             max_cost:      0.0,
             energy_min:    0.0,
+            collection:    String::new(),
         };
         self.inner.bfs(req).await.map(|r| r.into_inner())
     }
@@ -257,6 +261,7 @@ impl NietzscheClient {
             max_nodes:     0,
             max_cost,
             energy_min:    0.0,
+            collection:    String::new(),
         };
         self.inner.dijkstra(req).await.map(|r| r.into_inner())
     }
@@ -274,6 +279,7 @@ impl NietzscheClient {
             source_ids:  sources.iter().map(|u| u.to_string()).collect(),
             t_values,
             k_chebyshev,
+            collection:  String::new(),
         };
         self.inner.diffuse(req).await.map(|r| r.into_inner())
     }
@@ -291,6 +297,7 @@ impl NietzscheClient {
             adam_lr:             params.adam_lr,
             hausdorff_threshold: params.hausdorff_threshold,
             rng_seed:            params.rng_seed,
+            collection:          String::new(),
         };
         self.inner.trigger_sleep(req).await.map(|r| r.into_inner())
     }
