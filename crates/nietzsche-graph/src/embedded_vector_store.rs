@@ -1,12 +1,17 @@
-//! EmbeddedVectorStore — real HNSW-backed vector store using CosineMetric.
+//! EmbeddedVectorStore — real HNSW-backed vector store.
 //!
 //! Replaces `MockVectorStore` in production. Wraps `hyperspace-index`'s
-//! `HnswIndex<N, CosineMetric>` with type erasure so the dimension is
-//! chosen at runtime via an environment variable.
+//! `HnswIndex<N, M>` with type erasure so the dimension and metric are
+//! chosen at runtime via environment variables.
+//!
+//! ## Supported metrics
+//! - `CosineMetric`   — L2 on unit-normalised vectors (text/audio/image embeddings)
+//! - `PoincareMetric` — true hyperbolic distance (NietzscheDB knowledge graph nodes)
+//! - `HnswRawWrapper` — raw Euclidean L2 without normalisation
 //!
 //! ## Environment variables
 //! - `NIETZSCHE_VECTOR_DIM`    — vector dimension (default: `3072`)
-//! - `NIETZSCHE_VECTOR_METRIC` — `"cosine"` | `"euclidean"` (default: `"cosine"`)
+//! - `NIETZSCHE_VECTOR_METRIC` — `"cosine"` | `"euclidean"` | `"poincare"` (default: `"cosine"`)
 //!
 //! ## Supported dimensions
 //! 64, 128, 192, 256, 384, 512, 768, 1024, 1536, 3072
@@ -19,7 +24,7 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use uuid::Uuid;
 
-use hyperspace_core::{CosineMetric, GlobalConfig, QuantizationMode};
+use hyperspace_core::{CosineMetric, PoincareMetric, GlobalConfig, QuantizationMode};
 use hyperspace_index::HnswIndex;
 use hyperspace_store::VectorStore as RawStore;
 
@@ -185,6 +190,70 @@ impl<const N: usize> DynHnsw for HnswRawWrapper<N> {
     }
 }
 
+// ─── Concrete Poincaré HNSW wrapper ──────────────────────────────────────────
+//
+// Uses `PoincareMetric` from `hyperspace-core` — the geometrically correct metric
+// for NietzscheDB's hyperbolic knowledge graph.
+//
+// HNSW neighbours are built with d(u,v) = acosh(1 + 2‖u-v‖²/((1-‖u‖²)(1-‖v‖²))),
+// so proximity in the index reflects true hyperbolic distance, not cosine angle.
+// Vectors must satisfy ‖x‖ < 1.0 (Poincaré ball invariant). No L2 normalisation
+// is applied: coordinates are inserted raw, preserving their position in the ball.
+
+struct HnswPoincareWrapper<const N: usize> {
+    index: HnswIndex<N, PoincareMetric>,
+}
+
+impl<const N: usize> HnswPoincareWrapper<N> {
+    fn new(storage_dir: &Path) -> Self {
+        let element_size = hyperspace_core::vector::HyperVector::<N>::SIZE;
+        let storage = Arc::new(RawStore::new(storage_dir, element_size));
+        let config = Arc::new(GlobalConfig::default());
+        Self {
+            index: HnswIndex::new(storage, QuantizationMode::None, config),
+        }
+    }
+}
+
+impl<const N: usize> DynHnsw for HnswPoincareWrapper<N> {
+    fn hnsw_insert(&self, vector: &[f64], uuid_str: &str) -> Result<u32, String> {
+        // No L2 normalisation — Poincaré ball coords are inserted as-is.
+        // PoincareMetric::validate() enforces ‖x‖ < 1.0.
+        let mut meta = HashMap::new();
+        meta.insert("nid".to_string(), uuid_str.to_string());
+        self.index.insert(vector, meta)
+    }
+
+    fn hnsw_search(&self, query: &[f64], k: usize) -> Vec<(u32, f64)> {
+        let ef = (k * 4).max(16).min(512);
+        self.index.search(
+            query,
+            k,
+            ef,
+            &HashMap::new(),
+            &[],
+            None,
+            None,
+        )
+    }
+
+    fn hnsw_delete(&self, id: u32) {
+        self.index.delete(id);
+    }
+
+    fn hnsw_get_uuid_str(&self, id: u32) -> Option<String> {
+        self.index
+            .metadata
+            .forward
+            .get(&id)
+            .and_then(|m| m.get("nid").cloned())
+    }
+
+    fn dim(&self) -> usize {
+        N
+    }
+}
+
 // ─── Factory ─────────────────────────────────────────────────────────────────
 
 fn make_cosine_hnsw(dim: usize, storage_dir: &Path) -> Result<Box<dyn DynHnsw>, String> {
@@ -218,6 +287,25 @@ fn make_raw_hnsw(dim: usize, storage_dir: &Path) -> Result<Box<dyn DynHnsw>, Str
         1024 => Ok(Box::new(HnswRawWrapper::<1024>::new(storage_dir))),
         1536 => Ok(Box::new(HnswRawWrapper::<1536>::new(storage_dir))),
         3072 => Ok(Box::new(HnswRawWrapper::<3072>::new(storage_dir))),
+        n => Err(format!(
+            "unsupported vector dimension {n}; \
+             supported: 64, 128, 192, 256, 384, 512, 768, 1024, 1536, 3072"
+        )),
+    }
+}
+
+fn make_poincare_hnsw(dim: usize, storage_dir: &Path) -> Result<Box<dyn DynHnsw>, String> {
+    match dim {
+        64   => Ok(Box::new(HnswPoincareWrapper::<64>::new(storage_dir))),
+        128  => Ok(Box::new(HnswPoincareWrapper::<128>::new(storage_dir))),
+        192  => Ok(Box::new(HnswPoincareWrapper::<192>::new(storage_dir))),
+        256  => Ok(Box::new(HnswPoincareWrapper::<256>::new(storage_dir))),
+        384  => Ok(Box::new(HnswPoincareWrapper::<384>::new(storage_dir))),
+        512  => Ok(Box::new(HnswPoincareWrapper::<512>::new(storage_dir))),
+        768  => Ok(Box::new(HnswPoincareWrapper::<768>::new(storage_dir))),
+        1024 => Ok(Box::new(HnswPoincareWrapper::<1024>::new(storage_dir))),
+        1536 => Ok(Box::new(HnswPoincareWrapper::<1536>::new(storage_dir))),
+        3072 => Ok(Box::new(HnswPoincareWrapper::<3072>::new(storage_dir))),
         n => Err(format!(
             "unsupported vector dimension {n}; \
              supported: 64, 128, 192, 256, 384, 512, 768, 1024, 1536, 3072"
@@ -285,30 +373,20 @@ impl EmbeddedVectorStore {
     /// Create with explicit dimension and metric.
     /// Vector data is persisted under `data_dir/hnsw/`.
     ///
-    /// # Known limitation — metric is advisory only
-    /// The underlying HNSW index always uses `CosineMetric` (L2 on unit-normalised
-    /// vectors) regardless of the requested `metric`.  Euclidean and Poincaré metrics
-    /// are **not** yet backed by dedicated HNSW wrappers.  For `Euclidean`, vectors
-    /// are L2-normalised before insertion (changing their semantics).  For
-    /// `PoincareBall`, cosine distance is used instead of the true Poincaré metric.
-    ///
-    /// This is tracked as `BUG-EVS-001`.  The fix requires adding
-    /// `HnswEuclideanWrapper<N>` and `HnswPoincareWrapper<N>` variants to
-    /// `make_*_hnsw()` and updating `DynHnsw::hnsw_insert` to skip normalisation
-    /// for Euclidean data.
+    /// Each metric routes to a dedicated HNSW wrapper:
+    /// - `Cosine`      → `HnswCosineWrapper`   (L2 on unit-normalised vectors)
+    /// - `Euclidean`   → `HnswRawWrapper`       (raw L2, no normalisation)
+    /// - `PoincareBall`→ `HnswPoincareWrapper`  (true hyperbolic distance via acosh)
     pub fn new(data_dir: &Path, dim: usize, metric: VectorMetric) -> Result<Self, String> {
         // Keep HNSW files in a dedicated sub-directory to avoid collisions with RocksDB.
         let storage_dir: PathBuf = data_dir.join("hnsw");
         std::fs::create_dir_all(&storage_dir)
             .map_err(|e| format!("cannot create HNSW storage dir {}: {e}", storage_dir.display()))?;
 
-        // BUG-EVS-001 fix: route Euclidean and PoincaréBall to the raw wrapper
-        // that does NOT L2-normalize vectors before insertion.
         let inner = match metric {
-            VectorMetric::Cosine => make_cosine_hnsw(dim, &storage_dir)?,
-            VectorMetric::Euclidean | VectorMetric::PoincareBall => {
-                make_raw_hnsw(dim, &storage_dir)?
-            }
+            VectorMetric::Cosine      => make_cosine_hnsw(dim, &storage_dir)?,
+            VectorMetric::Euclidean   => make_raw_hnsw(dim, &storage_dir)?,
+            VectorMetric::PoincareBall => make_poincare_hnsw(dim, &storage_dir)?,
         };
         Ok(Self {
             inner,
@@ -451,8 +529,12 @@ impl AnyVectorStore {
 
     pub fn backend_name(&self) -> &'static str {
         match self {
-            Self::Embedded(_) => "EmbeddedHnsw(Cosine)",
-            Self::Mock(_)     => "MockVectorStore(LinearScan)",
+            Self::Embedded(s) => match s.metric() {
+                VectorMetric::Cosine       => "EmbeddedHnsw(Cosine)",
+                VectorMetric::Euclidean    => "EmbeddedHnsw(Euclidean)",
+                VectorMetric::PoincareBall => "EmbeddedHnsw(Poincaré)",
+            },
+            Self::Mock(_) => "MockVectorStore(LinearScan)",
         }
     }
 }
