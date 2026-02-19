@@ -114,11 +114,31 @@ impl AdjacencyIndex {
     }
 
     /// Both outgoing and incoming neighbors (deduplicated).
+    ///
+    /// Uses a `HashSet` for O(1) dedup instead of O(n) `Vec::contains`.
+    /// This matters when nodes have high degree (e.g., hub nodes in power-law graphs).
     pub fn neighbors_both(&self, node_id: &Uuid) -> Vec<Uuid> {
-        let mut result = self.neighbors_out(node_id);
-        for n in self.neighbors_in(node_id) {
-            if !result.contains(&n) {
-                result.push(n);
+        let out = self.outgoing.get(node_id);
+        let inc = self.incoming.get(node_id);
+
+        let out_len = out.as_ref().map(|v| v.len()).unwrap_or(0);
+        let inc_len = inc.as_ref().map(|v| v.len()).unwrap_or(0);
+
+        let mut seen = std::collections::HashSet::with_capacity(out_len + inc_len);
+        let mut result = Vec::with_capacity(out_len + inc_len);
+
+        if let Some(v) = out {
+            for e in v.iter() {
+                if seen.insert(e.neighbor_id) {
+                    result.push(e.neighbor_id);
+                }
+            }
+        }
+        if let Some(v) = inc {
+            for e in v.iter() {
+                if seen.insert(e.neighbor_id) {
+                    result.push(e.neighbor_id);
+                }
             }
         }
         result

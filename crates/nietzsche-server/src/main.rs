@@ -103,7 +103,7 @@ async fn main() -> anyhow::Result<()> {
                     continue;
                 };
 
-                let mut db    = shared.lock().await;
+                let mut db    = shared.write().await;
                 let seed: u64 = rand::random();
                 let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(seed);
 
@@ -152,9 +152,8 @@ async fn main() -> anyhow::Result<()> {
                     continue;
                 };
 
-                // Hold the exclusive lock for the full cycle to prevent
-                // concurrent writes from racing with Zaratustra propagation.
-                let db        = shared.lock().await;
+                // Hold a read lock for Zaratustra — it only reads storage/adjacency.
+                let db        = shared.read().await;
                 let storage   = db.storage();
                 let adjacency = db.adjacency();
 
