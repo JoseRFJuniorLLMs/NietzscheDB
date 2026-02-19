@@ -1,5 +1,7 @@
 use std::path::Path;
+use std::sync::Arc;
 
+use dashmap::DashMap;
 use uuid::Uuid;
 
 use crate::adjacency::AdjacencyIndex;
@@ -101,6 +103,9 @@ pub struct NietzscheDB<V: VectorStore> {
     wal:          GraphWal,
     adjacency:    AdjacencyIndex,
     vector_store: V,
+    /// Hot-tier RAM cache: elite Übermensch nodes pinned for O(1) access.
+    /// Populated by [`ZaratustraEngine`] after each Übermensch phase.
+    pub hot_tier: Arc<DashMap<Uuid, Node>>,
 }
 
 impl<V: VectorStore> NietzscheDB<V> {
@@ -121,7 +126,7 @@ impl<V: VectorStore> NietzscheDB<V> {
         let wal       = GraphWal::open(data_dir)?;
         let adjacency = storage.rebuild_adjacency()?;
 
-        Ok(Self { storage, wal, adjacency, vector_store })
+        Ok(Self { storage, wal, adjacency, vector_store, hot_tier: Arc::new(DashMap::new()) })
     }
 
     // ── Node operations ────────────────────────────────
@@ -296,6 +301,40 @@ impl<V: VectorStore> NietzscheDB<V> {
 
     pub fn storage(&self) -> &GraphStorage { &self.storage }
     pub fn adjacency(&self) -> &AdjacencyIndex { &self.adjacency }
+
+    // ── Hot-Tier RAM cache ─────────────────────────────
+
+    /// Fast O(1) node lookup: checks hot-tier first, falls back to RocksDB.
+    pub fn get_node_fast(&self, id: Uuid) -> Result<Option<Node>, GraphError> {
+        if let Some(node) = self.hot_tier.get(&id) {
+            return Ok(Some(node.clone()));
+        }
+        self.storage.get_node(&id)
+    }
+
+    /// Promote a node to the hot-tier RAM cache (called by Zaratustra engine).
+    pub fn promote_to_hot_tier(&self, node: Node) {
+        self.hot_tier.insert(node.id, node);
+    }
+
+    /// Evict a node from the hot-tier RAM cache.
+    pub fn evict_from_hot_tier(&self, id: &Uuid) {
+        self.hot_tier.remove(id);
+    }
+
+    /// Replace the entire hot-tier with a new set of elite nodes.
+    /// Called after every Zaratustra Übermensch phase.
+    pub fn replace_hot_tier(&self, elite_nodes: Vec<Node>) {
+        self.hot_tier.clear();
+        for node in elite_nodes {
+            self.hot_tier.insert(node.id, node);
+        }
+    }
+
+    /// Current hot-tier node count.
+    pub fn hot_tier_len(&self) -> usize {
+        self.hot_tier.len()
+    }
 
     /// k-nearest-neighbour search in the vector store.
     pub fn knn(

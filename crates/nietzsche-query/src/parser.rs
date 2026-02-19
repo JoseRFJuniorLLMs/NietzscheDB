@@ -29,11 +29,15 @@ pub fn parse(input: &str) -> Result<Query, QueryError> {
 fn parse_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
     for inner in pair.into_inner() {
         match inner.as_rule() {
-            Rule::match_query       => return Ok(Query::Match(parse_match_query(inner)?)),
-            Rule::diffuse_query     => return Ok(Query::Diffuse(parse_diffuse_query(inner)?)),
-            Rule::reconstruct_query => return Ok(Query::Reconstruct(parse_reconstruct_query(inner)?)),
-            Rule::explain_query     => return parse_explain_query(inner),
-            Rule::EOI               => {}
+            Rule::match_query              => return Ok(Query::Match(parse_match_query(inner)?)),
+            Rule::diffuse_query            => return Ok(Query::Diffuse(parse_diffuse_query(inner)?)),
+            Rule::reconstruct_query        => return Ok(Query::Reconstruct(parse_reconstruct_query(inner)?)),
+            Rule::explain_query            => return parse_explain_query(inner),
+            Rule::invoke_zaratustra_query  => return Ok(Query::InvokeZaratustra(parse_invoke_zaratustra(inner)?)),
+            Rule::begin_tx_query           => return Ok(Query::BeginTx),
+            Rule::commit_tx_query          => return Ok(Query::CommitTx),
+            Rule::rollback_tx_query        => return Ok(Query::RollbackTx),
+            Rule::EOI                      => {}
             r => return Err(QueryError::Parse(format!("unexpected rule: {r:?}"))),
         }
     }
@@ -677,6 +681,52 @@ fn parse_diffuse_query(pair: Pair<Rule>) -> Result<DiffuseQuery, QueryError> {
         max_hops,
         ret,
     })
+}
+
+// ── INVOKE ZARATUSTRA (Phase C) ───────────────────────────
+
+fn parse_invoke_zaratustra(pair: Pair<Rule>) -> Result<InvokeZaratustraQuery, QueryError> {
+    let mut collection = None;
+    let mut cycles     = None;
+    let mut alpha      = None;
+    let mut decay      = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::zaratustra_in => {
+                // zaratustra_in = { kw_in ~ string }
+                let s = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("INVOKE ZARATUSTRA IN missing string".into()))?
+                    .as_str();
+                // strip surrounding quotes
+                collection = Some(s[1..s.len()-1].to_string());
+            }
+            Rule::zaratustra_cycles => {
+                let n: u32 = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("CYCLES missing value".into()))?
+                    .as_str().parse()
+                    .map_err(|_| QueryError::Parse("bad CYCLES value".into()))?;
+                cycles = Some(n);
+            }
+            Rule::zaratustra_alpha => {
+                let f: f64 = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("ALPHA missing value".into()))?
+                    .as_str().parse()
+                    .map_err(|_| QueryError::Parse("bad ALPHA value".into()))?;
+                alpha = Some(f);
+            }
+            Rule::zaratustra_decay => {
+                let f: f64 = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("DECAY missing value".into()))?
+                    .as_str().parse()
+                    .map_err(|_| QueryError::Parse("bad DECAY value".into()))?;
+                decay = Some(f);
+            }
+            r => return Err(QueryError::Parse(format!("unexpected in invoke_zaratustra_query: {r:?}"))),
+        }
+    }
+
+    Ok(InvokeZaratustraQuery { collection, cycles, alpha, decay })
 }
 
 // ── RECONSTRUCT (Phase 11) ────────────────────────────────

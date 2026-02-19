@@ -11,6 +11,7 @@ nietzsche-lsystem     = { workspace = true }
 nietzsche-pregel      = { workspace = true }
 nietzsche-sleep       = { workspace = true }
 nietzsche-zaratustra  = { workspace = true }
+nietzsche-sensory     = { workspace = true }
 tonic             = { workspace = true }
 prost             = { workspace = true }
 serde             = { workspace = true }

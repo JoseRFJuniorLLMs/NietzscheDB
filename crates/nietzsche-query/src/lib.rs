@@ -37,6 +37,7 @@ pub mod parser;
 
 pub use ast::{
     Query, MatchQuery, DiffuseQuery, ReconstructQuery, ReconstructTarget,
+    InvokeZaratustraQuery,
     Pattern, NodePattern, PathPattern, Direction,
     Condition, CompOp, StringCompOp,
     Expr, HDistArg, MathFunc, MathFuncArg,

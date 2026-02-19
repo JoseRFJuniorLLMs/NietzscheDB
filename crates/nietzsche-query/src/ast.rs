@@ -11,6 +11,29 @@ pub enum Query {
     Reconstruct(ReconstructQuery),
     /// `EXPLAIN <inner query>` — return the execution plan without running it.
     Explain(Box<Query>),
+    /// Phase C: `INVOKE ZARATUSTRA [IN "col"] [CYCLES n] [ALPHA f] [DECAY f]`
+    InvokeZaratustra(InvokeZaratustraQuery),
+    /// Phase F: `BEGIN` — start a new transaction.
+    BeginTx,
+    /// Phase F: `COMMIT` — commit the active transaction.
+    CommitTx,
+    /// Phase F: `ROLLBACK` — rollback the active transaction.
+    RollbackTx,
+}
+
+// ── INVOKE ZARATUSTRA (Phase C) ───────────────────────────
+
+/// `INVOKE ZARATUSTRA [IN "collection"] [CYCLES n] [ALPHA f] [DECAY f]`
+#[derive(Debug, Clone)]
+pub struct InvokeZaratustraQuery {
+    /// Override the collection. `None` → use the server's active collection.
+    pub collection: Option<String>,
+    /// Number of engine cycles to run. `None` → default (1).
+    pub cycles: Option<u32>,
+    /// Override alpha (energy propagation coefficient). `None` → env/default.
+    pub alpha: Option<f64>,
+    /// Override decay coefficient. `None` → env/default.
+    pub decay: Option<f64>,
 }
 
 // ── MATCH ─────────────────────────────────────────────────
