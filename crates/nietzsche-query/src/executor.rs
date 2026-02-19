@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 
 use uuid::Uuid;
+use rayon::prelude::*;
 use nietzsche_graph::{
     AdjacencyIndex, GraphStorage, Node, PoincareVector,
     traversal::{diffusion_walk, DiffusionConfig},
@@ -14,6 +15,10 @@ use nietzsche_graph::{
 
 use crate::ast::*;
 use crate::error::QueryError;
+
+/// Minimum number of nodes to engage rayon parallel filter.
+/// Below this threshold the overhead of rayon outweighs the gain.
+const PARALLEL_SCAN_THRESHOLD: usize = 2_000;
 
 // ─────────────────────────────────────────────
 // Parameters
@@ -203,26 +208,48 @@ fn execute_node_match(
     adjacency: &AdjacencyIndex,
     params:    &Params,
 ) -> Result<Vec<QueryResult>, QueryError> {
-    let nodes = storage.scan_nodes()?;
+    // ── Fast path: use energy secondary index when the only condition is energy > X ──
+    let nodes = if let Some((min_e, max_e)) = extract_energy_range_hint(query) {
+        storage.scan_nodes_energy_range(min_e, max_e)?
+    } else {
+        storage.scan_nodes()?
+    };
+
     let alias = &np.alias;
 
     // Filter by label (node_type)
     let typed: Vec<Node> = if let Some(label) = &np.label {
+        let label_lc = label.to_lowercase();
         nodes.into_iter()
-            .filter(|n| format!("{:?}", n.node_type).to_lowercase() == label.to_lowercase())
+            .filter(|n| format!("{:?}", n.node_type).to_lowercase() == label_lc)
             .collect()
     } else {
         nodes
     };
 
-    // Apply WHERE conditions
-    let mut filtered = Vec::new();
-    for node in typed {
-        let binding = vec![(alias.as_str(), &node)];
-        if eval_conditions(&query.conditions, &binding, params, storage, adjacency)? {
-            filtered.push(node);
+    // Apply WHERE conditions — parallel for large scans, sequential for small ones
+    let filtered: Vec<Node> = if typed.len() >= PARALLEL_SCAN_THRESHOLD {
+        // Parallel filter: each thread evaluates conditions independently
+        let alias_str: &str = alias.as_str();
+        typed.into_par_iter()
+            .filter(|node| {
+                let binding = vec![(alias_str, node)];
+                eval_conditions(&query.conditions, &binding, params, storage, adjacency)
+                    .unwrap_or(false)
+            })
+            .collect()
+    } else {
+        let mut out = Vec::new();
+        for node in typed {
+            let binding = vec![(alias.as_str(), &node)];
+            if eval_conditions(&query.conditions, &binding, params, storage, adjacency)? {
+                out.push(node);
+            }
         }
-    }
+        out
+    };
+    // Re-bind as `mut` for subsequent transformations
+    let mut filtered = filtered;
 
     // Apply ORDER BY
     if let Some(order) = &query.ret.order_by {
@@ -1015,6 +1042,85 @@ fn poincare_to_klein(coords: &[f64]) -> Vec<f64> {
     let norm_sq: f64 = coords.iter().map(|x| x * x).sum();
     let scale = 2.0 / (1.0 + norm_sq);
     coords.iter().map(|x| x * scale).collect()
+}
+
+// ─────────────────────────────────────────────
+// Energy index fast-path hint extractor
+// ─────────────────────────────────────────────
+
+/// If the query's WHERE conditions are purely energy comparisons that can be
+/// served by the `energy_idx` secondary index, return `(min_energy, max_energy)`.
+///
+/// This enables O(log N) range scans instead of O(N) full table scans for the
+/// most common NQL pattern: `MATCH (n) WHERE n.energy > X RETURN n LIMIT k`.
+///
+/// Returns `None` if conditions are too complex for the index to accelerate.
+fn extract_energy_range_hint(query: &MatchQuery) -> Option<(f32, f32)> {
+    if query.conditions.len() != 1 {
+        return None;
+    }
+
+    // Alias used in the node pattern
+    let alias = match &query.pattern {
+        Pattern::Node(np) => &np.alias,
+        Pattern::Path(_) => return None,
+    };
+
+    extract_energy_bound(&query.conditions[0], alias)
+}
+
+fn extract_energy_bound(cond: &Condition, alias: &str) -> Option<(f32, f32)> {
+    if let Condition::Compare { left, op, right } = cond {
+        // Match: alias.energy <op> <literal>
+        if let Expr::Property { alias: a, field } = left {
+            if a == alias && field == "energy" {
+                if let Some(threshold) = expr_as_f32(right) {
+                    return match op {
+                        CompOp::Gt  => Some((threshold, f32::MAX)),
+                        CompOp::Gte => Some((threshold, f32::MAX)),
+                        CompOp::Lt  => Some((f32::MIN, threshold)),
+                        CompOp::Lte => Some((f32::MIN, threshold)),
+                        CompOp::Eq  => Some((threshold, threshold)),
+                        CompOp::Neq => None,
+                    };
+                }
+            }
+        }
+        // Match: <literal> <op> alias.energy  (reversed)
+        if let Expr::Property { alias: a, field } = right {
+            if a == alias && field == "energy" {
+                if let Some(threshold) = expr_as_f32(left) {
+                    return match op {
+                        CompOp::Gt  => Some((f32::MIN, threshold)),
+                        CompOp::Gte => Some((f32::MIN, threshold)),
+                        CompOp::Lt  => Some((threshold, f32::MAX)),
+                        CompOp::Lte => Some((threshold, f32::MAX)),
+                        CompOp::Eq  => Some((threshold, threshold)),
+                        CompOp::Neq => None,
+                    };
+                }
+            }
+        }
+    }
+    // BETWEEN is also indexable
+    if let Condition::Between { expr, low, high } = cond {
+        if let Expr::Property { alias: a, field } = expr {
+            if a == alias && field == "energy" {
+                let lo = expr_as_f32(low)?;
+                let hi = expr_as_f32(high)?;
+                return Some((lo, hi));
+            }
+        }
+    }
+    None
+}
+
+fn expr_as_f32(expr: &Expr) -> Option<f32> {
+    match expr {
+        Expr::Float(f) => Some(*f as f32),
+        Expr::Int(i)   => Some(*i as f32),
+        _ => None,
+    }
 }
 
 // ─────────────────────────────────────────────

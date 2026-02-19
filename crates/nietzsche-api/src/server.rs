@@ -10,9 +10,10 @@
 //!       │
 //!       ▼
 //! CollectionManager::get_or_default("memories")
-//!       │  returns Arc<Mutex<NietzscheDB<AnyVectorStore>>>
+//!       │  returns Arc<RwLock<NietzscheDB<AnyVectorStore>>>
 //!       ▼
-//! db.lock().await   →   NietzscheDB method
+//! db.read().await  →   &NietzscheDB  (concurrent reads)
+//! db.write().await →   &mut NietzscheDB (exclusive mutations)
 //! ```
 
 use std::collections::HashMap;
@@ -283,7 +284,7 @@ impl NietzscheDb for NietzscheServer {
         debug!(node_id = %id, collection = %col(&r.collection), "inserting node");
 
         let shared = get_col!(self.cm, &r.collection);
-        let mut db = shared.lock().await;
+        let mut db = shared.write().await;
         db.insert_node(node.clone()).map_err(graph_err)?;
 
         Ok(Response::new(node_to_proto(node)))
@@ -297,7 +298,7 @@ impl NietzscheDb for NietzscheServer {
         let id = parse_uuid(&r.id, "id")?;
 
         let shared = get_col!(self.cm, &r.collection);
-        let db = shared.lock().await;
+        let db = shared.read().await;
         match db.get_node(id).map_err(graph_err)? {
             Some(node) => Ok(Response::new(node_to_proto(node))),
             None       => Ok(Response::new(not_found())),
@@ -312,7 +313,7 @@ impl NietzscheDb for NietzscheServer {
         let id = parse_uuid(&r.id, "id")?;
 
         let shared = get_col!(self.cm, &r.collection);
-        let mut db = shared.lock().await;
+        let mut db = shared.write().await;
         db.delete_node(id).map_err(graph_err)?;
         Ok(Response::new(ok_status()))
     }
@@ -325,7 +326,7 @@ impl NietzscheDb for NietzscheServer {
         let id = parse_uuid(&r.node_id, "node_id")?;
 
         let shared = get_col!(self.cm, &r.collection);
-        let mut db = shared.lock().await;
+        let mut db = shared.write().await;
         db.update_energy(id, r.energy).map_err(graph_err)?;
         Ok(Response::new(ok_status()))
     }
@@ -347,7 +348,7 @@ impl NietzscheDb for NietzscheServer {
         edge.metadata = HashMap::new();
 
         let shared = get_col!(self.cm, &r.collection);
-        let mut db = shared.lock().await;
+        let mut db = shared.write().await;
         db.insert_edge(edge).map_err(graph_err)?;
 
         Ok(Response::new(nietzsche::EdgeResponse { success: true, id: id.to_string() }))
@@ -361,7 +362,7 @@ impl NietzscheDb for NietzscheServer {
         let id = parse_uuid(&r.id, "id")?;
 
         let shared = get_col!(self.cm, &r.collection);
-        let mut db = shared.lock().await;
+        let mut db = shared.write().await;
         db.delete_edge(id).map_err(graph_err)?;
         Ok(Response::new(ok_status()))
     }
@@ -382,7 +383,7 @@ impl NietzscheDb for NietzscheServer {
         let params = marshal_params(&inner.params)?;
 
         let shared  = get_col!(self.cm, &inner.collection);
-        let db      = shared.lock().await;
+        let db      = shared.read().await;
         let results = execute(&ast, db.storage(), db.adjacency(), &params)
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -478,7 +479,7 @@ impl NietzscheDb for NietzscheServer {
         let k     = r.k as usize;
 
         let shared  = get_col!(self.cm, &r.collection);
-        let db      = shared.lock().await;
+        let db      = shared.read().await;
         let results = db.knn(&query, k).map_err(graph_err)?;
 
         Ok(Response::new(nietzsche::KnnResponse {
@@ -507,7 +508,7 @@ impl NietzscheDb for NietzscheServer {
         };
 
         let shared  = get_col!(self.cm, &r.collection);
-        let db      = shared.lock().await;
+        let db      = shared.read().await;
         let visited = bfs(db.storage(), db.adjacency(), start, &config)
             .map_err(graph_err)?;
 
@@ -531,7 +532,7 @@ impl NietzscheDb for NietzscheServer {
         };
 
         let shared = get_col!(self.cm, &r.collection);
-        let db     = shared.lock().await;
+        let db     = shared.read().await;
         let costs  = dijkstra(db.storage(), db.adjacency(), start, &config)
             .map_err(graph_err)?;
 
@@ -569,7 +570,7 @@ impl NietzscheDb for NietzscheServer {
         let config      = DiffusionConfig { k_chebyshev, ..Default::default() };
 
         let shared  = get_col!(self.cm, &r.collection);
-        let db      = shared.lock().await;
+        let db      = shared.read().await;
         let engine  = DiffusionEngine::new(config);
         let results = engine
             .diffuse(db.storage(), db.adjacency(), &sources, &t_values)
@@ -619,7 +620,7 @@ impl NietzscheDb for NietzscheServer {
         let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(seed);
 
         let shared = get_col!(self.cm, &r.collection);
-        let mut db = shared.lock().await;
+        let mut db = shared.write().await;
         let report = SleepCycle::run(&config, &mut *db, &mut rng)
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -649,7 +650,7 @@ impl NietzscheDb for NietzscheServer {
 
         let engine = ZaratustraEngine::new(cfg);
         let shared = get_col!(self.cm, &r.collection);
-        let db = shared.lock().await;
+        let db = shared.read().await;
 
         let mut last_report = None;
         for _ in 0..cycles {
@@ -759,7 +760,7 @@ impl NietzscheDb for NietzscheServer {
         );
 
         let shared = get_col!(self.cm, &col_name);
-        let db = shared.lock().await;
+        let db = shared.read().await;
         {
             let graph_storage = db.storage();
             let sensory = SensoryStorage::new(graph_storage.db_handle());
@@ -780,7 +781,7 @@ impl NietzscheDb for NietzscheServer {
         let col_name = col(&r.collection).to_string();
 
         let shared = get_col!(self.cm, &col_name);
-        let db = shared.lock().await;
+        let db = shared.read().await;
         let graph_storage = db.storage();
         let sensory = SensoryStorage::new(graph_storage.db_handle());
         let sm = sensory.get(&node_id)
@@ -829,7 +830,7 @@ impl NietzscheDb for NietzscheServer {
         let col_name = "default".to_string();
 
         let shared = get_col!(self.cm, &col_name);
-        let db = shared.lock().await;
+        let db = shared.read().await;
         let graph_storage = db.storage();
         let sensory = SensoryStorage::new(graph_storage.db_handle());
         let sm = sensory.get(&node_id)
@@ -870,7 +871,7 @@ impl NietzscheDb for NietzscheServer {
         let col_name = col(&r.collection).to_string();
 
         let shared = get_col!(self.cm, &col_name);
-        let db = shared.lock().await;
+        let db = shared.read().await;
 
         // Get current node energy to drive degradation
         let energy = db.get_node_fast(node_id)

@@ -42,6 +42,7 @@ rkyv = "0.7"
 smallvec = "1.11"
 proptest = "1.0"
 criterion = { version = "0.5", features = ["html_reports"] }
+rayon = "1.10"
 
 
 [profile.release]
@@ -49,3 +50,18 @@ lto = true
 codegen-units = 1
 strip = true
 panic = "abort"
+# opt-level = 3 is already the default for release
+opt-level = 3
+
+# Profile for local development benchmarking: fast build + some optimizations
+[profile.bench-fast]
+inherits = "release"
+lto = "thin"
+codegen-units = 4
+
+# Profile for maximum performance (use with RUSTFLAGS="-C target-cpu=native")
+[profile.perf]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+opt-level = 3

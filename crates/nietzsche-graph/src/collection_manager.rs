@@ -28,7 +28,7 @@
 //!     metric: "cosine".into(),
 //! })?;
 //! let db = cm.get_or_default("memories").unwrap();
-//! let mut guard = db.lock().await;
+//! let mut guard = db.write().await;
 //! guard.insert_node(node)?;
 //! ```
 
@@ -37,7 +37,7 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use crate::db::NietzscheDB;
 use crate::embedded_vector_store::{AnyVectorStore, VectorMetric};
@@ -45,7 +45,7 @@ use crate::error::GraphError;
 
 // ── Internal shared-DB alias ────────────────────────────────────────────────
 
-type SharedDb = Arc<Mutex<NietzscheDB<AnyVectorStore>>>;
+type SharedDb = Arc<RwLock<NietzscheDB<AnyVectorStore>>>;
 
 // ── Config + Info types ─────────────────────────────────────────────────────
 
@@ -90,7 +90,9 @@ pub struct CollectionInfo {
 ///
 /// ## Thread safety
 /// `DashMap` provides lock-free concurrent map access.
-/// Each individual collection DB is protected by `tokio::sync::Mutex`.
+/// Each individual collection DB is protected by `tokio::sync::RwLock`:
+/// read-only operations (KNN, graph queries) can proceed concurrently;
+/// mutations (insert/delete/sleep) take an exclusive write lock.
 pub struct CollectionManager {
     base_dir:    PathBuf,
     collections: DashMap<String, (CollectionConfig, SharedDb)>,
@@ -139,7 +141,7 @@ impl CollectionManager {
 
                 let db = Self::open_db(&col_dir, &cfg)?;
                 cm.collections
-                    .insert(cfg.name.clone(), (cfg, Arc::new(Mutex::new(db))));
+                    .insert(cfg.name.clone(), (cfg, Arc::new(RwLock::new(db))));
             }
         }
 
@@ -225,7 +227,7 @@ impl CollectionManager {
         let mut infos = Vec::with_capacity(self.collections.len());
         for entry in self.collections.iter() {
             let (cfg, db) = entry.value();
-            let (node_count, edge_count) = match db.try_lock() {
+            let (node_count, edge_count) = match db.try_read() {
                 Ok(guard) => (
                     guard.node_count().unwrap_or(0),
                     guard.edge_count().unwrap_or(0),
@@ -265,7 +267,7 @@ impl CollectionManager {
 
         let db = Self::open_db(&dir, cfg)?;
         self.collections
-            .insert(cfg.name.clone(), (cfg.clone(), Arc::new(Mutex::new(db))));
+            .insert(cfg.name.clone(), (cfg.clone(), Arc::new(RwLock::new(db))));
         Ok(())
     }
 

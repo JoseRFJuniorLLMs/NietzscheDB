@@ -160,7 +160,7 @@ struct GraphResponse {
 
 async fn graph(State(cm): State<Db>) -> impl IntoResponse {
     let shared = default_col!(cm);
-    let db = shared.lock().await;
+    let db = shared.read().await;
     let nodes: Vec<NodeJson> = db
         .storage()
         .scan_nodes()
@@ -190,7 +190,7 @@ async fn get_node(
         Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid uuid"}))).into_response(),
     };
     let shared = default_col!(cm);
-    let db = shared.lock().await;
+    let db = shared.read().await;
     match db.get_node(uuid) {
         Ok(Some(n)) => Json(NodeJson::from(n)).into_response(),
         Ok(None)    => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error":"not found"}))).into_response(),
@@ -234,7 +234,7 @@ async fn insert_node(
     if let Some(e) = req.energy { node.energy = e; }
 
     let shared = default_col!(cm);
-    let mut db = shared.lock().await;
+    let mut db = shared.write().await;
     match db.insert_node(node) {
         Ok(_)  => Json(serde_json::json!({"id": id.to_string()})).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
@@ -251,7 +251,7 @@ async fn delete_node(
         Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid uuid"}))).into_response(),
     };
     let shared = default_col!(cm);
-    let mut db = shared.lock().await;
+    let mut db = shared.write().await;
     match db.delete_node(uuid) {
         Ok(_)  => Json(serde_json::json!({"deleted": uuid.to_string()})).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
@@ -289,7 +289,7 @@ async fn insert_edge(
     let id   = edge.id;
 
     let shared = default_col!(cm);
-    let mut db = shared.lock().await;
+    let mut db = shared.write().await;
     match db.insert_edge(edge) {
         Ok(_)  => Json(serde_json::json!({"id": id.to_string()})).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
@@ -306,7 +306,7 @@ async fn delete_edge(
         Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid uuid"}))).into_response(),
     };
     let shared = default_col!(cm);
-    let mut db = shared.lock().await;
+    let mut db = shared.write().await;
     match db.delete_edge(uuid) {
         Ok(_)  => Json(serde_json::json!({"deleted": uuid.to_string()})).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
@@ -326,7 +326,7 @@ async fn query_nql(
         Err(e) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
     };
     let shared = default_col!(cm);
-    let db     = shared.lock().await;
+    let db     = shared.read().await;
     let params = Params::new();
     match nql_execute(&query, db.storage(), db.adjacency(), &params) {
         Ok(results) => {
@@ -358,7 +358,7 @@ async fn trigger_sleep(
         hausdorff_threshold: req.hausdorff_threshold.unwrap_or(0.15),
     };
     let shared   = default_col!(cm);
-    let mut db   = shared.lock().await;
+    let mut db   = shared.write().await;
     let seed: u64 = rand::random();
     let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(seed);
     match SleepCycle::run(&cfg, &mut *db, &mut rng) {
