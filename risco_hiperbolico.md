@@ -422,5 +422,70 @@ Estas otimizações têm risco hiperbólico zero e podem ser implementadas imedi
 
 ---
 
+---
+
+## PARTE 8 — CRUZAMENTO COM REVISÃO EXTERNA (md/hiperbolica.md)
+
+> Revisão externa recebida e cruzada em 2026-02-19.
+> Fonte: `md/hiperbolica.md` — análise independente do `risco_hiperbolico.md` v1.0.
+
+---
+
+### Tabela 1 — Cruzamento completo: cada item vs. as duas fontes
+
+| Item | Risco Hiperbólico<br>*(risco_hiperbolico.md)* | Risco Hiperbólico<br>*(hiperbolica.md)* | Concordância | Divergência / Adição do Revisor | Decisão Final Consolidada |
+|------|-----------------------------------------------|-----------------------------------------|:---:|----------------------------------|---------------------------|
+| **BUG B — PoincareMetric** | NENHUM (bug fix) | NENHUM — mas **alerta novo**: grafo HNSW histórico foi construído com CosineMetric → dados corrompidos para nós episódicos | ✅ | Revisor acrescenta que reconstrução do índice HNSW é **obrigatória** (custo O(N log N)); nosso doc não menciona dados históricos | **RECONSTRUIR HNSW** junto com migração do BUG A |
+| **BUG A — NodeMeta** | NENHUM | NENHUM — "Aprovação Imediata" | ✅ | Revisor eleva ganho para **10–25×** (vs. nosso 10–20×) e reforça sprint único com ITEM C | **APROVAR — Sprint 3b** |
+| **ITEM C — f64→f32** | BAIXO (mitigável com `poincare_sums_f32_to_f64`) | BAIXO — mitigação correta; **alerta adicional**: Adam optimizer / gradientes riemannianos hiperbólicos podem ser instáveis em f32 sem proteção separada | ✅ | Revisor sinaliza **sleep cycle / Adam optimizer** como risco extra não detalhado no nosso doc | **APROVAR + análise separada do Adam optimizer** |
+| **ITEM D — Int8** | MÉDIO — oversampling ≥5× para recall>97% | MÉDIO — oversampling **5–10×** dependendo da distribuição de normas | ✅ | Revisor eleva teto de oversampling para 10× (vs. nosso máximo de 8×) para workloads com >30% episódicos extremos | **APROVAR como índice acelerador** — oversampling default **8×**, máx **10×** para nós episódicos extremos |
+| **ITEM E — Filtered KNN** | NENHUM (não estava na matriz principal do doc) | NENHUM — "Aprovar já" (prioridade 3) | ➕ | Revisor inclui explicitamente na tabela de prioridades; nosso doc menciona em Parte 7 mas não na matriz de decisão | **APROVAR — Fase 3a (sem breaking change)** |
+| **ITEM E+ — Pool de visited lists** | NENHUM (mencionado em Parte 7 apenas) | NENHUM — "Aprovar já" (prioridade 4) | ➕ | Idem ao Filtered KNN — revisor eleva para tabela formal | **APROVAR — Fase 3a** |
+| **ITEM F — Binary Quantization** | ALTO (intrínseco, não mitigável como métrica primária) | ALTO — "Incompatível como métrica primária"; oversampling mínimo **20–30×** para pre-filter | ✅ | Revisor eleva mínimo de oversampling de 20× para **20–30×**; adiciona restrição de dim ≥ 1536+ para uso como pre-filter | **REJEITAR como métrica primária**; pre-filter apenas dim ≥1536 com oversampling ≥30× e rescore obrigatório |
+
+---
+
+### Tabela 2 — Risco de Alucinação Geométrica (conceito introduzido pelo revisor)
+
+> "Alucinação Geométrica" = o banco retorna resultados numericamente possíveis mas geometricamente incorretos no espaço hiperbólico — violando a hierarquia semântico/episódico.
+
+| Item | Impacto em Latência | Impacto em RAM | Risco de Alucinação Geométrica | Mitigação disponível |
+|------|--------------------|--------------|---------------------------------|----------------------|
+| **BUG B** (histórico) | Sem impacto | Sem impacto | 🔴 **CRÍTICO** — grafo HNSW existente tem vizinhança errada para nós episódicos | Reconstruir índice HNSW com `PoincareMetric` |
+| **BUG A — NodeMeta** | 🟢 Redução ≥90% | 🟢 ~73× redução CF_NODES | ⚪ Zero | N/A |
+| **ITEM C — f32 + kernel f64** | 🟡 Redução ~15% (AVX2 f32 load) | 🟢 Redução 50% embeddings | 🟡 **Baixo** — representação f32, cálculo f64. Risco residual: Adam optimizer em sleep cycle | `poincare_sums_f32_to_f64` obrigatório; análise separada do Adam |
+| **ITEM D — Int8 + oversampling** | 🟢 4× mais rápido KNN SIMD | 🟢 Redução 87% (f64→u8) | 🟠 **Médio** — nós episódicos extremos (‖x‖>0.97) com erro até 5× no denominador sem rescore | Oversampling 8–10× + rescore com distância Poincaré completa |
+| **ITEM E — Filtered KNN** | 🟢 5–50× queries filtradas | ⚪ Sem impacto | ⚪ Zero | N/A — usa energy_idx já existente |
+| **ITEM E+ — Pool visited lists** | 🟢 10–30% latência BFS/DFS | ⚪ Sem impacto (reutiliza buffer) | ⚪ Zero | N/A |
+| **ITEM F — Binary Quantization** | 🟢 Máximo (XOR+POPCOUNT SIMD) | 🟢 Máximo (3072-dim → 384 bytes) | 🔴 **CRÍTICO** — cosseno ≠ distância hiperbólica; magnitude (hierarquia) descartada completamente | Nenhuma adequada; usar apenas como pre-filter grosseiro dim ≥1536 |
+
+---
+
+### Tabela 3 — Ordem de implementação consolidada (ambas as fontes)
+
+| Ordem | Item | Fase | Risco Hiperbólico | Ganho Real | Decisão | Dependência |
+|:-----:|------|------|:-----------------:|-----------|---------|-------------|
+| 1 | **Filtered KNN** via `energy_idx` | 3a | ⚪ Nenhum | 5–50× queries filtradas | ✅ **APROVAR JÁ** | Nenhuma |
+| 2 | **Pool de visited lists** BFS/DFS | 3a | ⚪ Nenhum | 10–30% latência traversal | ✅ **APROVAR JÁ** | Nenhuma |
+| 3 | **BUG A** NodeMeta + **Reconstrução HNSW** | 3b | ⚪ Nenhum | 10–25× get_node() | ⚠️ **Sprint dedicado** | Migração de dados |
+| 4 | **ITEM C** f64→f32 + kernel f64 | 3b | 🟡 Baixo | 2× memória, 2× SIMD | ⚠️ **Aprovar com mitigação** | Junto com BUG A (migração única) |
+| 4b | **Análise Adam optimizer** sleep cycle | 3b | 🟡 Médio | N/A (análise de risco) | ⚠️ **Análise separada obrigatória** | Depende de ITEM C |
+| 5 | **ITEM D** Int8 + oversampling 8–10× | 3c | 🟠 Médio | 4–8× memória/KNN | ⚠️ **Aprovar condicional** | Após A+C estabilizados |
+| 6 | **ITEM F** Binary Quantization | — | 🔴 Alto | 30–60× teórico | ❌ **REJEITAR** como primário | N/A |
+
+---
+
+### Adições exclusivas do revisor externo (não cobertas no v1.0)
+
+| Adição | Descrição | Impacto | Ação |
+|--------|-----------|---------|------|
+| **Reconstrução HNSW histórico** | Dados inseridos antes do BUG B fix têm vizinhança cosseno no grafo. Custo: O(N log N) de reindexação. | 🔴 Alto — todos os KNN hiperbólicos estão incorretos para dados existentes | Planejar reindexação junto com migração BUG A |
+| **Adam optimizer / sleep cycle** | Gradientes riemannianos em espaço hiperbólico são numericamente instáveis mesmo em f64. Com f32 coords, o sleep cycle (reconsolidação) pode divergir para nós episódicos extremos. | 🟠 Médio — pode afetar qualidade do aprendizado durante sleep | Análise separada antes de aprovar ITEM C |
+| **Risco de Alucinação Geométrica** | Banco retorna resultados numericamente plausíveis mas geometricamente incorretos — violando hierarquia semântico/episódico da bola de Poincaré. | — | Usar como critério de aceitação em testes |
+| **Nós semânticos com ‖x‖ < 0.1** | Coordenadas em (-0.1, +0.1): sinais quase aleatórios. Binary Quant falha aqui mesmo com oversampling alto. | 🔴 Crítico para Binary Quant | Reforça rejeição do ITEM F |
+
+---
+
+*Cruzamento gerado em 2026-02-19 — fontes: `risco_hiperbolico.md` v1.0 + `md/hiperbolica.md` (revisão externa)*
 *Documento preparado pela auditoria técnica interna — 2026-02-19*
 *Referências: `AUDITORIA_PERFORMANCE.md`, `pesquisar1.md`, código-fonte Qdrant commit 9f433b1*
