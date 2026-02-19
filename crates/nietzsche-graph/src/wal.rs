@@ -109,8 +109,41 @@ impl GraphWal {
         })
     }
 
-    /// Append one entry to the WAL and flush to OS.
+    /// Append one entry to the WAL and **immediately flush** to the OS buffer.
+    ///
+    /// Guarantees durability for single-entry writes. For bulk operations,
+    /// use [`append_buffered`] followed by a single [`flush`] call.
     pub fn append(&mut self, entry: &GraphWalEntry) -> Result<(), GraphError> {
+        self.write_record(entry)?;
+        self.writer.flush()
+            .map_err(|e| GraphError::Storage(format!("WAL flush: {e}")))?;
+        Ok(())
+    }
+
+    /// Append one entry to the WAL **without flushing**.
+    ///
+    /// The entry is buffered in the `BufWriter`. Call [`flush`] once after
+    /// all entries in a batch to commit them all durably in one OS write.
+    ///
+    /// ## Safety
+    /// If the process crashes before `flush()`, buffered entries are lost.
+    /// Use only inside `insert_nodes_bulk` / `insert_edges_bulk` patterns
+    /// where RocksDB durability is guaranteed by the subsequent `write_batch`.
+    pub fn append_buffered(&mut self, entry: &GraphWalEntry) -> Result<(), GraphError> {
+        self.write_record(entry)
+    }
+
+    /// Flush all buffered WAL entries to the OS.
+    ///
+    /// Call once after a series of [`append_buffered`] calls.
+    pub fn flush(&mut self) -> Result<(), GraphError> {
+        self.writer.flush()
+            .map_err(|e| GraphError::Storage(format!("WAL flush: {e}")))
+    }
+
+    /// Write a single record to the BufWriter (no flush).
+    #[inline]
+    fn write_record(&mut self, entry: &GraphWalEntry) -> Result<(), GraphError> {
         let payload = bincode::serialize(entry)?;
         let len = payload.len() as u32;
         let crc = crc32fast::hash(&payload);
@@ -123,9 +156,6 @@ impl GraphWal {
             .map_err(|e| GraphError::Storage(format!("WAL write crc: {e}")))?;
         self.writer.write_all(&payload)
             .map_err(|e| GraphError::Storage(format!("WAL write payload: {e}")))?;
-        self.writer.flush()
-            .map_err(|e| GraphError::Storage(format!("WAL flush: {e}")))?;
-
         Ok(())
     }
 
