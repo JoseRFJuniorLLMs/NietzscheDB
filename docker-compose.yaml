@@ -1,21 +1,46 @@
 version: "3.8"
 
 services:
+  # ── NietzscheDB: Graph DB (gRPC :50052 · HTTP dashboard :8080) ──────────────
+  nietzsche:
+    build:
+      context: .
+      dockerfile: Dockerfile           # builds nietzsche-server
+    container_name: nietzsche-node-1
+    ports:
+      - "50052:50052"                  # gRPC  (porta separada — evita colisão com hyperspace)
+      - "8080:8080"                    # HTTP dashboard
+    environment:
+      - NIETZSCHE_DATA_DIR=/data/nietzsche
+      - NIETZSCHE_PORT=50052           # gRPC em 50052, diferente do hyperspace (50051)
+      - NIETZSCHE_DASHBOARD_PORT=8080
+      - NIETZSCHE_LOG_LEVEL=info
+      - NIETZSCHE_SLEEP_INTERVAL_SECS=300
+    volumes:
+      - nietzsche_data:/data/nietzsche
+    restart: always
+
+  # ── HyperspaceDB: Vector DB (gRPC :50051 · HTTP dashboard :50050) ───────────
   hyperspace:
-    # Build from source using new optimized Dockerfile
-    build: .
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile  # builds hyperspace-server
     container_name: hyperspace-node-1
     ports:
-      - "50051:50051" # gRPC
-      - "50050:50050" # HTTP Dashboard + Metrics
+      - "50051:50051"                  # gRPC
+      - "50050:50050"                  # HTTP Dashboard + Metrics
     environment:
       - RUST_LOG=info
       - HS_DATA_DIR=/app/data
       - HYPERSPACE_API_KEY=I_LOVE_HYPERSPACEDB
       - MALLOC_CONF=background_thread:true,dirty_decay_ms:60000,muzzy_decay_ms:60000
       - HS_IDLE_TIMEOUT_SEC=3600
+      # ── Aponta o proxy /api/nietzsche/graph para o nietzsche-server ──────────
+      - NIETZSCHE_ADDR=http://nietzsche:50052
     volumes:
-      - ./data:/app/data
+      - hyperspace_data:/app/data
+    depends_on:
+      - nietzsche
     restart: always
 
   prometheus:
@@ -37,3 +62,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     depends_on:
       - prometheus
+
+volumes:
+  nietzsche_data:
+  hyperspace_data:
