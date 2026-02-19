@@ -12,6 +12,7 @@
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::unused_async)]
 
+#[cfg(not(windows))]
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 

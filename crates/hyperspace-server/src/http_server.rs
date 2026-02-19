@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Instant;
 use sysinfo::{Pid, System};
+#[cfg(not(windows))]
 use tikv_jemalloc_ctl::epoch;
 use tower_http::cors::CorsLayer;
 
@@ -640,26 +641,36 @@ async fn trigger_vacuum_http(
         return (StatusCode::FORBIDDEN, "Admin access required").into_response();
     }
 
-    // 1. Refresh jemalloc statistics
-    if let Err(e) = epoch::advance() {
-        eprintln!("Failed to advance jemalloc epoch: {e}");
+    #[cfg(not(windows))]
+    {
+        // 1. Refresh jemalloc statistics
+        if let Err(e) = epoch::advance() {
+            eprintln!("Failed to advance jemalloc epoch: {e}");
+        }
+
+        // 2. Perform global purge via mallctl
+        // In jemalloc 5.x, "arena.4096.purge" purges all arenas.
+        // SAFETY: Calling jemalloc purge is safe here as it only triggers memory return to OS.
+        if let Err(e) = unsafe { tikv_jemalloc_ctl::raw::update(b"arena.4096.purge\0", ()) } {
+            eprintln!("Failed to purge jemalloc arenas: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"status": "Error", "message": format!("Purge failed: {e}")})),
+            )
+                .into_response();
+        }
+
+        return Json(serde_json::json!({
+            "status": "Success",
+            "message": "System memory purged and returned to OS"
+        }))
+        .into_response();
     }
 
-    // 2. Perform global purge via mallctl
-    // In jemalloc 5.x, "arena.4096.purge" purges all arenas.
-    // SAFETY: Calling jemalloc purge is safe here as it only triggers memory return to OS.
-    if let Err(e) = unsafe { tikv_jemalloc_ctl::raw::update(b"arena.4096.purge\0", ()) } {
-        eprintln!("Failed to purge jemalloc arenas: {e}");
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"status": "Error", "message": format!("Purge failed: {e}")})),
-        )
-            .into_response();
-    }
-
+    #[cfg(windows)]
     Json(serde_json::json!({
-        "status": "Success",
-        "message": "System memory purged and returned to OS"
+        "status": "Unavailable",
+        "message": "Memory purge via jemalloc is not supported on Windows"
     }))
     .into_response()
 }

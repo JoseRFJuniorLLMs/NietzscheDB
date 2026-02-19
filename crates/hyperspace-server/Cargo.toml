@@ -28,13 +28,16 @@ mime_guess = "2.0.5"
 tower-http = { version = "0.6.8", features = ["cors", "trace", "fs"] }
 sysinfo = "0.32"
 hyperspace-embed = { path = "../hyperspace-embed", optional = true }
-tikv-jemallocator = "0.6"
-tikv-jemalloc-ctl = "0.6"
-
 uuid = { version = "1.7", features = ["v4", "serde"] }
 parking_lot.workspace = true
 async-trait = "0.1.89"
 futures = "0.3.32"
+
+# jemalloc is not supported on Windows — gate it so the dev machine (Windows)
+# can build without errors while the production target (Linux) gets the allocator.
+[target.'cfg(not(windows))'.dependencies]
+tikv-jemallocator = "0.6"
+tikv-jemalloc-ctl = "0.6"
 
 [features]
 embed = ["dep:hyperspace-embed"]
