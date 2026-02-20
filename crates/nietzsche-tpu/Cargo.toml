@@ -1,0 +1,34 @@
+[package]
+name        = "nietzsche-tpu"
+version     = "0.1.0"
+edition     = "2021"
+description = "Google TPU vector backend for NietzscheDB via PJRT C API"
+
+# ── Features ──────────────────────────────────────────────────────────────────
+[features]
+default = []
+# Enable TPU acceleration via Google PJRT C API (libtpu.so).
+# Requires: Cloud TPU VM (v5e / v6e Trillium / v7 Ironwood), OR
+#           a local PJRT plugin + PJRT_PLUGIN_PATH env var pointing to it.
+# Build: cargo build -p nietzsche-tpu --features tpu
+# Run:   PJRT_PLUGIN_PATH=/path/to/libtpu.so NIETZSCHE_VECTOR_BACKEND=tpu ./nietzsche-server
+tpu = ["dep:pjrt"]
+
+# ── Dependencies ──────────────────────────────────────────────────────────────
+[dependencies]
+# NietzscheDB graph types (VectorStore trait, PoincareVector, GraphError)
+nietzsche-graph = { workspace = true }
+
+# Google PJRT C API — TPU/GPU/CPU backend abstraction layer
+# https://crates.io/crates/pjrt  — only compiled when feature `tpu` is enabled
+# Wraps libtpu.so (pre-installed on Cloud TPU VMs) via dlopen / PJRT plugin mechanism.
+# The same plugin used by JAX/PyTorch-XLA internally.
+pjrt = { version = "0.2", optional = true }
+
+# Shared workspace deps
+uuid        = { workspace = true }
+parking_lot = { workspace = true }
+tracing     = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }

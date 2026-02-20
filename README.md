@@ -739,6 +739,144 @@ CPU-only build (default) compiles and runs correctly — GPU path simply not act
 
 ---
 
+## TPU Acceleration — `nietzsche-tpu`
+
+NietzscheDB supports Google **TPU**-accelerated vector search via the **PJRT C API**,
+targeting Cloud TPU VMs (v5e, **v6e Trillium**, **v7 Ironwood**). This is the same
+runtime used internally by JAX, PyTorch-XLA, and Google's own Gemini models.
+
+### Architecture
+
+```
+Insert → CPU staging buffer (Vec<f32>)
+               │
+               ├── n < 1.000 vectors  → CPU linear scan (PJRT overhead not worth it)
+               └── n ≥ 1.000 vectors  → lazy compact + MHLO compile (once)
+                                         ├── upload %query  (D×f32)   → TPU
+                                         ├── upload %matrix (N×D×f32) → TPU
+                                         ├── execute MHLO: dots[i] = dot(matrix[i,:], query)
+                                         └── CPU: L2² = q_norm² − 2·dots + m_norms²
+```
+
+The MHLO kernel runs the dominant O(N·D) computation on TPU. L2 norm corrections
+are O(N) and applied on CPU using norms precomputed at build time.
+
+### Hardware Targets
+
+| TPU | Generation | FP8 TFLOPs | HBM | GA |
+| --- | --- | --- | --- | --- |
+| v5e | 5th gen | — | 16 GB/chip | ✅ |
+| v6e | Trillium | — | 32 GB/chip | ✅ |
+| v7 | **Ironwood** | **4,614** | **192 GB/chip** | ✅ Nov 2025 |
+
+Ironwood (v7) is the current flagship: 42.5 Exaflops per pod, used by Anthropic for Claude.
+
+### Build Requirements (Cloud TPU VM)
+
+```bash
+# 1. Provision a Cloud TPU VM (v5e / v6e / v7):
+#    gcloud compute tpus tpu-vm create nietzsche-tpu-vm \
+#      --zone=us-central2-b --accelerator-type=v5e-1 \
+#      --version=tpu-ubuntu2204-base
+
+# 2. SSH into the VM — libtpu.so is pre-installed at /lib/libtpu.so
+
+# 3. Build the server with TPU support:
+PJRT_PLUGIN_PATH=/lib/libtpu.so \
+cargo build --release --features tpu
+
+# 4. Run with TPU backend:
+PJRT_PLUGIN_PATH=/lib/libtpu.so \
+NIETZSCHE_VECTOR_BACKEND=tpu \
+./target/release/nietzsche-server
+```
+
+### Docker (Cloud TPU VM)
+
+```dockerfile
+# Dockerfile.tpu — run on Cloud TPU VM
+FROM ubuntu:22.04 AS builder
+RUN apt-get update && apt-get install -y curl build-essential
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:$PATH"
+COPY . .
+RUN cargo build --release --features tpu
+
+FROM ubuntu:22.04
+# libtpu.so must be present on the TPU VM host; mount it in:
+COPY --from=builder /target/release/nietzsche-server /usr/local/bin/
+EXPOSE 50051 8080
+CMD ["nietzsche-server"]
+```
+
+```yaml
+# docker-compose.tpu.yml — run on a TPU VM
+services:
+  nietzsche-server:
+    image: nietzsche-server:tpu
+    environment:
+      PJRT_PLUGIN_PATH: /lib/libtpu.so    # pre-installed on TPU VMs
+      NIETZSCHE_VECTOR_BACKEND: tpu
+      NIETZSCHE_DATA_DIR: /data/nietzsche
+    volumes:
+      - /lib/libtpu.so:/lib/libtpu.so:ro  # host libtpu.so bind-mount
+      - nietzsche_data:/data/nietzsche
+    ports:
+      - "50051:50051"
+      - "8082:8080"
+```
+
+### TPU Startup Flow
+
+```
+CollectionManager::open()
+        ↓
+For each collection:
+  TpuVectorStore::new(dim)      → PJRT client init (loads libtpu.so)
+  db.set_vector_store(tpu)      → replaces CPU HNSW
+        ↓
+gRPC server ready                → all knn() calls compile MHLO lazily on first use
+```
+
+### TPU Crate Structure
+
+| Crate | Role |
+| --- | --- |
+| `nietzsche-tpu` | `TpuVectorStore` implementing `VectorStore` via PJRT + MHLO |
+| `nietzsche-server --features tpu` | Injects TPU store at startup |
+| `nietzsche-graph` | `AnyVectorStore::Tpu(Box<dyn VectorStore>)` — type-erased slot |
+
+### TPU Feature Flags
+
+```toml
+# nietzsche-server/Cargo.toml
+[features]
+tpu = ["dep:nietzsche-tpu", "nietzsche-tpu/tpu"]   # enables TPU injection
+
+# nietzsche-tpu/Cargo.toml
+[features]
+tpu = ["dep:pjrt"]   # enables PJRT C API calls in TpuVectorStore
+```
+
+CPU-only build (default) compiles and runs correctly — TPU path simply not activated.
+Falls back to CPU linear scan if `PJRT_PLUGIN_PATH` is not set or init fails.
+
+### GPU vs TPU
+
+| Feature | GPU (cuVS CAGRA) | TPU (PJRT MHLO) |
+| --- | --- | --- |
+| Index type | ANN graph (HNSW-like) | Exact dot-product batch |
+| Best for | Ultra-low latency, single query | High throughput, large batch |
+| Memory | GPU VRAM (CUDA managed) | TPU HBM (192 GB on Ironwood) |
+| Scale | Up to ~100M vectors | Ironwood pod: 1.77 PB shared HBM |
+| Cloud | GCP GPU instances | GCP Cloud TPU VMs |
+| Feature flag | `--features gpu` | `--features tpu` |
+| Env var | `NIETZSCHE_VECTOR_BACKEND=gpu` | `NIETZSCHE_VECTOR_BACKEND=tpu` |
+
+For more details see [`docs/npu-deploy.md`](docs/npu-deploy.md).
+
+---
+
 ## Git Remotes
 
 ```bash
