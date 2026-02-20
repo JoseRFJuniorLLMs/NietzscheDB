@@ -13,8 +13,8 @@ api.interceptors.response.use(
     (error) => {
         if (error.response?.status === 401) {
             // Only clear if we're not on login page already
-            if (localStorage.getItem("hyperspace_api_key") && !window.location.pathname.includes("/login")) {
-                localStorage.removeItem("hyperspace_api_key")
+            if (localStorage.getItem("nietzsche_api_key") && !window.location.pathname.includes("/login")) {
+                localStorage.removeItem("nietzsche_api_key")
                 window.location.href = "/login"
             }
         }
@@ -22,7 +22,7 @@ api.interceptors.response.use(
     }
 )
 
-const token = localStorage.getItem("hyperspace_api_key")
+const token = localStorage.getItem("nietzsche_api_key")
 if (token) setAuthToken(token)
 
 export const fetchStatus = async () => {
