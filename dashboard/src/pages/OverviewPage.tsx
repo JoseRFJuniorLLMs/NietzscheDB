@@ -13,11 +13,18 @@ export function OverviewPage() {
         queryFn: fetchStatus,
         refetchInterval: 5000
     })
-    const { data: metrics } = useQuery({
+    const { data: rawStats } = useQuery({
         queryKey: ['metrics'],
-        queryFn: () => api.get("/metrics").then(r => r.data),
+        queryFn: () => api.get("/stats").then(r => r.data),
         refetchInterval: 2000
     })
+    const metrics = rawStats ? {
+        total_vectors: rawStats.node_count ?? 0,
+        total_collections: rawStats.collections ?? 0,
+        ram_usage_mb: rawStats.ram_usage_mb ?? 0,
+        disk_usage_mb: rawStats.disk_usage_mb ?? 0,
+        cpu_usage_percent: rawStats.cpu_usage_percent ?? 0,
+    } : undefined
 
     if (sLoading && !status) return <OverviewSkeleton />
 
@@ -113,11 +120,17 @@ function ConfigRow({ label, value }: any) {
 function IngestionStatusCard({ metrics }: any) {
     const [refreshInterval, setRefreshInterval] = useState("10")
 
-    const { data: liveMetrics } = useQuery({
+    const { data: liveRaw } = useQuery({
         queryKey: ['live-metrics'],
-        queryFn: () => api.get("/metrics").then(r => r.data),
+        queryFn: () => api.get("/stats").then(r => r.data),
         refetchInterval: parseInt(refreshInterval) * 1000
     })
+    const liveMetrics = liveRaw ? {
+        total_vectors: liveRaw.node_count ?? 0,
+        total_collections: liveRaw.collections ?? 0,
+        ram_usage_mb: liveRaw.ram_usage_mb ?? 0,
+        disk_usage_mb: liveRaw.disk_usage_mb ?? 0,
+    } : undefined
 
     const currentMetrics = liveMetrics || metrics
 
