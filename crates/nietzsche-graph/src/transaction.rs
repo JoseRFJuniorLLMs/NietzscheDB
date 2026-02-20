@@ -283,7 +283,7 @@ mod tests {
     fn node(x: f64) -> Node {
         Node::new(
             Uuid::new_v4(),
-            PoincareVector::new(vec![x, 0.0]),
+            PoincareVector::new(vec![x as f32, 0.0]),
             serde_json::json!({}),
         )
     }

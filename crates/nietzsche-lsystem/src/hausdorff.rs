@@ -30,7 +30,7 @@ pub fn global_hausdorff(nodes: &[Node]) -> f32 {
     if nodes.len() < 3 {
         return 1.0;
     }
-    let coords: Vec<&Vec<f64>> = nodes.iter().map(|n| &n.embedding.coords).collect();
+    let coords: Vec<&Vec<f32>> = nodes.iter().map(|n| &n.embedding.coords).collect();
     box_counting(&coords)
 }
 
@@ -51,7 +51,7 @@ pub fn local_hausdorff(center: &Node, all_nodes: &[Node], k: usize) -> f32 {
         da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
     });
 
-    let k_neighbours: Vec<&Vec<f64>> = sorted
+    let k_neighbours: Vec<&Vec<f32>> = sorted
         .iter()
         .take(k)
         .map(|n| &n.embedding.coords)
@@ -72,7 +72,7 @@ pub fn local_hausdorff(center: &Node, all_nodes: &[Node], k: usize) -> f32 {
 ///
 /// `coords` is a slice of references to coordinate vectors.
 /// All vectors must have the same dimensionality.
-pub fn box_counting(coords: &[&Vec<f64>]) -> f32 {
+pub fn box_counting(coords: &[&Vec<f32>]) -> f32 {
     if coords.len() < 2 {
         return 1.0;
     }
@@ -98,14 +98,14 @@ pub fn box_counting(coords: &[&Vec<f64>]) -> f32 {
 }
 
 /// Count non-empty boxes at `scale` divisions per axis.
-fn count_boxes(coords: &[&Vec<f64>], scale: u32) -> usize {
+fn count_boxes(coords: &[&Vec<f32>], scale: u32) -> usize {
     let mut boxes: HashSet<Vec<i32>> = HashSet::new();
     for coord in coords {
-        // Each coordinate c ∈ (-1, 1) → map to [0, scale)
         let key: Vec<i32> = coord
             .iter()
             .map(|&c| {
-                let normalised = (c + 1.0) * 0.5;          // [0, 1)
+                let c64 = c as f64;
+                let normalised = (c64 + 1.0) * 0.5;          // [0, 1)
                 let idx = (normalised * scale as f64).floor() as i32;
                 idx.clamp(0, scale as i32 - 1)
             })
@@ -137,15 +137,15 @@ fn ols_slope(xs: &[f64], ys: &[f64]) -> f64 {
 mod tests {
     use super::*;
 
-    fn point(x: f64, y: f64) -> Vec<f64> { vec![x, y] }
+    fn point(x: f32, y: f32) -> Vec<f32> { vec![x, y] }
 
     /// A Cantor-like set along the x-axis has D ≈ 0 (sparse).
     #[test]
     fn cantor_set_is_low_dimension() {
-        let pts: Vec<Vec<f64>> = (0..6)
-            .map(|i| point(i as f64 * 0.02 - 0.05, 0.0))
+        let pts: Vec<Vec<f32>> = (0..6)
+            .map(|i| point(i as f32 * 0.02 - 0.05, 0.0))
             .collect();
-        let refs: Vec<&Vec<f64>> = pts.iter().collect();
+        let refs: Vec<&Vec<f32>> = pts.iter().collect();
         let d = box_counting(&refs);
         // Points on a line ≈ D=1; very few points ≤ 1
         assert!(d <= 1.5, "expected D ≤ 1.5, got {d}");
@@ -158,25 +158,25 @@ mod tests {
         for i in 0..8 {
             for j in 0..8 {
                 pts.push(vec![
-                    i as f64 / 8.0 * 1.8 - 0.9,
-                    j as f64 / 8.0 * 1.8 - 0.9,
+                    i as f32 / 8.0 * 1.8 - 0.9,
+                    j as f32 / 8.0 * 1.8 - 0.9,
                 ]);
             }
         }
-        let refs: Vec<&Vec<f64>> = pts.iter().collect();
+        let refs: Vec<&Vec<f32>> = pts.iter().collect();
         let d = box_counting(&refs);
         assert!(d > 1.5, "expected D > 1.5 for 2-D grid, got {d}");
     }
 
     #[test]
     fn empty_set_returns_one() {
-        let refs: Vec<&Vec<f64>> = Vec::new();
+        let refs: Vec<&Vec<f32>> = Vec::new();
         assert_eq!(box_counting(&refs), 1.0);
     }
 
     #[test]
     fn single_point_returns_one() {
-        let p = vec![0.1_f64, 0.2];
+        let p = vec![0.1_f32, 0.2];
         let refs = vec![&p];
         assert_eq!(box_counting(&refs), 1.0);
     }
@@ -196,7 +196,7 @@ mod tests {
             .map(|i| {
                 Node::new(
                     Uuid::new_v4(),
-                    PoincareVector::new(vec![i as f64 * 0.05, i as f64 * 0.05]),
+                    PoincareVector::new(vec![i as f32 * 0.05, i as f32 * 0.05]),
                     serde_json::json!({}),
                 )
             })

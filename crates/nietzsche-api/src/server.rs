@@ -70,20 +70,21 @@ fn parse_edge_type(s: &str) -> EdgeType {
 }
 
 fn node_to_proto(node: Node) -> nietzsche::NodeResponse {
-    let content_bytes = serde_json::to_vec(&node.content).unwrap_or_default();
+    let (meta, embedding) = node.into_parts();
+    let content_bytes = serde_json::to_vec(&meta.content).unwrap_or_default();
     nietzsche::NodeResponse {
         found:           true,
-        id:              node.id.to_string(),
+        id:              meta.id.to_string(),
         embedding:       Some(nietzsche::PoincareVector {
-            coords: node.embedding.coords,
-            dim:    node.embedding.dim as u32,
+            coords: embedding.coords_f64(),
+            dim:    embedding.dim as u32,
         }),
-        energy:          node.energy,
-        depth:           node.depth,
-        hausdorff_local: node.hausdorff_local,
-        created_at:      node.created_at,
+        energy:          meta.energy,
+        depth:           meta.depth,
+        hausdorff_local: meta.hausdorff_local,
+        created_at:      meta.created_at,
         content:         content_bytes,
-        node_type:       format!("{:?}", node.node_type),
+        node_type:       format!("{:?}", meta.node_type),
     }
 }
 
@@ -271,7 +272,7 @@ impl NietzscheDb for NietzscheServer {
         validate_embedding(&emb_proto)?;
         if r.energy != 0.0 { validate_energy(r.energy)?; }
 
-        let embedding = PoincareVector::new(emb_proto.coords);
+        let embedding = PoincareVector::from_f64(emb_proto.coords);
         let content: serde_json::Value = if r.content.is_empty() {
             serde_json::Value::Null
         } else {
@@ -475,7 +476,7 @@ impl NietzscheDb for NietzscheServer {
     ) -> Result<Response<nietzsche::KnnResponse>, Status> {
         let r     = req.into_inner();
         validate_k(r.k)?;
-        let query = PoincareVector::new(r.query_coords);
+        let query = PoincareVector::from_f64(r.query_coords);
         let k     = r.k as usize;
 
         let shared  = get_col!(self.cm, &r.collection);

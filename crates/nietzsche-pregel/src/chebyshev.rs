@@ -286,7 +286,7 @@ mod tests {
         let nodes: Vec<Node> = (0..4)
             .map(|i| Node::new(
                 Uuid::new_v4(),
-                PoincareVector::new(vec![0.1 * (i as f64 + 1.0), 0.0]),
+                PoincareVector::new(vec![0.1 * (i as f32 + 1.0), 0.0]),
                 serde_json::json!({}),
             ))
             .collect();

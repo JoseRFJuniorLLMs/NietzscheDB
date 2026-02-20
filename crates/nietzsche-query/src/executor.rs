@@ -617,7 +617,7 @@ fn eval_expr(
             // same Poincaré ball; here we use the node's primary embedding as proxy.
             let node = find_node(alias, binding)?;
             let query_vec = match params.get(arg.as_str()) {
-                Some(ParamValue::Vector(v)) => PoincareVector::new(v.clone()),
+                Some(ParamValue::Vector(v)) => PoincareVector::from_f64(v.clone()),
                 _ => return Err(QueryError::Execution(
                     format!("param ${arg} must be a Vector for SENSORY_DIST")
                 )),
@@ -633,9 +633,9 @@ fn eval_expr(
 
 fn resolve_hdist_arg(arg: &HDistArg, params: &Params) -> Result<PoincareVector, QueryError> {
     match arg {
-        HDistArg::Vector(v) => Ok(PoincareVector::new(v.clone())),
+        HDistArg::Vector(v) => Ok(PoincareVector::from_f64(v.clone())),
         HDistArg::Param(name) => match params.get(name.as_str()) {
-            Some(ParamValue::Vector(v)) => Ok(PoincareVector::new(v.clone())),
+            Some(ParamValue::Vector(v)) => Ok(PoincareVector::from_f64(v.clone())),
             _ => Err(QueryError::Execution(
                 format!("param ${name} must be a Vector for HYPERBOLIC_DIST")
             )),
@@ -767,7 +767,7 @@ fn compute_order_key(
                 return Err(QueryError::Execution("ORDER BY SENSORY_DIST: unknown alias".into()));
             }
             let query_vec = match params.get(arg.as_str()) {
-                Some(ParamValue::Vector(v)) => PoincareVector::new(v.clone()),
+                Some(ParamValue::Vector(v)) => PoincareVector::from_f64(v.clone()),
                 _ => return Err(QueryError::Execution(
                     format!("param ${arg} must be a Vector for SENSORY_DIST")
                 )),
@@ -813,8 +813,10 @@ fn eval_math_func(
         // computes Klein-metric distance (same geodesic distance, different formula).
         MathFunc::KleinDist => {
             let (node, query_vec) = resolve_dist_args(args, binding, params)?;
-            let k1 = poincare_to_klein(&node.embedding.coords);
-            let k2 = poincare_to_klein(&query_vec.coords);
+            let c1 = node.embedding.coords_f64();
+            let c2 = query_vec.coords_f64();
+            let k1 = poincare_to_klein(&c1);
+            let k2 = poincare_to_klein(&c2);
             let dot: f64 = k1.iter().zip(&k2).map(|(a, b)| a * b).sum();
             let n1_sq: f64 = k1.iter().map(|x| x * x).sum();
             let n2_sq: f64 = k2.iter().map(|x| x * x).sum();
@@ -827,7 +829,7 @@ fn eval_math_func(
         // Higher values mean the node is closer to the boundary (deeper in hierarchy).
         MathFunc::MinkowskiNorm => {
             let node = resolve_single_prop_node(args, binding)?;
-            let norm_sq: f64 = node.embedding.coords.iter().map(|x| x * x).sum();
+            let norm_sq: f64 = node.embedding.coords.iter().map(|&x| (x as f64) * (x as f64)).sum();
             let lambda = 2.0 / (1.0 - norm_sq).max(1e-15);
             Ok(Value::Float(lambda))
         }
@@ -869,7 +871,7 @@ fn eval_math_func(
         // h_t(x) = exp(−d²/(4t)) where d = ‖embedding‖ (dist from origin).
         MathFunc::GaussKernel => {
             let (node, t) = resolve_alias_and_scalar(args, binding, params)?;
-            let norm_sq: f64 = node.embedding.coords.iter().map(|x| x * x).sum();
+            let norm_sq: f64 = node.embedding.coords.iter().map(|&x| (x as f64) * (x as f64)).sum();
             let d_sq = norm_sq; // squared Euclidean distance from origin
             let kernel = (-d_sq / (4.0 * t.max(1e-15))).exp();
             Ok(Value::Float(kernel))
@@ -880,7 +882,7 @@ fn eval_math_func(
         // x = 2·‖embedding‖ − 1 ∈ [−1, 1].
         MathFunc::ChebyshevCoeff => {
             let (node, k) = resolve_alias_and_scalar(args, binding, params)?;
-            let norm: f64 = node.embedding.coords.iter().map(|x| x * x).sum::<f64>().sqrt();
+            let norm: f64 = node.embedding.coords.iter().map(|&x| (x as f64) * (x as f64)).sum::<f64>().sqrt();
             let x = (2.0 * norm - 1.0).clamp(-1.0, 1.0);
             let tk = (k * x.acos()).cos();
             Ok(Value::Float(tk))
@@ -943,7 +945,7 @@ fn eval_math_func(
         // Approximation: cos(k·π·x) where x = ‖embedding‖ (normalized position).
         MathFunc::FourierCoeff => {
             let (node, k) = resolve_alias_and_scalar(args, binding, params)?;
-            let norm: f64 = node.embedding.coords.iter().map(|x| x * x).sum::<f64>().sqrt();
+            let norm: f64 = node.embedding.coords.iter().map(|&x| (x as f64) * (x as f64)).sum::<f64>().sqrt();
             let coeff = (k * std::f64::consts::PI * norm).cos();
             Ok(Value::Float(coeff))
         }
@@ -980,12 +982,12 @@ fn resolve_dist_args<'a>(
     };
     let query_vec = match &args[1] {
         MathFuncArg::Param(name) => match params.get(name.as_str()) {
-            Some(ParamValue::Vector(v)) => PoincareVector::new(v.clone()),
+            Some(ParamValue::Vector(v)) => PoincareVector::from_f64(v.clone()),
             _ => return Err(QueryError::ParamTypeMismatch {
                 name: name.clone(), expected: "Vector", got: "other".into(),
             }),
         },
-        MathFuncArg::Vector(v) => PoincareVector::new(v.clone()),
+        MathFuncArg::Vector(v) => PoincareVector::from_f64(v.clone()),
         _ => return Err(QueryError::Execution("second arg must be a $param or vector literal".into())),
     };
     Ok((node, query_vec))
@@ -1302,7 +1304,7 @@ mod tests {
     fn node_at(x: f64, energy: f32) -> Node {
         let mut n = Node::new(
             Uuid::new_v4(),
-            PoincareVector::new(vec![x, 0.0]),
+            PoincareVector::new(vec![x as f32, 0.0]),
             serde_json::json!({}),
         );
         n.energy = energy;
@@ -1554,7 +1556,7 @@ mod tests {
         // Verify sorted ascending by distance from origin
         let dists: Vec<f64> = results.iter().map(|r| {
             if let QueryResult::Node(n) = r {
-                n.embedding.distance(&PoincareVector::new(vec![0.0, 0.0]))
+                n.embedding.distance(&PoincareVector::new(vec![0.0_f32, 0.0]))
             } else { f64::MAX }
         }).collect();
         assert!(dists[0] <= dists[1] && dists[1] <= dists[2]);
@@ -1919,7 +1921,7 @@ mod tests {
         assert_eq!(results.len(), 3);
         let dists: Vec<f64> = results.iter().map(|r| {
             if let QueryResult::Node(n) = r {
-                n.embedding.distance(&PoincareVector::new(vec![0.0, 0.0]))
+                n.embedding.distance(&PoincareVector::new(vec![0.0_f32, 0.0]))
             } else { f64::MAX }
         }).collect();
         assert!(dists[0] <= dists[1] && dists[1] <= dists[2]);

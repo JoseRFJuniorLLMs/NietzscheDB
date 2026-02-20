@@ -156,13 +156,14 @@ The storage and indexing foundation, inheriting all of HyperspaceDB v1.4:
 Eight new crates built on top of the foundation:
 
 #### `nietzsche-graph` — Hyperbolic Graph Engine *(Phases 1–3 — COMPLETE)*
-- `Node` with `PoincaréVector`, `depth`, `energy`, `lsystem_generation`, `hausdorff_local`
+- `Node` = `NodeMeta` (~100 bytes: id, depth, energy, node_type, hausdorff_local, content) + `PoincareVector` (embedding, stored separately for 10-25x traversal speedup)
+- `PoincareVector` with `Vec<f32>` coords (distance kernel promotes to f64 internally for numerical stability near the Poincaré boundary)
 - `Edge` typed as `Association`, `LSystemGenerated`, `Hierarchical`, or `Pruned`
 - `AdjacencyIndex` using `DashMap` for lock-free concurrent access
-- `GraphStorage` over RocksDB with column families: `nodes`, `edges`, `adj_out`, `adj_in`
+- `GraphStorage` over RocksDB with 8 column families: `nodes` (NodeMeta), `embeddings` (PoincareVector), `edges`, `adj_out`, `adj_in`, `meta`, `sensory`, `energy_idx`
 - Own WAL for graph operations, separate from the vector WAL
 - `NietzscheDB` dual-write: every insert goes to both RocksDB (graph) and HyperspaceDB (embedding)
-- **Traversal engine** (`traversal.rs`): energy-gated BFS, Poincaré-distance Dijkstra, shortest-path reconstruction, energy-biased `DiffusionWalk` with seeded RNG
+- **Traversal engine** (`traversal.rs`): energy-gated BFS (reads only NodeMeta — ~100 bytes per hop), Poincaré-distance Dijkstra, shortest-path reconstruction, energy-biased `DiffusionWalk` with seeded RNG
 
 #### `nietzsche-query` — NQL Query Language *(Phase 4 — COMPLETE)*
 Nietzsche Query Language — a declarative query language with first-class hyperbolic primitives. Parser built with `pest` (PEG grammar). 19 unit + integration tests.

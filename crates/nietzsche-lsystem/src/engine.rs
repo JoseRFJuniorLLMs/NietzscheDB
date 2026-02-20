@@ -273,7 +273,8 @@ fn make_pending(
 ) -> Option<PendingAction> {
     match &rule.action {
         RuleAction::SpawnChild { depth_offset, weight, content } => {
-            let coords = spawn_child(&node.embedding.coords, *depth_offset, rng);
+            let parent_f64 = node.embedding.coords_f64();
+            let coords = spawn_child(&parent_f64, *depth_offset, rng);
             Some(PendingAction::SpawnChild {
                 parent_id:         node.id,
                 parent_generation: node.lsystem_generation,
@@ -284,7 +285,8 @@ fn make_pending(
             })
         }
         RuleAction::SpawnSibling { angle, distance, weight, content } => {
-            let coords = spawn_sibling(&node.embedding.coords, *angle, *distance, rng);
+            let parent_f64 = node.embedding.coords_f64();
+            let coords = spawn_sibling(&parent_f64, *angle, *distance, rng);
             Some(PendingAction::SpawnSibling {
                 parent_id:         node.id,
                 parent_generation: node.lsystem_generation,
@@ -322,7 +324,7 @@ fn apply_pending<V: VectorStore>(
                 if pruned.contains(&parent_id) {
                     continue; // parent was pruned earlier in this tick
                 }
-                let emb = PoincareVector::new(child_coords);
+                let emb = PoincareVector::from_f64(child_coords);
                 if !emb.is_valid() {
                     continue; // numeric drift — skip
                 }
@@ -345,7 +347,7 @@ fn apply_pending<V: VectorStore>(
                 if pruned.contains(&parent_id) {
                     continue;
                 }
-                let emb = PoincareVector::new(sibling_coords);
+                let emb = PoincareVector::from_f64(sibling_coords);
                 if !emb.is_valid() {
                     continue;
                 }
@@ -399,7 +401,7 @@ mod tests {
     fn seed_node(x: f64, energy: f32) -> Node {
         let mut n = Node::new(
             Uuid::new_v4(),
-            PoincareVector::new(vec![x, 0.0]),
+            PoincareVector::new(vec![x as f32, 0.0]),
             serde_json::json!({}),
         );
         n.energy = energy;

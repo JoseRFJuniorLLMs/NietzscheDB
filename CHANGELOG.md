@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-02-19
+
+### Added
+*   **NodeMeta Separation (BUG A)**: `Node` is now split into `NodeMeta` (~100 bytes) + `PoincareVector` (embedding), stored in separate RocksDB column families (`nodes` and `embeddings`).
+    *   `update_energy()` and `update_hausdorff()` no longer deserialize the embedding — zero embedding I/O for metadata-only operations.
+    *   BFS traversal reads only `NodeMeta` per hop (~100 bytes vs ~24KB), yielding 10-25x speedup on large graphs.
+    *   Dijkstra splits reads: `get_node_meta()` for energy gate, `get_embedding()` only for distance computation.
+    *   `hot_tier` cache stores `NodeMeta` instead of full `Node` (240x less RAM per entry at 3072 dims).
+    *   New public API: `get_node_meta()`, `get_embedding()`, `scan_nodes_meta()`, `iter_nodes_meta()`.
+    *   `Node` implements `Deref<Target=NodeMeta>` — all existing field access (`node.energy`, `node.id`, etc.) works without code changes.
+*   **f32 Embedding Coordinates (ITEM C)**: `PoincareVector.coords` migrated from `Vec<f64>` to `Vec<f32>` (50% memory reduction).
+    *   Distance kernel (`poincare_sums`) promotes to f64 internally for numerical stability near the Poincaré boundary.
+    *   New helpers: `PoincareVector::from_f64()` (narrowing constructor), `coords_f64()` (widening accessor).
+    *   Proto wire format (`repeated double`) unchanged — server converts at the gRPC boundary.
+    *   Sleep cycle and L-System math remain in f64 precision — promote/narrow at function boundaries.
+*   **Binary Quantization Rejection (ITEM F)**: Formally documented that Binary Quantization (`sign(x)` → 1-bit) is **permanently rejected** for NietzscheDB's hyperbolic embeddings.
+    *   `sign(x)` destroys magnitude, which encodes hierarchical position in the Poincaré ball (center = abstract, boundary = specific).
+    *   Decision recorded in `lib.rs`, `risco_hiperbolico.md`, and `CLAUDE.md`.
+
+### Changed
+*   **RocksDB Column Families**: Expanded from 7 to 8 CFs with the addition of `CF_EMBEDDINGS` for separated embedding storage.
+*   **Storage I/O**: `put_node()` now atomically writes to both `CF_NODES` (NodeMeta) and `CF_EMBEDDINGS` (PoincareVector) via `WriteBatch`.
+
 ## [2.0.0] - 2026-02-16
 
 ### Added

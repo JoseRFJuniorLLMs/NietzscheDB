@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::adjacency::AdjacencyIndex;
 use crate::error::GraphError;
-use crate::model::{Edge, Node, PoincareVector};
+use crate::model::{Edge, Node, NodeMeta, PoincareVector};
 use crate::storage::GraphStorage;
 use crate::transaction::Transaction;
 use crate::wal::{GraphWal, GraphWalEntry};
@@ -103,9 +103,13 @@ pub struct NietzscheDB<V: VectorStore> {
     wal:          GraphWal,
     adjacency:    AdjacencyIndex,
     vector_store: V,
-    /// Hot-tier RAM cache: elite Übermensch nodes pinned for O(1) access.
+    /// Hot-tier RAM cache: elite Übermensch node metadata pinned for O(1) access.
+    ///
+    /// ## BUG A fix (Committee 2026-02-19)
+    /// Changed from `DashMap<Uuid, Node>` (~24 KB/entry) to `DashMap<Uuid, NodeMeta>`
+    /// (~100 bytes/entry) — **240× less RAM per cached node**.
     /// Populated by [`ZaratustraEngine`] after each Übermensch phase.
-    pub hot_tier: Arc<DashMap<Uuid, Node>>,
+    pub hot_tier: Arc<DashMap<Uuid, NodeMeta>>,
 }
 
 impl<V: VectorStore> NietzscheDB<V> {
@@ -127,6 +131,19 @@ impl<V: VectorStore> NietzscheDB<V> {
         let adjacency = storage.rebuild_adjacency()?;
 
         Ok(Self { storage, wal, adjacency, vector_store, hot_tier: Arc::new(DashMap::new()) })
+    }
+
+    // ── NodeMeta-only accessors (BUG A fast path) ────
+
+    /// Retrieve node metadata by ID (~100 bytes, no embedding).
+    ///
+    /// Checks the hot-tier RAM cache first (O(1) DashMap lookup) before
+    /// falling back to RocksDB `CF_NODES`.
+    pub fn get_node_meta(&self, id: Uuid) -> Result<Option<NodeMeta>, GraphError> {
+        if let Some(meta) = self.hot_tier.get(&id) {
+            return Ok(Some(meta.clone()));
+        }
+        self.storage.get_node_meta(&id)
     }
 
     // ── Node operations ────────────────────────────────
@@ -198,14 +215,18 @@ impl<V: VectorStore> NietzscheDB<V> {
         Ok(())
     }
 
-    /// Retrieve a node by ID.
+    /// Retrieve a full node (metadata + embedding) by ID.
     ///
-    /// Checks the hot-tier RAM cache first (O(1) DashMap lookup) before
-    /// falling back to RocksDB. Elite nodes promoted by Zaratustra are
-    /// served entirely from RAM on repeat reads.
+    /// If the hot-tier has the metadata cached, uses that + a single
+    /// `CF_EMBEDDINGS` read. Otherwise falls back to the full
+    /// `GraphStorage::get_node()` join.
     pub fn get_node(&self, id: Uuid) -> Result<Option<Node>, GraphError> {
-        if let Some(node) = self.hot_tier.get(&id) {
-            return Ok(Some(node.clone()));
+        if let Some(meta) = self.hot_tier.get(&id) {
+            // Hot-tier hit: we have meta, just need the embedding
+            return match self.storage.get_embedding(&id)? {
+                Some(emb) => Ok(Some(Node::from((meta.clone(), emb)))),
+                None => Ok(None),
+            };
         }
         self.storage.get_node(&id)
     }
@@ -214,20 +235,25 @@ impl<V: VectorStore> NietzscheDB<V> {
     ///
     /// The node record is kept in RocksDB for historical replay; it is only
     /// excluded from traversal via energy-based filtering.
+    ///
+    /// **BUG A optimized:** reads only `NodeMeta` (~100 bytes), never touches
+    /// the ~24 KB embedding in `CF_EMBEDDINGS`.
     pub fn prune_node(&mut self, id: Uuid) -> Result<(), GraphError> {
         // 1. WAL
         self.wal.append(&GraphWalEntry::PruneNode(id))?;
 
-        // 2. Fetch, modify, re-persist
-        if let Some(mut node) = self.storage.get_node(&id)? {
-            node.energy = 0.0;
-            self.storage.put_node(&node)?;
+        // 2. Fetch meta only, set energy = 0, re-persist meta only
+        if let Some(mut meta) = self.storage.get_node_meta(&id)? {
+            let old_energy = meta.energy;
+            meta.energy = 0.0;
+            self.storage.put_node_meta_update_energy(&meta, old_energy)?;
         }
 
         // 3. Remove from vector store
         self.vector_store.delete(id)?;
 
-        // 4. Remove from in-memory adjacency (no traversal from pruned nodes)
+        // 4. Remove from hot-tier + in-memory adjacency
+        self.hot_tier.remove(&id);
         self.adjacency.remove_node(&id);
 
         Ok(())
@@ -265,37 +291,41 @@ impl<V: VectorStore> NietzscheDB<V> {
 
     /// Update a node's energy value.
     ///
-    /// Uses `put_node_update_energy()` to atomically swap the energy_idx key,
-    /// preventing stale entries from corrupting `WHERE n.energy > X` queries.
+    /// **BUG A optimized:** reads only `NodeMeta` (~100 bytes) and writes only
+    /// to `CF_NODES` + `CF_ENERGY_IDX` — never touches the ~24 KB embedding.
     pub fn update_energy(&mut self, node_id: Uuid, energy: f32) -> Result<(), GraphError> {
         self.wal.append(&GraphWalEntry::UpdateNodeEnergy { node_id, energy })?;
 
-        if let Some(mut node) = self.storage.get_node(&node_id)? {
-            let old_energy = node.energy;
-            node.energy = energy;
-            // Evict from hot_tier so callers get the fresh value on next read.
+        if let Some(mut meta) = self.storage.get_node_meta(&node_id)? {
+            let old_energy = meta.energy;
+            meta.energy = energy;
             self.hot_tier.remove(&node_id);
-            self.storage.put_node_update_energy(&node, old_energy)?;
+            self.storage.put_node_meta_update_energy(&meta, old_energy)?;
         }
 
         Ok(())
     }
 
     /// Update a node's local Hausdorff dimension.
+    ///
+    /// **BUG A optimized:** reads/writes only `NodeMeta` (~100 bytes).
     pub fn update_hausdorff(&mut self, node_id: Uuid, hausdorff: f32) -> Result<(), GraphError> {
         self.wal.append(&GraphWalEntry::UpdateHausdorff { node_id, hausdorff })?;
 
-        if let Some(mut node) = self.storage.get_node(&node_id)? {
-            let old_energy = node.energy; // energy unchanged but must pass it
-            node.hausdorff_local = hausdorff;
+        if let Some(mut meta) = self.storage.get_node_meta(&node_id)? {
+            let old_energy = meta.energy; // energy unchanged but must pass it
+            meta.hausdorff_local = hausdorff;
             self.hot_tier.remove(&node_id);
-            self.storage.put_node_update_energy(&node, old_energy)?;
+            self.storage.put_node_meta_update_energy(&meta, old_energy)?;
         }
 
         Ok(())
     }
 
     /// Update a node's embedding (reconsolidation / sleep cycle).
+    ///
+    /// Writes the new embedding to `CF_EMBEDDINGS` and updates the vector store.
+    /// Also updates `depth` in `NodeMeta` since it derives from `‖embedding‖`.
     pub fn update_embedding(
         &mut self,
         node_id: Uuid,
@@ -306,11 +336,14 @@ impl<V: VectorStore> NietzscheDB<V> {
             embedding: embedding.clone(),
         })?;
 
-        if let Some(mut node) = self.storage.get_node(&node_id)? {
-            let old_energy = node.energy;
-            node.embedding = embedding.clone();
+        // Update embedding in CF_EMBEDDINGS
+        self.storage.put_embedding(&node_id, &embedding)?;
+
+        // Update depth in NodeMeta (derives from ‖embedding‖)
+        if let Some(mut meta) = self.storage.get_node_meta(&node_id)? {
+            meta.depth = embedding.depth() as f32;
+            self.storage.put_node_meta(&meta)?;
             self.hot_tier.remove(&node_id);
-            self.storage.put_node_update_energy(&node, old_energy)?;
         }
 
         self.vector_store.upsert(node_id, &embedding)?;
@@ -379,9 +412,17 @@ impl<V: VectorStore> NietzscheDB<V> {
         self.get_node(id)
     }
 
-    /// Promote a node to the hot-tier RAM cache (called by Zaratustra engine).
-    pub fn promote_to_hot_tier(&self, node: Node) {
-        self.hot_tier.insert(node.id, node);
+    /// Promote a node's metadata to the hot-tier RAM cache (called by Zaratustra engine).
+    ///
+    /// Only caches `NodeMeta` (~100 bytes) — the embedding stays in `CF_EMBEDDINGS`
+    /// and is read on demand via `get_node()`.
+    pub fn promote_to_hot_tier(&self, node: &Node) {
+        self.hot_tier.insert(node.id, node.meta.clone());
+    }
+
+    /// Promote `NodeMeta` directly (avoids needing the full Node).
+    pub fn promote_meta_to_hot_tier(&self, meta: NodeMeta) {
+        self.hot_tier.insert(meta.id, meta);
     }
 
     /// Evict a node from the hot-tier RAM cache.
@@ -389,12 +430,20 @@ impl<V: VectorStore> NietzscheDB<V> {
         self.hot_tier.remove(id);
     }
 
-    /// Replace the entire hot-tier with a new set of elite nodes.
+    /// Replace the entire hot-tier with metadata from a set of elite nodes.
     /// Called after every Zaratustra Übermensch phase.
-    pub fn replace_hot_tier(&self, elite_nodes: Vec<Node>) {
+    pub fn replace_hot_tier(&self, elite_nodes: &[Node]) {
         self.hot_tier.clear();
         for node in elite_nodes {
-            self.hot_tier.insert(node.id, node);
+            self.hot_tier.insert(node.id, node.meta.clone());
+        }
+    }
+
+    /// Replace the entire hot-tier with pre-extracted metadata.
+    pub fn replace_hot_tier_meta(&self, elite_metas: Vec<NodeMeta>) {
+        self.hot_tier.clear();
+        for meta in elite_metas {
+            self.hot_tier.insert(meta.id, meta);
         }
     }
 
@@ -508,9 +557,10 @@ impl<V: VectorStore> NietzscheDB<V> {
 
     /// Apply a `PruneNode` (energy → 0) directly to storage.
     pub(crate) fn apply_prune_node(&mut self, id: Uuid) -> Result<(), GraphError> {
-        if let Some(mut node) = self.storage.get_node(&id)? {
-            node.energy = 0.0;
-            self.storage.put_node(&node)?;
+        if let Some(mut meta) = self.storage.get_node_meta(&id)? {
+            let old_energy = meta.energy;
+            meta.energy = 0.0;
+            self.storage.put_node_meta_update_energy(&meta, old_energy)?;
         }
         self.vector_store.delete(id)?;
         self.adjacency.remove_node(&id);
@@ -534,11 +584,12 @@ impl<V: VectorStore> NietzscheDB<V> {
         Ok(())
     }
 
-    /// Apply an `UpdateEnergy` directly to storage.
+    /// Apply an `UpdateEnergy` directly to storage (NodeMeta only — no embedding I/O).
     pub(crate) fn apply_update_energy(&mut self, node_id: Uuid, energy: f32) -> Result<(), GraphError> {
-        if let Some(mut node) = self.storage.get_node(&node_id)? {
-            node.energy = energy;
-            self.storage.put_node(&node)?;
+        if let Some(mut meta) = self.storage.get_node_meta(&node_id)? {
+            let old_energy = meta.energy;
+            meta.energy = energy;
+            self.storage.put_node_meta_update_energy(&meta, old_energy)?;
         }
         Ok(())
     }
@@ -563,7 +614,7 @@ mod tests {
     fn make_node(dims: &[f64]) -> Node {
         Node::new(
             Uuid::new_v4(),
-            PoincareVector::new(dims.to_vec()),
+            PoincareVector::from_f64(dims.to_vec()),
             serde_json::json!({}),
         )
     }

@@ -203,12 +203,13 @@ impl SleepCycle {
             let neighbor_coords: Vec<Vec<f64>> = db
                 .neighbors_out(node.id)
                 .into_iter()
-                .filter_map(|nid| snapshot.get(&nid).map(|e| e.coords.clone()))
+                .filter_map(|nid| snapshot.get(&nid).map(|e| e.coords.iter().map(|&c| c as f64).collect()))
                 .collect();
 
             // Step 4 — random perturbation along a geodesic
             let tangent = random_tangent(dim, config.noise, rng);
-            let mut coords = exp_map(&node.embedding.coords, &tangent);
+            let coords_f64 = node.embedding.coords_f64();
+            let mut coords = exp_map(&coords_f64, &tangent);
 
             // Step 5 — Riemannian Adam: minimise coherence loss
             let mut adam_state = AdamState::new(dim);
@@ -230,7 +231,7 @@ impl SleepCycle {
                 coords = adam.step(&coords, &eucl_grad, &mut adam_state);
             }
 
-            db.update_embedding(node.id, PoincareVector::new(coords))?;
+            db.update_embedding(node.id, PoincareVector::from_f64(coords))?;
             nodes_perturbed += 1;
         }
 
@@ -288,19 +289,21 @@ mod tests {
 
     fn insert(db: &mut NietzscheDB<MockVectorStore>, x: f64, y: f64) -> Uuid {
         let id = Uuid::new_v4();
-        let node = Node::new(id, PoincareVector::new(vec![x, y]), serde_json::json!({}));
+        let node = Node::new(id, PoincareVector::new(vec![x as f32, y as f32]), serde_json::json!({}));
         db.insert_node(node).expect("insert node");
         id
     }
 
     fn connect(db: &mut NietzscheDB<MockVectorStore>, from: Uuid, to: Uuid) {
         let edge = Edge {
-            id:        Uuid::new_v4(),
+            id:           Uuid::new_v4(),
             from,
             to,
-            edge_type: EdgeType::Association,
-            weight:    1.0,
-            metadata:  Default::default(),
+            edge_type:    EdgeType::Association,
+            weight:       1.0,
+            lsystem_rule: None,
+            created_at:   0,
+            metadata:     Default::default(),
         };
         db.insert_edge(edge).expect("insert edge");
     }
@@ -355,7 +358,7 @@ mod tests {
         SleepCycle::run(&cfg, &mut db, &mut rng).unwrap();
 
         for node in db.storage().scan_nodes().unwrap() {
-            let norm: f64 = node.embedding.coords.iter().map(|x| x * x).sum::<f64>().sqrt();
+            let norm: f64 = node.embedding.coords.iter().map(|&x| (x as f64) * (x as f64)).sum::<f64>().sqrt();
             assert!(norm < 1.0, "embedding escaped the ball: ‖x‖ = {norm}");
         }
     }
@@ -446,7 +449,7 @@ mod tests {
 
         // All nodes must remain in ball after a connected-graph cycle
         for node in db.storage().scan_nodes().unwrap() {
-            let norm: f64 = node.embedding.coords.iter().map(|x| x * x).sum::<f64>().sqrt();
+            let norm: f64 = node.embedding.coords.iter().map(|&x| (x as f64) * (x as f64)).sum::<f64>().sqrt();
             assert!(norm < 1.0, "‖x‖ = {norm} escapes ball");
         }
         assert_eq!(report.nodes_perturbed, 5);
