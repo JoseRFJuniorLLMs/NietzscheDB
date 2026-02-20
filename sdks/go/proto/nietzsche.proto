@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package nietzsche;
 
+option go_package = "nietzsche-sdk/pb";
+
 // ── NietzscheDB unified gRPC API ──────────────────────────────────────────
 //
 // Exposes all core subsystems over a single service:

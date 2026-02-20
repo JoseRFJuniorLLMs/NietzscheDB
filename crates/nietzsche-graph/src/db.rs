@@ -386,6 +386,104 @@ impl<V: VectorStore> NietzscheDB<V> {
         Ok(())
     }
 
+    // ── MERGE helpers (FASE D — Neo4j MERGE replacement) ─────────
+
+    /// Find a node by `node_type` and content key match.
+    ///
+    /// Scans all nodes in CF_NODES, filtering by `node_type` and checking
+    /// that the node's JSON content contains ALL keys in `match_keys` with
+    /// matching values.
+    ///
+    /// Returns the first matching node, or `None` if no match.
+    pub fn find_node_by_content(
+        &self,
+        node_type: &str,
+        match_keys: &serde_json::Value,
+    ) -> Result<Option<Node>, GraphError> {
+        let match_obj = match match_keys.as_object() {
+            Some(obj) => obj,
+            None => return Ok(None),
+        };
+
+        for result in self.storage.iter_nodes_meta() {
+            let meta = match result {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+
+            // Filter by node_type (Debug format matches proto strings)
+            let type_str = format!("{:?}", meta.node_type);
+            if type_str != node_type {
+                continue;
+            }
+
+            // Check content match
+            if let Some(content_obj) = meta.content.as_object() {
+                let all_match = match_obj.iter().all(|(k, v)| {
+                    content_obj.get(k).map_or(false, |cv| cv == v)
+                });
+                if all_match {
+                    // Found — fetch full node with embedding
+                    return self.get_node(meta.id);
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Update a node's content JSON by merging new keys.
+    ///
+    /// Existing keys are overwritten, new keys are added.
+    /// The node's embedding is NOT changed.
+    pub fn update_node_content(
+        &mut self,
+        id: Uuid,
+        updates: &serde_json::Value,
+    ) -> Result<(), GraphError> {
+        if let Some(mut meta) = self.storage.get_node_meta(&id)? {
+            if let (Some(content_obj), Some(update_obj)) = (
+                meta.content.as_object_mut(),
+                updates.as_object(),
+            ) {
+                for (k, v) in update_obj {
+                    content_obj.insert(k.clone(), v.clone());
+                }
+            }
+
+            // Re-persist meta (energy unchanged)
+            let old_energy = meta.energy;
+            self.hot_tier.remove(&id);
+            self.storage.put_node_meta_update_energy(&meta, old_energy)?;
+        }
+
+        Ok(())
+    }
+
+    /// Find an edge between two nodes with a specific type.
+    ///
+    /// Scans outgoing edges of `from_id` looking for one that points to
+    /// `to_id` with the given `edge_type`.
+    pub fn find_edge(
+        &self,
+        from_id: Uuid,
+        to_id: Uuid,
+        edge_type: &str,
+    ) -> Result<Option<Edge>, GraphError> {
+        let edge_ids = self.storage.edge_ids_from(&from_id)?;
+        for eid in edge_ids {
+            if let Some(edge) = self.storage.get_edge(&eid)? {
+                if edge.to == to_id {
+                    let type_str = format!("{:?}", edge.edge_type);
+                    if type_str == edge_type {
+                        return Ok(Some(edge));
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+
     // ── Query helpers ──────────────────────────────────
 
     /// Return outgoing neighbour IDs for `node_id` (from in-memory index).

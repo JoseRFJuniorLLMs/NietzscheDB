@@ -56,6 +56,10 @@ kw_decay       = _{ "DECAY"       ~ !ident_tail }
 kw_begin       = _{ "BEGIN"       ~ !ident_tail }
 kw_commit      = _{ "COMMIT"      ~ !ident_tail }
 kw_rollback    = _{ "ROLLBACK"    ~ !ident_tail }
+kw_create      = _{ ^"CREATE"     ~ !ident_tail }
+kw_merge       = _{ ^"MERGE"      ~ !ident_tail }
+kw_on          = _{ ^"ON"         ~ !ident_tail }
+kw_set         = _{ ^"SET"        ~ !ident_tail }
 
 // ── Terminals ────────────────────────────────────────────
 
@@ -156,10 +160,11 @@ where_clause = { kw_where ~ conditions }
 // (alias) or (alias:Label)
 node_pattern = { "(" ~ ident ~ (":" ~ ident)? ~ ")" }
 
-// Edge direction — typed or anonymous
+// Edge direction — typed or anonymous; optional hop range for variable-length paths
 edge_label = @{ ident }
-edge_out   = { "-[:" ~ edge_label ~ "]->" | "-->" }
-edge_in    = { "<-[:" ~ edge_label ~ "]-" | "<--" }
+hop_range  = { "*" ~ integer ~ (".." ~ integer)? }
+edge_out   = { "-[:" ~ edge_label ~ hop_range? ~ "]->" | "-->" }
+edge_in    = { "<-[:" ~ edge_label ~ hop_range? ~ "]-" | "<--" }
 edge_dir   = { edge_out | edge_in }
 
 // (a)-[:TYPE]->(b) or (a)-->(b)
@@ -209,6 +214,26 @@ diffuse_query = {
     kw_diffuse ~ kw_from ~ diffuse_from
     ~ diffuse_t?
     ~ diffuse_hops?
+    ~ return_clause?
+}
+
+// ── MERGE patterns ─────────────────────────────────────
+
+prop_pair          = { ident ~ ":" ~ atom }
+prop_map           = { "{" ~ prop_pair ~ ("," ~ prop_pair)* ~ "}" }
+merge_node_pattern = { "(" ~ ident ~ (":" ~ ident)? ~ prop_map? ~ ")" }
+merge_edge_pattern = { merge_node_pattern ~ edge_dir ~ merge_node_pattern }
+merge_pattern      = { merge_edge_pattern | merge_node_pattern }
+
+set_assignment   = { prop ~ "=" ~ atom }
+set_clause       = { kw_set ~ set_assignment ~ ("," ~ set_assignment)* }
+on_create_clause = { kw_on ~ kw_create ~ set_clause }
+on_match_clause  = { kw_on ~ kw_match ~ set_clause }
+
+merge_query = {
+    kw_merge ~ merge_pattern
+    ~ on_create_clause?
+    ~ on_match_clause?
     ~ return_clause?
 }
 
@@ -262,4 +287,4 @@ rollback_tx_query = { kw_rollback }
 
 // ── Top-level ───────────────────────────────────────────
 
-query = { SOI ~ (explain_query | invoke_zaratustra_query | begin_tx_query | commit_tx_query | rollback_tx_query | reconstruct_query | diffuse_query | match_query) ~ EOI }
+query = { SOI ~ (explain_query | invoke_zaratustra_query | begin_tx_query | commit_tx_query | rollback_tx_query | reconstruct_query | diffuse_query | merge_query | match_query) ~ EOI }

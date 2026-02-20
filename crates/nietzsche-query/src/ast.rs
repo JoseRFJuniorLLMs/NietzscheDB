@@ -19,6 +19,8 @@ pub enum Query {
     CommitTx,
     /// Phase F: `ROLLBACK` — rollback the active transaction.
     RollbackTx,
+    /// `MERGE (pattern) [ON CREATE SET …] [ON MATCH SET …] [RETURN …]`
+    Merge(MergeQuery),
 }
 
 // ── INVOKE ZARATUSTRA (Phase C) ───────────────────────────
@@ -34,6 +36,44 @@ pub struct InvokeZaratustraQuery {
     pub alpha: Option<f64>,
     /// Override decay coefficient. `None` → env/default.
     pub decay: Option<f64>,
+}
+
+// ── MERGE ─────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct MergeQuery {
+    pub pattern:   MergePattern,
+    pub on_create: Vec<SetAssignment>,
+    pub on_match:  Vec<SetAssignment>,
+    pub ret:       Option<ReturnClause>,
+}
+
+#[derive(Debug, Clone)]
+pub enum MergePattern {
+    Node(MergeNodePattern),
+    Edge(MergeEdgePattern),
+}
+
+#[derive(Debug, Clone)]
+pub struct MergeNodePattern {
+    pub alias:      String,
+    pub label:      Option<String>,
+    pub properties: Vec<(String, Expr)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MergeEdgePattern {
+    pub from:       MergeNodePattern,
+    pub edge_label: Option<String>,
+    pub direction:  Direction,
+    pub to:         MergeNodePattern,
+}
+
+#[derive(Debug, Clone)]
+pub struct SetAssignment {
+    pub alias: String,
+    pub field: String,
+    pub value: Expr,
 }
 
 // ── MATCH ─────────────────────────────────────────────────
@@ -58,11 +98,18 @@ pub struct NodePattern {
 }
 
 #[derive(Debug, Clone)]
+pub struct HopRange {
+    pub min: usize,
+    pub max: usize,
+}
+
+#[derive(Debug, Clone)]
 pub struct PathPattern {
     pub from:       NodePattern,
     pub edge_label: Option<String>,
     pub direction:  Direction,
     pub to:         NodePattern,
+    pub hop_range:  Option<HopRange>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

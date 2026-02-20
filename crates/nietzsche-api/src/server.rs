@@ -25,7 +25,7 @@ use uuid::Uuid;
 
 use nietzsche_graph::{
     CollectionConfig, CollectionManager,
-    Edge, EdgeType, GraphError, Node, PoincareVector,
+    Edge, EdgeType, GraphError, Node, NodeType, PoincareVector,
     traversal::{BfsConfig, DijkstraConfig},
     bfs, dijkstra,
 };
@@ -66,6 +66,15 @@ fn parse_edge_type(s: &str) -> EdgeType {
         "LSystemGenerated" => EdgeType::LSystemGenerated,
         "Pruned"           => EdgeType::Pruned,
         _                  => EdgeType::Association,
+    }
+}
+
+fn parse_node_type(s: &str) -> NodeType {
+    match s {
+        "Episodic"      => NodeType::Episodic,
+        "Concept"       => NodeType::Concept,
+        "DreamSnapshot" => NodeType::DreamSnapshot,
+        _               => NodeType::Semantic,
     }
 }
 
@@ -366,6 +375,157 @@ impl NietzscheDb for NietzscheServer {
         let mut db = shared.write().await;
         db.delete_edge(id).map_err(graph_err)?;
         Ok(Response::new(ok_status()))
+    }
+
+    // ── MERGE (upsert semantic) ──────────────────────────────────────────
+
+    #[instrument(skip(self, req))]
+    async fn merge_node(
+        &self,
+        req: Request<nietzsche::MergeNodeRequest>,
+    ) -> Result<Response<nietzsche::MergeNodeResponse>, Status> {
+        let r = req.into_inner();
+
+        let match_keys: serde_json::Value = if r.match_keys.is_empty() {
+            return Err(Status::invalid_argument("match_keys must not be empty"));
+        } else {
+            serde_json::from_slice(&r.match_keys)
+                .map_err(|e| Status::invalid_argument(format!("invalid match_keys JSON: {e}")))?
+        };
+
+        let on_create: serde_json::Value = if r.on_create_set.is_empty() {
+            serde_json::Value::Object(Default::default())
+        } else {
+            serde_json::from_slice(&r.on_create_set)
+                .map_err(|e| Status::invalid_argument(format!("invalid on_create_set JSON: {e}")))?
+        };
+
+        let on_match: serde_json::Value = if r.on_match_set.is_empty() {
+            serde_json::Value::Object(Default::default())
+        } else {
+            serde_json::from_slice(&r.on_match_set)
+                .map_err(|e| Status::invalid_argument(format!("invalid on_match_set JSON: {e}")))?
+        };
+
+        let node_type_str = if r.node_type.is_empty() { "Semantic" } else { &r.node_type };
+
+        let shared = get_col!(self.cm, &r.collection);
+        let mut db = shared.write().await;
+
+        // Try to find an existing node by type + content keys
+        let existing = db.find_node_by_content(node_type_str, &match_keys)
+            .map_err(graph_err)?;
+
+        match existing {
+            Some(node) => {
+                // ON MATCH: update content with on_match_set
+                let node_id = node.id;
+                if on_match.as_object().map_or(false, |o| !o.is_empty()) {
+                    db.update_node_content(node_id, &on_match).map_err(graph_err)?;
+                }
+                // Re-fetch updated node
+                let updated = db.get_node(node_id).map_err(graph_err)?
+                    .unwrap_or(node);
+                debug!(node_id = %node_id, collection = %col(&r.collection), "MergeNode: matched existing");
+                Ok(Response::new(nietzsche::MergeNodeResponse {
+                    created: false,
+                    node_id: node_id.to_string(),
+                    node:    Some(node_to_proto(updated)),
+                }))
+            }
+            None => {
+                // ON CREATE: build new node with match_keys + on_create_set merged
+                let id = Uuid::new_v4();
+
+                // Merge match_keys and on_create_set into content
+                let mut content = serde_json::Map::new();
+                if let Some(mk) = match_keys.as_object() {
+                    for (k, v) in mk { content.insert(k.clone(), v.clone()); }
+                }
+                if let Some(oc) = on_create.as_object() {
+                    for (k, v) in oc { content.insert(k.clone(), v.clone()); }
+                }
+
+                // Build embedding — use provided or zero vector (origin of Poincaré ball)
+                let embedding = if let Some(emb_proto) = r.embedding {
+                    validate_embedding(&emb_proto)?;
+                    PoincareVector::from_f64(emb_proto.coords)
+                } else {
+                    PoincareVector::from_f64(vec![0.0; 3072])
+                };
+
+                let mut node = Node::new(id, embedding, serde_json::Value::Object(content));
+                node.meta.node_type = parse_node_type(node_type_str);
+                if r.energy > 0.0 { node.energy = r.energy; }
+
+                db.insert_node(node.clone()).map_err(graph_err)?;
+                debug!(node_id = %id, collection = %col(&r.collection), "MergeNode: created new");
+
+                Ok(Response::new(nietzsche::MergeNodeResponse {
+                    created: true,
+                    node_id: id.to_string(),
+                    node:    Some(node_to_proto(node)),
+                }))
+            }
+        }
+    }
+
+    #[instrument(skip(self, req))]
+    async fn merge_edge(
+        &self,
+        req: Request<nietzsche::MergeEdgeRequest>,
+    ) -> Result<Response<nietzsche::MergeEdgeResponse>, Status> {
+        let r = req.into_inner();
+
+        let from = parse_uuid(&r.from_node_id, "from_node_id")?;
+        let to   = parse_uuid(&r.to_node_id, "to_node_id")?;
+        let edge_type_str = if r.edge_type.is_empty() { "Association" } else { &r.edge_type };
+
+        let shared = get_col!(self.cm, &r.collection);
+        let mut db = shared.write().await;
+
+        // Try to find an existing edge by (from, to, type)
+        let existing = db.find_edge(from, to, edge_type_str)
+            .map_err(graph_err)?;
+
+        match existing {
+            Some(edge) => {
+                // ON MATCH: update edge metadata if provided
+                // Edge metadata updates would go here if edges had mutable content.
+                // For now, we just return the existing edge ID.
+                debug!(edge_id = %edge.id, "MergeEdge: matched existing");
+                Ok(Response::new(nietzsche::MergeEdgeResponse {
+                    created: false,
+                    edge_id: edge.id.to_string(),
+                }))
+            }
+            None => {
+                // ON CREATE: insert new edge
+                let id = Uuid::new_v4();
+                let mut edge = Edge::new(from, to, parse_edge_type(edge_type_str), 1.0);
+                edge.id = id;
+                edge.metadata = HashMap::new();
+
+                // Apply on_create_set as edge metadata
+                if !r.on_create_set.is_empty() {
+                    let props: serde_json::Value = serde_json::from_slice(&r.on_create_set)
+                        .map_err(|e| Status::invalid_argument(format!("invalid on_create_set JSON: {e}")))?;
+                    if let Some(obj) = props.as_object() {
+                        for (k, v) in obj {
+                            edge.metadata.insert(k.clone(), v.clone());
+                        }
+                    }
+                }
+
+                db.insert_edge(edge).map_err(graph_err)?;
+                debug!(edge_id = %id, "MergeEdge: created new");
+
+                Ok(Response::new(nietzsche::MergeEdgeResponse {
+                    created: true,
+                    edge_id: id.to_string(),
+                }))
+            }
+        }
     }
 
     // ── NQL query ─────────────────────────────────────────────────────────

@@ -83,7 +83,7 @@ enum QuantizationMode {
 message CreateCollectionRequest {
   string name = 1;
   uint32 dimension = 2;
-  string metric = 3; // "cosine", "l2", "poincare"
+  string metric = 3; // "cosine", "l2", "poincare", "lorentz"
 }
 
 message DeleteCollectionRequest {

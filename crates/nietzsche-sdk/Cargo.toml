@@ -14,6 +14,14 @@ tokio         = { workspace = true }
 uuid          = { workspace = true }
 rand          = { workspace = true }
 
+[dev-dependencies]
+clap      = { version = "4", features = ["derive", "env"] }
+indicatif = "0.17"
+
 [[example]]
 name = "seed_100"
 path = "examples/seed_100.rs"
+
+[[example]]
+name = "seed_1gb"
+path = "examples/seed_1gb.rs"

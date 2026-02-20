@@ -275,7 +275,7 @@ EVA-Mind sleeps. During sleep:
 This prevents catastrophic forgetting while allowing genuine memory reorganization.
 
 #### `nietzsche-api` — Unified gRPC API *(Fase A+B — COMPLETE)*
-Single endpoint for all NietzscheDB capabilities — **17 RPCs** over a single `NietzscheDB` service. Every data-plane RPC accepts a `collection` field; empty → `"default"`.
+Single endpoint for all NietzscheDB capabilities — **22 RPCs** over a single `NietzscheDB` service. Every data-plane RPC accepts a `collection` field; empty → `"default"`.
 
 ```protobuf
 service NietzscheDB {
@@ -303,8 +303,19 @@ service NietzscheDB {
 
   // ── Lifecycle ───────────────────────────────────────────────────
   rpc TriggerSleep(SleepRequest)        returns (SleepResponse);
-  rpc GetStats(StatsRequest)            returns (StatsResponse);
-  rpc HealthCheck(HealthRequest)        returns (HealthResponse);
+
+  // ── Sensory Compression Layer (Phase 11) ──────────────────────
+  rpc InsertSensory(InsertSensoryRequest) returns (StatusResponse);
+  rpc GetSensory(NodeIdRequest)           returns (SensoryResponse);
+  rpc Reconstruct(ReconstructRequest)     returns (ReconstructResponse);
+  rpc DegradeSensory(NodeIdRequest)       returns (StatusResponse);
+
+  // ── Zaratustra — autonomous evolution (Phase Z) ───────────────
+  rpc InvokeZaratustra(ZaratustraRequest) returns (ZaratustraResponse);
+
+  // ── Admin ─────────────────────────────────────────────────────
+  rpc GetStats(Empty)                     returns (StatsResponse);
+  rpc HealthCheck(Empty)                  returns (StatusResponse);
 }
 ```
 
@@ -322,7 +333,9 @@ db.insert_node(embedding=[...], collection="patients")
 results = db.query("MATCH (n) RETURN n LIMIT 5", collection="core")
 ```
 
-#### `nietzsche-sdk` — Python & TypeScript SDKs *(Phase 9 — COMPLETE)*
+#### `nietzsche-sdk` — Python, TypeScript & Go SDKs *(Phase 9 — COMPLETE)*
+
+**Python:**
 ```python
 from nietzsche_db import NietzscheClient
 
@@ -340,6 +353,33 @@ results = db.query("MATCH (m:Memory) WHERE m.depth > 0.7 RETURN m LIMIT 5")
 # Trigger sleep and reconsolidate
 report = db.trigger_sleep(noise=0.02, adam_lr=0.005)
 print(f"Δhausdorff={report.hausdorff_delta:.3f}, committed={report.committed}")
+```
+
+**Go (sdk-papa-caolho):**
+```go
+import nietzsche "sdk-papa-caolho"
+
+client, _ := nietzsche.ConnectInsecure("localhost:50052")
+defer client.Close()
+
+// Insert node with Poincaré embedding
+node, _ := client.InsertNode(ctx, nietzsche.InsertNodeOpts{
+    Coords:   []float64{0.1, 0.2, 0.3},
+    Content:  map[string]string{"text": "first memory"},
+    NodeType: "Semantic",
+})
+
+// KNN search
+results, _ := client.KnnSearch(ctx, []float64{0.1, 0.2, 0.3}, 10, "")
+
+// NQL query with typed parameters
+qr, _ := client.Query(ctx,
+    "MATCH (m:Memory) WHERE m.depth > $d RETURN m LIMIT 5",
+    map[string]interface{}{"d": 0.7}, "")
+
+// Trigger sleep
+sleep, _ := client.TriggerSleep(ctx, nietzsche.SleepOpts{Noise: 0.02})
+fmt.Printf("ΔH=%.3f committed=%v\n", sleep.HausdorffDelta, sleep.Committed)
 ```
 
 #### `nietzsche-server` — Production Binary *(Phase 10 — COMPLETE)*
@@ -383,7 +423,7 @@ PHASE 10  Benchmarks, hardening, production ✅ COMPLETE
 | 6 — Diffusion | Overlap t=0.1 vs t=10.0 < 30%; Chebyshev K=10 < 500ms on 100k nodes |
 | 7 — ACID | Zero data loss on crash mid-saga; rollback verified on vector + graph |
 | 8 — Sleep | Δhausdorff per cycle < 5%; rollback rate < 10%; 10 consecutive cycles without divergence |
-| 9 — API | All 14 RPCs wired; Python + TypeScript SDKs compiling; input validation passing 20+ tests |
+| 9 — API | All 22 RPCs wired; Python + TypeScript + Go SDKs compiling; input validation passing 20+ tests |
 | 10 — Production | Criterion benchmarks passing; CI green; Docker image buildable; `nietzsche-server` binary ships |
 
 ---
@@ -551,9 +591,12 @@ NietzscheDB/
 │   ├── nietzsche-sleep/    ← sleep/reconsolidation cycle  [Phase 8   ✅]
 │   ├── nietzsche-api/      ← unified gRPC API             [Phase 9   ✅]
 │   ├── nietzsche-sdk/      ← Python + TypeScript SDKs     [Phase 9   ✅]
+│   │                          Go SDK: sdks/go/ (sdk-papa-caolho, 22 RPCs)
 │   └── nietzsche-server/   ← production binary + config   [Phase 10  ✅]
 ├── dashboard/              ← React monitoring dashboard
-├── sdks/python|ts|go|cpp/  ← HyperspaceDB SDKs (extended for Nietzsche)
+├── sdks/
+│   ├── go/                 ← sdk-papa-caolho (Go gRPC SDK, 22 RPCs, 25 tests)
+│   ├── python|ts|cpp/      ← HyperspaceDB SDKs (extended for Nietzsche)
 ├── benchmarks/             ← reproducible benchmark suite vs Qdrant, Milvus, Weaviate
 ├── integrations/           ← LangChain Python + JS, LlamaIndex (planned)
 ├── docs/                   ← architecture articles

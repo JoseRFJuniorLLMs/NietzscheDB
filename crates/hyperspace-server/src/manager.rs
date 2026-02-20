@@ -1,6 +1,6 @@
 use crate::collection::CollectionImpl;
 use dashmap::DashMap;
-use hyperspace_core::{Collection, CosineMetric, EuclideanMetric, PoincareMetric};
+use hyperspace_core::{Collection, CosineMetric, EuclideanMetric, LorentzMetric, PoincareMetric};
 use hyperspace_proto::hyperspace::{
     replication_log, CreateCollectionOp, DeleteCollectionOp, ReplicationLog,
 };
@@ -234,6 +234,23 @@ impl CollectionManager {
             (1024, "cosine") => inst!(1024, CosineMetric),
             (1536, "cosine") => inst!(1536, CosineMetric),
             (2048, "cosine") => inst!(2048, CosineMetric),
+            (3072, "cosine") => inst!(3072, CosineMetric),
+
+            // Lorentz (Hyperboloid)
+            (8, "lorentz") => inst!(8, LorentzMetric),
+            (16, "lorentz") => inst!(16, LorentzMetric),
+            (32, "lorentz") => inst!(32, LorentzMetric),
+            (64, "lorentz") => inst!(64, LorentzMetric),
+            (128, "lorentz") => inst!(128, LorentzMetric),
+            (768, "lorentz") => inst!(768, LorentzMetric),
+            (1024, "lorentz") => inst!(1024, LorentzMetric),
+            (1536, "lorentz") => inst!(1536, LorentzMetric),
+            (2048, "lorentz") => inst!(2048, LorentzMetric),
+            (3072, "lorentz") => inst!(3072, LorentzMetric),
+
+            // Dimension 3072 (GPT-4 / text-embedding-3-large)
+            (3072, "poincare") => inst!(3072, PoincareMetric),
+            (3072, "euclidean" | "l2") => inst!(3072, EuclideanMetric),
 
             _ => {
                 return Err(format!(
@@ -325,6 +342,16 @@ impl CollectionManager {
         let quantization = std::env::var("HS_QUANTIZATION_LEVEL")
             .unwrap_or("scalar".to_string())
             .to_lowercase();
+
+        // Guard: Lorentz metric requires QuantizationMode::None
+        if metric == "lorentz" && quantization != "none" {
+            return Err(
+                "Lorentz metric does not support quantization. \
+                 Quantizing hyperboloid coordinates destroys the Minkowski norm constraint. \
+                 Set HS_QUANTIZATION_LEVEL=none for Lorentz collections."
+                    .to_string(),
+            );
+        }
 
         let meta = CollectionMetadata {
             dimension,
