@@ -19,7 +19,7 @@ export function CollectionsPage() {
         queryFn: () => api.get("/collections").then(r => r.data)
     })
 
-    const isStringList = collections && collections.length > 0 && typeof collections[0] === 'string'
+    const isStringList = collections && collections.length > 0 && typeof collections[0] === 'string' && !('name' in collections[0])
 
     const deleteMutation = useMutation({
         mutationFn: (name: string) => api.delete(`/collections/${name}`),
@@ -70,10 +70,8 @@ export function CollectionsPage() {
 
 function CollectionRow({ collection, isString, onDelete }: any) {
     const name = isString ? collection : collection.name
-    // If backend only returns strings, we can fetch detailed stats here individually if needed, 
-    // but better to fix backend. For now show placeholder if string.
-    const count = isString ? "-" : collection.count
-    const dim = isString ? "-" : collection.dimension
+    const count = isString ? "-" : (collection.node_count ?? collection.count ?? "-")
+    const dim = isString ? "-" : (collection.dim ?? collection.dimension ?? "-")
     const metric = isString ? "-" : collection.metric
 
     const navigate = useNavigate()

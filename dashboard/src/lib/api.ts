@@ -26,12 +26,19 @@ const token = localStorage.getItem("nietzsche_api_key")
 if (token) setAuthToken(token)
 
 export const fetchStatus = async () => {
-    try {
-        const res = await api.get("/status")
-        return res.data
-    } catch {
-        const res = await api.get("/cluster/status")
-        return res.data
+    const [health, stats] = await Promise.allSettled([
+        api.get("/health"),
+        api.get("/stats"),
+    ])
+    const s = stats.status === "fulfilled" ? stats.value.data : {}
+    const h = health.status === "fulfilled" ? health.value.data : {}
+    return {
+        status: h.status === "ok" ? "ONLINE" : "OFFLINE",
+        version: s.version ?? "0.1.0",
+        config: { dimension: 3072, metric: "cosine" },
+        uptime: s.uptime ?? null,
+        embedding: { enabled: !!s.embedding_enabled },
+        _raw: { ...s, ...h },
     }
 }
 
