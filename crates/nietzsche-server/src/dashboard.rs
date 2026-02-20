@@ -36,6 +36,7 @@ use tower_http::cors::CorsLayer;
 use tracing::{info, warn};
 use uuid::Uuid;
 
+use nietzsche_cluster::ClusterRegistry;
 use nietzsche_graph::{
     CollectionManager,
     Edge, EdgeType, Node, NodeType, PoincareVector,
@@ -52,7 +53,12 @@ type AppState = (Arc<CollectionManager>, Arc<OperationMetrics>);
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
-pub async fn serve(db: Arc<CollectionManager>, ops: Arc<OperationMetrics>, port: u16) {
+pub async fn serve(
+    db: Arc<CollectionManager>,
+    ops: Arc<OperationMetrics>,
+    port: u16,
+    cluster: Option<ClusterRegistry>,
+) {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let state: AppState = (db, ops);
 
@@ -91,6 +97,10 @@ pub async fn serve(db: Arc<CollectionManager>, ops: Arc<OperationMetrics>, port:
         // Export
         .route("/api/export/nodes", get(export_nodes))
         .route("/api/export/edges", get(export_edges))
+        // Cluster
+        .route("/api/cluster/status", get(cluster_status))
+        .route("/api/cluster/ring", get(cluster_ring))
+        .layer(Extension(cluster))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -917,6 +927,58 @@ impl From<Edge> for EdgeJson {
             to:        e.to.to_string(),
             edge_type: format!("{:?}", e.edge_type),
             weight:    e.weight,
+        }
+    }
+}
+
+// ── Cluster endpoints ─────────────────────────────────────────────────────────
+
+// GET /api/cluster/status — full peer list with health
+async fn cluster_status(
+    Extension(cluster): Extension<Option<ClusterRegistry>>,
+) -> impl IntoResponse {
+    match cluster {
+        None => Json(serde_json::json!({
+            "enabled": false,
+            "message": "cluster mode disabled (set NIETZSCHE_CLUSTER_ENABLED=true)"
+        })).into_response(),
+        Some(reg) => {
+            let nodes = reg.all_nodes();
+            Json(serde_json::json!({
+                "enabled":    true,
+                "local_id":   reg.local_id().to_string(),
+                "node_count": nodes.len(),
+                "nodes": nodes.iter().map(|n| serde_json::json!({
+                    "id":           n.id.to_string(),
+                    "name":         n.name,
+                    "addr":         n.addr,
+                    "role":         n.role.to_string(),
+                    "health":       n.health.to_string(),
+                    "last_seen_ms": n.last_seen_ms,
+                    "token":        n.token,
+                })).collect::<Vec<_>>(),
+            })).into_response()
+        }
+    }
+}
+
+// GET /api/cluster/ring — consistent hash ring summary
+async fn cluster_ring(
+    Extension(cluster): Extension<Option<ClusterRegistry>>,
+) -> impl IntoResponse {
+    match cluster {
+        None => Json(serde_json::json!({"enabled": false, "ring": []})).into_response(),
+        Some(reg) => {
+            let nodes = reg.all_nodes();
+            Json(serde_json::json!({
+                "enabled": true,
+                "ring": nodes.iter().map(|n| serde_json::json!({
+                    "token":  n.token,
+                    "name":   n.name,
+                    "addr":   n.addr,
+                    "health": n.health.to_string(),
+                })).collect::<Vec<_>>(),
+            })).into_response()
         }
     }
 }
