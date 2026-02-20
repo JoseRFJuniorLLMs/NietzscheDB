@@ -625,6 +625,120 @@ Key references:
 
 ---
 
+## GPU Acceleration — `nietzsche-hnsw-gpu`
+
+NietzscheDB supports GPU-accelerated vector search via **NVIDIA cuVS CAGRA**
+(Compressed-Adjacency Graph Retrieval Algorithm), delivering up to **10× faster
+index construction** compared to CPU HNSW.
+
+### Architecture
+
+```
+Insert → CPU staging buffer (Vec<f32>)
+               │
+               ├── n < 1.000 vectors  → CPU linear scan (GPU transfer overhead not worth it)
+               └── n ≥ 1.000 vectors  → CAGRA build on GPU (lazy, on first knn)
+                                         └── GPU search → results back to CPU
+```
+
+### Build Requirements (GCP / Linux)
+
+```bash
+# 1. CUDA Toolkit 12.x
+#    https://developer.nvidia.com/cuda-downloads
+
+# 2. cuVS 24.6
+#    https://github.com/rapidsai/cuvs
+
+# 3. libclang (needed by bindgen in cuvs-sys)
+apt-get install -y clang libclang-dev
+
+# 4. Build the server with GPU support
+cargo build --release --features gpu
+
+# 5. Run with GPU backend
+NIETZSCHE_VECTOR_BACKEND=gpu ./target/release/nietzsche-server
+```
+
+### Docker (GCP GPU instance)
+
+```yaml
+# docker-compose.yml
+services:
+  nietzsche-server:
+    image: nietzsche-server:gpu
+    runtime: nvidia                          # NVIDIA Container Runtime
+    environment:
+      NIETZSCHE_VECTOR_BACKEND: gpu
+      NIETZSCHE_DATA_DIR: /data/nietzsche
+    ports:
+      - "50051:50051"
+      - "8082:8080"
+    volumes:
+      - nietzsche_data:/data/nietzsche
+```
+
+```dockerfile
+# Dockerfile.gpu
+FROM nvidia/cuda:12.4-devel-ubuntu22.04 AS builder
+RUN apt-get update && apt-get install -y clang libclang-dev curl
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly
+COPY . .
+RUN cargo build --release --features gpu
+
+FROM nvidia/cuda:12.4-runtime-ubuntu22.04
+COPY --from=builder /target/release/nietzsche-server /usr/local/bin/
+EXPOSE 50051 8080
+CMD ["nietzsche-server"]
+```
+
+### GCP Instance Recommendation
+
+| Instance | GPU | VRAM | Best for |
+|---|---|---|---|
+| `g2-standard-4` | L4 | 24 GB | Production — best price/perf |
+| `n1-standard-4` + T4 | T4 | 16 GB | Budget option |
+| `a2-highgpu-1g` | A100 | 40 GB | Large-scale datasets |
+
+### How It Works at Startup
+
+When the server starts with `--features gpu` and `NIETZSCHE_VECTOR_BACKEND=gpu`,
+it automatically replaces the CPU HNSW with a GPU CAGRA store for every collection:
+
+```
+CollectionManager::open()
+        ↓
+For each collection:
+  GpuVectorStore::new(dim)      → CAGRA initialised on GPU
+  db.set_vector_store(gpu)      → replaces CPU HNSW
+        ↓
+gRPC server ready                → all knn queries go through GPU
+```
+
+### Crate Structure
+
+| Crate | Role |
+|---|---|
+| `nietzsche-hnsw-gpu` | `GpuVectorStore` implementing `VectorStore` via cuVS CAGRA |
+| `nietzsche-server --features gpu` | Injects GPU store at startup |
+| `nietzsche-graph` | `AnyVectorStore::Gpu(Box<dyn VectorStore>)` — type-erased slot |
+
+### Feature Flags
+
+```toml
+# nietzsche-server/Cargo.toml
+[features]
+gpu = ["dep:nietzsche-hnsw-gpu"]   # enables GPU injection in main.rs
+
+# nietzsche-hnsw-gpu/Cargo.toml
+[features]
+cuda = ["dep:cuvs", "dep:ndarray"] # enables actual CUDA calls in GpuVectorStore
+```
+
+CPU-only build (default) compiles and runs correctly — GPU path simply not activated.
+
+---
+
 ## Git Remotes
 
 ```bash

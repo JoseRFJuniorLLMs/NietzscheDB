@@ -32,9 +32,12 @@ use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 
 use nietzsche_api::{CdcBroadcaster, NietzscheServer};
-use nietzsche_graph::CollectionManager;
+use nietzsche_graph::{CollectionManager, embedded_vector_store::AnyVectorStore};
 use nietzsche_sleep::{SleepConfig, SleepCycle};
 use nietzsche_zaratustra::ZaratustraEngine;
+
+#[cfg(feature = "gpu")]
+use nietzsche_hnsw_gpu::GpuVectorStore;
 
 mod auth;
 mod cluster_service;
@@ -84,6 +87,48 @@ async fn main() -> anyhow::Result<()> {
             edges      = col.edge_count,
             "collection loaded"
         );
+    }
+
+    // ── GPU vector backend injection ──────────────────────────────────────────
+    // Activated when compiled with `--features gpu` AND
+    // `NIETZSCHE_VECTOR_BACKEND=gpu` is set at runtime.
+    // Replaces each collection's CPU HNSW with a GPU CAGRA store before
+    // the gRPC server starts accepting requests.
+    #[cfg(feature = "gpu")]
+    {
+        let backend = std::env::var("NIETZSCHE_VECTOR_BACKEND")
+            .unwrap_or_default()
+            .to_lowercase();
+
+        if backend == "gpu" {
+            info!("GPU vector backend requested — initialising CAGRA for all collections");
+
+            for col in cm.list() {
+                match GpuVectorStore::new(col.dim) {
+                    Ok(gpu_store) => {
+                        if let Some(shared) = cm.get(&col.name) {
+                            let mut db = shared.write().await;
+                            db.set_vector_store(AnyVectorStore::gpu(Box::new(gpu_store)));
+                            info!(
+                                collection = %col.name,
+                                dim        = col.dim,
+                                backend    = "GpuVectorStore(CAGRA/cuVS)",
+                                "GPU backend active"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        warn!(
+                            collection = %col.name,
+                            error      = %e,
+                            "GPU init failed — keeping CPU HNSW for this collection"
+                        );
+                    }
+                }
+            }
+        } else {
+            info!("GPU feature compiled in but NIETZSCHE_VECTOR_BACKEND != gpu — using CPU HNSW");
+        }
     }
 
     // ── Sleep scheduler — runs against the "default" collection ───────────────
