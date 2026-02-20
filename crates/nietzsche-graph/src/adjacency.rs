@@ -198,6 +198,24 @@ impl AdjacencyIndex {
         self.outgoing.clear();
         self.incoming.clear();
     }
+
+    /// All unique node IDs tracked (union of outgoing + incoming keys).
+    /// Used by `nietzsche-cugraph` for CSR construction.
+    pub fn all_nodes(&self) -> Vec<Uuid> {
+        let mut seen = std::collections::HashSet::new();
+        self.outgoing.iter().for_each(|kv| { seen.insert(*kv.key()); });
+        self.incoming.iter().for_each(|kv| { seen.insert(*kv.key()); });
+        seen.into_iter().collect()
+    }
+
+    /// Snapshot outgoing adjacency as a `Vec` — used for CSR construction
+    /// in `nietzsche-cugraph` without exposing the internal `DashMap`.
+    pub fn snapshot_outgoing(&self) -> Vec<(Uuid, Vec<AdjEntry>)> {
+        self.outgoing
+            .iter()
+            .map(|kv| (*kv.key(), kv.value().clone()))
+            .collect()
+    }
 }
 
 // ─────────────────────────────────────────────
