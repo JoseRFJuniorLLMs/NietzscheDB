@@ -11,6 +11,7 @@
 #![allow(clippy::needless_range_loop)]
 
 pub mod config;
+pub mod gpu;
 pub mod vector;
 
 pub use config::GlobalConfig;
@@ -58,8 +59,8 @@ pub enum FilterExpr {
     },
     Range {
         key: String,
-        gte: Option<i64>,
-        lte: Option<i64>,
+        gte: Option<f64>,
+        lte: Option<f64>,
     },
 }
 
@@ -79,6 +80,23 @@ pub enum Durability {
     Async,
     Batch,
     Strict,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VacuumFilterOp {
+    Lt,
+    Lte,
+    Gt,
+    Gte,
+    Eq,
+    Ne,
+}
+
+#[derive(Debug, Clone)]
+pub struct VacuumFilterQuery {
+    pub key: String,
+    pub op: VacuumFilterOp,
+    pub value: f64,
 }
 
 #[async_trait::async_trait]
@@ -123,8 +141,33 @@ pub trait Collection: Send + Sync + 'static {
         // Default: No-op for collections lacking optimization support.
         Ok(())
     }
+    async fn optimize_with_filter(&self, filter: Option<VacuumFilterQuery>) -> Result<(), String> {
+        let _ = filter;
+        self.optimize().await
+    }
     fn peek(&self, limit: usize)
         -> Vec<(u32, Vec<f64>, std::collections::HashMap<String, String>)>;
+    fn graph_neighbors(&self, id: u32, layer: usize, limit: usize) -> Result<Vec<u32>, String>;
+    fn graph_neighbor_distances(
+        &self,
+        source_id: u32,
+        neighbor_ids: &[u32],
+    ) -> Result<Vec<f64>, String>;
+    fn graph_traverse(
+        &self,
+        start_id: u32,
+        layer: usize,
+        max_depth: usize,
+        max_nodes: usize,
+    ) -> Result<Vec<u32>, String>;
+    fn graph_clusters(
+        &self,
+        layer: usize,
+        min_cluster_size: usize,
+        max_clusters: usize,
+        max_nodes: usize,
+    ) -> Result<Vec<Vec<u32>>, String>;
+    fn metadata_by_id(&self, id: u32) -> std::collections::HashMap<String, String>;
     fn quantization_mode(&self) -> QuantizationMode;
 }
 
@@ -373,18 +416,14 @@ impl<const N: usize> Metric<N> for LorentzMetric {
         Ok(())
     }
 
-    fn distance_quantized(_a: &QuantizedHyperVector<N>, _b: &HyperVector<N>) -> f64 {
-        panic!(
-            "Scalar quantization is not supported for LorentzMetric. \
-             Quantizing hyperboloid coordinates destroys the Minkowski norm constraint. \
-             Use QuantizationMode::None for Lorentz collections."
-        );
+    fn distance_quantized(a: &QuantizedHyperVector<N>, b: &HyperVector<N>) -> f64 {
+        a.lorentz_distance_to_float(b)
     }
 
     fn distance_binary(_a: &BinaryHyperVector<N>, _b: &HyperVector<N>) -> f64 {
         panic!(
-            "Binary quantization is permanently rejected for hyperbolic metrics. \
-             sign(x) destroys hierarchical information encoded in magnitude."
+            "Binary quantization is not supported for the Lorentz model. \
+             sign(x) destroys hierarchical information encoded in the hyperboloid magnitude."
         );
     }
 }

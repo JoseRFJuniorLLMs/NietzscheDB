@@ -487,6 +487,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                     id,
                     vector: vector_owned,
                     metadata,
+                    typed_metadata: HashMap::new(),
                 })),
             };
             let _ = self.replication_tx.send(log);
@@ -617,6 +618,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                         // Convert Cow to Owned for channel transmission.
                         vector: entry.vector.into_owned(),
                         metadata: entry.metadata.clone(),
+                        typed_metadata: HashMap::new(),
                     })),
                 };
                 let _ = self.replication_tx.send(log);
@@ -846,6 +848,205 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
     fn queue_size(&self) -> u64 {
         self.config.get_queue_size()
+    }
+
+    async fn optimize_with_filter(
+        &self,
+        filter: Option<hyperspace_core::VacuumFilterQuery>,
+    ) -> Result<(), String> {
+        if filter.is_none() {
+            return self.optimize().await;
+        }
+        let filter = filter.unwrap();
+        println!(
+            "🧹 Starting Filtered Vacuum for '{}' (key={}, op={:?}, val={})...",
+            self.name, filter.key, filter.op, filter.value
+        );
+        let start = std::time::Instant::now();
+        let data_dir = self.data_dir.clone();
+        let mode = self.mode;
+        let original_config = self.config.clone();
+        let index_link = self.index_link.clone();
+
+        let (new_index_arc, temp_dir, new_snap_path) = tokio::task::spawn_blocking(move || {
+            use hyperspace_core::config::GlobalConfig;
+            use hyperspace_store::VectorStore;
+            use std::path::PathBuf;
+
+            let current_index = index_link.load().clone();
+            let all_data = current_index.peek_all();
+
+            if all_data.is_empty() {
+                return Ok((None, PathBuf::new(), PathBuf::new()));
+            }
+
+            // Filter entries based on the VacuumFilterQuery
+            let filtered: Vec<_> = all_data
+                .into_iter()
+                .filter(|(_id, _vec, meta)| {
+                    if let Some(val_str) = meta.get(&filter.key) {
+                        if let Ok(val) = val_str.parse::<f64>() {
+                            match filter.op {
+                                hyperspace_core::VacuumFilterOp::Lt => val < filter.value,
+                                hyperspace_core::VacuumFilterOp::Lte => val <= filter.value,
+                                hyperspace_core::VacuumFilterOp::Gt => val > filter.value,
+                                hyperspace_core::VacuumFilterOp::Gte => val >= filter.value,
+                                hyperspace_core::VacuumFilterOp::Eq => (val - filter.value).abs() < 1e-9,
+                                hyperspace_core::VacuumFilterOp::Ne => (val - filter.value).abs() >= 1e-9,
+                            }
+                        } else {
+                            true // Keep entries with non-numeric values
+                        }
+                    } else {
+                        true // Keep entries missing the key
+                    }
+                })
+                .collect();
+
+            let count = filtered.len();
+            if count == 0 {
+                return Ok((None, PathBuf::new(), PathBuf::new()));
+            }
+
+            let vacuum_m = 64;
+            let vacuum_ef = 500;
+            let vacuum_config = Arc::new(GlobalConfig::new());
+            vacuum_config.set_m(vacuum_m);
+            vacuum_config.set_ef_construction(vacuum_ef);
+            vacuum_config.set_ef_search(original_config.get_ef_search());
+
+            println!("   Building Filtered Shadow Index ({count} vectors, M={vacuum_m}, EF={vacuum_ef})...");
+
+            let temp_dir = data_dir.join(format!("idx_opt_{}", uuid::Uuid::new_v4()));
+            if let Err(e) = std::fs::create_dir_all(&temp_dir) {
+                return Err(e.to_string());
+            }
+
+            let element_size = match mode {
+                hyperspace_core::QuantizationMode::ScalarI8 => {
+                    hyperspace_core::vector::QuantizedHyperVector::<N>::SIZE
+                }
+                hyperspace_core::QuantizationMode::Binary => {
+                    hyperspace_core::vector::BinaryHyperVector::<N>::SIZE
+                }
+                hyperspace_core::QuantizationMode::None => {
+                    hyperspace_core::vector::HyperVector::<N>::SIZE
+                }
+            };
+
+            let temp_store = Arc::new(VectorStore::new(&temp_dir, element_size));
+            let new_index = HnswIndex::<N, M>::new(temp_store, mode, vacuum_config);
+
+            for (_old_id, vec, meta) in &filtered {
+                let _ = new_index.insert(vec, meta.clone());
+            }
+
+            let new_snap_path = data_dir.join("index.snap.new");
+            if let Err(e) = new_index.save_snapshot(&new_snap_path) {
+                return Err(e.clone());
+            }
+
+            Ok((Some(Arc::new(new_index)), temp_dir, new_snap_path))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+
+        if let Some(new_index) = new_index_arc {
+            println!("🔄 Swapping indexes in memory...");
+            self.index_link.store(new_index);
+
+            let snap_path = self.data_dir.join("index.snap");
+            std::fs::rename(&new_snap_path, &snap_path).map_err(|e| e.to_string())?;
+            std::fs::remove_dir_all(&temp_dir).ok();
+
+            // Rebuild id_map and reverse_id_map from the new index
+            self.id_map.clear();
+            self.reverse_id_map.clear();
+
+            println!(
+                "✨ Filtered Vacuum Complete in {:?}.",
+                start.elapsed()
+            );
+        }
+
+        Ok(())
+    }
+
+    fn graph_neighbors(&self, id: u32, layer: usize, limit: usize) -> Result<Vec<u32>, String> {
+        // Translate user ID to internal ID
+        let internal_id = self.id_map.get(&id).map_or(id, |v| *v);
+        let neighbors = self.index_link.load().graph_neighbors(internal_id, layer, limit)?;
+        // Translate internal IDs back to user IDs
+        Ok(neighbors
+            .into_iter()
+            .map(|iid| self.reverse_id_map.get(&iid).map_or(iid, |v| *v))
+            .collect())
+    }
+
+    fn graph_neighbor_distances(
+        &self,
+        source_id: u32,
+        neighbor_ids: &[u32],
+    ) -> Result<Vec<f64>, String> {
+        let internal_source = self.id_map.get(&source_id).map_or(source_id, |v| *v);
+        let internal_neighbors: Vec<u32> = neighbor_ids
+            .iter()
+            .map(|&uid| self.id_map.get(&uid).map_or(uid, |v| *v))
+            .collect();
+        self.index_link
+            .load()
+            .graph_neighbor_distances(internal_source, &internal_neighbors)
+    }
+
+    fn graph_traverse(
+        &self,
+        start_id: u32,
+        layer: usize,
+        max_depth: usize,
+        max_nodes: usize,
+    ) -> Result<Vec<u32>, String> {
+        let internal_start = self.id_map.get(&start_id).map_or(start_id, |v| *v);
+        let visited = self
+            .index_link
+            .load()
+            .graph_traverse(internal_start, layer, max_depth, max_nodes)?;
+        Ok(visited
+            .into_iter()
+            .map(|iid| self.reverse_id_map.get(&iid).map_or(iid, |v| *v))
+            .collect())
+    }
+
+    fn graph_clusters(
+        &self,
+        layer: usize,
+        min_cluster_size: usize,
+        max_clusters: usize,
+        max_nodes: usize,
+    ) -> Result<Vec<Vec<u32>>, String> {
+        let clusters = self
+            .index_link
+            .load()
+            .graph_connected_components(layer, min_cluster_size, max_clusters, max_nodes);
+        Ok(clusters
+            .into_iter()
+            .map(|cluster| {
+                cluster
+                    .into_iter()
+                    .map(|iid| self.reverse_id_map.get(&iid).map_or(iid, |v| *v))
+                    .collect()
+            })
+            .collect())
+    }
+
+    fn metadata_by_id(&self, id: u32) -> HashMap<String, String> {
+        let internal_id = self.id_map.get(&id).map_or(id, |v| *v);
+        self.index_link
+            .load()
+            .metadata
+            .forward
+            .get(&internal_id)
+            .map(|m| m.clone())
+            .unwrap_or_default()
     }
 }
 

@@ -25,7 +25,9 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
 // Imports
-use hyperspace_core::vector::{BinaryHyperVector, HyperVector, QuantizedHyperVector};
+use hyperspace_core::vector::{
+    BinaryHyperVector, HyperVector, HyperVectorF32, QuantizedHyperVector,
+};
 use hyperspace_core::QuantizationMode;
 use hyperspace_core::{GlobalConfig, Metric};
 use hyperspace_store::VectorStore;
@@ -86,6 +88,19 @@ impl Default for MetadataIndex {
 }
 
 impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
+    fn metadata_numeric_value(
+        meta: &std::collections::HashMap<String, String>,
+        key: &str,
+    ) -> Option<f64> {
+        if let Some(raw) = meta.get(key) {
+            return raw.parse::<f64>().ok();
+        }
+        let typed_key = format!("__hs_typed__{key}");
+        let raw_typed = meta.get(&typed_key)?;
+        let parsed = serde_json::from_str::<serde_json::Value>(raw_typed).ok()?;
+        parsed.get("v")?.as_f64()
+    }
+
     #[cfg(feature = "persistence")]
     pub fn save_snapshot(&self, path: &std::path::Path) -> Result<(), String> {
         let max_layer = self.max_layer.load(Ordering::Relaxed);
@@ -297,6 +312,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             max_layer: AtomicU32::new(deserialized.max_layer),
             storage,
             mode,
+            storage_f32: false,
             config,
             has_nonempty_metadata: AtomicBool::new(has_nonempty_metadata),
             _marker: PhantomData,
@@ -443,6 +459,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             max_layer: AtomicU32::new(deserialized.max_layer),
             storage,
             mode,
+            storage_f32: false,
             config,
             has_nonempty_metadata: AtomicBool::new(has_nonempty_metadata),
             _marker: PhantomData,
@@ -478,6 +495,8 @@ pub struct HnswIndex<const N: usize, M: Metric<N>> {
 
     // Quantization
     pub mode: QuantizationMode,
+    // If true and mode=None, vectors are stored as f32 in mmap.
+    storage_f32: bool,
 
     // Runtime configuration
     pub config: Arc<GlobalConfig>,
@@ -564,6 +583,15 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         mode: QuantizationMode,
         config: Arc<GlobalConfig>,
     ) -> Self {
+        Self::new_with_storage_precision(storage, mode, config, false)
+    }
+
+    pub fn new_with_storage_precision(
+        storage: Arc<VectorStore>,
+        mode: QuantizationMode,
+        config: Arc<GlobalConfig>,
+        storage_f32: bool,
+    ) -> Self {
         Self {
             nodes: RwLock::new(Vec::new()),
             metadata: MetadataIndex::default(),
@@ -571,6 +599,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             max_layer: AtomicU32::new(0),
             storage,
             mode,
+            storage_f32,
             config,
             has_nonempty_metadata: AtomicBool::new(false),
             _marker: PhantomData,
@@ -651,28 +680,43 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                         }
                     }
                     FilterExpr::Range { key, gte, lte } => {
+                        let mut range_union = RoaringBitmap::new();
+
                         if let Some(tree) = self.metadata.numeric.get(key) {
-                            // Union all bitmaps in range
-                            let mut range_union = RoaringBitmap::new();
-
-                            // BTreeMap range
-                            let start = gte.unwrap_or(i64::MIN);
-                            let end = lte.unwrap_or(i64::MAX);
-
-                            // BTreeMap::range is (Bound, Bound).
-                            // We use Included.
-                            for (_, bm) in tree.range(start..=end) {
-                                range_union |= bm;
+                            let start = gte.map_or(i64::MIN, |x| x.ceil() as i64);
+                            let end = lte.map_or(i64::MAX, |x| x.floor() as i64);
+                            if start <= end {
+                                for (_, bm) in tree.range(start..=end) {
+                                    range_union |= bm;
+                                }
                             }
+                        }
 
-                            if range_union.is_empty() {
-                                return Vec::new();
+                        // Forward index fallback: scan typed f64 metadata
+                        for item in &self.metadata.forward {
+                            if range_union.contains(*item.key()) {
+                                continue;
                             }
-                            apply_mask(&range_union);
-                        } else {
-                            // Key not found in numeric index
+                            let Some(num) = Self::metadata_numeric_value(item.value(), key) else {
+                                continue;
+                            };
+                            if let Some(min) = gte {
+                                if num < *min {
+                                    continue;
+                                }
+                            }
+                            if let Some(max) = lte {
+                                if num > *max {
+                                    continue;
+                                }
+                            }
+                            range_union.insert(*item.key());
+                        }
+
+                        if range_union.is_empty() {
                             return Vec::new();
                         }
+                        apply_mask(&range_union);
                     }
                 }
             }
@@ -1100,17 +1144,32 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             QuantizationMode::ScalarI8 => {
                 let q = QuantizedHyperVector::<N>::from_bytes(bytes);
                 let mut coords = [0.0; N];
-                for (i, &c) in q.coords.iter().enumerate() {
-                    coords[i] = f64::from(c) / 127.0;
-                }
-                HyperVector {
-                    coords,
-                    alpha: f64::from(q.alpha),
+                if M::name() == "lorentz" {
+                    // Lorentz: alpha stores the dynamic-range scale factor
+                    let scale = f64::from(q.alpha);
+                    for (i, &c) in q.coords.iter().enumerate() {
+                        coords[i] = f64::from(c) / 127.0 * scale;
+                    }
+                    HyperVector { coords, alpha: 0.0 }
+                } else {
+                    // Poincare / Euclidean / Cosine: alpha stores 1/(1-||x||^2)
+                    for (i, &c) in q.coords.iter().enumerate() {
+                        coords[i] = f64::from(c) / 127.0;
+                    }
+                    HyperVector {
+                        coords,
+                        alpha: f64::from(q.alpha),
+                    }
                 }
             }
             QuantizationMode::None => {
-                let v = HyperVector::<N>::from_bytes(bytes);
-                v.clone()
+                if self.storage_f32 {
+                    let v = HyperVectorF32::<N>::from_bytes(bytes);
+                    v.to_float64()
+                } else {
+                    let v = HyperVector::<N>::from_bytes(bytes);
+                    v.clone()
+                }
             }
             QuantizationMode::Binary => {
                 let b = BinaryHyperVector::<N>::from_bytes(bytes);
@@ -1149,8 +1208,16 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         let new_id = match self.mode {
             QuantizationMode::ScalarI8 => {
-                let q = QuantizedHyperVector::from_float(&q_vec_full);
+                let q = if M::name() == "lorentz" {
+                    QuantizedHyperVector::from_float_lorentz(&q_vec_full)
+                } else {
+                    QuantizedHyperVector::from_float(&q_vec_full)
+                };
                 self.storage.append(q.as_bytes())?
+            }
+            QuantizationMode::None if self.storage_f32 => {
+                let v32 = HyperVectorF32::from_float64(&q_vec_full);
+                self.storage.append(v32.as_bytes())?
             }
             QuantizationMode::None => self.storage.append(q_vec_full.as_bytes())?,
             QuantizationMode::Binary => {
@@ -1178,11 +1245,20 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         // Update storage at existing ID
         match self.mode {
             QuantizationMode::ScalarI8 => {
-                let q = QuantizedHyperVector::from_float(&q_vec_full);
+                let q = if M::name() == "lorentz" {
+                    QuantizedHyperVector::from_float_lorentz(&q_vec_full)
+                } else {
+                    QuantizedHyperVector::from_float(&q_vec_full)
+                };
                 self.storage.update(id, q.as_bytes())?;
             }
             QuantizationMode::None => {
-                self.storage.update(id, q_vec_full.as_bytes())?;
+                if self.storage_f32 {
+                    let v32 = HyperVectorF32::from_float64(&q_vec_full);
+                    self.storage.update(id, v32.as_bytes())?;
+                } else {
+                    self.storage.update(id, q_vec_full.as_bytes())?;
+                }
             }
             QuantizationMode::Binary => {
                 let b = BinaryHyperVector::from_float(&q_vec_full);
@@ -1442,6 +1518,170 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             self.storage.segment_count(),
             self.storage.total_size_bytes(),
         )
+    }
+
+    pub fn graph_neighbors(
+        &self,
+        node_id: NodeId,
+        layer: usize,
+        limit: usize,
+    ) -> Result<Vec<NodeId>, String> {
+        let nodes = self.nodes.read();
+        let Some(node) = nodes.get(node_id as usize) else {
+            return Err(format!("Node {node_id} not found"));
+        };
+        if node.layers.len() <= layer {
+            return Err(format!("Layer {layer} is out of bounds for node {node_id}"));
+        }
+        let deleted = self.metadata.deleted.read();
+        let out = node.layers[layer]
+            .read()
+            .iter()
+            .copied()
+            .filter(|id| !deleted.contains(*id))
+            .take(limit)
+            .collect();
+        Ok(out)
+    }
+
+    pub fn graph_neighbor_distances(
+        &self,
+        source_id: NodeId,
+        neighbor_ids: &[u32],
+    ) -> Result<Vec<f64>, String> {
+        let query = self.get_vector(source_id);
+        let distances: Vec<f64> = neighbor_ids
+            .iter()
+            .map(|&nid| {
+                let nv = self.get_vector(nid);
+                M::distance(&query.coords, &nv.coords)
+            })
+            .collect();
+        Ok(distances)
+    }
+
+    pub fn graph_traverse(
+        &self,
+        start_id: NodeId,
+        layer: usize,
+        max_depth: usize,
+        max_nodes: usize,
+    ) -> Result<Vec<NodeId>, String> {
+        if max_nodes == 0 {
+            return Ok(Vec::new());
+        }
+        let nodes = self.nodes.read();
+        let Some(start) = nodes.get(start_id as usize) else {
+            return Err(format!("Start node {start_id} not found"));
+        };
+        if start.layers.len() <= layer {
+            return Err(format!(
+                "Layer {layer} is out of bounds for node {start_id}"
+            ));
+        }
+        let deleted = self.metadata.deleted.read();
+        if deleted.contains(start_id) {
+            return Ok(Vec::new());
+        }
+
+        let mut queue = std::collections::VecDeque::new();
+        let mut visited = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        queue.push_back((start_id, 0usize));
+        visited.insert(start_id);
+
+        while let Some((node_id, depth)) = queue.pop_front() {
+            out.push(node_id);
+            if out.len() >= max_nodes {
+                break;
+            }
+            if depth >= max_depth {
+                continue;
+            }
+            if let Some(node) = nodes.get(node_id as usize) {
+                if node.layers.len() <= layer {
+                    continue;
+                }
+                for &next in node.layers[layer].read().iter() {
+                    if deleted.contains(next) {
+                        continue;
+                    }
+                    if visited.insert(next) {
+                        queue.push_back((next, depth + 1));
+                    }
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    pub fn graph_connected_components(
+        &self,
+        layer: usize,
+        min_cluster_size: usize,
+        max_clusters: usize,
+        max_nodes: usize,
+    ) -> Vec<Vec<NodeId>> {
+        if max_nodes == 0 || max_clusters == 0 {
+            return Vec::new();
+        }
+        let nodes = self.nodes.read();
+        let deleted = self.metadata.deleted.read();
+        let scan_limit = std::cmp::min(nodes.len(), max_nodes);
+        let mut visited = std::collections::HashSet::new();
+        let mut clusters = Vec::new();
+
+        for node_id in 0..scan_limit as u32 {
+            if deleted.contains(node_id) || !visited.insert(node_id) {
+                continue;
+            }
+            let Some(node) = nodes.get(node_id as usize) else {
+                continue;
+            };
+            if node.layers.len() <= layer {
+                continue;
+            }
+
+            let mut queue = std::collections::VecDeque::from([(node_id, 0usize)]);
+            let mut component = Vec::new();
+
+            while let Some((curr, _)) = queue.pop_front() {
+                component.push(curr);
+                if component.len() >= max_nodes {
+                    break;
+                }
+                let Some(curr_node) = nodes.get(curr as usize) else {
+                    continue;
+                };
+                if curr_node.layers.len() <= layer {
+                    continue;
+                }
+                for &next in curr_node.layers[layer].read().iter() {
+                    if deleted.contains(next) {
+                        continue;
+                    }
+                    if visited.insert(next) {
+                        queue.push_back((next, 0));
+                    }
+                }
+            }
+
+            if component.len() >= min_cluster_size {
+                clusters.push(component);
+                if clusters.len() >= max_clusters {
+                    break;
+                }
+            }
+        }
+
+        clusters
+    }
+
+    pub fn metadata_by_id(&self, id: NodeId) -> std::collections::HashMap<String, String> {
+        self.metadata
+            .forward
+            .get(&id)
+            .map_or_else(std::collections::HashMap::new, |m| m.clone())
     }
 
     #[allow(clippy::unused_self)]

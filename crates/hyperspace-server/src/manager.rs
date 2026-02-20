@@ -306,6 +306,25 @@ impl CollectionManager {
         }
     }
 
+    pub async fn rebuild_collection_with_filter(
+        &self,
+        user_id: &str,
+        name: &str,
+        filter: Option<hyperspace_core::VacuumFilterQuery>,
+    ) -> Result<(), String> {
+        let internal_name = Self::get_internal_name(user_id, name);
+        if let Some(entry) = self.collections.get(&internal_name) {
+            entry
+                .collection
+                .optimize_with_filter(filter)
+                .await
+                .map_err(|e| format!("Optimization with filter failed: {e}"))?;
+            Ok(())
+        } else {
+            Err("Collection not found".to_string())
+        }
+    }
+
     pub fn get_collection_counts(&self) -> (usize, usize) {
         // Active: currently in DashMap (RAM)
         let active = self.collections.len();
@@ -343,12 +362,12 @@ impl CollectionManager {
             .unwrap_or("scalar".to_string())
             .to_lowercase();
 
-        // Guard: Lorentz metric requires QuantizationMode::None
-        if metric == "lorentz" && quantization != "none" {
+        // Guard: Binary quantization is not supported for Lorentz metric
+        if metric == "lorentz" && quantization == "binary" {
             return Err(
-                "Lorentz metric does not support quantization. \
-                 Quantizing hyperboloid coordinates destroys the Minkowski norm constraint. \
-                 Set HS_QUANTIZATION_LEVEL=none for Lorentz collections."
+                "Binary quantization is not supported for the Lorentz model. \
+                 sign(x) destroys hierarchical information encoded in the hyperboloid magnitude. \
+                 Use HS_QUANTIZATION_LEVEL=scalar or HS_QUANTIZATION_LEVEL=none."
                     .to_string(),
             );
         }
