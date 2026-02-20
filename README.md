@@ -16,7 +16,7 @@
   <a href="https://github.com/JoseRFJuniorLLMs/NietzscheDB/blob/main/LICENSE_AGPLv3.md"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/built%20with-Rust%20nightly-orange.svg" alt="Rust"></a>
   <img src="https://img.shields.io/badge/crates-25%20workspace-informational.svg" alt="Crates">
-  <img src="https://img.shields.io/badge/gRPC-45%2B%20RPCs-blueviolet.svg" alt="RPCs">
+  <img src="https://img.shields.io/badge/gRPC-55%2B%20RPCs-blueviolet.svg" alt="RPCs">
   <img src="https://img.shields.io/badge/geometry-Poincar%C3%A9%20Ball-purple.svg" alt="Hyperbolic">
   <img src="https://img.shields.io/badge/category-Temporal%20Hyperbolic%20Graph%20DB-red.svg" alt="Category">
   <img src="https://img.shields.io/badge/GPU-cuVS%20CAGRA-76b900.svg" alt="GPU">
@@ -59,6 +59,9 @@ The name for what NietzscheDB actually is:
 │   · Active memory reconsolidation during idle cycles    │
 │   · GPU/TPU-accelerated vector search                   │
 │   · 11 built-in graph algorithms                        │
+│   · Hybrid BM25+ANN search with RRF fusion              │
+│   · RBAC + AES-256-CTR encryption at-rest                │
+│   · Schema validation + metadata secondary indexes       │
 │   · Autonomous evolution (Zaratustra cycle)             │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
@@ -98,9 +101,12 @@ It is a fork of **[YARlabs/hyperspace-db](https://github.com/YARlabs/hyperspace-
 | Knowledge growth | Static inserts | L-System: graph grows by production rules |
 | Memory pruning | Manual deletion | Hausdorff dimension: self-pruning fractal |
 | Memory consolidation | No concept | Sleep cycle: Riemannian perturbation + rollback |
-| Query language | k-NN only | NQL — declares graph, vector, and diffusion queries |
+| Query language | k-NN only | NQL — graph, vector, diffusion, CREATE/SET/DELETE, EXPLAIN |
+| Search | Vector OR text | Hybrid BM25+KNN with RRF fusion |
 | Graph analytics | External tool needed | 11 built-in algorithms (PageRank, Louvain, A*, ...) |
 | Hardware acceleration | CPU only or proprietary | GPU (cuVS CAGRA) + TPU (PJRT) at runtime |
+| Security | API key at best | RBAC (Admin/Writer/Reader) + AES-256-CTR encryption at-rest |
+| Data integrity | No schema enforcement | Per-NodeType schema validation (required fields + types) |
 | Consistency | Single-store | ACID saga pattern across graph + vector store |
 
 ---
@@ -153,11 +159,17 @@ Sixteen new crates built on top of the foundation:
 - `PoincareVector` with `Vec<f32>` coords (distance kernel promotes to f64 internally for numerical stability near the Poincare boundary)
 - `Edge` typed as `Association`, `LSystemGenerated`, `Hierarchical`, or `Pruned`
 - `AdjacencyIndex` using `DashMap` for lock-free concurrent access
-- `GraphStorage` over RocksDB with 8 column families: `nodes`, `embeddings`, `edges`, `adj_out`, `adj_in`, `meta`, `sensory`, `energy_idx`
+- `GraphStorage` over RocksDB with 10 column families: `nodes`, `embeddings`, `edges`, `adj_out`, `adj_in`, `meta`, `sensory`, `energy_idx`, `meta_idx`, `lists`
 - Own WAL for graph operations, separate from the vector WAL
 - `NietzscheDB` dual-write: every insert goes to both RocksDB (graph) and HyperspaceDB (embedding)
 - **Traversal engine** (`traversal.rs`): energy-gated BFS (reads only NodeMeta — ~100 bytes per hop), Poincare-distance Dijkstra, shortest-path reconstruction, energy-biased `DiffusionWalk` with seeded RNG
 - **EmbeddedVectorStore** abstraction: CPU (HnswIndex) / GPU (GpuVectorStore) / TPU (TpuVectorStore) / Mock — selected at runtime via `NIETZSCHE_VECTOR_BACKEND`
+- **Encryption at-rest** (`encryption.rs`): AES-256-CTR with HKDF-SHA256 per-CF key derivation from master key (`NIETZSCHE_ENCRYPTION_KEY`)
+- **Schema validation** (`schema.rs`): per-NodeType constraints (required fields, field types), persisted in CF_META, enforced on `insert_node`
+- **Metadata secondary indexes** (`CF_META_IDX`): arbitrary field indexing with FNV-1a + sortable value encoding for range scans
+- **ListStore** (`CF_LISTS`): per-node ordered lists with RPUSH/LRANGE/LLEN semantics, atomic sequence counters
+- **TTL / expires_at** enforcement: background reaper scans expired nodes and deletes them automatically
+- **Full-text search + hybrid** (`fulltext.rs`): inverted index with BM25 scoring, plus RRF fusion with KNN vector search
 
 #### `nietzsche-hyp-ops` — Poincare Ball Math
 Core hyperbolic geometry primitives: Mobius addition, exponential/logarithmic maps, geodesic distance, parallel transport. Used by all other crates that need Poincare ball operations. Includes criterion benchmarks.
@@ -172,9 +184,13 @@ Query types:
 | Type | Description |
 |---|---|
 | `MATCH` | Pattern matching on nodes/paths with hyperbolic conditions |
+| `CREATE` | Insert new nodes with labels and properties |
+| `MATCH … SET` | Update matched nodes' properties |
+| `MATCH … DELETE` | Delete matched nodes |
+| `MERGE` | Upsert nodes/edges (ON CREATE SET / ON MATCH SET) |
 | `DIFFUSE` | Multi-scale heat-kernel activation propagation |
 | `RECONSTRUCT` | Decode sensory data from latent vector |
-| `EXPLAIN` | Return execution plan without running |
+| `EXPLAIN` | Return execution plan with cost estimates |
 
 ```sql
 -- Hyperbolic nearest-neighbor search with depth filter
@@ -210,6 +226,25 @@ WHERE RIEMANN_CURVATURE(n) > 0.3
   AND HAUSDORFF_DIM(n) BETWEEN 1.2 AND 1.8
   AND DIRICHLET_ENERGY(n) < 0.1
 RETURN n ORDER BY RIEMANN_CURVATURE(n) DESC LIMIT 10
+
+-- Multi-hop path traversal (BFS 2..4 hops)
+MATCH (a)-[:Association*2..4]->(b)
+WHERE a.energy > 0.5
+RETURN a, b LIMIT 50
+
+-- Create a new node
+CREATE (n:Episodic {title: "first meeting", source: "manual"})
+RETURN n
+
+-- Update matched nodes
+MATCH (n:Semantic) WHERE n.energy < 0.1 SET n.energy = 0.5 RETURN n
+
+-- Delete expired nodes
+MATCH (n) WHERE n.energy = 0.0 DELETE n
+
+-- EXPLAIN with cost estimates
+EXPLAIN MATCH (n:Memory) WHERE n.energy > 0.3 RETURN n
+-- → NodeScan(label=Memory) -> Filter(conditions=1) | rows=~250, scan=EnergyIndexScan, index=CF_ENERGY_IDX, cost=~500µs
 
 -- Multi-scale heat-kernel diffusion
 DIFFUSE FROM $seed
@@ -324,7 +359,7 @@ GPU-accelerated graph algorithms via NVIDIA cuGraph:
 - Feature flag: `--features cuda`
 
 #### `nietzsche-api` — Unified gRPC API
-Single endpoint for all NietzscheDB capabilities — **45+ RPCs** over a single `NietzscheDB` service. Every data-plane RPC accepts a `collection` field; empty -> `"default"`.
+Single endpoint for all NietzscheDB capabilities — **55+ RPCs** over a single `NietzscheDB` service. Every data-plane RPC accepts a `collection` field; empty -> `"default"`.
 
 ```protobuf
 service NietzscheDB {
@@ -351,6 +386,7 @@ service NietzscheDB {
   rpc Query(QueryRequest)               returns (QueryResponse);
   rpc KnnSearch(KnnRequest)             returns (KnnResponse);
   rpc FullTextSearch(FullTextSearchRequest) returns (FullTextSearchResponse);
+  rpc HybridSearch(HybridSearchRequest) returns (KnnResponse);
 
   // ── Traversal ─────────────────────────────────────────────────
   rpc Bfs(TraversalRequest)             returns (TraversalResponse);
@@ -385,8 +421,21 @@ service NietzscheDB {
   rpc ListBackups(Empty)                  returns (ListBackupsResponse);
   rpc RestoreBackup(RestoreBackupRequest) returns (StatusResponse);
 
+  // ── ListStore ────────────────────────────────────────────────
+  rpc ListRPush(ListPushRequest)          returns (ListPushResponse);
+  rpc ListLRange(ListRangeRequest)        returns (ListRangeResponse);
+  rpc ListLen(ListLenRequest)             returns (ListLenResponse);
+
   // ── Change Data Capture ───────────────────────────────────────
   rpc SubscribeCDC(CdcRequest)            returns (stream CdcEvent);
+
+  // ── Cluster ─────────────────────────────────────────────────
+  rpc ExchangeGossip(GossipRequest)       returns (GossipResponse);
+
+  // ── Schema Validation ───────────────────────────────────────
+  rpc SetSchema(SetSchemaRequest)         returns (StatusResponse);
+  rpc GetSchema(GetSchemaRequest)         returns (GetSchemaResponse);
+  rpc ListSchemas(Empty)                  returns (ListSchemasResponse);
 
   // ── Admin ─────────────────────────────────────────────────────
   rpc GetStats(Empty)                     returns (StatsResponse);
@@ -398,7 +447,7 @@ service NietzscheDB {
 Async gRPC client with seed examples (`seed_100.rs`, `seed_1gb.rs`).
 
 #### `nietzsche-server` — Production Binary
-Standalone server binary with env-var-based configuration, background sleep and Zaratustra schedulers, embedded HTTP dashboard, and graceful shutdown.
+Standalone server binary with env-var-based configuration, background sleep and Zaratustra schedulers, TTL reaper, scheduled backup with auto-pruning, RBAC (Admin/Writer/Reader), cluster gossip, embedded HTTP dashboard, and graceful shutdown.
 
 ```bash
 NIETZSCHE_DATA_DIR=/data/nietzsche \
@@ -540,7 +589,7 @@ sleep, _ := client.TriggerSleep(ctx, nietzsche.SleepOpts{Noise: 0.02})
 fmt.Printf("deltaH=%.3f committed=%v\n", sleep.HausdorffDelta, sleep.Committed)
 ```
 
-Go SDK covers all 45+ RPCs: collections, nodes, edges, query, search, traversal, algorithms, backup, CDC, merge, sensory, lifecycle.
+Go SDK covers all 55+ RPCs: collections, nodes, edges, query, search, traversal, algorithms, backup, CDC, merge, sensory, lifecycle.
 
 ### TypeScript & C++
 Located in `sdks/ts/` and `sdks/cpp/`.
@@ -568,6 +617,20 @@ PHASE D   Merge semantics (upsert)          ✅ COMPLETE
 PHASE G   Cluster foundation (gossip)       ✅ COMPLETE
 PHASE GPU GPU acceleration (cuVS CAGRA)     ✅ COMPLETE
 PHASE TPU TPU acceleration (PJRT)           ✅ COMPLETE
+
+── Production Hardening Roadmap ─────────────────────────────────
+P0.1  TTL Reaper (background expiry)       ✅ COMPLETE
+P0.2  RBAC (Admin/Writer/Reader roles)     ✅ COMPLETE
+P0.3  Backup Hardening (scheduled+prune)   ✅ COMPLETE
+P1.4  NQL CREATE / SET / DELETE            ✅ COMPLETE
+P1.5  Metadata Secondary Indexes           ✅ COMPLETE
+P1.6  Cluster Gossip Wiring                ✅ COMPLETE
+P2.7  Encryption at-rest (AES-256-CTR)     ✅ COMPLETE
+P2.8  Multi-hop Path NQL (BoundedBFS)      ✅ COMPLETE
+P2.9  ListStore (RPUSH/LRANGE/LLEN)        ✅ COMPLETE
+P3.10 Query Cost Estimator (EXPLAIN)       ✅ COMPLETE
+P3.11 Hybrid BM25+ANN (RRF fusion)        ✅ COMPLETE
+P3.12 Schema Validation (per-NodeType)     ✅ COMPLETE
 ```
 
 ---
@@ -683,7 +746,15 @@ docker run -d \
 | `NIETZSCHE_HAUSDORFF_THRESHOLD` | `0.15` | Max delta-hausdorff before rollback |
 | `NIETZSCHE_MAX_CONNECTIONS` | `1024` | Maximum concurrent gRPC connections |
 | `NIETZSCHE_VECTOR_BACKEND` | `embedded` | `embedded` (HNSW), `gpu`, `tpu`, or empty (mock) |
-| `NIETZSCHE_API_KEY` | — | Optional auth token for gRPC |
+| `NIETZSCHE_API_KEY` | — | Admin auth token for gRPC (backward compat) |
+| `NIETZSCHE_API_KEY_ADMIN` | — | Admin role API key |
+| `NIETZSCHE_API_KEY_WRITER` | — | Writer role API key (read + mutate) |
+| `NIETZSCHE_API_KEY_READER` | — | Reader role API key (read only) |
+| `NIETZSCHE_ENCRYPTION_KEY` | — | Base64-encoded 32-byte AES master key (empty = disabled) |
+| `NIETZSCHE_TTL_REAPER_INTERVAL_SECS` | `60` | TTL reaper scan interval (0 = disabled) |
+| `NIETZSCHE_BACKUP_INTERVAL_SECS` | `0` | Automatic backup interval (0 = disabled) |
+| `NIETZSCHE_BACKUP_RETENTION_COUNT` | `5` | Max backups to keep (older ones pruned) |
+| `NIETZSCHE_INDEXED_FIELDS` | — | CSV of metadata fields to index (e.g. `created_at,category`) |
 | `ZARATUSTRA_INTERVAL_SECS` | `600` | Zaratustra cycle interval (0 = disabled) |
 | `NIETZSCHE_CLUSTER_ENABLED` | `false` | Enable cluster mode |
 | `NIETZSCHE_CLUSTER_NODE_NAME` | `nietzsche-0` | Human-readable node name |
@@ -969,6 +1040,8 @@ NietzscheDB closes gaps that no existing database fills:
 - **No AI memory system has a formal sleep/reconsolidation cycle.** NietzscheDB implements Riemannian optimization with Hausdorff identity verification and automatic rollback.
 - **No database has an autonomous fractal growth engine.** The L-System rewrites the graph topology every tick based on production rules and local Hausdorff dimension.
 - **No database ships 11 graph algorithms with both gRPC and REST interfaces.** PageRank, Louvain, A*, WCC, SCC, betweenness, closeness, degree, label propagation, triangle count, Jaccard — all built-in.
+- **No graph database has built-in hybrid BM25+ANN search.** NietzscheDB fuses full-text BM25 with hyperbolic KNN via Reciprocal Rank Fusion (RRF) in a single API call.
+- **No graph database has application-level encryption with per-CF key derivation.** AES-256-CTR with HKDF-SHA256 derives unique keys per column family from a single master key.
 
 Key references:
 - Krioukov et al., "Hyperbolic Geometry of Complex Networks" (2010)
@@ -1008,5 +1081,5 @@ Commercial licensing available — see [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENS
 </p>
 
 <p align="center">
-  Built for <strong>EVA-Mind</strong> · Powered by <strong>Rust nightly</strong> · <strong>25 crates</strong> · <strong>45+ gRPC RPCs</strong> · <strong>GPU/TPU</strong>
+  Built for <strong>EVA-Mind</strong> · Powered by <strong>Rust nightly</strong> · <strong>25 crates</strong> · <strong>55+ gRPC RPCs</strong> · <strong>GPU/TPU</strong> · <strong>RBAC + Encryption</strong>
 </p>
