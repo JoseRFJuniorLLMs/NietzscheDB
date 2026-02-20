@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package nietzsche;
 
-option go_package = "nietzsche-sdk/pb";
-
 // ── NietzscheDB unified gRPC API ──────────────────────────────────────────
 //
 // Exposes all core subsystems over a single service:
@@ -65,6 +63,34 @@ service NietzscheDB {
 
   // ── Zaratustra — autonomous evolution engine (Phase Z) ───────────────
   rpc InvokeZaratustra (ZaratustraRequest)  returns (ZaratustraResponse);
+
+  // ── Batch CRUD ────────────────────────────────────────────────────────
+  rpc BatchInsertNodes (BatchInsertNodesRequest) returns (BatchInsertNodesResponse);
+  rpc BatchInsertEdges (BatchInsertEdgesRequest) returns (BatchInsertEdgesResponse);
+
+  // ── Graph Algorithms ────────────────────────────────────────────────
+  rpc RunPageRank      (PageRankRequest)      returns (AlgorithmScoreResponse);
+  rpc RunLouvain       (LouvainRequest)       returns (AlgorithmCommunityResponse);
+  rpc RunLabelProp     (LabelPropRequest)     returns (AlgorithmCommunityResponse);
+  rpc RunBetweenness   (BetweennessRequest)   returns (AlgorithmScoreResponse);
+  rpc RunCloseness     (ClosenessRequest)     returns (AlgorithmScoreResponse);
+  rpc RunDegreeCentrality (DegreeCentralityRequest) returns (AlgorithmScoreResponse);
+  rpc RunWCC           (WccRequest)           returns (AlgorithmCommunityResponse);
+  rpc RunSCC           (SccRequest)           returns (AlgorithmCommunityResponse);
+  rpc RunAStar         (AStarRequest)         returns (AStarResponse);
+  rpc RunTriangleCount (TriangleCountRequest) returns (TriangleCountResponse);
+  rpc RunJaccardSimilarity (JaccardRequest)   returns (SimilarityResponse);
+
+  // ── Backup/Restore ───────────────────────────────────────────────────
+  rpc CreateBackup  (CreateBackupRequest)  returns (BackupResponse);
+  rpc ListBackups   (Empty)                returns (ListBackupsResponse);
+  rpc RestoreBackup (RestoreBackupRequest) returns (StatusResponse);
+
+  // ── Full-Text Search ────────────────────────────────────────────────
+  rpc FullTextSearch (FullTextSearchRequest) returns (FullTextSearchResponse);
+
+  // ── Change Data Capture ──────────────────────────────────────────────
+  rpc SubscribeCDC (CdcRequest) returns (stream CdcEvent);
 
   // ── Admin ─────────────────────────────────────────────────────────────
   rpc GetStats (Empty) returns (StatsResponse);
@@ -202,6 +228,28 @@ message MergeEdgeRequest {
 message MergeEdgeResponse {
   bool   created = 1;
   string edge_id = 2;
+}
+
+// ── Batch messages ──────────────────────────────────────────────────────────
+
+message BatchInsertNodesRequest {
+  repeated InsertNodeRequest nodes      = 1;
+  string                     collection = 2;  // empty → "default"
+}
+
+message BatchInsertNodesResponse {
+  uint32          inserted = 1;
+  repeated string node_ids = 2;  // UUIDs of inserted nodes (parallel order)
+}
+
+message BatchInsertEdgesRequest {
+  repeated InsertEdgeRequest edges      = 1;
+  string                      collection = 2;  // empty → "default"
+}
+
+message BatchInsertEdgesResponse {
+  uint32          inserted = 1;
+  repeated string edge_ids = 2;
 }
 
 // ── NQL messages ───────────────────────────────────────────────────────────
@@ -416,4 +464,173 @@ message ZaratustraResponse {
   // Timing
   uint64 duration_ms         = 13;
   uint32 cycles_run          = 14;
+}
+
+// ── Graph Algorithm messages ──────────────────────────────────────────────
+
+// -- Requests --
+
+message PageRankRequest {
+  string collection          = 1;
+  double damping_factor      = 2;   // 0 → default 0.85
+  uint32 max_iterations      = 3;   // 0 → default 20
+  double convergence_threshold = 4; // 0 → default 1e-7
+}
+
+message LouvainRequest {
+  string collection    = 1;
+  uint32 max_iterations = 2;  // 0 → default 10
+  double resolution     = 3;  // 0 → default 1.0
+}
+
+message LabelPropRequest {
+  string collection    = 1;
+  uint32 max_iterations = 2;  // 0 → default 10
+}
+
+message BetweennessRequest {
+  string collection  = 1;
+  uint32 sample_size = 2;  // 0 → exact (all nodes)
+}
+
+message ClosenessRequest {
+  string collection = 1;
+}
+
+message DegreeCentralityRequest {
+  string collection = 1;
+  string direction  = 2;  // "in" | "out" | "both"; empty → "both"
+}
+
+message WccRequest {
+  string collection = 1;
+}
+
+message SccRequest {
+  string collection = 1;
+}
+
+message AStarRequest {
+  string collection   = 1;
+  string start_node_id = 2;
+  string goal_node_id  = 3;
+}
+
+message TriangleCountRequest {
+  string collection = 1;
+}
+
+message JaccardRequest {
+  string collection = 1;
+  uint32 top_k      = 2;  // 0 → default 100
+  double threshold   = 3;  // 0 → default 0.0
+}
+
+// -- Responses --
+
+message NodeScore {
+  string node_id = 1;
+  double score   = 2;
+}
+
+message AlgorithmScoreResponse {
+  repeated NodeScore scores = 1;
+  uint64 duration_ms        = 2;
+  uint32 iterations         = 3;  // for iterative algorithms
+}
+
+message NodeCommunity {
+  string node_id      = 1;
+  uint64 community_id = 2;
+}
+
+message AlgorithmCommunityResponse {
+  repeated NodeCommunity assignments = 1;
+  uint64 community_count  = 2;
+  uint64 largest_size     = 3;
+  double modularity       = 4;  // Louvain only
+  uint64 duration_ms      = 5;
+  uint32 iterations       = 6;
+}
+
+message AStarResponse {
+  bool            found     = 1;
+  repeated string path      = 2;  // node UUIDs from start to goal
+  double          cost      = 3;
+}
+
+message TriangleCountResponse {
+  uint64 count = 1;
+}
+
+message SimilarityPairProto {
+  string node_a = 1;
+  string node_b = 2;
+  double score  = 3;
+}
+
+message SimilarityResponse {
+  repeated SimilarityPairProto pairs = 1;
+}
+
+// ── Backup/Restore messages ───────────────────────────────────────────────
+
+message CreateBackupRequest {
+  string label = 1;  // user-chosen backup label (e.g. "pre-migration")
+}
+
+message BackupInfoProto {
+  string label      = 1;
+  string path       = 2;
+  uint64 created_at = 3;  // Unix seconds
+  uint64 size_bytes = 4;
+}
+
+message BackupResponse {
+  string label      = 1;
+  string path       = 2;
+  uint64 created_at = 3;
+  uint64 size_bytes = 4;
+}
+
+message ListBackupsResponse {
+  repeated BackupInfoProto backups = 1;
+}
+
+message RestoreBackupRequest {
+  string backup_path = 1;  // path of the backup to restore
+  string target_path = 2;  // where to restore to
+}
+
+// ── Full-Text Search messages ─────────────────────────────────────────────
+
+message FullTextSearchRequest {
+  string query      = 1;
+  uint32 limit      = 2;  // 0 → default 10
+  string collection = 3;  // empty → "default"
+}
+
+message FtsResultProto {
+  string node_id = 1;
+  double score   = 2;
+}
+
+message FullTextSearchResponse {
+  repeated FtsResultProto results = 1;
+}
+
+// ── CDC messages ──────────────────────────────────────────────────────────
+
+message CdcRequest {
+  uint64 from_lsn   = 1;  // subscribe from this LSN (0 = from current)
+  string collection = 2;  // filter by collection; empty = all collections
+}
+
+message CdcEvent {
+  uint64 lsn          = 1;  // logical sequence number (monotonically increasing)
+  string event_type   = 2;  // INSERT_NODE | UPDATE_NODE | DELETE_NODE | INSERT_EDGE | DELETE_EDGE | BATCH_INSERT_NODES | BATCH_INSERT_EDGES | SLEEP_CYCLE | ZARATUSTRA
+  uint64 timestamp_ms = 3;  // Unix milliseconds
+  string entity_id    = 4;  // UUID of the mutated entity
+  string collection   = 5;  // collection where mutation occurred
+  uint32 batch_count  = 6;  // for BATCH_INSERT_* events: number of items inserted
 }
