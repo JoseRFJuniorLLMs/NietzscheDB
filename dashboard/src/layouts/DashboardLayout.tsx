@@ -10,9 +10,9 @@ export function DashboardLayout() {
                 <div className="p-6">
                     <div className="flex items-center gap-3">
                         <div className="h-8 w-8 flex items-center justify-center font-bold text-primary text-lg">
-                            [H]
+                            [N]
                         </div>
-                        <span className="text-lg font-bold tracking-tight">HyperspaceDB</span>
+                        <span className="text-lg font-bold tracking-tight">NietzscheDB</span>
                     </div>
                 </div>
 
