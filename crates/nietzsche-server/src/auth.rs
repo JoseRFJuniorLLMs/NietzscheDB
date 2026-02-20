@@ -1,41 +1,87 @@
-//! gRPC API key authentication interceptor.
+//! gRPC RBAC authentication interceptor.
 //!
-//! Reads `NIETZSCHE_API_KEY` at startup. If set, all gRPC requests must include
-//! a matching `x-api-key` metadata header. The key is stored as a SHA-256 hash;
-//! comparison uses constant-time equality to prevent timing attacks.
+//! Supports multiple API keys with different roles:
 //!
-//! If `NIETZSCHE_API_KEY` is not set, authentication is disabled (all requests pass).
+//! | Environment variable          | Role     | Permissions                          |
+//! |-------------------------------|----------|--------------------------------------|
+//! | `NIETZSCHE_API_KEY`           | Admin    | All operations (backward compat)     |
+//! | `NIETZSCHE_API_KEY_ADMIN`     | Admin    | All operations                       |
+//! | `NIETZSCHE_API_KEY_WRITER`    | Writer   | Read + write (no admin ops)          |
+//! | `NIETZSCHE_API_KEY_READER`    | Reader   | Read-only                            |
+//!
+//! If no API key env vars are set, authentication is disabled (all requests pass as Admin).
+//!
+//! The interceptor injects [`nietzsche_api::Role`] into `request.extensions()` so
+//! that downstream RPC handlers can call `require_writer` / `require_admin`.
 
 use sha2::{Digest, Sha256};
 use tonic::{service::Interceptor, Request, Status};
 
+// Re-use Role from nietzsche-api so interceptor and server share the same type.
+use nietzsche_api::Role;
+
+// ─────────────────────────────────────────────
+// AuthInterceptor
+// ─────────────────────────────────────────────
+
 #[derive(Clone)]
 pub struct AuthInterceptor {
-    expected_hash: Option<String>,
+    /// (SHA-256 hex hash, Role) pairs. Empty = auth disabled.
+    key_roles: Vec<(String, Role)>,
 }
 
 impl AuthInterceptor {
-    /// Create a new interceptor.  Pass `Some(key)` to enable auth, `None` to disable.
-    pub fn new(api_key: Option<String>) -> Self {
-        let expected_hash = api_key.map(|key| {
-            let mut hasher = Sha256::new();
-            hasher.update(key.as_bytes());
-            hex::encode(hasher.finalize())
-        });
-        if expected_hash.is_some() {
-            tracing::info!("gRPC API key authentication enabled");
-        } else {
-            tracing::warn!("gRPC API key authentication disabled (NIETZSCHE_API_KEY not set)");
+    /// Build the interceptor from environment variables.
+    ///
+    /// Reads up to 4 env vars. If none are set, auth is disabled and all
+    /// requests pass through as `Role::Admin`.
+    pub fn from_env() -> Self {
+        let mut key_roles = Vec::new();
+
+        for (env_var, role) in [
+            ("NIETZSCHE_API_KEY", Role::Admin),
+            ("NIETZSCHE_API_KEY_ADMIN", Role::Admin),
+            ("NIETZSCHE_API_KEY_WRITER", Role::Writer),
+            ("NIETZSCHE_API_KEY_READER", Role::Reader),
+        ] {
+            if let Ok(key) = std::env::var(env_var) {
+                if !key.is_empty() {
+                    let hash = sha256_hex(&key);
+                    key_roles.push((hash, role));
+                    tracing::info!(env = env_var, role = ?role, "API key registered");
+                }
+            }
         }
-        Self { expected_hash }
+
+        if key_roles.is_empty() {
+            tracing::warn!("gRPC authentication disabled — no API key env vars set");
+        } else {
+            tracing::info!(keys = key_roles.len(), "gRPC RBAC authentication enabled");
+        }
+
+        Self { key_roles }
+    }
+
+    /// Legacy constructor for backward compatibility.
+    pub fn new(api_key: Option<String>) -> Self {
+        match api_key {
+            Some(key) if !key.is_empty() => {
+                let hash = sha256_hex(&key);
+                tracing::info!("gRPC API key authentication enabled (legacy single-key)");
+                Self { key_roles: vec![(hash, Role::Admin)] }
+            }
+            _ => Self::from_env(),
+        }
     }
 }
 
 impl Interceptor for AuthInterceptor {
-    fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
-        let Some(expected) = &self.expected_hash else {
+    fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
+        // No keys configured → auth disabled, grant Admin
+        if self.key_roles.is_empty() {
+            request.extensions_mut().insert(Role::Admin);
             return Ok(request);
-        };
+        }
 
         match request.metadata().get("x-api-key") {
             Some(t) => {
@@ -43,19 +89,30 @@ impl Interceptor for AuthInterceptor {
                     .to_str()
                     .map_err(|_| Status::unauthenticated("invalid API key encoding"))?;
 
-                let mut hasher = Sha256::new();
-                hasher.update(token_str.as_bytes());
-                let request_hash = hex::encode(hasher.finalize());
+                let request_hash = sha256_hex(token_str);
 
-                if constant_time_eq(request_hash.as_bytes(), expected.as_bytes()) {
-                    Ok(request)
-                } else {
-                    Err(Status::unauthenticated("invalid API key"))
+                for (expected_hash, role) in &self.key_roles {
+                    if constant_time_eq(request_hash.as_bytes(), expected_hash.as_bytes()) {
+                        request.extensions_mut().insert(*role);
+                        return Ok(request);
+                    }
                 }
+
+                Err(Status::unauthenticated("invalid API key"))
             }
             None => Err(Status::unauthenticated("missing x-api-key header")),
         }
     }
+}
+
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
+
+fn sha256_hex(input: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(input.as_bytes());
+    hex::encode(hasher.finalize())
 }
 
 /// Constant-time byte comparison (prevents timing attacks).
@@ -67,4 +124,33 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
         .zip(b.iter())
         .fold(0u8, |acc, (x, y)| acc | (x ^ y))
         == 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sha256_hex_is_deterministic() {
+        let h1 = sha256_hex("test-key-123");
+        let h2 = sha256_hex("test-key-123");
+        assert_eq!(h1, h2);
+        assert_eq!(h1.len(), 64);
+    }
+
+    #[test]
+    fn constant_time_eq_works() {
+        assert!(constant_time_eq(b"hello", b"hello"));
+        assert!(!constant_time_eq(b"hello", b"world"));
+        assert!(!constant_time_eq(b"short", b"longer"));
+    }
+
+    #[test]
+    fn from_env_with_no_keys_disables_auth() {
+        for var in ["NIETZSCHE_API_KEY", "NIETZSCHE_API_KEY_ADMIN", "NIETZSCHE_API_KEY_WRITER", "NIETZSCHE_API_KEY_READER"] {
+            std::env::remove_var(var);
+        }
+        let interceptor = AuthInterceptor::from_env();
+        assert!(interceptor.key_roles.is_empty());
+    }
 }

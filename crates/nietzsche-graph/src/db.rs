@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -7,6 +8,7 @@ use uuid::Uuid;
 use crate::adjacency::AdjacencyIndex;
 use crate::error::GraphError;
 use crate::model::{Edge, Node, NodeMeta, PoincareVector};
+use crate::schema::SchemaValidator;
 use crate::storage::GraphStorage;
 use crate::transaction::Transaction;
 use crate::wal::{GraphWal, GraphWalEntry};
@@ -110,6 +112,11 @@ pub struct NietzscheDB<V: VectorStore> {
     /// (~100 bytes/entry) — **240× less RAM per cached node**.
     /// Populated by [`ZaratustraEngine`] after each Übermensch phase.
     pub hot_tier: Arc<DashMap<Uuid, NodeMeta>>,
+    /// Metadata fields to maintain secondary indexes on (set via `NIETZSCHE_INDEXED_FIELDS`).
+    /// When a node is inserted/deleted, index entries are written/removed for these fields.
+    indexed_fields: HashSet<String>,
+    /// Optional schema validator for per-NodeType constraints.
+    schema_validator: Option<SchemaValidator>,
 }
 
 impl<V: VectorStore> NietzscheDB<V> {
@@ -130,7 +137,15 @@ impl<V: VectorStore> NietzscheDB<V> {
         let wal       = GraphWal::open(data_dir)?;
         let adjacency = storage.rebuild_adjacency()?;
 
-        Ok(Self { storage, wal, adjacency, vector_store, hot_tier: Arc::new(DashMap::new()) })
+        // Load persisted schema constraints if any exist
+        let schema_validator = SchemaValidator::load_all(&storage).ok();
+
+        Ok(Self {
+            storage, wal, adjacency, vector_store,
+            hot_tier: Arc::new(DashMap::new()),
+            indexed_fields: HashSet::new(),
+            schema_validator,
+        })
     }
 
     /// Replace the vector store backend at runtime.
@@ -140,6 +155,28 @@ impl<V: VectorStore> NietzscheDB<V> {
     /// in-flight — callers must hold the write lock on the collection.
     pub fn set_vector_store(&mut self, vs: V) {
         self.vector_store = vs;
+    }
+
+    /// Set the metadata fields to maintain secondary indexes on.
+    /// Call this before inserting nodes to enable automatic index maintenance.
+    pub fn set_indexed_fields(&mut self, fields: HashSet<String>) {
+        self.indexed_fields = fields;
+    }
+
+    /// Get a reference to the schema validator (if any).
+    pub fn schema_validator(&self) -> Option<&SchemaValidator> {
+        self.schema_validator.as_ref()
+    }
+
+    /// Register a schema constraint and persist it to RocksDB.
+    pub fn set_schema_constraint(
+        &mut self,
+        constraint: crate::schema::SchemaConstraint,
+    ) -> Result<(), GraphError> {
+        let validator = self.schema_validator.get_or_insert_with(SchemaValidator::new);
+        validator.save_constraint(&self.storage, &constraint)?;
+        validator.set_constraint(constraint);
+        Ok(())
     }
 
     // ── NodeMeta-only accessors (BUG A fast path) ────
@@ -161,13 +198,28 @@ impl<V: VectorStore> NietzscheDB<V> {
     ///
     /// Writes to WAL first, then RocksDB, then the vector store.
     pub fn insert_node(&mut self, node: Node) -> Result<(), GraphError> {
+        // 0. Schema validation (if enabled)
+        if let Some(ref validator) = self.schema_validator {
+            if let Err(violations) = validator.validate_node(&node.meta) {
+                return Err(GraphError::Storage(format!(
+                    "schema validation failed: {}",
+                    violations.join("; "),
+                )));
+            }
+        }
+
         // 1. WAL
         self.wal.append(&GraphWalEntry::InsertNode(node.clone()))?;
 
         // 2. RocksDB
         self.storage.put_node(&node)?;
 
-        // 3. Vector store (best-effort)
+        // 3. Metadata secondary index
+        if !self.indexed_fields.is_empty() {
+            self.storage.put_meta_index(&node.id, &node.meta.metadata, &self.indexed_fields)?;
+        }
+
+        // 4. Vector store (best-effort)
         self.vector_store.upsert(node.id, &node.embedding)?;
 
         Ok(())
@@ -193,7 +245,14 @@ impl<V: VectorStore> NietzscheDB<V> {
         // 2. RocksDB — single WriteBatch for all nodes + energy_idx keys.
         self.storage.put_nodes_batch(&nodes)?;
 
-        // 3. Vector store — sequential upserts (HNSW insert is not batchable yet).
+        // 3. Metadata secondary index
+        if !self.indexed_fields.is_empty() {
+            for node in &nodes {
+                self.storage.put_meta_index(&node.id, &node.meta.metadata, &self.indexed_fields)?;
+            }
+        }
+
+        // 4. Vector store — sequential upserts (HNSW insert is not batchable yet).
         for node in &nodes {
             self.vector_store.upsert(node.id, &node.embedding)?;
         }
@@ -273,6 +332,13 @@ impl<V: VectorStore> NietzscheDB<V> {
     /// Prefer [`prune_node`] for normal operation; this is for administrative
     /// data-correction workflows.
     pub fn delete_node(&mut self, id: Uuid) -> Result<(), GraphError> {
+        // 0. Read metadata for index cleanup before deletion
+        let meta_for_idx = if !self.indexed_fields.is_empty() {
+            self.storage.get_node_meta(&id)?
+        } else {
+            None
+        };
+
         // 1. WAL
         self.wal.append(&GraphWalEntry::DeleteNode(id))?;
 
@@ -289,13 +355,38 @@ impl<V: VectorStore> NietzscheDB<V> {
         // 3. Remove node
         self.storage.delete_node(&id)?;
 
-        // 4. In-memory adjacency
+        // 4. Clean up metadata secondary index
+        if let Some(meta) = meta_for_idx {
+            self.storage.delete_meta_index(&id, &meta.metadata, &self.indexed_fields)?;
+        }
+
+        // 5. In-memory adjacency
         self.adjacency.remove_node(&id);
 
-        // 5. Vector store
+        // 6. Vector store
         self.vector_store.delete(id)?;
 
         Ok(())
+    }
+
+    /// Reap all expired nodes (TTL enforcement).
+    ///
+    /// Scans `CF_NODES` for nodes where `expires_at <= now`, then hard-deletes
+    /// each one (including incident edges, vector store entry, adjacency).
+    /// Returns the number of reaped nodes.
+    ///
+    /// Intended to be called periodically by a background task.
+    pub fn reap_expired(&mut self) -> Result<usize, GraphError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        let expired_ids = self.storage.scan_expired_node_ids(now)?;
+        let count = expired_ids.len();
+        for id in expired_ids {
+            self.delete_node(id)?;
+        }
+        Ok(count)
     }
 
     /// Update a node's energy value.
@@ -620,6 +711,61 @@ impl<V: VectorStore> NietzscheDB<V> {
         }
     }
 
+    // ── Hybrid BM25 + ANN search ────────────────────────
+
+    /// Hybrid search combining BM25 full-text scoring with KNN vector
+    /// similarity, fused via Reciprocal Rank Fusion (RRF).
+    ///
+    /// ## Algorithm
+    ///
+    /// 1. Run BM25 search → ranked list R_text
+    /// 2. Run KNN search  → ranked list R_vec
+    /// 3. Fuse: `score(d) = text_weight / (60 + rank_text(d)) + vector_weight / (60 + rank_vec(d))`
+    /// 4. Sort by fused score descending, return top-k
+    ///
+    /// The constant 60 is the standard RRF parameter from the original paper
+    /// (Cormack et al., 2009).
+    pub fn hybrid_search(
+        &self,
+        text_query: &str,
+        vector_query: &PoincareVector,
+        k: usize,
+        text_weight: f64,
+        vector_weight: f64,
+    ) -> Result<Vec<(Uuid, f64)>, GraphError> {
+        const RRF_K: f64 = 60.0;
+
+        // Over-fetch from both sources to improve fusion quality
+        let fetch_k = k * 3;
+
+        // BM25 ranked list
+        let fts = crate::fulltext::FullTextIndex::new(&self.storage);
+        let bm25_results = fts.search(text_query, fetch_k)?;
+
+        // KNN ranked list
+        let knn_results = self.vector_store.knn(vector_query, fetch_k)?;
+
+        // Build RRF fusion scores
+        let mut fused_scores: HashMap<Uuid, f64> = HashMap::new();
+
+        for (rank, result) in bm25_results.iter().enumerate() {
+            *fused_scores.entry(result.node_id).or_default() +=
+                text_weight / (RRF_K + rank as f64 + 1.0);
+        }
+
+        for (rank, (id, _dist)) in knn_results.iter().enumerate() {
+            *fused_scores.entry(*id).or_default() +=
+                vector_weight / (RRF_K + rank as f64 + 1.0);
+        }
+
+        // Sort by fused score descending
+        let mut results: Vec<(Uuid, f64)> = fused_scores.into_iter().collect();
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        results.truncate(k);
+
+        Ok(results)
+    }
+
     // ── Stats ──────────────────────────────────────────
 
     pub fn node_count(&self) -> Result<usize, GraphError> { self.storage.node_count() }
@@ -874,6 +1020,41 @@ mod tests {
         let db2 = open_db(&dir);
         let found = db2.get_node(node_id).unwrap();
         assert!(found.is_some());
+    }
+
+    #[test]
+    fn reap_expired_removes_only_expired_nodes() {
+        let dir = tmp();
+        let mut db = open_db(&dir);
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // Expired node
+        let mut expired = make_node(&[0.1, 0.0]);
+        expired.meta.expires_at = Some(now - 60);
+        let expired_id = expired.id;
+        db.insert_node(expired).unwrap();
+
+        // Fresh node (TTL in the future)
+        let mut fresh = make_node(&[0.2, 0.0]);
+        fresh.meta.expires_at = Some(now + 3600);
+        let fresh_id = fresh.id;
+        db.insert_node(fresh).unwrap();
+
+        // Eternal node (no TTL)
+        let eternal = make_node(&[0.3, 0.0]);
+        let eternal_id = eternal.id;
+        db.insert_node(eternal).unwrap();
+
+        let reaped = db.reap_expired().unwrap();
+        assert_eq!(reaped, 1);
+
+        assert!(db.get_node(expired_id).unwrap().is_none());
+        assert!(db.get_node(fresh_id).unwrap().is_some());
+        assert!(db.get_node(eternal_id).unwrap().is_some());
     }
 
     #[test]

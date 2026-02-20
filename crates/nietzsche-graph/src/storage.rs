@@ -22,9 +22,16 @@ const CF_SENSORY:    &str = "sensory";    // key: node_id (16 bytes) → Sensory
 /// Energy secondary index: key = [energy_be_4_bytes | node_id_16_bytes] → empty.
 /// Enables O(log N) range scans for `WHERE n.energy > X`.
 const CF_ENERGY_IDX: &str = "energy_idx";
+/// Metadata secondary index: key = [field_name_fnv1a(8B) | sortable_value(8B) | node_id(16B)] → empty.
+/// Enables O(log N) range scans for `WHERE n.field = X` or `WHERE n.field > X`.
+const CF_META_IDX: &str = "meta_idx";
+/// List storage: key = [node_id(16B) | list_name_hash(8B) | seq_be(8B)] → value bytes.
+/// Supports RPUSH/LRANGE per-node ordered lists.
+const CF_LISTS: &str = "lists";
 
 const ALL_CFS: &[&str] = &[
     CF_NODES, CF_EMBEDDINGS, CF_EDGES, CF_ADJ_OUT, CF_ADJ_IN, CF_META, CF_SENSORY, CF_ENERGY_IDX,
+    CF_META_IDX, CF_LISTS,
 ];
 
 // ─────────────────────────────────────────────
@@ -71,6 +78,23 @@ fn cf_opts_energy_idx(cache: &Cache) -> Options {
     let mut opts = Options::default();
     opts.set_block_based_table_factory(&bbo);
     opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(4)); // 4-byte energy prefix
+    opts.set_memtable_prefix_bloom_ratio(0.1);
+    opts.set_compression_type(DBCompressionType::Lz4);
+    opts
+}
+
+/// Options for the metadata index CF: 8-byte prefix extractor (FNV-1a hash of field name)
+/// so bloom filters enable efficient per-field range scans.
+fn cf_opts_meta_idx(cache: &Cache) -> Options {
+    let mut bbo = BlockBasedOptions::default();
+    bbo.set_bloom_filter(10.0, true); // prefix bloom
+    bbo.set_block_size(4 * 1024);
+    bbo.set_cache_index_and_filter_blocks(true);
+    bbo.set_block_cache(cache);
+
+    let mut opts = Options::default();
+    opts.set_block_based_table_factory(&bbo);
+    opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(8)); // 8-byte field name hash
     opts.set_memtable_prefix_bloom_ratio(0.1);
     opts.set_compression_type(DBCompressionType::Lz4);
     opts
@@ -141,6 +165,8 @@ impl GraphStorage {
             ColumnFamilyDescriptor::new(CF_META,       cf_opts_read_heavy(&cache)),
             ColumnFamilyDescriptor::new(CF_SENSORY,    cf_opts_read_heavy(&cache)),
             ColumnFamilyDescriptor::new(CF_ENERGY_IDX, cf_opts_energy_idx(&cache)),
+            ColumnFamilyDescriptor::new(CF_META_IDX,   cf_opts_meta_idx(&cache)),
+            ColumnFamilyDescriptor::new(CF_LISTS,      cf_opts_read_heavy(&cache)),
         ];
 
         let db = DB::open_cf_descriptors(&db_opts, path, cf_descs)
@@ -160,6 +186,8 @@ impl GraphStorage {
     #[inline] fn cf_adj_in(&self)     -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_ADJ_IN).unwrap() }
     #[inline] fn cf_meta(&self)       -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_META).unwrap() }
     #[inline] fn cf_energy(&self)     -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_ENERGY_IDX).unwrap() }
+    #[inline] fn cf_meta_idx(&self)  -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_META_IDX).unwrap() }
+    #[inline] fn cf_lists(&self)    -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_LISTS).unwrap() }
 
     // ── Node operations ────────────────────────────────
 
@@ -396,6 +424,23 @@ impl GraphStorage {
         self.scan_nodes_energy_range(min_energy, f32::MAX)
     }
 
+    /// Scan all node metadata and return IDs of expired nodes (TTL enforcement).
+    ///
+    /// A node is expired when `expires_at.is_some() && expires_at <= now`.
+    /// O(N) full scan — intended for background reaper, not the hot path.
+    pub fn scan_expired_node_ids(&self, now_unix_secs: i64) -> Result<Vec<Uuid>, GraphError> {
+        let mut expired = Vec::new();
+        for result in self.iter_nodes_meta() {
+            let meta = result?;
+            if let Some(exp) = meta.expires_at {
+                if now_unix_secs >= exp {
+                    expired.push(meta.id);
+                }
+            }
+        }
+        Ok(expired)
+    }
+
     /// **Ultra-fast energy ID scan** — returns only node UUIDs, not full nodes.
     ///
     /// Same O(log N + k) complexity as `scan_nodes_energy_gt()` but skips the
@@ -424,6 +469,211 @@ impl GraphStorage {
             ids.push(node_id);
         }
         Ok(ids)
+    }
+
+    // ── Metadata index operations ─────────────────────
+
+    /// Write metadata index entries for a node's metadata fields.
+    ///
+    /// For each field in `indexed_fields`, if the node's `metadata` map contains
+    /// a matching key with a sortable value (number or string), we write a
+    /// `[field_hash(8B) | sortable_value(8B) | node_id(16B)]` key to `CF_META_IDX`.
+    pub fn put_meta_index(
+        &self,
+        node_id: &Uuid,
+        metadata: &std::collections::HashMap<String, serde_json::Value>,
+        indexed_fields: &std::collections::HashSet<String>,
+    ) -> Result<(), GraphError> {
+        let mut batch = rocksdb::WriteBatch::default();
+        for field in indexed_fields {
+            if let Some(val) = metadata.get(field) {
+                if let Some(key) = meta_index_key(field, val, node_id) {
+                    batch.put_cf(&self.cf_meta_idx(), &key, &[]);
+                }
+            }
+        }
+        if batch.len() > 0 {
+            self.db.write(batch)
+                .map_err(|e| GraphError::Storage(e.to_string()))?;
+        }
+        Ok(())
+    }
+
+    /// Remove metadata index entries for a node.
+    pub fn delete_meta_index(
+        &self,
+        node_id: &Uuid,
+        metadata: &std::collections::HashMap<String, serde_json::Value>,
+        indexed_fields: &std::collections::HashSet<String>,
+    ) -> Result<(), GraphError> {
+        let mut batch = rocksdb::WriteBatch::default();
+        for field in indexed_fields {
+            if let Some(val) = metadata.get(field) {
+                if let Some(key) = meta_index_key(field, val, node_id) {
+                    batch.delete_cf(&self.cf_meta_idx(), &key);
+                }
+            }
+        }
+        if batch.len() > 0 {
+            self.db.write(batch)
+                .map_err(|e| GraphError::Storage(e.to_string()))?;
+        }
+        Ok(())
+    }
+
+    /// Range scan on a metadata field: returns node IDs where `field` value
+    /// is in `[min_val, max_val]` (inclusive, by sortable byte order).
+    ///
+    /// O(log N + k) via the `meta_idx` secondary index.
+    pub fn scan_meta_index_range(
+        &self,
+        field: &str,
+        min_val: &serde_json::Value,
+        max_val: &serde_json::Value,
+    ) -> Result<Vec<Uuid>, GraphError> {
+        let field_hash = fnv1a_64(field.as_bytes());
+        let min_sortable = sortable_value_bytes(min_val).unwrap_or([0u8; 8]);
+        let max_sortable = sortable_value_bytes(max_val).unwrap_or([0xFF; 8]);
+
+        let mut start_key = [0u8; 32];
+        start_key[0..8].copy_from_slice(&field_hash.to_be_bytes());
+        start_key[8..16].copy_from_slice(&min_sortable);
+        // node_id = Uuid::nil (all zeros)
+
+        let mut end_key = [0u8; 32];
+        end_key[0..8].copy_from_slice(&field_hash.to_be_bytes());
+        end_key[8..16].copy_from_slice(&max_sortable);
+        end_key[16..32].copy_from_slice(&[0xFF; 16]); // max UUID
+
+        let iter = self.db.iterator_cf(
+            &self.cf_meta_idx(),
+            rocksdb::IteratorMode::From(&start_key, rocksdb::Direction::Forward),
+        );
+
+        let mut ids = Vec::new();
+        for item in iter {
+            let (key, _) = item.map_err(|e| GraphError::Storage(e.to_string()))?;
+            if key.as_ref() > end_key.as_slice() {
+                break;
+            }
+            if key.len() < 32 {
+                continue;
+            }
+            let node_id = Uuid::from_slice(&key[16..32])
+                .map_err(|e| GraphError::Storage(e.to_string()))?;
+            ids.push(node_id);
+        }
+        Ok(ids)
+    }
+
+    /// Exact-match scan on a metadata field: returns node IDs where `field == val`.
+    pub fn scan_meta_index_eq(
+        &self,
+        field: &str,
+        val: &serde_json::Value,
+    ) -> Result<Vec<Uuid>, GraphError> {
+        self.scan_meta_index_range(field, val, val)
+    }
+
+    // ── List operations (RPUSH/LRANGE) ─────────────────
+
+    /// Append a value to the end of a named list for a node (RPUSH).
+    ///
+    /// Uses an atomic read-increment-write of the sequence counter stored in CF_META.
+    /// Key format: `[node_id(16B) | list_name_hash(8B) | seq_be(8B)]`.
+    pub fn list_rpush(
+        &self,
+        node_id: &Uuid,
+        list_name: &str,
+        value: &[u8],
+    ) -> Result<u64, GraphError> {
+        let name_hash = fnv1a_64(list_name.as_bytes());
+
+        // Atomic increment: read current seq from CF_META
+        let seq_meta_key = format!("list_seq:{}:{}", node_id, list_name);
+        let current_seq: u64 = match self.db.get_cf(&self.cf_meta(), seq_meta_key.as_bytes())
+            .map_err(|e| GraphError::Storage(e.to_string()))?
+        {
+            Some(bytes) if bytes.len() == 8 => u64::from_be_bytes(bytes[..8].try_into().unwrap()),
+            _ => 0,
+        };
+        let new_seq = current_seq + 1;
+
+        // Build list entry key
+        let mut key = [0u8; 32];
+        key[0..16].copy_from_slice(node_id.as_bytes());
+        key[16..24].copy_from_slice(&name_hash.to_be_bytes());
+        key[24..32].copy_from_slice(&new_seq.to_be_bytes());
+
+        // Atomic write: list entry + updated seq counter
+        let mut batch = rocksdb::WriteBatch::default();
+        batch.put_cf(&self.cf_lists(), &key, value);
+        batch.put_cf(&self.cf_meta(), seq_meta_key.as_bytes(), &new_seq.to_be_bytes());
+        self.db.write(batch)
+            .map_err(|e| GraphError::Storage(e.to_string()))?;
+
+        Ok(new_seq)
+    }
+
+    /// Read a range of values from a named list (LRANGE).
+    ///
+    /// `start` and `stop` are 0-based indices (inclusive, like Redis LRANGE).
+    /// Use `stop = -1` (as `i64`) for "to the end".
+    pub fn list_lrange(
+        &self,
+        node_id: &Uuid,
+        list_name: &str,
+        start: u64,
+        stop: i64,
+    ) -> Result<Vec<Vec<u8>>, GraphError> {
+        let name_hash = fnv1a_64(list_name.as_bytes());
+
+        // Build prefix for iteration
+        let mut prefix = [0u8; 24];
+        prefix[0..16].copy_from_slice(node_id.as_bytes());
+        prefix[16..24].copy_from_slice(&name_hash.to_be_bytes());
+
+        let mut start_key = [0u8; 32];
+        start_key[0..24].copy_from_slice(&prefix);
+        start_key[24..32].copy_from_slice(&1u64.to_be_bytes()); // seq starts at 1
+
+        let iter = self.db.iterator_cf(
+            &self.cf_lists(),
+            rocksdb::IteratorMode::From(&start_key, rocksdb::Direction::Forward),
+        );
+
+        let mut results = Vec::new();
+        let mut idx = 0u64;
+        for item in iter {
+            let (key, val) = item.map_err(|e| GraphError::Storage(e.to_string()))?;
+            // Check prefix match (node_id + name_hash)
+            if key.len() < 32 || &key[0..24] != &prefix[..] {
+                break;
+            }
+            if idx >= start {
+                results.push(val.to_vec());
+            }
+            idx += 1;
+            if stop >= 0 && idx > stop as u64 {
+                break;
+            }
+        }
+        Ok(results)
+    }
+
+    /// Return the length of a named list.
+    pub fn list_len(
+        &self,
+        node_id: &Uuid,
+        list_name: &str,
+    ) -> Result<u64, GraphError> {
+        let seq_meta_key = format!("list_seq:{}:{}", node_id, list_name);
+        match self.db.get_cf(&self.cf_meta(), seq_meta_key.as_bytes())
+            .map_err(|e| GraphError::Storage(e.to_string()))?
+        {
+            Some(bytes) if bytes.len() == 8 => Ok(u64::from_be_bytes(bytes[..8].try_into().unwrap())),
+            _ => Ok(0),
+        }
     }
 
     // ── Edge operations ────────────────────────────────
@@ -539,6 +789,23 @@ impl GraphStorage {
             .map_err(|e| GraphError::Storage(e.to_string()))
     }
 
+    /// Scan all metadata entries with a given key prefix.
+    ///
+    /// Returns `(key, value)` pairs where the key starts with `prefix`.
+    pub fn scan_meta_prefix(&self, prefix: &[u8]) -> Result<Vec<(Vec<u8>, Vec<u8>)>, GraphError> {
+        let cf = self.cf_meta();
+        let iter = self.db.prefix_iterator_cf(&cf, prefix);
+        let mut results = Vec::new();
+        for item in iter {
+            let (key, value) = item.map_err(|e| GraphError::Storage(e.to_string()))?;
+            if !key.starts_with(prefix) {
+                break;
+            }
+            results.push((key.to_vec(), value.to_vec()));
+        }
+        Ok(results)
+    }
+
     // ── AdjacencyIndex reconstruction ──────────────────
 
     /// Reconstruct the in-memory `AdjacencyIndex` from all edges in RocksDB.
@@ -635,6 +902,61 @@ fn energy_index_key(energy: f32, node_id: &Uuid) -> [u8; 20] {
     key[0..4].copy_from_slice(&sortable.to_be_bytes());
     key[4..20].copy_from_slice(node_id.as_bytes());
     key
+}
+
+// ─────────────────────────────────────────────
+// Metadata secondary index helpers
+// ─────────────────────────────────────────────
+
+/// FNV-1a 64-bit hash for field name → 8-byte prefix in meta_idx keys.
+#[inline]
+fn fnv1a_64(data: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for &b in data {
+        hash ^= b as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
+/// Convert a JSON value to 8 sortable bytes for the meta_idx key.
+///
+/// - Numbers (f64/i64): IEEE 754 sign-magnitude → sortable big-endian
+/// - Strings: first 8 bytes of the string (zero-padded)
+/// - Others: not indexable → returns None
+fn sortable_value_bytes(val: &serde_json::Value) -> Option<[u8; 8]> {
+    match val {
+        serde_json::Value::Number(n) => {
+            let f = n.as_f64()?;
+            let raw = f.to_bits();
+            let sortable = if raw >> 63 == 0 {
+                raw ^ 0x8000_0000_0000_0000
+            } else {
+                !raw
+            };
+            Some(sortable.to_be_bytes())
+        }
+        serde_json::Value::String(s) => {
+            let bytes = s.as_bytes();
+            let mut buf = [0u8; 8];
+            let len = bytes.len().min(8);
+            buf[..len].copy_from_slice(&bytes[..len]);
+            Some(buf)
+        }
+        _ => None,
+    }
+}
+
+/// Build a metadata index key: [field_hash(8B) | sortable_value(8B) | node_id(16B)] = 32 bytes.
+/// Returns None if the value is not indexable (null, bool, array, object).
+fn meta_index_key(field: &str, val: &serde_json::Value, node_id: &Uuid) -> Option<[u8; 32]> {
+    let sortable = sortable_value_bytes(val)?;
+    let field_hash = fnv1a_64(field.as_bytes());
+    let mut key = [0u8; 32];
+    key[0..8].copy_from_slice(&field_hash.to_be_bytes());
+    key[8..16].copy_from_slice(&sortable);
+    key[16..32].copy_from_slice(node_id.as_bytes());
+    Some(key)
 }
 
 // ─────────────────────────────────────────────
@@ -933,6 +1255,33 @@ mod tests {
         storage.put_meta("db_version", b"2.0").unwrap();
         let val = storage.get_meta("db_version").unwrap().unwrap();
         assert_eq!(val, b"2.0");
+    }
+
+    #[test]
+    fn scan_expired_node_ids_returns_expired() {
+        let (storage, _dir) = open_temp_db();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // Node with TTL already expired
+        let mut expired_node = make_node(0.1, 0.2);
+        expired_node.meta.expires_at = Some(now - 10);
+        storage.put_node(&expired_node).unwrap();
+
+        // Node with TTL in the future
+        let mut fresh_node = make_node(0.3, 0.4);
+        fresh_node.meta.expires_at = Some(now + 3600);
+        storage.put_node(&fresh_node).unwrap();
+
+        // Node with no TTL
+        let eternal_node = make_node(0.5, 0.6);
+        storage.put_node(&eternal_node).unwrap();
+
+        let expired_ids = storage.scan_expired_node_ids(now).unwrap();
+        assert_eq!(expired_ids.len(), 1);
+        assert_eq!(expired_ids[0], expired_node.id);
     }
 
     #[test]

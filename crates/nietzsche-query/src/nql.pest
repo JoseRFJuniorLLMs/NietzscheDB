@@ -60,6 +60,7 @@ kw_create      = _{ ^"CREATE"     }
 kw_merge       = _{ ^"MERGE"      }
 kw_on          = _{ ^"ON"         }
 kw_set         = _{ ^"SET"        }
+kw_delete      = _{ ^"DELETE"     }
 
 // ── Terminals ────────────────────────────────────────────
 
@@ -237,12 +238,17 @@ merge_query = {
     ~ return_clause?
 }
 
-// ── MATCH query ─────────────────────────────────────────
+// ── MATCH query (extended with SET / DELETE) ────────────
+//
+// Three forms:
+//   MATCH (n) WHERE … RETURN …                  — read query
+//   MATCH (n) WHERE … SET n.x = val [RETURN …]  — update query
+//   MATCH (n) WHERE … DELETE n                   — delete query
 
 match_query = {
     match_clause
     ~ where_clause?
-    ~ return_clause
+    ~ (set_clause ~ return_clause? | delete_clause | return_clause)
 }
 
 // ── RECONSTRUCT query (Phase 11) ────────────────────────
@@ -285,6 +291,20 @@ begin_tx_query    = { kw_begin }
 commit_tx_query   = { kw_commit }
 rollback_tx_query = { kw_rollback }
 
+// ── CREATE query ──────────────────────────────────────────
+//
+// Examples:
+//   CREATE (n:Memory {title: "hello", energy: 0.9})
+//   CREATE (n:Memory {title: "hello"}) RETURN n
+
+create_node_pattern = { "(" ~ ident ~ (":" ~ ident)? ~ prop_map ~ ")" }
+create_query        = { kw_create ~ create_node_pattern ~ return_clause? }
+
+// ── MATCH … DELETE clause ─────────────────────────────────
+
+delete_target  = { ident }
+delete_clause  = { kw_delete ~ delete_target ~ ("," ~ delete_target)* }
+
 // ── Top-level ───────────────────────────────────────────
 
-query = { SOI ~ (explain_query | invoke_zaratustra_query | begin_tx_query | commit_tx_query | rollback_tx_query | reconstruct_query | diffuse_query | merge_query | match_query) ~ EOI }
+query = { SOI ~ (explain_query | invoke_zaratustra_query | begin_tx_query | commit_tx_query | rollback_tx_query | reconstruct_query | diffuse_query | create_query | merge_query | match_query) ~ EOI }

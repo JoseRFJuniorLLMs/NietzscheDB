@@ -88,6 +88,7 @@ service NietzscheDB {
 
   // ── Full-Text Search ────────────────────────────────────────────────
   rpc FullTextSearch (FullTextSearchRequest) returns (FullTextSearchResponse);
+  rpc HybridSearch   (HybridSearchRequest)  returns (KnnResponse);
 
   // ── Change Data Capture ──────────────────────────────────────────────
   rpc SubscribeCDC (CdcRequest) returns (stream CdcEvent);
@@ -95,6 +96,19 @@ service NietzscheDB {
   // ── Admin ─────────────────────────────────────────────────────────────
   rpc GetStats (Empty) returns (StatsResponse);
   rpc HealthCheck (Empty) returns (StatusResponse);
+
+  // ── ListStore (RPUSH/LRANGE) ──────────────────────────────────────────
+  rpc ListRPush  (ListPushRequest)   returns (ListPushResponse);
+  rpc ListLRange (ListRangeRequest)  returns (ListRangeResponse);
+  rpc ListLen    (ListLenRequest)    returns (ListLenResponse);
+
+  // ── Cluster gossip (Phase G) ────────────────────────────────────────
+  rpc ExchangeGossip (GossipRequest) returns (GossipResponse);
+
+  // ── Schema Validation ──────────────────────────────────────────────
+  rpc SetSchema   (SetSchemaRequest)   returns (StatusResponse);
+  rpc GetSchema   (GetSchemaRequest)   returns (GetSchemaResponse);
+  rpc ListSchemas (Empty)              returns (ListSchemasResponse);
 }
 
 // ── Common primitives ──────────────────────────────────────────────────────
@@ -622,6 +636,15 @@ message FullTextSearchResponse {
   repeated FtsResultProto results = 1;
 }
 
+message HybridSearchRequest {
+  string          text_query     = 1;  // BM25 text query
+  repeated double query_coords   = 2;  // ANN vector query
+  uint32          k              = 3;  // top-k results (0 → default 10)
+  double          text_weight    = 4;  // RRF weight for BM25 (default 1.0)
+  double          vector_weight  = 5;  // RRF weight for KNN (default 1.0)
+  string          collection     = 6;  // empty → "default"
+}
+
 // ── CDC messages ──────────────────────────────────────────────────────────
 
 message CdcRequest {
@@ -636,4 +659,90 @@ message CdcEvent {
   string entity_id    = 4;  // UUID of the mutated entity
   string collection   = 5;  // collection where mutation occurred
   uint32 batch_count  = 6;  // for BATCH_INSERT_* events: number of items inserted
+}
+
+// ── ListStore messages ────────────────────────────────────────────────────
+
+message ListPushRequest {
+  string node_id    = 1;  // UUID of the node
+  string list_name  = 2;  // name of the list (e.g. "history", "tags")
+  bytes  value      = 3;  // value to append
+  string collection = 4;
+}
+
+message ListPushResponse {
+  uint64 new_length = 1;  // current sequence number after push
+}
+
+message ListRangeRequest {
+  string node_id    = 1;
+  string list_name  = 2;
+  uint64 start      = 3;  // 0-based start index
+  int64  stop       = 4;  // 0-based stop index (inclusive, -1 = to end)
+  string collection = 5;
+}
+
+message ListRangeResponse {
+  repeated bytes values = 1;
+}
+
+message ListLenRequest {
+  string node_id    = 1;
+  string list_name  = 2;
+  string collection = 3;
+}
+
+message ListLenResponse {
+  uint64 length = 1;
+}
+
+// ── Cluster gossip messages (Phase G) ─────────────────────────────────────
+
+message ClusterNodeProto {
+  string id          = 1;  // UUID
+  string addr        = 2;  // gRPC address "host:port"
+  string name        = 3;  // Human-readable name
+  string role        = 4;  // "primary" | "replica" | "coordinator"
+  string health      = 5;  // "healthy" | "degraded" | "unreachable"
+  uint64 last_seen_ms = 6; // Unix milliseconds
+  uint64 token       = 7;  // Consistent-hash partition token
+}
+
+message GossipRequest {
+  string            sender_id = 1;  // UUID of the sending node
+  repeated ClusterNodeProto nodes = 2;  // sender's cluster snapshot
+}
+
+message GossipResponse {
+  repeated ClusterNodeProto nodes = 1;  // receiver's cluster snapshot (for bidirectional merge)
+}
+
+// ── Schema Validation messages ────────────────────────────────────────────
+
+message SchemaFieldType {
+  string field_name = 1;
+  string field_type = 2;  // "string" | "number" | "bool" | "array" | "object"
+}
+
+message SetSchemaRequest {
+  string                  node_type       = 1;
+  repeated string         required_fields = 2;
+  repeated SchemaFieldType field_types    = 3;
+  string                  collection      = 4;  // empty → "default"
+}
+
+message GetSchemaRequest {
+  string node_type  = 1;
+  string collection = 2;  // empty → "default"
+}
+
+message GetSchemaResponse {
+  string                  node_type       = 1;
+  repeated string         required_fields = 2;
+  repeated SchemaFieldType field_types    = 3;
+  bool                    found           = 4;
+}
+
+message ListSchemasResponse {
+  repeated GetSchemaResponse schemas = 1;
 }

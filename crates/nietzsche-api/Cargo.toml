@@ -13,6 +13,7 @@ nietzsche-sleep       = { workspace = true }
 nietzsche-zaratustra  = { workspace = true }
 nietzsche-sensory     = { workspace = true }
 nietzsche-algo        = { workspace = true }
+nietzsche-cluster     = { workspace = true }
 tonic             = { workspace = true }
 prost             = { workspace = true }
 serde             = { workspace = true }

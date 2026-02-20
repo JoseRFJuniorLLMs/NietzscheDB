@@ -166,6 +166,7 @@ impl NietzscheClient {
             node_type:  params.node_type,
             energy:     params.energy,
             collection: String::new(), // empty → "default"
+            expires_at: 0,             // 0 = never expires
         };
         self.inner.insert_node(req).await.map(|r| r.into_inner())
     }
@@ -232,6 +233,7 @@ impl NietzscheClient {
                 node_type:  p.node_type,
                 energy:     p.energy,
                 collection: String::new(),
+                expires_at: 0,
             }
         }).collect();
         let req = BatchInsertNodesRequest { nodes: proto_nodes, collection: collection.into() };

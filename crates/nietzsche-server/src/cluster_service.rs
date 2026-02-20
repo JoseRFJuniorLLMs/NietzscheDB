@@ -7,10 +7,14 @@
 
 use std::time::Duration;
 
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use nietzsche_cluster::{ClusterNode, ClusterRegistry, NodeRole};
+use nietzsche_cluster::{ClusterNode, ClusterRegistry, NodeHealth, NodeRole};
+use nietzsche_api::proto::nietzsche::{
+    self as pb,
+    nietzsche_db_client::NietzscheDbClient,
+};
 
 /// Parse `NIETZSCHE_CLUSTER_ROLE` → `NodeRole`.
 pub fn parse_role(s: &str) -> NodeRole {
@@ -90,6 +94,96 @@ pub fn start_heartbeat(registry: ClusterRegistry, local_id: Uuid, interval_secs:
             tokio::time::sleep(interval).await;
             if let Err(e) = registry.touch(&local_id) {
                 warn!(error = %e, "cluster heartbeat: failed to touch local node");
+            }
+        }
+    });
+}
+
+/// Spawn a background gossip loop that exchanges cluster state with peers.
+///
+/// Every `interval_secs`, picks a random remote peer and calls `ExchangeGossip`
+/// with the local snapshot. The response is merged back, achieving eventual
+/// consistency across all cluster members.
+pub fn start_gossip_loop(registry: ClusterRegistry, local_id: Uuid, interval_secs: u64) {
+    let interval = Duration::from_secs(interval_secs);
+    info!(interval_secs, "cluster: gossip loop started");
+
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(interval).await;
+
+            // Get remote peers (excluding self)
+            let peers = registry.remote_available_nodes();
+            if peers.is_empty() {
+                continue;
+            }
+
+            // Pick a random peer (simple random gossip target selection)
+            let idx = (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos() as usize) % peers.len();
+            let target = &peers[idx];
+            let addr = target.addr.clone();
+
+            // Export our snapshot to send
+            let snapshot = registry.export_snapshot();
+            let gossip_nodes: Vec<pb::ClusterNodeProto> = snapshot.into_iter().map(|n| {
+                pb::ClusterNodeProto {
+                    id:           n.id.to_string(),
+                    addr:         n.addr,
+                    name:         n.name,
+                    role:         format!("{}", n.role),
+                    health:       format!("{}", n.health),
+                    last_seen_ms: n.last_seen_ms,
+                    token:        n.token,
+                }
+            }).collect();
+
+            let request = pb::GossipRequest {
+                sender_id: local_id.to_string(),
+                nodes:     gossip_nodes,
+            };
+
+            // Connect to the peer and exchange gossip
+            let endpoint = format!("http://{}", addr);
+            match NietzscheDbClient::connect(endpoint).await {
+                Ok(mut client) => {
+                    match client.exchange_gossip(request).await {
+                        Ok(response) => {
+                            let incoming: Vec<ClusterNode> = response.into_inner().nodes.iter().filter_map(|p| {
+                                let id = Uuid::parse_str(&p.id).ok()?;
+                                let role = match p.role.as_str() {
+                                    "replica"     => NodeRole::Replica,
+                                    "coordinator" => NodeRole::Coordinator,
+                                    _             => NodeRole::Primary,
+                                };
+                                let health = match p.health.as_str() {
+                                    "degraded"    => NodeHealth::Degraded,
+                                    "unreachable" => NodeHealth::Unreachable,
+                                    _             => NodeHealth::Healthy,
+                                };
+                                let mut node = ClusterNode::new(id, &p.name, &p.addr, role, p.token);
+                                node.health = health;
+                                node.last_seen_ms = p.last_seen_ms;
+                                Some(node)
+                            }).collect();
+
+                            let count = incoming.len();
+                            registry.merge_snapshot(incoming);
+                            debug!(peer = %addr, merged = count, "gossip exchange ok");
+                        }
+                        Err(e) => {
+                            warn!(peer = %addr, error = %e, "gossip exchange failed");
+                            // Mark peer as unreachable
+                            let _ = registry.mark_health(&target.id, NodeHealth::Unreachable);
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!(peer = %addr, error = %e, "gossip connect failed");
+                    registry.mark_health(&target.id, NodeHealth::Unreachable);
+                }
             }
         }
     });

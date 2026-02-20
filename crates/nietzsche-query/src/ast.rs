@@ -21,6 +21,40 @@ pub enum Query {
     RollbackTx,
     /// `MERGE (pattern) [ON CREATE SET …] [ON MATCH SET …] [RETURN …]`
     Merge(MergeQuery),
+    /// `CREATE (n:Label {key: val, …}) [RETURN …]`
+    Create(CreateQuery),
+    /// `MATCH (n) [WHERE …] SET n.field = val [RETURN …]`
+    MatchSet(MatchSetQuery),
+    /// `MATCH (n) [WHERE …] DELETE n`
+    MatchDelete(MatchDeleteQuery),
+}
+
+// ── CREATE / SET / DELETE ────────────────────────────────────
+
+/// `CREATE (n:Label {key: value, …}) [RETURN …]`
+#[derive(Debug, Clone)]
+pub struct CreateQuery {
+    pub alias:      String,
+    pub label:      Option<String>,
+    pub properties: Vec<(String, Expr)>,
+    pub ret:        Option<ReturnClause>,
+}
+
+/// `MATCH (n) [WHERE …] SET n.x = val, … [RETURN …]`
+#[derive(Debug, Clone)]
+pub struct MatchSetQuery {
+    pub pattern:     Pattern,
+    pub conditions:  Vec<Condition>,
+    pub assignments: Vec<SetAssignment>,
+    pub ret:         Option<ReturnClause>,
+}
+
+/// `MATCH (n) [WHERE …] DELETE n, …`
+#[derive(Debug, Clone)]
+pub struct MatchDeleteQuery {
+    pub pattern:    Pattern,
+    pub conditions: Vec<Condition>,
+    pub targets:    Vec<String>,
 }
 
 // ── INVOKE ZARATUSTRA (Phase C) ───────────────────────────

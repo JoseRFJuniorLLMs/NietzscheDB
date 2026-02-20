@@ -47,6 +47,10 @@ smallvec = "1.11"
 proptest = "1.0"
 criterion = { version = "0.5", features = ["html_reports"] }
 rayon = "1.10"
+aes = "0.8"
+ctr = "0.9"
+hkdf = "0.12"
+sha2 = "0.10"
 async-stream = "0.3"
 tokio-stream = "0.1"
 

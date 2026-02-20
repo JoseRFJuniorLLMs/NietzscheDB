@@ -31,6 +31,7 @@
 //! ```
 
 pub mod ast;
+pub mod cost;
 pub mod error;
 pub mod executor;
 pub mod parser;
@@ -38,6 +39,7 @@ pub mod parser;
 pub use ast::{
     Query, MatchQuery, DiffuseQuery, ReconstructQuery, ReconstructTarget,
     InvokeZaratustraQuery,
+    CreateQuery, MatchSetQuery, MatchDeleteQuery,
     Pattern, NodePattern, PathPattern, Direction,
     Condition, CompOp, StringCompOp,
     Expr, HDistArg, MathFunc, MathFuncArg,
