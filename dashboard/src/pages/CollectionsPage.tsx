@@ -19,7 +19,7 @@ export function CollectionsPage() {
         queryFn: () => api.get("/collections").then(r => r.data)
     })
 
-    const isStringList = collections && collections.length > 0 && typeof collections[0] === 'string' && !('name' in collections[0])
+    const isStringList = collections && collections.length > 0 && typeof collections[0] === 'string'
 
     const deleteMutation = useMutation({
         mutationFn: (name: string) => api.delete(`/collections/${name}`),
@@ -140,7 +140,7 @@ function CreateCollectionDialog() {
     const handleCreate = () => {
         mutation.mutate({
             name,
-            dimension: parseInt(status?.config?.dimension) || 1024,
+            dimension: status?.config?.dimension || 1024,
             metric: status?.config?.metric || "l2"
         })
     }
