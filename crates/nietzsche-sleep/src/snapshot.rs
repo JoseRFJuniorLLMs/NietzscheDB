@@ -108,7 +108,7 @@ mod tests {
 
     fn insert(db: &mut NietzscheDB<MockVectorStore>, coords: Vec<f64>) -> Uuid {
         let id = Uuid::new_v4();
-        let node = Node::new(id, PoincareVector::new(coords), serde_json::json!({}));
+        let node = Node::new(id, PoincareVector::from_f64(coords), serde_json::json!({}));
         db.insert_node(node).expect("insert node");
         id
     }

@@ -581,3 +581,22 @@ Nunca como métrica primária
 *Documento preparado pela auditoria técnica interna — 2026-02-19*
 *Referências: `AUDITORIA_PERFORMANCE.md`, `pesquisar1.md`, código-fonte Qdrant commit 9f433b1*
 *Revisões: `md/hiperbolica.md` (revisão 1), `md/hiperbolica2.md` (parecer Grok)*
+
+---
+
+## DECISÃO FORMAL REGISTRADA — ITEM F (Binary Quantization)
+
+| Campo | Valor |
+|---|---|
+| **Status** | **REJEITADO — NUNCA IMPLEMENTAR** |
+| **Data** | 2026-02-19 |
+| **Votação** | Unânime: Claude (revisor 1), Grok + time (revisor 2), Comitê interno |
+| **Motivo técnico** | `sign(x)` descarta magnitude `‖x‖`, que codifica a posição hierárquica no Poincaré ball (centro=semântico, borda=episódico). Destrói a propriedade fundamental que justifica a geometria hiperbólica. |
+| **Risco de alucinação geométrica** | CRÍTICO — cosseno ≠ distância hiperbólica; vizinhança completamente reordenada para nós semânticos (`‖x‖ < 0.1`) |
+| **Oversampling mínimo (se pre-filter)** | ≥ 30× (revisado de 20× pelo parecer Grok) |
+| **Restrição dimensional** | dim ≥ 1536 apenas |
+| **Rescore** | OBRIGATÓRIO com distância hiperbólica exata (`poincare_sums` em f64) |
+| **Código** | Documentado em `crates/nietzsche-graph/src/lib.rs` (doc comment) |
+| **Regra CLAUDE.md** | Adicionada ao projeto para impedir implementação futura |
+
+**Esta decisão é permanente e não deve ser revertida sem novo parecer do comitê com dados experimentais em dataset hiperbólico real ≥ 100k nós.**

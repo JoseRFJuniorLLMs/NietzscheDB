@@ -41,12 +41,14 @@ fn populate_chain(db: &mut NietzscheDB<MockVectorStore>, n: usize) -> Vec<Uuid> 
     let ids = populate(db, n);
     for w in ids.windows(2) {
         let e = Edge {
-            id:        Uuid::new_v4(),
-            from:      w[0],
-            to:        w[1],
-            edge_type: EdgeType::Association,
-            weight:    1.0,
-            metadata:  Default::default(),
+            id:           Uuid::new_v4(),
+            from:         w[0],
+            to:           w[1],
+            edge_type:    EdgeType::Association,
+            weight:       1.0,
+            lsystem_rule: None,
+            created_at:   0,
+            metadata:     Default::default(),
         };
         db.insert_edge(e).unwrap();
     }

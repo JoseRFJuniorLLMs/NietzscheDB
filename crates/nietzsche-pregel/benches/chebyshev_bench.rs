@@ -8,7 +8,7 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use nietzsche_pregel::{
     apply_heat_kernel, chebyshev_coefficients, modified_bessel_i,
-    HyperbolicLaplacian, NodeIndex,
+    HyperbolicLaplacian,
 };
 use nietzsche_graph::{
     Edge, EdgeType, MockVectorStore, NietzscheDB, Node, PoincareVector,
@@ -43,12 +43,14 @@ fn ring_graph(n: usize) -> (NietzscheDB<MockVectorStore>, tempfile::TempDir, Vec
     // Connect as a ring
     for i in 0..n {
         let e = Edge {
-            id:        Uuid::new_v4(),
-            from:      ids[i],
-            to:        ids[(i + 1) % n],
-            edge_type: EdgeType::Association,
-            weight:    1.0,
-            metadata:  Default::default(),
+            id:           Uuid::new_v4(),
+            from:         ids[i],
+            to:           ids[(i + 1) % n],
+            edge_type:    EdgeType::Association,
+            weight:       1.0,
+            lsystem_rule: None,
+            created_at:   0,
+            metadata:     Default::default(),
         };
         db.insert_edge(e).unwrap();
     }
@@ -96,14 +98,12 @@ fn bench_apply_heat_kernel(c: &mut Criterion) {
     for &n in &[10usize, 20, 40] {
         group.bench_with_input(BenchmarkId::new("ring_nodes", n), &n, |b, &n| {
             let (db, _dir, ids) = ring_graph(n);
-            let nodes = db.storage().scan_nodes().unwrap();
-            let lap   = HyperbolicLaplacian::from_graph(db.storage(), db.adjacency(), &nodes)
-                .unwrap();
+            let lap = HyperbolicLaplacian::build(db.storage(), db.adjacency()).unwrap();
 
             // Unit impulse on first node
             let mut signal = vec![0.0; n];
             if !ids.is_empty() {
-                let idx = lap.index().get_idx(&ids[0]).unwrap_or(0);
+                let idx = lap.index.id_to_idx.get(&ids[0]).copied().unwrap_or(0);
                 signal[idx] = 1.0;
             }
 
@@ -122,10 +122,7 @@ fn bench_laplacian_build(c: &mut Criterion) {
     for &n in &[10usize, 20, 50] {
         group.bench_with_input(BenchmarkId::new("ring_nodes", n), &n, |b, &n| {
             let (db, _dir, _) = ring_graph(n);
-            let nodes = db.storage().scan_nodes().unwrap();
-            b.iter(|| {
-                HyperbolicLaplacian::from_graph(db.storage(), db.adjacency(), &nodes).unwrap()
-            });
+            b.iter(|| HyperbolicLaplacian::build(db.storage(), db.adjacency()).unwrap());
         });
     }
 

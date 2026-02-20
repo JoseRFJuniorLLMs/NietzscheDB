@@ -419,9 +419,11 @@ impl VectorStore for EmbeddedVectorStore {
             self.inner.hnsw_delete(*old_id);
         }
 
+        // Promote f32 → f64 at the HNSW boundary (HNSW engine uses f64 internally)
+        let coords_f64 = vector.coords_f64();
         let hnsw_id = self
             .inner
-            .hnsw_insert(&vector.coords, &id.to_string())
+            .hnsw_insert(&coords_f64, &id.to_string())
             .map_err(|e| GraphError::Storage(format!("HNSW upsert: {e}")))?;
 
         self.uuid_to_hnsw.insert(id, hnsw_id);
@@ -436,7 +438,8 @@ impl VectorStore for EmbeddedVectorStore {
     }
 
     fn knn(&self, query: &PoincareVector, k: usize) -> Result<Vec<(Uuid, f64)>, GraphError> {
-        let raw = self.inner.hnsw_search(&query.coords, k);
+        let coords_f64 = query.coords_f64();
+        let raw = self.inner.hnsw_search(&coords_f64, k);
 
         // Convert HNSW internal ids back to UUIDs via the forward metadata index.
         let results: Vec<(Uuid, f64)> = raw

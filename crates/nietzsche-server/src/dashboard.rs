@@ -225,7 +225,7 @@ async fn insert_node(
     };
 
     let embedding = req.embedding
-        .map(PoincareVector::new)
+        .map(PoincareVector::from_f64)
         .unwrap_or_else(|| PoincareVector::origin(4));
 
     let content = req.content.unwrap_or(serde_json::Value::Object(Default::default()));
@@ -388,14 +388,15 @@ struct NodeJson {
 
 impl From<Node> for NodeJson {
     fn from(n: Node) -> Self {
+        let (meta, _embedding) = n.into_parts();
         Self {
-            id:         n.id.to_string(),
-            node_type:  format!("{:?}", n.node_type),
-            energy:     n.energy,
-            depth:      n.depth,
-            hausdorff:  n.hausdorff_local,
-            created_at: n.created_at,
-            content:    n.content,
+            id:         meta.id.to_string(),
+            node_type:  format!("{:?}", meta.node_type),
+            energy:     meta.energy,
+            depth:      meta.depth,
+            hausdorff:  meta.hausdorff_local,
+            created_at: meta.created_at,
+            content:    meta.content,
         }
     }
 }
