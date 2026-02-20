@@ -205,7 +205,18 @@ export function GraphExplorerPage() {
     // ── Feed data into Cosmograph ─────────────────────────────────────────────
     useEffect(() => {
         if (!cosmoRef.current || !initialized) return
-        cosmoRef.current.setConfig({ points: points as any, links: links as any })
+        cosmoRef.current.setConfig({
+            pointIdBy:       "id",
+            pointIndexBy:    "_idx",
+            pointColorBy:    "color",
+            pointSizeBy:     "energy",
+            pointLabelBy:    "label",
+            linkSourceBy:    "source",
+            linkTargetBy:    "target",
+            linkWidthBy:     "weight",
+            points: points as any,
+            links: links as any,
+        })
     }, [points, links, initialized])
 
     // ── Initialize Components after Cosmograph is ready ───────────────────────
