@@ -29,7 +29,7 @@ cat > "$HTML_RS" << 'RUST'
 // To update: run ./scripts/build-dashboard.sh then rebuild nietzsche-server.
 
 pub const DASHBOARD_HTML: &str =
-    include_str!("../../../../dashboard/dist/index.html");
+    include_str!("../../../dashboard/dist/index.html");
 RUST
 
 echo "html.rs -> include_str!(dashboard/dist/index.html)"
