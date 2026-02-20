@@ -26,7 +26,7 @@ export function AuthPage() {
         // Validate key against server
         setAuthToken(key)
         try {
-            await api.get("/status")
+            await api.get("/health")
             setApiKey(key)
             navigate(from, { replace: true })
         } catch (err) {
