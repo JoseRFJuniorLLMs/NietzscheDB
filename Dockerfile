@@ -53,12 +53,13 @@ ENV NIETZSCHE_SLEEP_NOISE=0.02
 ENV NIETZSCHE_SLEEP_ADAM_STEPS=10
 ENV NIETZSCHE_HAUSDORFF_THRESHOLD=0.15
 ENV NIETZSCHE_MAX_CONNECTIONS=1024
+ENV NIETZSCHE_DASHBOARD_PORT=8080
 
 # Persistent data directory — mount a volume here
 VOLUME ["/data/nietzsche"]
 
-# gRPC port
-EXPOSE 50051
+# gRPC port + HTTP dashboard
+EXPOSE 50051 8080
 
 LABEL org.opencontainers.image.title="NietzscheDB Server"
 LABEL org.opencontainers.image.description="Temporal Hyperbolic Graph Database — production gRPC server"
