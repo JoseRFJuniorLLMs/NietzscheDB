@@ -1,0 +1,32 @@
+[package]
+name        = "nietzsche-hnsw-gpu"
+version     = "0.1.0"
+edition     = "2021"
+description = "GPU-accelerated CAGRA/HNSW vector backend for NietzscheDB via NVIDIA cuVS"
+
+# ── Features ──────────────────────────────────────────────────────────────────
+[features]
+default = []
+# Enable GPU acceleration via NVIDIA cuVS CAGRA.
+# Requires: CUDA 12.x + cuVS 24.6 + libclang (for bindgen) installed on the host.
+# Usage: cargo build -p nietzsche-hnsw-gpu --features cuda
+cuda = ["dep:cuvs", "dep:ndarray"]
+
+# ── Dependencies ──────────────────────────────────────────────────────────────
+[dependencies]
+# NietzscheDB graph types (VectorStore trait, PoincareVector, GraphError)
+nietzsche-graph = { workspace = true }
+
+# NVIDIA cuVS — GPU-accelerated approximate nearest neighbors
+# https://crates.io/crates/cuvs  — only compiled when feature `cuda` is enabled
+cuvs    = { version = "24.6", optional = true }
+ndarray = { version = "0.15", optional = true }
+
+# Shared workspace deps
+dashmap      = { workspace = true }
+uuid         = { workspace = true }
+parking_lot  = { workspace = true }
+
+[dev-dependencies]
+tempfile  = "3"
+criterion = { workspace = true }

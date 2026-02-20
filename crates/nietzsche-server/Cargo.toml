@@ -8,9 +8,19 @@ description = "NietzscheDB production gRPC server binary"
 name = "nietzsche-server"
 path = "src/main.rs"
 
+# ── Features ──────────────────────────────────────────────────────────────────
+[features]
+default = []
+# GPU-accelerated vector search via NVIDIA cuVS CAGRA.
+# Requires CUDA 12.x + cuVS 24.6 + libclang on the build host.
+# Build: cargo build --release --features gpu
+# Run:   NIETZSCHE_VECTOR_BACKEND=gpu ./nietzsche-server
+gpu = ["dep:nietzsche-hnsw-gpu"]
+
 [dependencies]
 nietzsche-api         = { workspace = true }
 nietzsche-graph       = { workspace = true }
+nietzsche-hnsw-gpu    = { workspace = true, optional = true }
 nietzsche-sleep       = { workspace = true }
 nietzsche-query       = { workspace = true }
 nietzsche-zaratustra  = { workspace = true }

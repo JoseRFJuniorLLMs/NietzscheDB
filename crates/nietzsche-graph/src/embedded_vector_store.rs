@@ -464,15 +464,20 @@ impl VectorStore for EmbeddedVectorStore {
 /// in-memory linear scan (`Mock`) without compile-time branching.
 /// Controlled by `NIETZSCHE_VECTOR_BACKEND` env var:
 /// - `"embedded"` or `"hnsw"` → `EmbeddedVectorStore`
+/// - `"gpu"`                   → GPU backend (inject via [`AnyVectorStore::gpu`])
 /// - anything else (or unset) → `MockVectorStore` (legacy default)
 pub enum AnyVectorStore {
     Embedded(EmbeddedVectorStore),
     Mock(crate::db::MockVectorStore),
+    /// GPU-accelerated backend (e.g. nietzsche-hnsw-gpu with NVIDIA cuVS CAGRA).
+    /// Injected at server startup — nietzsche-graph itself does not depend on CUDA.
+    Gpu(Box<dyn crate::db::VectorStore>),
 }
 
 impl AnyVectorStore {
     /// Build from env, storing HNSW data under `data_dir/hnsw/`:
     /// - `NIETZSCHE_VECTOR_BACKEND=embedded` → real HNSW (reads DIM + METRIC vars)
+    /// - `NIETZSCHE_VECTOR_BACKEND=gpu`      → inject GPU store via [`AnyVectorStore::gpu`]
     /// - default → MockVectorStore (for development / backward compat)
     pub fn from_env(data_dir: &Path) -> Self {
         match std::env::var("NIETZSCHE_VECTOR_BACKEND")
@@ -530,6 +535,19 @@ impl AnyVectorStore {
         }
     }
 
+    /// Inject a GPU-accelerated [`VectorStore`] implementation.
+    ///
+    /// ```rust,no_run
+    /// use nietzsche_hnsw_gpu::GpuVectorStore;
+    /// use nietzsche_graph::embedded_vector_store::AnyVectorStore;
+    ///
+    /// let gpu = GpuVectorStore::new(1024).expect("CUDA init failed");
+    /// let vs  = AnyVectorStore::gpu(Box::new(gpu));
+    /// ```
+    pub fn gpu(store: Box<dyn crate::db::VectorStore>) -> Self {
+        Self::Gpu(store)
+    }
+
     pub fn backend_name(&self) -> &'static str {
         match self {
             Self::Embedded(s) => match s.metric() {
@@ -538,6 +556,7 @@ impl AnyVectorStore {
                 VectorMetric::PoincareBall => "EmbeddedHnsw(Poincaré)",
             },
             Self::Mock(_) => "MockVectorStore(LinearScan)",
+            Self::Gpu(_)  => "GpuVectorStore(CAGRA/cuVS)",
         }
     }
 }
@@ -547,6 +566,7 @@ impl VectorStore for AnyVectorStore {
         match self {
             Self::Embedded(s) => s.upsert(id, vector),
             Self::Mock(s)     => s.upsert(id, vector),
+            Self::Gpu(s)      => s.upsert(id, vector),
         }
     }
 
@@ -554,6 +574,7 @@ impl VectorStore for AnyVectorStore {
         match self {
             Self::Embedded(s) => s.delete(id),
             Self::Mock(s)     => s.delete(id),
+            Self::Gpu(s)      => s.delete(id),
         }
     }
 
@@ -561,6 +582,7 @@ impl VectorStore for AnyVectorStore {
         match self {
             Self::Embedded(s) => s.knn(query, k),
             Self::Mock(s)     => s.knn(query, k),
+            Self::Gpu(s)      => s.knn(query, k),
         }
     }
 }

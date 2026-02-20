@@ -133,6 +133,15 @@ impl<V: VectorStore> NietzscheDB<V> {
         Ok(Self { storage, wal, adjacency, vector_store, hot_tier: Arc::new(DashMap::new()) })
     }
 
+    /// Replace the vector store backend at runtime.
+    ///
+    /// Used at server startup to inject an alternative backend (e.g. GPU)
+    /// before any requests are served. Not safe to call while requests are
+    /// in-flight — callers must hold the write lock on the collection.
+    pub fn set_vector_store(&mut self, vs: V) {
+        self.vector_store = vs;
+    }
+
     // ── NodeMeta-only accessors (BUG A fast path) ────
 
     /// Retrieve node metadata by ID (~100 bytes, no embedding).
