@@ -36,18 +36,20 @@
 pub mod adjacency;
 pub mod backup;
 pub mod collection_manager;
+pub mod encryption;
 pub mod db;
 pub mod embedded_vector_store;
 pub mod error;
 pub mod fulltext;
 pub mod import_export;
 pub mod model;
+pub mod schema;
 pub mod storage;
 pub mod transaction;
 pub mod traversal;
 pub mod wal;
 
-pub use adjacency::AdjacencyIndex;
+pub use adjacency::{AdjacencyIndex, AdjEntry};
 pub use collection_manager::{CollectionConfig, CollectionInfo, CollectionManager};
 pub use db::{MockVectorStore, NietzscheDB, VectorStore};
 pub use embedded_vector_store::{AnyVectorStore, EmbeddedVectorStore, VectorMetric};
@@ -60,7 +62,9 @@ pub use traversal::{
 };
 pub use wal::{GraphWal, GraphWalEntry};
 pub use backup::{BackupManager, BackupInfo};
+pub use encryption::EncryptionConfig;
 pub use fulltext::{FullTextIndex, FtsResult};
+pub use schema::{SchemaValidator, SchemaConstraint, FieldType};
 pub use import_export::{
     ImportResult, export_nodes_csv, export_edges_csv,
     export_nodes_jsonl, export_edges_jsonl,

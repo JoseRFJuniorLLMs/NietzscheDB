@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use rocksdb::checkpoint::Checkpoint;
+use rocksdb::{Options, DB};
 
 use crate::error::GraphError;
 use crate::storage::GraphStorage;
@@ -141,6 +142,54 @@ impl BackupManager {
         fs::remove_dir_all(backup_path)
             .map_err(|e| GraphError::Storage(format!("delete backup error: {e}")))?;
         Ok(())
+    }
+
+    /// Validate a backup by attempting to open it as a read-only RocksDB.
+    ///
+    /// Returns `true` if the backup can be opened successfully, `false` otherwise.
+    pub fn validate_backup(backup_path: &Path) -> Result<bool, GraphError> {
+        if !backup_path.is_dir() {
+            return Ok(false);
+        }
+
+        let mut opts = Options::default();
+        opts.set_error_if_exists(false);
+
+        // Try to open read-only with the known column families.
+        let cfs = ["nodes", "embeddings", "edges", "adj_out", "adj_in", "meta", "sensory", "energy_idx"];
+        match DB::open_cf_for_read_only(&opts, backup_path, &cfs, false) {
+            Ok(_db) => Ok(true),
+            Err(_) => {
+                // Retry with just the default CF in case it's a minimal backup
+                match DB::open_for_read_only(&opts, backup_path, false) {
+                    Ok(_db) => Ok(true),
+                    Err(_) => Ok(false),
+                }
+            }
+        }
+    }
+
+    /// Prune old backups, keeping only the `keep` most recent ones.
+    ///
+    /// Returns the number of backups deleted.
+    pub fn prune_backups(&self, keep: usize) -> Result<usize, GraphError> {
+        let backups = self.list_backups()?;
+        if backups.len() <= keep {
+            return Ok(0);
+        }
+
+        let mut deleted = 0;
+        // list_backups returns newest-first, so skip `keep` and delete the rest
+        for old in backups.into_iter().skip(keep) {
+            self.delete_backup(&old.path)?;
+            deleted += 1;
+        }
+        Ok(deleted)
+    }
+
+    /// Return the backup directory path.
+    pub fn backup_dir(&self) -> &Path {
+        &self.backup_dir
     }
 }
 

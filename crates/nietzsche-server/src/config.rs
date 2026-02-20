@@ -56,6 +56,22 @@ pub struct Config {
 
     /// Comma-separated seed peers: "name@host:port,name@host:port".
     pub cluster_seeds: String,
+
+    // ── TTL ──────────────────────────────────────────────────────────────────
+    /// Interval in seconds between TTL reaper runs (0 = disabled). Default: 60.
+    pub ttl_reaper_interval_secs: u64,
+
+    // ── Backup ───────────────────────────────────────────────────────────────
+    /// Interval in seconds between automatic backups (0 = disabled). Default: 0.
+    pub backup_interval_secs: u64,
+
+    /// Number of most recent backups to keep (older ones pruned). Default: 5.
+    pub backup_retention_count: usize,
+
+    // ── Metadata Indexes ──────────────────────────────────────────────────
+    /// Comma-separated list of metadata fields to maintain secondary indexes on.
+    /// e.g. `"created_at,node_type,category"`. Empty = no metadata indexing.
+    pub indexed_fields: Vec<String>,
 }
 
 impl Config {
@@ -76,6 +92,10 @@ impl Config {
             cluster_node_name:   env_str("NIETZSCHE_CLUSTER_NODE_NAME", "nietzsche-0"),
             cluster_role:        env_str("NIETZSCHE_CLUSTER_ROLE", "primary"),
             cluster_seeds:       env_str("NIETZSCHE_CLUSTER_SEEDS", ""),
+            ttl_reaper_interval_secs: env_parse("NIETZSCHE_TTL_REAPER_INTERVAL_SECS", 60),
+            backup_interval_secs:    env_parse("NIETZSCHE_BACKUP_INTERVAL_SECS", 0),
+            backup_retention_count:  env_parse("NIETZSCHE_BACKUP_RETENTION_COUNT", 5),
+            indexed_fields:          env_csv("NIETZSCHE_INDEXED_FIELDS"),
         }
     }
 }
@@ -93,6 +113,13 @@ fn env_parse<T: std::str::FromStr>(key: &str, default: T) -> T {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(default)
+}
+
+fn env_csv(key: &str) -> Vec<String> {
+    std::env::var(key)
+        .ok()
+        .map(|v| v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

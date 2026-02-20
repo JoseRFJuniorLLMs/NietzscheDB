@@ -80,7 +80,9 @@ async fn main() -> anyhow::Result<()> {
     let cm = CollectionManager::open(&db_path)
         .map_err(|e| anyhow::anyhow!("failed to open CollectionManager at {}: {e}", config.data_dir))?;
 
-    // Log collection inventory
+    // Log collection inventory & configure indexed_fields
+    let indexed_fields: std::collections::HashSet<String> =
+        config.indexed_fields.iter().cloned().collect();
     for col in cm.list() {
         info!(
             collection = %col.name,
@@ -90,6 +92,15 @@ async fn main() -> anyhow::Result<()> {
             edges      = col.edge_count,
             "collection loaded"
         );
+        if !indexed_fields.is_empty() {
+            if let Some(shared) = cm.get(&col.name) {
+                let mut db = shared.blocking_write();
+                db.set_indexed_fields(indexed_fields.clone());
+            }
+        }
+    }
+    if !indexed_fields.is_empty() {
+        info!(fields = ?config.indexed_fields, "metadata indexing enabled");
     }
 
     // ── GPU vector backend injection ──────────────────────────────────────────
@@ -273,6 +284,109 @@ async fn main() -> anyhow::Result<()> {
         info!("Zaratustra scheduler disabled (ZARATUSTRA_INTERVAL_SECS=0)");
     }
 
+    // ── TTL reaper — periodically deletes expired nodes ──────────────────────
+    if config.ttl_reaper_interval_secs > 0 {
+        let cm_ttl   = Arc::clone(&cm);
+        let interval = Duration::from_secs(config.ttl_reaper_interval_secs);
+
+        tokio::spawn(async move {
+            info!(interval_secs = config.ttl_reaper_interval_secs, "TTL reaper started");
+            loop {
+                tokio::time::sleep(interval).await;
+                for col_info in cm_ttl.list() {
+                    if let Some(shared) = cm_ttl.get(&col_info.name) {
+                        let mut db = shared.write().await;
+                        match db.reap_expired() {
+                            Ok(0) => {}
+                            Ok(n) => info!(
+                                collection = %col_info.name,
+                                reaped     = n,
+                                "TTL reaper: expired nodes removed"
+                            ),
+                            Err(e) => warn!(
+                                collection = %col_info.name,
+                                error      = %e,
+                                "TTL reaper error"
+                            ),
+                        }
+                    }
+                }
+            }
+        });
+    } else {
+        info!("TTL reaper disabled (NIETZSCHE_TTL_REAPER_INTERVAL_SECS=0)");
+    }
+
+    // ── Scheduled backup with pruning ────────────────────────────────────────
+    if config.backup_interval_secs > 0 {
+        let cm_bak     = Arc::clone(&cm);
+        let interval   = Duration::from_secs(config.backup_interval_secs);
+        let retention  = config.backup_retention_count;
+        let data_dir   = config.data_dir.clone();
+
+        tokio::spawn(async move {
+            info!(
+                interval_secs = config.backup_interval_secs,
+                retention     = retention,
+                "scheduled backup started"
+            );
+            loop {
+                tokio::time::sleep(interval).await;
+
+                // Backup each collection
+                for col_info in cm_bak.list() {
+                    if let Some(shared) = cm_bak.get(&col_info.name) {
+                        let db = shared.read().await;
+                        let backup_dir = PathBuf::from(&data_dir)
+                            .join("backups")
+                            .join(&col_info.name);
+
+                        match nietzsche_graph::BackupManager::new(&backup_dir) {
+                            Ok(mgr) => {
+                                match mgr.create_backup(db.storage(), "scheduled") {
+                                    Ok(bi) => {
+                                        info!(
+                                            collection = %col_info.name,
+                                            label      = %bi.label,
+                                            size_bytes = bi.size_bytes,
+                                            "scheduled backup created"
+                                        );
+                                        // Prune old backups
+                                        match mgr.prune_backups(retention) {
+                                            Ok(0) => {}
+                                            Ok(n) => info!(
+                                                collection = %col_info.name,
+                                                pruned     = n,
+                                                "old backups pruned"
+                                            ),
+                                            Err(e) => warn!(
+                                                collection = %col_info.name,
+                                                error      = %e,
+                                                "backup prune error"
+                                            ),
+                                        }
+                                    }
+                                    Err(e) => warn!(
+                                        collection = %col_info.name,
+                                        error      = %e,
+                                        "scheduled backup failed"
+                                    ),
+                                }
+                            }
+                            Err(e) => warn!(
+                                collection = %col_info.name,
+                                error      = %e,
+                                "backup manager init failed"
+                            ),
+                        }
+                    }
+                }
+            }
+        });
+    } else {
+        info!("scheduled backup disabled (NIETZSCHE_BACKUP_INTERVAL_SECS=0)");
+    }
+
     // ── CDC broadcaster ───────────────────────────────────────────────────────
     let cdc = Arc::new(CdcBroadcaster::new(4096));
 
@@ -297,6 +411,7 @@ async fn main() -> anyhow::Result<()> {
             "cluster mode enabled"
         );
         cluster_service::start_heartbeat(registry.clone(), local_id, 30);
+        cluster_service::start_gossip_loop(registry.clone(), local_id, 15);
         Some(registry)
     } else {
         info!("cluster mode disabled (NIETZSCHE_CLUSTER_ENABLED=false)");
@@ -314,13 +429,15 @@ async fn main() -> anyhow::Result<()> {
         info!("dashboard disabled (NIETZSCHE_DASHBOARD_PORT=0)");
     }
 
-    // ── gRPC authentication ──────────────────────────────────────────────────
-    let api_key = std::env::var("NIETZSCHE_API_KEY").ok();
-    let interceptor = auth::AuthInterceptor::new(api_key);
+    // ── gRPC RBAC authentication ─────────────────────────────────────────────
+    let interceptor = auth::AuthInterceptor::from_env();
 
     // ── gRPC server ───────────────────────────────────────────────────────────
     let addr: SocketAddr = format!("[::]:{}", config.port).parse()?;
-    let server = NietzscheServer::new(Arc::clone(&cm), Arc::clone(&cdc));
+    let mut server = NietzscheServer::new(Arc::clone(&cm), Arc::clone(&cdc));
+    if let Some(ref registry) = cluster {
+        server = server.with_cluster_registry(registry.clone());
+    }
 
     let reflection = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(nietzsche_api::NIETZSCHE_DESCRIPTOR)

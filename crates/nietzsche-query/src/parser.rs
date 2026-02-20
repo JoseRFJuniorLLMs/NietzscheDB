@@ -29,7 +29,8 @@ pub fn parse(input: &str) -> Result<Query, QueryError> {
 fn parse_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
     for inner in pair.into_inner() {
         match inner.as_rule() {
-            Rule::match_query              => return Ok(Query::Match(parse_match_query(inner)?)),
+            Rule::match_query              => return parse_match_or_mutate_query(inner),
+            Rule::create_query             => return Ok(Query::Create(parse_create_query(inner)?)),
             Rule::merge_query              => return Ok(Query::Merge(parse_merge_query(inner)?)),
             Rule::diffuse_query            => return Ok(Query::Diffuse(parse_diffuse_query(inner)?)),
             Rule::reconstruct_query        => return Ok(Query::Reconstruct(parse_reconstruct_query(inner)?)),
@@ -48,7 +49,7 @@ fn parse_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
 fn parse_explain_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
     for inner in pair.into_inner() {
         match inner.as_rule() {
-            Rule::match_query       => return Ok(Query::Explain(Box::new(Query::Match(parse_match_query(inner)?)))),
+            Rule::match_query       => return Ok(Query::Explain(Box::new(parse_match_or_mutate_query(inner)?))),
             Rule::diffuse_query     => return Ok(Query::Explain(Box::new(Query::Diffuse(parse_diffuse_query(inner)?)))),
             Rule::reconstruct_query => return Ok(Query::Explain(Box::new(Query::Reconstruct(parse_reconstruct_query(inner)?)))),
             r => return Err(QueryError::Parse(format!("unexpected in explain_query: {r:?}"))),
@@ -57,27 +58,72 @@ fn parse_explain_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
     Err(QueryError::Parse("EXPLAIN requires a query".into()))
 }
 
-// ── MATCH ─────────────────────────────────────────────────
+// ── MATCH (with optional SET / DELETE) ──────────────────────
 
-fn parse_match_query(pair: Pair<Rule>) -> Result<MatchQuery, QueryError> {
-    let mut pattern    = None;
-    let mut conditions = Vec::new();
-    let mut ret        = None;
+/// Parse a unified match_query which may contain SET or DELETE clauses.
+/// Returns Query::Match, Query::MatchSet, or Query::MatchDelete.
+fn parse_match_or_mutate_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let mut pattern     = None;
+    let mut conditions  = Vec::new();
+    let mut ret         = None;
+    let mut assignments = Vec::new();
+    let mut targets     = Vec::new();
+    let mut has_set     = false;
+    let mut has_delete  = false;
 
     for inner in pair.into_inner() {
         match inner.as_rule() {
             Rule::match_clause  => { pattern = Some(parse_pattern(inner)?); }
             Rule::where_clause  => { conditions = parse_where_clause(inner)?; }
             Rule::return_clause => { ret = Some(parse_return_clause(inner)?); }
+            Rule::set_clause    => {
+                has_set = true;
+                for child in inner.into_inner() {
+                    if child.as_rule() == Rule::set_assignment {
+                        assignments.push(parse_set_assignment(child)?);
+                    }
+                }
+            }
+            Rule::delete_clause => {
+                has_delete = true;
+                for child in inner.into_inner() {
+                    if child.as_rule() == Rule::delete_target {
+                        let alias = child.into_inner().next()
+                            .ok_or_else(|| QueryError::Parse("DELETE target missing ident".into()))?
+                            .as_str().to_string();
+                        targets.push(alias);
+                    }
+                }
+            }
             r => return Err(QueryError::Parse(format!("unexpected in match_query: {r:?}"))),
         }
     }
 
-    Ok(MatchQuery {
-        pattern:    pattern.ok_or_else(|| QueryError::Parse("missing MATCH pattern".into()))?,
-        conditions,
-        ret:        ret.ok_or_else(|| QueryError::Parse("missing RETURN clause".into()))?,
-    })
+    let pat = pattern.ok_or_else(|| QueryError::Parse("missing MATCH pattern".into()))?;
+
+    if has_set {
+        Ok(Query::MatchSet(MatchSetQuery {
+            pattern:     pat,
+            conditions,
+            assignments,
+            ret,
+        }))
+    } else if has_delete {
+        if targets.is_empty() {
+            return Err(QueryError::Parse("DELETE requires at least one target".into()));
+        }
+        Ok(Query::MatchDelete(MatchDeleteQuery {
+            pattern:    pat,
+            conditions,
+            targets,
+        }))
+    } else {
+        Ok(Query::Match(MatchQuery {
+            pattern:    pat,
+            conditions,
+            ret: ret.ok_or_else(|| QueryError::Parse("missing RETURN clause".into()))?,
+        }))
+    }
 }
 
 fn parse_pattern(match_clause_pair: Pair<Rule>) -> Result<Pattern, QueryError> {
@@ -168,6 +214,44 @@ fn parse_hop_range(pair: Pair<Rule>) -> Result<HopRange, QueryError> {
         None => min,
     };
     Ok(HopRange { min, max })
+}
+
+// ── CREATE ─────────────────────────────────────────────────
+
+fn parse_create_query(pair: Pair<Rule>) -> Result<CreateQuery, QueryError> {
+    let mut alias      = None;
+    let mut label      = None;
+    let mut properties = Vec::new();
+    let mut ret        = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::create_node_pattern => {
+                let mut parts = inner.into_inner();
+                alias = Some(
+                    parts.next()
+                        .ok_or_else(|| QueryError::Parse("CREATE node missing alias".into()))?
+                        .as_str().to_string()
+                );
+                for child in parts {
+                    match child.as_rule() {
+                        Rule::ident    => { label = Some(child.as_str().to_string()); }
+                        Rule::prop_map => { properties = parse_prop_map(child)?; }
+                        r => return Err(QueryError::Parse(format!("unexpected in create_node_pattern: {r:?}"))),
+                    }
+                }
+            }
+            Rule::return_clause => { ret = Some(parse_return_clause(inner)?); }
+            r => return Err(QueryError::Parse(format!("unexpected in create_query: {r:?}"))),
+        }
+    }
+
+    Ok(CreateQuery {
+        alias:      alias.ok_or_else(|| QueryError::Parse("CREATE missing node alias".into()))?,
+        label,
+        properties,
+        ret,
+    })
 }
 
 // ── MERGE ─────────────────────────────────────────────────

@@ -39,7 +39,9 @@ use nietzsche_sensory::{
     storage::SensoryStorage,
 };
 
+use nietzsche_cluster::{ClusterNode, ClusterRegistry, NodeHealth, NodeRole};
 use crate::cdc::{CdcBroadcaster, CdcEventType};
+use crate::rbac::{require_admin, require_writer};
 use crate::proto::nietzsche::{
     self,
     nietzsche_db_server::{NietzscheDb, NietzscheDbServer},
@@ -187,11 +189,19 @@ fn parse_modality(modality: &str, meta: &serde_json::Value) -> Result<Modality, 
 pub struct NietzscheServer {
     cm: Arc<CollectionManager>,
     cdc: Arc<CdcBroadcaster>,
+    /// Optional cluster registry for gossip protocol. `None` if cluster mode disabled.
+    cluster_registry: Option<ClusterRegistry>,
 }
 
 impl NietzscheServer {
     pub fn new(cm: Arc<CollectionManager>, cdc: Arc<CdcBroadcaster>) -> Self {
-        Self { cm, cdc }
+        Self { cm, cdc, cluster_registry: None }
+    }
+
+    /// Set the cluster registry for gossip support.
+    pub fn with_cluster_registry(mut self, registry: ClusterRegistry) -> Self {
+        self.cluster_registry = Some(registry);
+        self
     }
 
     /// Wrap this server in a tonic [`NietzscheDbServer`].
@@ -245,6 +255,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::DropCollectionRequest>,
     ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        require_admin(&req)?;
         let r = req.into_inner();
         self.cm.drop_collection(&r.collection).map_err(graph_err)?;
         Ok(Response::new(ok_status()))
@@ -274,6 +285,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::InsertNodeRequest>,
     ) -> Result<Response<nietzsche::NodeResponse>, Status> {
+        require_writer(&req)?;
         let r = req.into_inner();
 
         let id = if r.id.is_empty() { Uuid::new_v4() } else { parse_uuid(&r.id, "id")? };
@@ -324,6 +336,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::NodeIdRequest>,
     ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        require_writer(&req)?;
         let r  = req.into_inner();
         let id = parse_uuid(&r.id, "id")?;
 
@@ -338,6 +351,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::UpdateEnergyRequest>,
     ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        require_writer(&req)?;
         let r  = req.into_inner();
         let id = parse_uuid(&r.node_id, "node_id")?;
 
@@ -354,6 +368,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::InsertEdgeRequest>,
     ) -> Result<Response<nietzsche::EdgeResponse>, Status> {
+        require_writer(&req)?;
         let r = req.into_inner();
 
         let id   = if r.id.is_empty() { Uuid::new_v4() } else { parse_uuid(&r.id, "id")? };
@@ -376,6 +391,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::EdgeIdRequest>,
     ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        require_writer(&req)?;
         let r  = req.into_inner();
         let id = parse_uuid(&r.id, "id")?;
 
@@ -393,6 +409,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::MergeNodeRequest>,
     ) -> Result<Response<nietzsche::MergeNodeResponse>, Status> {
+        require_writer(&req)?;
         let r = req.into_inner();
 
         let match_keys: serde_json::Value = if r.match_keys.is_empty() {
@@ -680,6 +697,43 @@ impl NietzscheDb for NietzscheServer {
                     drop(db_w);
                     db = shared.read().await;
                 }
+                // NQL CREATE: create a new node from properties
+                QueryResult::CreateNodeRequest { node_type, properties } => {
+                    drop(db);
+                    let mut db_w = shared.write().await;
+                    let nt_str = node_type.as_deref().unwrap_or("Semantic");
+                    let nt = parse_node_type(nt_str);
+                    let embedding = PoincareVector::new(vec![0.0_f32; 3072]);
+                    let mut node = Node::new(Uuid::new_v4(), embedding, properties);
+                    node.node_type = nt;
+                    db_w.insert_node(node.clone()).map_err(graph_err)?;
+                    nodes.push(node_to_proto(node));
+                    drop(db_w);
+                    db = shared.read().await;
+                }
+                // NQL MATCH…SET: update matched nodes
+                QueryResult::SetRequest { matched_ids, assignments } => {
+                    drop(db);
+                    let mut db_w = shared.write().await;
+                    for nid in &matched_ids {
+                        db_w.update_node_content(*nid, &assignments)
+                            .map_err(graph_err)?;
+                    }
+                    path_ids.push(format!("set:updated:{}", matched_ids.len()));
+                    drop(db_w);
+                    db = shared.read().await;
+                }
+                // NQL MATCH…DELETE: delete matched nodes
+                QueryResult::DeleteRequest { matched_ids } => {
+                    drop(db);
+                    let mut db_w = shared.write().await;
+                    for nid in &matched_ids {
+                        db_w.delete_node(*nid).map_err(graph_err)?;
+                    }
+                    path_ids.push(format!("delete:removed:{}", matched_ids.len()));
+                    drop(db_w);
+                    db = shared.read().await;
+                }
                 // Phase F: transaction control — acknowledged; actual Tx state
                 // is managed by the connection session layer (future phases).
                 QueryResult::TxBegin    => { path_ids.push("tx:begin".into()); }
@@ -852,6 +906,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::SleepRequest>,
     ) -> Result<Response<nietzsche::SleepResponse>, Status> {
+        require_admin(&req)?;
         let r         = req.into_inner();
         let noise_val = if r.noise > 0.0   { r.noise }   else { 0.02 };
         let lr_val    = if r.adam_lr > 0.0 { r.adam_lr } else { 5e-3 };
@@ -901,6 +956,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::ZaratustraRequest>,
     ) -> Result<Response<nietzsche::ZaratustraResponse>, Status> {
+        require_admin(&req)?;
         let r = req.into_inner();
 
         let mut cfg = ZaratustraConfig::from_env();
@@ -1355,6 +1411,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::RestoreBackupRequest>,
     ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        require_admin(&req)?;
         let r = req.into_inner();
         if r.backup_path.is_empty() || r.target_path.is_empty() {
             return Err(Status::invalid_argument("backup_path and target_path required"));
@@ -1394,6 +1451,43 @@ impl NietzscheDb for NietzscheServer {
             results: results.into_iter().map(|r| nietzsche::FtsResultProto {
                 node_id: r.node_id.to_string(),
                 score: r.score,
+            }).collect(),
+        }))
+    }
+
+    // ── Hybrid BM25 + ANN Search ────────────────────────────────────────
+
+    async fn hybrid_search(
+        &self,
+        req: Request<nietzsche::HybridSearchRequest>,
+    ) -> Result<Response<nietzsche::KnnResponse>, Status> {
+        let r = req.into_inner();
+        if r.text_query.is_empty() && r.query_coords.is_empty() {
+            return Err(Status::invalid_argument("text_query or query_coords must be provided"));
+        }
+
+        let shared = get_col!(self.cm, &r.collection);
+        let db = shared.read().await;
+
+        let k = if r.k > 0 { r.k as usize } else { 10 };
+        let text_weight = if r.text_weight > 0.0 { r.text_weight } else { 1.0 };
+        let vector_weight = if r.vector_weight > 0.0 { r.vector_weight } else { 1.0 };
+
+        let coords: Vec<f32> = r.query_coords.iter().map(|&v| v as f32).collect();
+        let dim = coords.len();
+        let query_vec = nietzsche_graph::PoincareVector { coords, dim };
+        let results = db.hybrid_search(
+            &r.text_query,
+            &query_vec,
+            k,
+            text_weight,
+            vector_weight,
+        ).map_err(graph_err)?;
+
+        Ok(Response::new(nietzsche::KnnResponse {
+            results: results.into_iter().map(|(id, score)| nietzsche::KnnResult {
+                id:       id.to_string(),
+                distance: score,
             }).collect(),
         }))
     }
@@ -1652,5 +1746,201 @@ impl NietzscheDb for NietzscheServer {
 
         debug!(collection = %col_name, node_id = %node_id, energy, new_quality, "DegradeSensory ok");
         Ok(Response::new(ok_status()))
+    }
+
+    // ── ListStore (RPUSH/LRANGE) ────────────────────────────────────────
+
+    async fn list_r_push(
+        &self,
+        req: Request<nietzsche::ListPushRequest>,
+    ) -> Result<Response<nietzsche::ListPushResponse>, Status> {
+        require_writer(&req)?;
+        let r = req.into_inner();
+        let node_id = parse_uuid(&r.node_id, "node_id")?;
+        let col_name = col(&r.collection).to_string();
+        let shared = get_col!(self.cm, &col_name);
+        let db = shared.read().await;
+        let new_seq = db.storage().list_rpush(&node_id, &r.list_name, &r.value)
+            .map_err(graph_err)?;
+        Ok(Response::new(nietzsche::ListPushResponse { new_length: new_seq }))
+    }
+
+    async fn list_l_range(
+        &self,
+        req: Request<nietzsche::ListRangeRequest>,
+    ) -> Result<Response<nietzsche::ListRangeResponse>, Status> {
+        let r = req.into_inner();
+        let node_id = parse_uuid(&r.node_id, "node_id")?;
+        let col_name = col(&r.collection).to_string();
+        let shared = get_col!(self.cm, &col_name);
+        let db = shared.read().await;
+        let values = db.storage().list_lrange(&node_id, &r.list_name, r.start, r.stop)
+            .map_err(graph_err)?;
+        Ok(Response::new(nietzsche::ListRangeResponse { values }))
+    }
+
+    async fn list_len(
+        &self,
+        req: Request<nietzsche::ListLenRequest>,
+    ) -> Result<Response<nietzsche::ListLenResponse>, Status> {
+        let r = req.into_inner();
+        let node_id = parse_uuid(&r.node_id, "node_id")?;
+        let col_name = col(&r.collection).to_string();
+        let shared = get_col!(self.cm, &col_name);
+        let db = shared.read().await;
+        let length = db.storage().list_len(&node_id, &r.list_name)
+            .map_err(graph_err)?;
+        Ok(Response::new(nietzsche::ListLenResponse { length }))
+    }
+
+    // ── Cluster gossip (Phase G) ──────────────────────────────────────────
+
+    async fn exchange_gossip(
+        &self,
+        req: Request<nietzsche::GossipRequest>,
+    ) -> Result<Response<nietzsche::GossipResponse>, Status> {
+        let registry = self.cluster_registry.as_ref()
+            .ok_or_else(|| Status::failed_precondition("cluster mode not enabled"))?;
+
+        let r = req.into_inner();
+
+        // Parse incoming peers and merge them
+        let incoming: Vec<ClusterNode> = r.nodes.iter().filter_map(|p| {
+            let id = Uuid::parse_str(&p.id).ok()?;
+            let role = match p.role.as_str() {
+                "replica"     => NodeRole::Replica,
+                "coordinator" => NodeRole::Coordinator,
+                _             => NodeRole::Primary,
+            };
+            let health = match p.health.as_str() {
+                "degraded"    => NodeHealth::Degraded,
+                "unreachable" => NodeHealth::Unreachable,
+                _             => NodeHealth::Healthy,
+            };
+            let mut node = ClusterNode::new(id, &p.name, &p.addr, role, p.token);
+            node.health = health;
+            node.last_seen_ms = p.last_seen_ms;
+            Some(node)
+        }).collect();
+
+        let merged = incoming.len();
+        registry.merge_snapshot(incoming);
+
+        // Export our current snapshot as the response
+        let snapshot = registry.export_snapshot();
+        let response_nodes: Vec<nietzsche::ClusterNodeProto> = snapshot.into_iter().map(|n| {
+            nietzsche::ClusterNodeProto {
+                id:           n.id.to_string(),
+                addr:         n.addr,
+                name:         n.name,
+                role:         format!("{}", n.role),
+                health:       format!("{}", n.health),
+                last_seen_ms: n.last_seen_ms,
+                token:        n.token,
+            }
+        }).collect();
+
+        debug!(merged_peers = merged, returned_peers = response_nodes.len(), "ExchangeGossip ok");
+        Ok(Response::new(nietzsche::GossipResponse { nodes: response_nodes }))
+    }
+
+    // ── Schema Validation ─────────────────────────────────────────────────
+
+    async fn set_schema(
+        &self,
+        req: Request<nietzsche::SetSchemaRequest>,
+    ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        let r = req.into_inner();
+        if r.node_type.is_empty() {
+            return Err(Status::invalid_argument("node_type must not be empty"));
+        }
+
+        let mut field_types = std::collections::HashMap::new();
+        for ft in &r.field_types {
+            let ftype = match ft.field_type.as_str() {
+                "string" => nietzsche_graph::FieldType::String,
+                "number" => nietzsche_graph::FieldType::Number,
+                "bool"   => nietzsche_graph::FieldType::Bool,
+                "array"  => nietzsche_graph::FieldType::Array,
+                "object" => nietzsche_graph::FieldType::Object,
+                other    => return Err(Status::invalid_argument(
+                    format!("unknown field type '{}'; expected string|number|bool|array|object", other)
+                )),
+            };
+            field_types.insert(ft.field_name.clone(), ftype);
+        }
+
+        let constraint = nietzsche_graph::SchemaConstraint {
+            node_type: r.node_type.clone(),
+            required_fields: r.required_fields,
+            field_types,
+        };
+
+        let shared = get_col!(self.cm, &r.collection);
+        let mut db = shared.write().await;
+
+        // Persist to CF_META and register in memory
+        db.set_schema_constraint(constraint).map_err(graph_err)?;
+
+        Ok(Response::new(nietzsche::StatusResponse {
+            status: "ok".into(),
+            error: String::new(),
+        }))
+    }
+
+    async fn get_schema(
+        &self,
+        req: Request<nietzsche::GetSchemaRequest>,
+    ) -> Result<Response<nietzsche::GetSchemaResponse>, Status> {
+        let r = req.into_inner();
+        let shared = get_col!(self.cm, &r.collection);
+        let db = shared.read().await;
+
+        let response = match db.schema_validator().and_then(|v| v.get_constraint(&r.node_type)) {
+            Some(c) => nietzsche::GetSchemaResponse {
+                node_type: c.node_type.clone(),
+                required_fields: c.required_fields.clone(),
+                field_types: c.field_types.iter().map(|(k, v)| nietzsche::SchemaFieldType {
+                    field_name: k.clone(),
+                    field_type: v.to_string(),
+                }).collect(),
+                found: true,
+            },
+            None => nietzsche::GetSchemaResponse {
+                node_type: r.node_type,
+                required_fields: vec![],
+                field_types: vec![],
+                found: false,
+            },
+        };
+
+        Ok(Response::new(response))
+    }
+
+    async fn list_schemas(
+        &self,
+        _req: Request<nietzsche::Empty>,
+    ) -> Result<Response<nietzsche::ListSchemasResponse>, Status> {
+        // List schemas from all collections would be complex;
+        // for now, list from the default collection.
+        let shared = get_col!(self.cm, &"");
+        let db = shared.read().await;
+
+        let schemas = match db.schema_validator() {
+            Some(v) => v.list_constraints().into_iter().map(|c| {
+                nietzsche::GetSchemaResponse {
+                    node_type: c.node_type.clone(),
+                    required_fields: c.required_fields.clone(),
+                    field_types: c.field_types.iter().map(|(k, v)| nietzsche::SchemaFieldType {
+                        field_name: k.clone(),
+                        field_type: v.to_string(),
+                    }).collect(),
+                    found: true,
+                }
+            }).collect(),
+            None => vec![],
+        };
+
+        Ok(Response::new(nietzsche::ListSchemasResponse { schemas }))
     }
 }

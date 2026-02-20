@@ -4,12 +4,12 @@
 //! `AdjacencyIndex` (extracted from `NietzscheDB` via `.storage()` /
 //! `.adjacency()`) plus a `Params` map for query parameters.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use uuid::Uuid;
 use rayon::prelude::*;
 use nietzsche_graph::{
-    AdjacencyIndex, GraphStorage, Node, PoincareVector,
+    AdjacencyIndex, AdjEntry, GraphStorage, Node, PoincareVector,
     traversal::{diffusion_walk, DiffusionConfig},
 };
 
@@ -93,6 +93,20 @@ pub enum QueryResult {
         on_create_set: serde_json::Value,
         on_match_set:  serde_json::Value,
     },
+    /// Result of `CREATE (n:Type {props}) …` — the caller inserts a new node.
+    CreateNodeRequest {
+        node_type:  Option<String>,
+        properties: serde_json::Value,
+    },
+    /// Result of `MATCH … SET …` — the caller updates matched nodes.
+    SetRequest {
+        matched_ids: Vec<Uuid>,
+        assignments: serde_json::Value,
+    },
+    /// Result of `MATCH … DELETE …` — the caller deletes matched nodes.
+    DeleteRequest {
+        matched_ids: Vec<Uuid>,
+    },
 }
 
 /// A typed scalar value returned by aggregation or property-projection queries.
@@ -131,6 +145,9 @@ pub fn execute(
         Query::CommitTx              => Ok(vec![QueryResult::TxCommit]),
         Query::RollbackTx            => Ok(vec![QueryResult::TxRollback]),
         Query::Merge(m)              => execute_merge(m, params),
+        Query::Create(c)             => execute_create(c, params),
+        Query::MatchSet(ms)          => execute_match_set(ms, storage, adjacency, params),
+        Query::MatchDelete(md)       => execute_match_delete(md, storage, adjacency, params),
     }
 }
 
@@ -140,10 +157,11 @@ pub fn execute(
 
 fn execute_explain(
     query:     &Query,
-    _storage:  &GraphStorage,
+    storage:   &GraphStorage,
     _adjacency:&AdjacencyIndex,
     _params:   &Params,
 ) -> Result<Vec<QueryResult>, QueryError> {
+    let cost = crate::cost::estimate_cost(query, storage);
     let plan = match query {
         Query::Match(m) => {
             let scan_type = match &m.pattern {
@@ -157,7 +175,11 @@ fn execute_explain(
                         Direction::Out => "-->",
                         Direction::In  => "<--",
                     };
-                    format!("EdgeScan(type={}, dir={})", edge, dir)
+                    if let Some(hr) = &pp.hop_range {
+                        format!("BoundedBFS(type={}, dir={}, hops={}..{})", edge, dir, hr.min, hr.max)
+                    } else {
+                        format!("EdgeScan(type={}, dir={})", edge, dir)
+                    }
                 }
             };
             let mut parts = vec![scan_type];
@@ -209,8 +231,27 @@ fn execute_explain(
                 m.on_match.len(),
             )
         }
+        Query::Create(c) => {
+            format!("CreateNode(type={}, props={})",
+                c.label.as_deref().unwrap_or("*"),
+                c.properties.len(),
+            )
+        }
+        Query::MatchSet(ms) => {
+            format!("MatchSet(assignments={}, conditions={})",
+                ms.assignments.len(),
+                ms.conditions.len(),
+            )
+        }
+        Query::MatchDelete(md) => {
+            format!("MatchDelete(targets={}, conditions={})",
+                md.targets.len(),
+                md.conditions.len(),
+            )
+        }
     };
-    Ok(vec![QueryResult::ExplainPlan(plan)])
+    let full_plan = format!("{} | {}", plan, cost);
+    Ok(vec![QueryResult::ExplainPlan(full_plan)])
 }
 
 // ─────────────────────────────────────────────
@@ -327,6 +368,11 @@ fn execute_path_match(
     adjacency: &AdjacencyIndex,
     params:    &Params,
 ) -> Result<Vec<QueryResult>, QueryError> {
+    // Multi-hop BFS when hop_range is present (e.g. *2..4)
+    if pp.hop_range.is_some() {
+        return execute_multi_hop_path(query, pp, storage, adjacency, params);
+    }
+
     let from_alias = &pp.from.alias;
     let to_alias   = &pp.to.alias;
 
@@ -387,7 +433,7 @@ fn execute_path_match(
 
     // DISTINCT — deduplicate by (from_id, to_id) pair
     if query.ret.distinct {
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = HashSet::new();
         pairs.retain(|(f, t)| seen.insert((f.id, t.id)));
     }
 
@@ -409,6 +455,178 @@ fn execute_path_match(
         .into_iter()
         .map(|(from, to)| QueryResult::NodePair { from, to })
         .collect())
+}
+
+/// Execute a variable-length path match with bounded BFS.
+///
+/// For a query like `MATCH (a)-[:TYPE*2..4]->(b)`, this performs a BFS
+/// from every candidate start node, following edges that match the label
+/// and direction, collecting `(start, reached)` pairs where the reached
+/// node is at depth `[min_hops, max_hops]` from the start.
+fn execute_multi_hop_path(
+    query:     &MatchQuery,
+    pp:        &PathPattern,
+    storage:   &GraphStorage,
+    adjacency: &AdjacencyIndex,
+    params:    &Params,
+) -> Result<Vec<QueryResult>, QueryError> {
+    let from_alias = &pp.from.alias;
+    let to_alias   = &pp.to.alias;
+    let hr = pp.hop_range.as_ref().unwrap();
+    let min_hops = hr.min;
+    let max_hops = hr.max;
+
+    let edge_label_lc = pp.edge_label.as_ref().map(|l| l.to_lowercase());
+
+    // Collect all candidate start nodes (filtered by from-label if any)
+    let all_nodes = storage.scan_nodes()?;
+    let start_nodes: Vec<&Node> = if let Some(label) = &pp.from.label {
+        let label_lc = label.to_lowercase();
+        all_nodes.iter()
+            .filter(|n| format!("{:?}", n.node_type).to_lowercase() == label_lc)
+            .collect()
+    } else {
+        all_nodes.iter().collect()
+    };
+
+    let mut pairs: Vec<(Node, Node)> = Vec::new();
+
+    for start in &start_nodes {
+        // BFS from this start node
+        let reached = bounded_bfs(
+            start.id,
+            min_hops,
+            max_hops,
+            &edge_label_lc,
+            &pp.direction,
+            adjacency,
+        );
+
+        for to_id in reached {
+            // Filter to-node by label if specified
+            let to_node = match storage.get_node(&to_id)? {
+                Some(n) => n,
+                None    => continue,
+            };
+            if let Some(label) = &pp.to.label {
+                let label_lc = label.to_lowercase();
+                if format!("{:?}", to_node.node_type).to_lowercase() != label_lc {
+                    continue;
+                }
+            }
+
+            // Evaluate WHERE conditions with both aliases bound
+            let binding = vec![
+                (from_alias.as_str(), *start),
+                (to_alias.as_str(),   &to_node),
+            ];
+            if eval_conditions(&query.conditions, &binding, params, storage, adjacency)? {
+                pairs.push(((*start).clone(), to_node));
+            }
+        }
+    }
+
+    // ORDER BY
+    if let Some(order) = &query.ret.order_by {
+        let mut keyed: Vec<(f64, (Node, Node))> = pairs
+            .drain(..)
+            .map(|(f, t)| {
+                let key = compute_order_key(&order.expr, to_alias, &t, params, storage, adjacency)
+                    .unwrap_or(f64::MAX);
+                (key, (f, t))
+            })
+            .collect();
+        if order.dir == OrderDir::Asc {
+            keyed.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        } else {
+            keyed.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        }
+        pairs.extend(keyed.into_iter().map(|(_, p)| p));
+    }
+
+    // DISTINCT
+    if query.ret.distinct {
+        let mut seen = HashSet::new();
+        pairs.retain(|(f, t)| seen.insert((f.id, t.id)));
+    }
+
+    // SKIP
+    if let Some(skip) = query.ret.skip {
+        if skip < pairs.len() {
+            pairs = pairs.split_off(skip);
+        } else {
+            pairs.clear();
+        }
+    }
+
+    // LIMIT
+    if let Some(limit) = query.ret.limit {
+        pairs.truncate(limit);
+    }
+
+    Ok(pairs
+        .into_iter()
+        .map(|(from, to)| QueryResult::NodePair { from, to })
+        .collect())
+}
+
+/// Bounded BFS: from `start`, follow edges matching `edge_label` and
+/// `direction` up to `max_hops` steps. Return all node IDs reachable
+/// at depth `[min_hops, max_hops]` (inclusive). Cycle-safe via visited set.
+fn bounded_bfs(
+    start:      Uuid,
+    min_hops:   usize,
+    max_hops:   usize,
+    edge_label: &Option<String>,  // already lowercased
+    direction:  &Direction,
+    adjacency:  &AdjacencyIndex,
+) -> Vec<Uuid> {
+    let mut visited: HashSet<Uuid> = HashSet::new();
+    visited.insert(start);
+
+    // (node_id, depth)
+    let mut queue: VecDeque<(Uuid, usize)> = VecDeque::new();
+    queue.push_back((start, 0));
+
+    let mut results: Vec<Uuid> = Vec::new();
+
+    while let Some((current, depth)) = queue.pop_front() {
+        if depth >= max_hops {
+            continue;
+        }
+
+        // Get neighbors based on direction
+        let entries: Vec<AdjEntry> = match direction {
+            Direction::Out => adjacency.entries_out(&current),
+            Direction::In  => adjacency.entries_in(&current),
+        };
+
+        for entry in entries {
+            // Edge-type filter
+            if let Some(label) = edge_label {
+                let type_str = format!("{:?}", entry.edge_type).to_lowercase();
+                if type_str != *label {
+                    continue;
+                }
+            }
+
+            let neighbor = entry.neighbor_id;
+            if visited.contains(&neighbor) {
+                continue;
+            }
+            visited.insert(neighbor);
+
+            let next_depth = depth + 1;
+            if next_depth >= min_hops {
+                results.push(neighbor);
+            }
+            if next_depth < max_hops {
+                queue.push_back((neighbor, next_depth));
+            }
+        }
+    }
+
+    results
 }
 
 // ─────────────────────────────────────────────
@@ -498,6 +716,91 @@ fn execute_merge(
                 on_create_set: on_create,
                 on_match_set:  on_match,
             }])
+        }
+    }
+}
+
+// ─────────────────────────────────────────────
+// CREATE executor
+// ─────────────────────────────────────────────
+
+fn execute_create(
+    query:  &CreateQuery,
+    params: &Params,
+) -> Result<Vec<QueryResult>, QueryError> {
+    let properties = props_to_json(&query.properties, params)?;
+    Ok(vec![QueryResult::CreateNodeRequest {
+        node_type:  query.label.clone(),
+        properties,
+    }])
+}
+
+// ─────────────────────────────────────────────
+// MATCH … SET executor
+// ─────────────────────────────────────────────
+
+fn execute_match_set(
+    query:     &MatchSetQuery,
+    storage:   &GraphStorage,
+    adjacency: &AdjacencyIndex,
+    params:    &Params,
+) -> Result<Vec<QueryResult>, QueryError> {
+    // Resolve matched node IDs using the same logic as MATCH
+    let matched_ids = resolve_match_ids(&query.pattern, &query.conditions, storage, adjacency, params)?;
+    let assignments = sets_to_json(&query.assignments, params)?;
+    Ok(vec![QueryResult::SetRequest { matched_ids, assignments }])
+}
+
+// ─────────────────────────────────────────────
+// MATCH … DELETE executor
+// ─────────────────────────────────────────────
+
+fn execute_match_delete(
+    query:     &MatchDeleteQuery,
+    storage:   &GraphStorage,
+    adjacency: &AdjacencyIndex,
+    params:    &Params,
+) -> Result<Vec<QueryResult>, QueryError> {
+    let matched_ids = resolve_match_ids(&query.pattern, &query.conditions, storage, adjacency, params)?;
+    Ok(vec![QueryResult::DeleteRequest { matched_ids }])
+}
+
+/// Resolve matched node IDs from a MATCH pattern + WHERE conditions.
+/// Shared by MATCH…SET and MATCH…DELETE executors.
+fn resolve_match_ids(
+    pattern:    &Pattern,
+    conditions: &[Condition],
+    storage:    &GraphStorage,
+    adjacency:  &AdjacencyIndex,
+    params:     &Params,
+) -> Result<Vec<Uuid>, QueryError> {
+    match pattern {
+        Pattern::Node(np) => {
+            let nodes = storage.scan_nodes()?;
+            let alias = &np.alias;
+
+            // Filter by label
+            let typed: Vec<Node> = if let Some(label) = &np.label {
+                let label_lc = label.to_lowercase();
+                nodes.into_iter()
+                    .filter(|n| format!("{:?}", n.node_type).to_lowercase() == label_lc)
+                    .collect()
+            } else {
+                nodes
+            };
+
+            // Apply WHERE conditions
+            let mut ids = Vec::new();
+            for node in typed {
+                let binding = vec![(alias.as_str(), &node)];
+                if eval_conditions(conditions, &binding, params, storage, adjacency)? {
+                    ids.push(node.id);
+                }
+            }
+            Ok(ids)
+        }
+        Pattern::Path(_) => {
+            Err(QueryError::Execution("SET/DELETE on path patterns not yet supported".into()))
         }
     }
 }
