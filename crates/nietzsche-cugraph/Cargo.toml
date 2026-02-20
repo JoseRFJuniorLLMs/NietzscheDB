@@ -1,0 +1,25 @@
+[package]
+name = "nietzsche-cugraph"
+version = "0.1.0"
+edition = "2021"
+description = "GPU-accelerated graph traversal for NietzscheDB via NVIDIA cuGraph (RAPIDS)"
+
+# ── Features ──────────────────────────────────────────────────────────────────
+[features]
+default = []
+# Full GPU path: cuGraph BFS/Dijkstra/PageRank + Poincaré GPU kNN.
+# Requires CUDA 12.x + RAPIDS cuGraph 24.6 + NVRTC on the build host.
+# Build: cargo build --release --features cuda
+# Install RAPIDS: https://docs.rapids.ai/install
+cuda = ["dep:libloading", "dep:cudarc"]
+
+[dependencies]
+nietzsche-graph  = { workspace = true }
+uuid             = { workspace = true }
+tracing          = { workspace = true }
+thiserror        = { workspace = true }
+ordered-float    = { workspace = true }
+# Dynamic FFI loader — loads libcugraph.so at runtime (cuda feature only)
+libloading       = { version = "0.8", optional = true }
+# CUDA runtime bindings + NVRTC for Poincaré kernel compilation
+cudarc           = { version = "0.12", features = ["nvrtc"], optional = true }

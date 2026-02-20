@@ -38,6 +38,7 @@ nietzsche-cluster      = { path = "crates/nietzsche-cluster" }
 nietzsche-algo         = { path = "crates/nietzsche-algo" }
 nietzsche-hnsw-gpu     = { path = "crates/nietzsche-hnsw-gpu" }
 nietzsche-tpu          = { path = "crates/nietzsche-tpu" }
+nietzsche-cugraph      = { path = "crates/nietzsche-cugraph" }
 memmap2 = "0.9"
 parking_lot = "0.12"
 ratatui = "0.24"
