@@ -67,6 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             vector,
             id: u32::try_from(i).unwrap(),
             metadata: std::collections::HashMap::new(),
+            typed_metadata: std::collections::HashMap::new(),
             collection: COLLECTION_NAME.to_string(),
             origin_node_id: String::new(),
             logical_clock: 0,

@@ -33,14 +33,20 @@ use hyperspace_embed::{ApiProvider, Metric, OnnxVectorizer, RemoteVectorizer, Ve
 use hyperspace_proto::hyperspace::database_server::{Database, DatabaseServer};
 use hyperspace_proto::hyperspace::{replication_log, Empty, ReplicationLog};
 use hyperspace_proto::hyperspace::{
-    BatchInsertRequest, BatchSearchRequest, BatchSearchResponse, CollectionStatsRequest,
-    CollectionStatsResponse, ConfigUpdate,
+    metadata_value, BatchInsertRequest, BatchSearchRequest, BatchSearchResponse,
+    CollectionStatsRequest, CollectionStatsResponse, ConfigUpdate,
     CreateCollectionRequest, DeleteCollectionRequest, DeleteRequest, DeleteResponse, DigestRequest,
-    DigestResponse, InsertRequest, InsertResponse, InsertTextRequest, ListCollectionsResponse,
-    MonitorRequest, SearchRequest, SearchResponse, SearchResult, SystemStats,
+    DigestResponse, EventMessage, EventSubscriptionRequest, EventType, Filter,
+    FindSemanticClustersRequest, FindSemanticClustersResponse, GetConceptParentsRequest,
+    GetConceptParentsResponse, GetNeighborsRequest, GetNeighborsResponse, GetNodeRequest,
+    GraphCluster, GraphNode, InsertRequest, InsertResponse, InsertTextRequest,
+    ListCollectionsResponse, MetadataValue, MonitorRequest, SearchRequest, SearchResponse,
+    SearchResult, SystemStats, TraverseRequest, TraverseResponse, VectorDeletedEvent,
+    VectorInsertedEvent,
 };
 
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 #[cfg(feature = "embed")]
 use std::str::FromStr;
 use std::sync::Arc;
@@ -130,6 +136,12 @@ fn default_ef_search() -> usize {
     })
 }
 
+fn range_bounds_f64(r: &hyperspace_proto::hyperspace::Range) -> (Option<f64>, Option<f64>) {
+    let gte = r.gte_f64.or(r.gte.map(|v| v as f64));
+    let lte = r.lte_f64.or(r.lte.map(|v| v as f64));
+    (gte, lte)
+}
+
 fn build_filters(
     req: SearchRequest,
 ) -> (
@@ -157,10 +169,11 @@ fn build_filters(
                     });
                 }
                 hyperspace_proto::hyperspace::filter::Condition::Range(r) => {
+                    let (gte, lte) = range_bounds_f64(&r);
                     complex_filters.push(hyperspace_core::FilterExpr::Range {
                         key: r.key,
-                        gte: r.gte,
-                        lte: r.lte,
+                        gte,
+                        lte,
                     });
                 }
             }
@@ -175,6 +188,227 @@ fn build_filters(
     };
 
     (col_name, req.vector, legacy_filter, complex_filters, params)
+}
+
+const TYPED_META_PREFIX: &str = "__hs_typed__";
+
+fn metadata_value_to_shadow_json(v: &MetadataValue) -> Option<String> {
+    match &v.kind {
+        Some(metadata_value::Kind::StringValue(x)) => {
+            Some(serde_json::json!({"t":"s","v":x}).to_string())
+        }
+        Some(metadata_value::Kind::IntValue(x)) => {
+            Some(serde_json::json!({"t":"i","v":x}).to_string())
+        }
+        Some(metadata_value::Kind::DoubleValue(x)) => {
+            Some(serde_json::json!({"t":"f","v":x}).to_string())
+        }
+        Some(metadata_value::Kind::BoolValue(x)) => {
+            Some(serde_json::json!({"t":"b","v":x}).to_string())
+        }
+        None => None,
+    }
+}
+
+fn shadow_json_to_metadata_value(s: &str) -> Option<MetadataValue> {
+    let json: serde_json::Value = serde_json::from_str(s).ok()?;
+    let kind = json.get("t")?.as_str()?;
+    let value = json.get("v")?;
+    let out = match kind {
+        "s" => MetadataValue {
+            kind: Some(metadata_value::Kind::StringValue(
+                value.as_str()?.to_string(),
+            )),
+        },
+        "i" => MetadataValue {
+            kind: Some(metadata_value::Kind::IntValue(value.as_i64()?)),
+        },
+        "f" => MetadataValue {
+            kind: Some(metadata_value::Kind::DoubleValue(value.as_f64()?)),
+        },
+        "b" => MetadataValue {
+            kind: Some(metadata_value::Kind::BoolValue(value.as_bool()?)),
+        },
+        _ => return None,
+    };
+    Some(out)
+}
+
+fn merge_metadata(
+    mut base: std::collections::HashMap<String, String>,
+    typed: std::collections::HashMap<String, MetadataValue>,
+) -> std::collections::HashMap<String, String> {
+    for (key, value) in typed {
+        if let Some(shadow) = metadata_value_to_shadow_json(&value) {
+            base.insert(format!("{TYPED_META_PREFIX}{key}"), shadow);
+        }
+        match value.kind {
+            Some(metadata_value::Kind::StringValue(v)) => {
+                base.insert(key, v);
+            }
+            Some(metadata_value::Kind::IntValue(v)) => {
+                base.insert(key, v.to_string());
+            }
+            Some(metadata_value::Kind::DoubleValue(v)) => {
+                base.insert(key, v.to_string());
+            }
+            Some(metadata_value::Kind::BoolValue(v)) => {
+                base.insert(key, v.to_string());
+            }
+            None => {}
+        }
+    }
+    base
+}
+
+fn strip_internal_metadata(
+    metadata: &std::collections::HashMap<String, String>,
+) -> std::collections::HashMap<String, String> {
+    metadata
+        .iter()
+        .filter(|(k, _)| !k.starts_with(TYPED_META_PREFIX))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect()
+}
+
+fn extract_typed_metadata(
+    metadata: &std::collections::HashMap<String, String>,
+) -> std::collections::HashMap<String, MetadataValue> {
+    let mut typed = std::collections::HashMap::new();
+    for (k, v) in metadata {
+        if let Some(raw_key) = k.strip_prefix(TYPED_META_PREFIX) {
+            if let Some(parsed) = shadow_json_to_metadata_value(v) {
+                typed.insert(raw_key.to_string(), parsed);
+            }
+        }
+    }
+    typed
+}
+
+fn build_graph_node(
+    col: &Arc<dyn hyperspace_core::Collection>,
+    id: u32,
+    layer: usize,
+) -> GraphNode {
+    let metadata = col.metadata_by_id(id);
+    let typed_metadata = extract_typed_metadata(&metadata);
+    let plain_metadata = strip_internal_metadata(&metadata);
+    let neighbors = col
+        .graph_neighbors(id, layer, usize::MAX)
+        .unwrap_or_default();
+    GraphNode {
+        id,
+        layer: layer as u32,
+        neighbors,
+        metadata: plain_metadata,
+        typed_metadata,
+    }
+}
+
+fn matches_filter_exprs(
+    metadata: &std::collections::HashMap<String, String>,
+    exact_filter: &std::collections::HashMap<String, String>,
+    complex_filters: &[hyperspace_core::FilterExpr],
+) -> bool {
+    let meta_numeric = |key: &str| -> Option<f64> {
+        if let Some(raw) = metadata.get(key) {
+            return raw.parse::<f64>().ok();
+        }
+        let typed_key = format!("{TYPED_META_PREFIX}{key}");
+        let raw_typed = metadata.get(&typed_key)?;
+        let parsed = serde_json::from_str::<serde_json::Value>(raw_typed).ok()?;
+        parsed.get("v")?.as_f64()
+    };
+
+    for (k, v) in exact_filter {
+        match metadata.get(k) {
+            Some(actual) if actual == v => {}
+            _ => return false,
+        }
+    }
+
+    for expr in complex_filters {
+        match expr {
+            hyperspace_core::FilterExpr::Match { key, value } => match metadata.get(key) {
+                Some(actual) if actual == value => {}
+                _ => return false,
+            },
+            hyperspace_core::FilterExpr::Range { key, gte, lte } => {
+                let Some(num) = meta_numeric(key) else {
+                    return false;
+                };
+                if let Some(min) = gte {
+                    if num < *min {
+                        return false;
+                    }
+                }
+                if let Some(max) = lte {
+                    if num > *max {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    true
+}
+
+fn parse_graph_filters(
+    exact_filter: std::collections::HashMap<String, String>,
+    filters: Vec<Filter>,
+) -> (
+    std::collections::HashMap<String, String>,
+    Vec<hyperspace_core::FilterExpr>,
+) {
+    let mut complex_filters = Vec::new();
+    for f in filters {
+        if let Some(cond) = f.condition {
+            match cond {
+                hyperspace_proto::hyperspace::filter::Condition::Match(m) => {
+                    complex_filters.push(hyperspace_core::FilterExpr::Match {
+                        key: m.key,
+                        value: m.value,
+                    });
+                }
+                hyperspace_proto::hyperspace::filter::Condition::Range(r) => {
+                    let (gte, lte) = range_bounds_f64(&r);
+                    complex_filters.push(hyperspace_core::FilterExpr::Range {
+                        key: r.key,
+                        gte,
+                        lte,
+                    });
+                }
+            }
+        }
+    }
+    (exact_filter, complex_filters)
+}
+
+#[allow(clippy::result_large_err)]
+fn parse_vacuum_filter(
+    filter: Option<hyperspace_proto::hyperspace::VacuumFilterQuery>,
+) -> Result<Option<hyperspace_core::VacuumFilterQuery>, Status> {
+    let Some(filter) = filter else {
+        return Ok(None);
+    };
+    let op = match filter.op.to_lowercase().as_str() {
+        "lt" => hyperspace_core::VacuumFilterOp::Lt,
+        "lte" => hyperspace_core::VacuumFilterOp::Lte,
+        "gt" => hyperspace_core::VacuumFilterOp::Gt,
+        "gte" => hyperspace_core::VacuumFilterOp::Gte,
+        "eq" => hyperspace_core::VacuumFilterOp::Eq,
+        "ne" => hyperspace_core::VacuumFilterOp::Ne,
+        other => {
+            return Err(Status::invalid_argument(format!(
+                "Unsupported vacuum filter op '{other}', use lt/lte/gt/gte/eq/ne"
+            )))
+        }
+    };
+    Ok(Some(hyperspace_core::VacuumFilterQuery {
+        key: filter.key,
+        op,
+        value: filter.value,
+    }))
 }
 
 impl Interceptor for ClientAuthInterceptor {
@@ -509,6 +743,7 @@ impl Database for HyperspaceService {
                             id,
                             distance: dist,
                             metadata: meta,
+                            typed_metadata: Default::default(),
                         })
                         .collect();
                     Ok(Response::new(SearchResponse { results: output }))
@@ -547,12 +782,204 @@ impl Database for HyperspaceService {
                     id,
                     distance: dist,
                     metadata: meta,
+                    typed_metadata: Default::default(),
                 })
                 .collect();
             responses.push(SearchResponse { results });
         }
 
         Ok(Response::new(BatchSearchResponse { responses }))
+    }
+
+    async fn get_node(
+        &self,
+        request: Request<GetNodeRequest>,
+    ) -> Result<Response<GraphNode>, Status> {
+        let user_id = get_user_id(&request);
+        let req = request.into_inner();
+        let col_name = if req.collection.is_empty() {
+            "default".to_string()
+        } else {
+            req.collection
+        };
+        let layer = req.layer as usize;
+        let Some(col) = self.manager.get(&user_id, &col_name).await else {
+            return Err(Status::not_found(format!(
+                "Collection '{col_name}' not found"
+            )));
+        };
+        let node = build_graph_node(&col, req.id, layer);
+        Ok(Response::new(node))
+    }
+
+    async fn get_neighbors(
+        &self,
+        request: Request<GetNeighborsRequest>,
+    ) -> Result<Response<GetNeighborsResponse>, Status> {
+        let user_id = get_user_id(&request);
+        let req = request.into_inner();
+        let col_name = if req.collection.is_empty() {
+            "default".to_string()
+        } else {
+            req.collection
+        };
+        let layer = req.layer as usize;
+        let limit = if req.limit == 0 {
+            64
+        } else {
+            req.limit as usize
+        };
+        let offset = req.offset as usize;
+        let Some(col) = self.manager.get(&user_id, &col_name).await else {
+            return Err(Status::not_found(format!(
+                "Collection '{col_name}' not found"
+            )));
+        };
+        let fetch_limit = limit.saturating_add(offset);
+        let mut ids = col
+            .graph_neighbors(req.id, layer, fetch_limit)
+            .map_err(Status::invalid_argument)?;
+        if offset > 0 {
+            ids = ids.into_iter().skip(offset).collect();
+        }
+        if ids.len() > limit {
+            ids.truncate(limit);
+        }
+        let edge_weights = col
+            .graph_neighbor_distances(req.id, &ids)
+            .map_err(Status::internal)?;
+        let neighbors = ids
+            .into_iter()
+            .map(|id| build_graph_node(&col, id, layer))
+            .collect();
+        Ok(Response::new(GetNeighborsResponse {
+            neighbors,
+            edge_weights,
+        }))
+    }
+
+    async fn get_concept_parents(
+        &self,
+        request: Request<GetConceptParentsRequest>,
+    ) -> Result<Response<GetConceptParentsResponse>, Status> {
+        let user_id = get_user_id(&request);
+        let req = request.into_inner();
+        let col_name = if req.collection.is_empty() {
+            "default".to_string()
+        } else {
+            req.collection
+        };
+        let layer = req.layer as usize;
+        let limit = if req.limit == 0 {
+            32
+        } else {
+            req.limit as usize
+        };
+        let Some(col) = self.manager.get(&user_id, &col_name).await else {
+            return Err(Status::not_found(format!(
+                "Collection '{col_name}' not found"
+            )));
+        };
+        let upper_layer = layer.saturating_add(1);
+        let (ids, resolved_layer) = match col.graph_neighbors(req.id, upper_layer, limit) {
+            Ok(ids) => (ids, upper_layer),
+            Err(_) => (
+                col.graph_neighbors(req.id, layer, limit)
+                    .map_err(Status::invalid_argument)?,
+                layer,
+            ),
+        };
+        let parents = ids
+            .into_iter()
+            .map(|id| build_graph_node(&col, id, resolved_layer))
+            .collect();
+        Ok(Response::new(GetConceptParentsResponse { parents }))
+    }
+
+    async fn traverse(
+        &self,
+        request: Request<TraverseRequest>,
+    ) -> Result<Response<TraverseResponse>, Status> {
+        let user_id = get_user_id(&request);
+        let req = request.into_inner();
+        let col_name = if req.collection.is_empty() {
+            "default".to_string()
+        } else {
+            req.collection
+        };
+        let layer = req.layer as usize;
+        let max_depth = if req.max_depth == 0 {
+            2
+        } else {
+            req.max_depth as usize
+        };
+        let max_nodes = if req.max_nodes == 0 {
+            256
+        } else {
+            req.max_nodes as usize
+        };
+        let (exact_filter, complex_filters) =
+            parse_graph_filters(req.filter.into_iter().collect(), req.filters);
+        let Some(col) = self.manager.get(&user_id, &col_name).await else {
+            return Err(Status::not_found(format!(
+                "Collection '{col_name}' not found"
+            )));
+        };
+        let mut ids = col
+            .graph_traverse(req.start_id, layer, max_depth, max_nodes)
+            .map_err(Status::invalid_argument)?;
+        if !exact_filter.is_empty() || !complex_filters.is_empty() {
+            ids.retain(|id| {
+                let meta = col.metadata_by_id(*id);
+                matches_filter_exprs(&meta, &exact_filter, &complex_filters)
+            });
+        }
+        let nodes = ids
+            .into_iter()
+            .map(|id| build_graph_node(&col, id, layer))
+            .collect();
+        Ok(Response::new(TraverseResponse { nodes }))
+    }
+
+    async fn find_semantic_clusters(
+        &self,
+        request: Request<FindSemanticClustersRequest>,
+    ) -> Result<Response<FindSemanticClustersResponse>, Status> {
+        let user_id = get_user_id(&request);
+        let req = request.into_inner();
+        let col_name = if req.collection.is_empty() {
+            "default".to_string()
+        } else {
+            req.collection
+        };
+        let layer = req.layer as usize;
+        let min_cluster_size = if req.min_cluster_size == 0 {
+            3
+        } else {
+            req.min_cluster_size as usize
+        };
+        let max_clusters = if req.max_clusters == 0 {
+            32
+        } else {
+            req.max_clusters as usize
+        };
+        let max_nodes = if req.max_nodes == 0 {
+            10_000
+        } else {
+            req.max_nodes as usize
+        };
+        let Some(col) = self.manager.get(&user_id, &col_name).await else {
+            return Err(Status::not_found(format!(
+                "Collection '{col_name}' not found"
+            )));
+        };
+        let clusters = col
+            .graph_clusters(layer, min_cluster_size, max_clusters, max_nodes)
+            .map_err(Status::internal)?
+            .into_iter()
+            .map(|node_ids| GraphCluster { node_ids })
+            .collect();
+        Ok(Response::new(FindSemanticClustersResponse { clusters }))
     }
 
     type MonitorStream = ReceiverStream<Result<SystemStats, Status>>;
@@ -595,6 +1022,7 @@ impl Database for HyperspaceService {
     }
 
     type ReplicateStream = ReceiverStream<Result<ReplicationLog, Status>>;
+    type SubscribeToEventsStream = ReceiverStream<Result<EventMessage, Status>>;
 
     async fn get_digest(
         &self,
@@ -702,8 +1130,17 @@ impl Database for HyperspaceService {
         let user_id = get_user_id(&request);
         let req = request.into_inner();
         println!("🔧 Rebuild Index Request for: '{}'", req.name);
+        let vacuum_filter = parse_vacuum_filter(req.filter_query)?;
 
-        match self.manager.rebuild_collection(&user_id, &req.name).await {
+        let rebuild_res = if let Some(filter) = vacuum_filter {
+            self.manager
+                .rebuild_collection_with_filter(&user_id, &req.name, Some(filter))
+                .await
+        } else {
+            self.manager.rebuild_collection(&user_id, &req.name).await
+        };
+
+        match rebuild_res {
             Ok(()) => Ok(Response::new(
                 hyperspace_proto::hyperspace::StatusResponse {
                     status: "Index rebuilt and reloaded successfully".to_string(),
@@ -711,6 +1148,88 @@ impl Database for HyperspaceService {
             )),
             Err(e) => Err(Status::internal(e)),
         }
+    }
+
+    async fn subscribe_to_events(
+        &self,
+        request: Request<EventSubscriptionRequest>,
+    ) -> Result<Response<Self::SubscribeToEventsStream>, Status> {
+        let req = request.into_inner();
+        let wanted: HashSet<i32> = req.types.into_iter().collect();
+        let filter_collection = req.collection.unwrap_or_default();
+        let mut rx = self.replication_tx.subscribe();
+        let (tx, out_rx) = mpsc::channel(100);
+
+        tokio::spawn(async move {
+            loop {
+                let log = match rx.recv().await {
+                    Ok(log) => log,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                        eprintln!("Event stream lagged, skipped {skipped} messages");
+                        continue;
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                };
+
+                if !filter_collection.is_empty() && filter_collection != log.collection {
+                    continue;
+                }
+
+                let event = match log.operation {
+                    Some(replication_log::Operation::Insert(op)) => {
+                        let ty = EventType::VectorInserted as i32;
+                        if !wanted.is_empty() && !wanted.contains(&ty) {
+                            continue;
+                        }
+                        let typed_metadata = if op.typed_metadata.is_empty() {
+                            extract_typed_metadata(&op.metadata)
+                        } else {
+                            op.typed_metadata
+                        };
+                        let metadata = strip_internal_metadata(&op.metadata);
+                        EventMessage {
+                            r#type: ty,
+                            payload: Some(hyperspace_proto::hyperspace::event_message::Payload::VectorInserted(
+                                VectorInsertedEvent {
+                                    id: op.id,
+                                    collection: log.collection.clone(),
+                                    logical_clock: log.logical_clock,
+                                    origin_node_id: log.origin_node_id.clone(),
+                                    metadata,
+                                    typed_metadata,
+                                },
+                            )),
+                        }
+                    }
+                    Some(replication_log::Operation::Delete(op)) => {
+                        let ty = EventType::VectorDeleted as i32;
+                        if !wanted.is_empty() && !wanted.contains(&ty) {
+                            continue;
+                        }
+                        EventMessage {
+                            r#type: ty,
+                            payload: Some(
+                                hyperspace_proto::hyperspace::event_message::Payload::VectorDeleted(
+                                    VectorDeletedEvent {
+                                        id: op.id,
+                                        collection: log.collection.clone(),
+                                        logical_clock: log.logical_clock,
+                                        origin_node_id: log.origin_node_id.clone(),
+                                    },
+                                ),
+                            ),
+                        }
+                    }
+                    _ => continue,
+                };
+
+                if tx.send(Ok(event)).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        Ok(Response::new(ReceiverStream::new(out_rx)))
     }
 
     async fn configure(
