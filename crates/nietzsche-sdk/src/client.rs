@@ -32,11 +32,18 @@
 use nietzsche_api::pb::{
     self,
     nietzsche_db_client::NietzscheDbClient,
+    BatchInsertNodesRequest, BatchInsertNodesResponse,
+    BatchInsertEdgesRequest, BatchInsertEdgesResponse,
     DiffusionRequest, DiffusionResponse, EdgeIdRequest, EdgeResponse,
     Empty, InsertEdgeRequest, InsertNodeRequest, KnnRequest, KnnResponse,
     NodeIdRequest, NodeResponse, QueryRequest, QueryResponse,
     SleepRequest, SleepResponse, StatsResponse, StatusResponse,
     TraversalRequest, TraversalResponse, UpdateEnergyRequest,
+    // Algorithm RPCs
+    PageRankRequest, AlgorithmScoreResponse, LouvainRequest, AlgorithmCommunityResponse,
+    LabelPropRequest, BetweennessRequest, ClosenessRequest, DegreeCentralityRequest,
+    WccRequest, SccRequest, AStarRequest, AStarResponse,
+    TriangleCountRequest, TriangleCountResponse, JaccardRequest, SimilarityResponse,
 };
 use tonic::transport::{Channel, Uri};
 use uuid::Uuid;
@@ -209,6 +216,48 @@ impl NietzscheClient {
         self.inner.delete_edge(req).await.map(|r| r.into_inner())
     }
 
+    // ── Batch operations ───────────────────────────────
+
+    /// Bulk-insert multiple nodes in a single RPC call.
+    pub async fn batch_insert_nodes(
+        &mut self,
+        nodes: Vec<InsertNodeParams>,
+        collection: &str,
+    ) -> Result<BatchInsertNodesResponse, tonic::Status> {
+        let proto_nodes: Vec<InsertNodeRequest> = nodes.into_iter().map(|p| {
+            InsertNodeRequest {
+                id:         p.id.map(|u| u.to_string()).unwrap_or_default(),
+                embedding:  Some(pb::PoincareVector { coords: p.coords, dim: 0 }),
+                content:    serde_json::to_vec(&p.content).unwrap_or_default(),
+                node_type:  p.node_type,
+                energy:     p.energy,
+                collection: String::new(),
+            }
+        }).collect();
+        let req = BatchInsertNodesRequest { nodes: proto_nodes, collection: collection.into() };
+        self.inner.batch_insert_nodes(req).await.map(|r| r.into_inner())
+    }
+
+    /// Bulk-insert multiple edges in a single RPC call.
+    pub async fn batch_insert_edges(
+        &mut self,
+        edges: Vec<InsertEdgeParams>,
+        collection: &str,
+    ) -> Result<BatchInsertEdgesResponse, tonic::Status> {
+        let proto_edges: Vec<InsertEdgeRequest> = edges.into_iter().map(|p| {
+            InsertEdgeRequest {
+                id:         p.id.map(|u| u.to_string()).unwrap_or_default(),
+                from:       p.from.to_string(),
+                to:         p.to.to_string(),
+                edge_type:  p.edge_type,
+                weight:     p.weight,
+                collection: String::new(),
+            }
+        }).collect();
+        let req = BatchInsertEdgesRequest { edges: proto_edges, collection: collection.into() };
+        self.inner.batch_insert_edges(req).await.map(|r| r.into_inner())
+    }
+
     // ── NQL query ─────────────────────────────────────
 
     /// Execute a Nietzsche Query Language (NQL) statement.
@@ -300,6 +349,125 @@ impl NietzscheClient {
             collection:          String::new(),
         };
         self.inner.trigger_sleep(req).await.map(|r| r.into_inner())
+    }
+
+    // ── Graph Algorithms ──────────────────────────────
+
+    /// Run PageRank on the graph.
+    pub async fn run_pagerank(
+        &mut self,
+        damping: f64,
+        max_iterations: u32,
+    ) -> Result<AlgorithmScoreResponse, tonic::Status> {
+        let req = PageRankRequest {
+            collection: String::new(),
+            damping_factor: damping,
+            max_iterations,
+            convergence_threshold: 0.0,
+        };
+        self.inner.run_page_rank(req).await.map(|r| r.into_inner())
+    }
+
+    /// Run Louvain community detection.
+    pub async fn run_louvain(
+        &mut self,
+        max_iterations: u32,
+        resolution: f64,
+    ) -> Result<AlgorithmCommunityResponse, tonic::Status> {
+        let req = LouvainRequest {
+            collection: String::new(),
+            max_iterations,
+            resolution,
+        };
+        self.inner.run_louvain(req).await.map(|r| r.into_inner())
+    }
+
+    /// Run Label Propagation community detection.
+    pub async fn run_label_prop(
+        &mut self,
+        max_iterations: u32,
+    ) -> Result<AlgorithmCommunityResponse, tonic::Status> {
+        let req = LabelPropRequest {
+            collection: String::new(),
+            max_iterations,
+        };
+        self.inner.run_label_prop(req).await.map(|r| r.into_inner())
+    }
+
+    /// Run Betweenness centrality.
+    pub async fn run_betweenness(
+        &mut self,
+        sample_size: u32,
+    ) -> Result<AlgorithmScoreResponse, tonic::Status> {
+        let req = BetweennessRequest {
+            collection: String::new(),
+            sample_size,
+        };
+        self.inner.run_betweenness(req).await.map(|r| r.into_inner())
+    }
+
+    /// Run Closeness centrality.
+    pub async fn run_closeness(&mut self) -> Result<AlgorithmScoreResponse, tonic::Status> {
+        let req = ClosenessRequest { collection: String::new() };
+        self.inner.run_closeness(req).await.map(|r| r.into_inner())
+    }
+
+    /// Run Degree centrality.
+    pub async fn run_degree_centrality(
+        &mut self,
+        direction: &str,
+    ) -> Result<AlgorithmScoreResponse, tonic::Status> {
+        let req = DegreeCentralityRequest {
+            collection: String::new(),
+            direction: direction.to_string(),
+        };
+        self.inner.run_degree_centrality(req).await.map(|r| r.into_inner())
+    }
+
+    /// Run Weakly Connected Components.
+    pub async fn run_wcc(&mut self) -> Result<AlgorithmCommunityResponse, tonic::Status> {
+        let req = WccRequest { collection: String::new() };
+        self.inner.run_wcc(req).await.map(|r| r.into_inner())
+    }
+
+    /// Run Strongly Connected Components.
+    pub async fn run_scc(&mut self) -> Result<AlgorithmCommunityResponse, tonic::Status> {
+        let req = SccRequest { collection: String::new() };
+        self.inner.run_scc(req).await.map(|r| r.into_inner())
+    }
+
+    /// A* pathfinding using Poincare distance heuristic.
+    pub async fn run_astar(
+        &mut self,
+        start: Uuid,
+        goal: Uuid,
+    ) -> Result<AStarResponse, tonic::Status> {
+        let req = AStarRequest {
+            collection: String::new(),
+            start_node_id: start.to_string(),
+            goal_node_id: goal.to_string(),
+        };
+        self.inner.run_a_star(req).await.map(|r| r.into_inner())
+    }
+
+    /// Count triangles in the graph.
+    pub async fn run_triangle_count(&mut self) -> Result<TriangleCountResponse, tonic::Status> {
+        let req = TriangleCountRequest { collection: String::new() };
+        self.inner.run_triangle_count(req).await.map(|r| r.into_inner())
+    }
+
+    /// Jaccard node similarity.
+    pub async fn run_jaccard(
+        &mut self,
+        top_k: u32,
+        threshold: f64,
+    ) -> Result<SimilarityResponse, tonic::Status> {
+        let req = JaccardRequest {
+            collection: String::new(),
+            top_k,
+            threshold,
+        };
+        self.inner.run_jaccard_similarity(req).await.map(|r| r.into_inner())
     }
 
     // ── Admin ─────────────────────────────────────────

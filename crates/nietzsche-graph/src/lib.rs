@@ -34,10 +34,13 @@
 //!   and mandatory rescore with exact hyperbolic distance.
 
 pub mod adjacency;
+pub mod backup;
 pub mod collection_manager;
 pub mod db;
 pub mod embedded_vector_store;
 pub mod error;
+pub mod fulltext;
+pub mod import_export;
 pub mod model;
 pub mod storage;
 pub mod transaction;
@@ -56,3 +59,10 @@ pub use traversal::{
     bfs, diffusion_walk, dijkstra, shortest_path, BfsConfig, DiffusionConfig, DijkstraConfig,
 };
 pub use wal::{GraphWal, GraphWalEntry};
+pub use backup::{BackupManager, BackupInfo};
+pub use fulltext::{FullTextIndex, FtsResult};
+pub use import_export::{
+    ImportResult, export_nodes_csv, export_edges_csv,
+    export_nodes_jsonl, export_edges_jsonl,
+    import_nodes_jsonl, import_edges_jsonl,
+};

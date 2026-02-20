@@ -12,6 +12,7 @@ nietzsche-pregel      = { workspace = true }
 nietzsche-sleep       = { workspace = true }
 nietzsche-zaratustra  = { workspace = true }
 nietzsche-sensory     = { workspace = true }
+nietzsche-algo        = { workspace = true }
 tonic             = { workspace = true }
 prost             = { workspace = true }
 serde             = { workspace = true }
@@ -21,6 +22,9 @@ tokio             = { workspace = true }
 tracing           = { workspace = true }
 rand              = { workspace = true }
 uuid              = { workspace = true }
+async-stream      = { workspace = true }
+tokio-stream      = { workspace = true }
+futures-core      = "0.3"
 
 [build-dependencies]
 tonic-build = "0.10"

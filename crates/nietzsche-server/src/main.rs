@@ -31,15 +31,19 @@ use std::time::Duration;
 use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 
-use nietzsche_api::NietzscheServer;
+use nietzsche_api::{CdcBroadcaster, NietzscheServer};
 use nietzsche_graph::CollectionManager;
 use nietzsche_sleep::{SleepConfig, SleepCycle};
 use nietzsche_zaratustra::ZaratustraEngine;
 
+mod auth;
+mod cluster_service;
 mod config;
 mod dashboard;
 mod html;
+mod metrics;
 use config::Config;
+use metrics::OperationMetrics;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -176,18 +180,54 @@ async fn main() -> anyhow::Result<()> {
         info!("Zaratustra scheduler disabled (ZARATUSTRA_INTERVAL_SECS=0)");
     }
 
+    // ── CDC broadcaster ───────────────────────────────────────────────────────
+    let cdc = Arc::new(CdcBroadcaster::new(4096));
+
+    // ── Prometheus metrics ─────────────────────────────────────────────────────
+    let ops = Arc::new(OperationMetrics::new());
+
+    // ── Cluster ───────────────────────────────────────────────────────────────
+    let cluster = if config.cluster_enabled {
+        let role = cluster_service::parse_role(&config.cluster_role);
+        let local_addr = format!("[::]:{}", config.port);
+        let (registry, local_id) = cluster_service::build_registry(
+            &config.cluster_node_name,
+            &local_addr,
+            role,
+            &config.cluster_seeds,
+        );
+        info!(
+            node_name  = %config.cluster_node_name,
+            role       = %config.cluster_role,
+            seeds      = %config.cluster_seeds,
+            peer_count = registry.len(),
+            "cluster mode enabled"
+        );
+        cluster_service::start_heartbeat(registry.clone(), local_id, 30);
+        Some(registry)
+    } else {
+        info!("cluster mode disabled (NIETZSCHE_CLUSTER_ENABLED=false)");
+        None
+    };
+
     // ── HTTP dashboard ────────────────────────────────────────────────────────
     if config.dashboard_port > 0 {
-        let cm_dash = Arc::clone(&cm);
-        let port    = config.dashboard_port;
-        tokio::spawn(async move { dashboard::serve(cm_dash, port).await });
+        let cm_dash      = Arc::clone(&cm);
+        let ops_dash     = Arc::clone(&ops);
+        let port         = config.dashboard_port;
+        let cluster_dash = cluster.clone();
+        tokio::spawn(async move { dashboard::serve(cm_dash, ops_dash, port, cluster_dash).await });
     } else {
         info!("dashboard disabled (NIETZSCHE_DASHBOARD_PORT=0)");
     }
 
+    // ── gRPC authentication ──────────────────────────────────────────────────
+    let api_key = std::env::var("NIETZSCHE_API_KEY").ok();
+    let interceptor = auth::AuthInterceptor::new(api_key);
+
     // ── gRPC server ───────────────────────────────────────────────────────────
     let addr: SocketAddr = format!("[::]:{}", config.port).parse()?;
-    let server = NietzscheServer::new(Arc::clone(&cm));
+    let server = NietzscheServer::new(Arc::clone(&cm), Arc::clone(&cdc));
 
     let reflection = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(nietzsche_api::NIETZSCHE_DESCRIPTOR)
@@ -196,10 +236,16 @@ async fn main() -> anyhow::Result<()> {
 
     info!(%addr, "gRPC server listening");
 
+    let db_service = server.into_service();
+    let authed_service = tonic::service::interceptor::InterceptedService::new(
+        db_service,
+        interceptor,
+    );
+
     tokio::select! {
         result = tonic::transport::Server::builder()
             .add_service(reflection)
-            .add_service(server.into_service())
+            .add_service(authed_service)
             .serve(addr) =>
         {
             if let Err(e) = result {

@@ -1,0 +1,13 @@
+[package]
+name = "nietzsche-algo"
+version = "0.1.0"
+edition = "2021"
+description = "Graph algorithm library for NietzscheDB (PageRank, Louvain, WCC, Betweenness, A*, etc.)"
+
+[dependencies]
+nietzsche-graph = { workspace = true }
+uuid            = { workspace = true }
+dashmap         = { workspace = true }
+ordered-float   = { workspace = true }
+rayon           = { workspace = true }
+rand            = { workspace = true }

@@ -77,6 +77,22 @@ pub enum QueryResult {
     TxCommit,
     /// Phase F: `ROLLBACK` was parsed — caller must rollback the active transaction.
     TxRollback,
+    /// Phase D: Result of `MERGE (n:Type {key: val}) …` — the caller (gRPC handler)
+    /// must acquire a write lock and perform the actual upsert.
+    MergeNodeRequest {
+        node_type:     Option<String>,
+        match_keys:    serde_json::Value,
+        on_create_set: serde_json::Value,
+        on_match_set:  serde_json::Value,
+    },
+    /// Phase D: Result of `MERGE (a)-[:TYPE]->(b) …` — edge upsert intent.
+    MergeEdgeRequest {
+        from_match:    serde_json::Value,
+        to_match:      serde_json::Value,
+        edge_type:     Option<String>,
+        on_create_set: serde_json::Value,
+        on_match_set:  serde_json::Value,
+    },
 }
 
 /// A typed scalar value returned by aggregation or property-projection queries.
@@ -114,9 +130,7 @@ pub fn execute(
         Query::BeginTx               => Ok(vec![QueryResult::TxBegin]),
         Query::CommitTx              => Ok(vec![QueryResult::TxCommit]),
         Query::RollbackTx            => Ok(vec![QueryResult::TxRollback]),
-        Query::Merge(_)              => Err(QueryError::Execution(
-            "MERGE via NQL requires mutation access; use the MergeNode/MergeEdge RPC directly".into()
-        )),
+        Query::Merge(m)              => execute_merge(m, params),
     }
 }
 
@@ -448,6 +462,89 @@ fn execute_reconstruct(
         modality: query.modality.clone(),
         quality:  query.quality.clone(),
     }])
+}
+
+// ─────────────────────────────────────────────
+// MERGE executor (Phase D)
+// ─────────────────────────────────────────────
+
+fn execute_merge(
+    query:  &MergeQuery,
+    params: &Params,
+) -> Result<Vec<QueryResult>, QueryError> {
+    match &query.pattern {
+        MergePattern::Node(np) => {
+            let match_keys = props_to_json(&np.properties, params)?;
+            let on_create  = sets_to_json(&query.on_create, params)?;
+            let on_match   = sets_to_json(&query.on_match, params)?;
+
+            Ok(vec![QueryResult::MergeNodeRequest {
+                node_type:     np.label.clone(),
+                match_keys,
+                on_create_set: on_create,
+                on_match_set:  on_match,
+            }])
+        }
+        MergePattern::Edge(ep) => {
+            let from_match = props_to_json(&ep.from.properties, params)?;
+            let to_match   = props_to_json(&ep.to.properties, params)?;
+            let on_create  = sets_to_json(&query.on_create, params)?;
+            let on_match   = sets_to_json(&query.on_match, params)?;
+
+            Ok(vec![QueryResult::MergeEdgeRequest {
+                from_match,
+                to_match,
+                edge_type: ep.edge_label.clone(),
+                on_create_set: on_create,
+                on_match_set:  on_match,
+            }])
+        }
+    }
+}
+
+/// Convert merge-pattern properties `[(key, Expr)]` into a JSON object.
+fn props_to_json(
+    props:  &[(String, Expr)],
+    params: &Params,
+) -> Result<serde_json::Value, QueryError> {
+    let mut map = serde_json::Map::new();
+    for (key, expr) in props {
+        map.insert(key.clone(), expr_to_json(expr, params)?);
+    }
+    Ok(serde_json::Value::Object(map))
+}
+
+/// Convert `SetAssignment` list into a JSON object `{ field: value, … }`.
+fn sets_to_json(
+    sets:   &[SetAssignment],
+    params: &Params,
+) -> Result<serde_json::Value, QueryError> {
+    let mut map = serde_json::Map::new();
+    for sa in sets {
+        map.insert(sa.field.clone(), expr_to_json(&sa.value, params)?);
+    }
+    Ok(serde_json::Value::Object(map))
+}
+
+/// Resolve an `Expr` to a `serde_json::Value` for MERGE property maps.
+fn expr_to_json(expr: &Expr, params: &Params) -> Result<serde_json::Value, QueryError> {
+    match expr {
+        Expr::Float(f)  => Ok(serde_json::json!(*f)),
+        Expr::Int(i)    => Ok(serde_json::json!(*i)),
+        Expr::Str(s)    => Ok(serde_json::json!(s)),
+        Expr::Bool(b)   => Ok(serde_json::json!(*b)),
+        Expr::Param(name) => match params.get(name.as_str()) {
+            Some(ParamValue::Float(f)) => Ok(serde_json::json!(*f)),
+            Some(ParamValue::Int(i))   => Ok(serde_json::json!(*i)),
+            Some(ParamValue::Str(s))   => Ok(serde_json::json!(s)),
+            Some(ParamValue::Uuid(u))  => Ok(serde_json::json!(u.to_string())),
+            Some(ParamValue::Vector(v)) => Ok(serde_json::json!(v)),
+            None => Err(QueryError::ParamNotFound { name: name.clone() }),
+        },
+        _ => Err(QueryError::Execution(
+            "MERGE properties only support literals and $params".into()
+        )),
+    }
 }
 
 fn resolve_diffuse_from(from: &DiffuseFrom, params: &Params) -> Result<Uuid, QueryError> {

@@ -1,4 +1,4 @@
-// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
+// Copyright (C) 2025-2026 Jose R F Junior <petweofc@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 package nietzsche
@@ -168,20 +168,20 @@ func (s *mockServer) TriggerSleep(_ context.Context, _ *pb.SleepRequest) (*pb.Sl
 
 func (s *mockServer) InvokeZaratustra(_ context.Context, _ *pb.ZaratustraRequest) (*pb.ZaratustraResponse, error) {
 	return &pb.ZaratustraResponse{
-		NodesUpdated:      50,
-		MeanEnergyBefore:  0.6,
-		MeanEnergyAfter:   0.72,
-		TotalEnergyDelta:  6.0,
-		EchoesCreated:     3,
-		EchoesEvicted:     1,
-		TotalEchoes:       12,
-		EliteCount:        5,
-		EliteThreshold:    0.9,
-		MeanEliteEnergy:   0.95,
-		MeanBaseEnergy:    0.65,
-		EliteNodeIds:      []string{"elite-1", "elite-2"},
-		DurationMs:        150,
-		CyclesRun:         1,
+		NodesUpdated:     50,
+		MeanEnergyBefore: 0.6,
+		MeanEnergyAfter:  0.72,
+		TotalEnergyDelta: 6.0,
+		EchoesCreated:    3,
+		EchoesEvicted:    1,
+		TotalEchoes:      12,
+		EliteCount:       5,
+		EliteThreshold:   0.9,
+		MeanEliteEnergy:  0.95,
+		MeanBaseEnergy:   0.65,
+		EliteNodeIds:     []string{"elite-1", "elite-2"},
+		DurationMs:       150,
+		CyclesRun:        1,
 	}, nil
 }
 
