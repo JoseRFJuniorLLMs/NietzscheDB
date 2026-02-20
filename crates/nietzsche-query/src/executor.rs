@@ -114,6 +114,9 @@ pub fn execute(
         Query::BeginTx               => Ok(vec![QueryResult::TxBegin]),
         Query::CommitTx              => Ok(vec![QueryResult::TxCommit]),
         Query::RollbackTx            => Ok(vec![QueryResult::TxRollback]),
+        Query::Merge(_)              => Err(QueryError::Execution(
+            "MERGE via NQL requires mutation access; use the MergeNode/MergeEdge RPC directly".into()
+        )),
     }
 }
 
@@ -179,6 +182,19 @@ fn execute_explain(
         Query::BeginTx               => "BeginTransaction".into(),
         Query::CommitTx              => "CommitTransaction".into(),
         Query::RollbackTx            => "RollbackTransaction".into(),
+        Query::Merge(m)              => {
+            let pat = match &m.pattern {
+                crate::ast::MergePattern::Node(np) =>
+                    format!("MergeNode(type={})", np.label.as_deref().unwrap_or("*")),
+                crate::ast::MergePattern::Edge(ep) =>
+                    format!("MergeEdge(type={})", ep.edge_label.as_deref().unwrap_or("*")),
+            };
+            format!("{} -> OnCreate({}) -> OnMatch({})",
+                pat,
+                m.on_create.len(),
+                m.on_match.len(),
+            )
+        }
     };
     Ok(vec![QueryResult::ExplainPlan(plan)])
 }

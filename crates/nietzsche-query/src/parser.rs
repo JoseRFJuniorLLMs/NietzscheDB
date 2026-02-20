@@ -30,6 +30,7 @@ fn parse_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
     for inner in pair.into_inner() {
         match inner.as_rule() {
             Rule::match_query              => return Ok(Query::Match(parse_match_query(inner)?)),
+            Rule::merge_query              => return Ok(Query::Merge(parse_merge_query(inner)?)),
             Rule::diffuse_query            => return Ok(Query::Diffuse(parse_diffuse_query(inner)?)),
             Rule::reconstruct_query        => return Ok(Query::Reconstruct(parse_reconstruct_query(inner)?)),
             Rule::explain_query            => return parse_explain_query(inner),
@@ -118,16 +119,16 @@ fn parse_path_pattern(pair: Pair<Rule>) -> Result<PathPattern, QueryError> {
 
     let edge_dir_pair = inner.next()
         .ok_or_else(|| QueryError::Parse("missing edge direction".into()))?;
-    let (direction, edge_label) = parse_edge_dir(edge_dir_pair)?;
+    let (direction, edge_label, hop_range) = parse_edge_dir(edge_dir_pair)?;
 
     let to = parse_node_pattern(
         inner.next().ok_or_else(|| QueryError::Parse("missing path 'to' node".into()))?
     )?;
 
-    Ok(PathPattern { from, edge_label, direction, to })
+    Ok(PathPattern { from, edge_label, direction, to, hop_range })
 }
 
-fn parse_edge_dir(pair: Pair<Rule>) -> Result<(Direction, Option<String>), QueryError> {
+fn parse_edge_dir(pair: Pair<Rule>) -> Result<(Direction, Option<String>, Option<HopRange>), QueryError> {
     let inner = pair.into_inner().next()
         .ok_or_else(|| QueryError::Parse("empty edge_dir".into()))?;
 
@@ -137,11 +138,153 @@ fn parse_edge_dir(pair: Pair<Rule>) -> Result<(Direction, Option<String>), Query
         r => return Err(QueryError::Parse(format!("unexpected edge rule: {r:?}"))),
     };
 
-    let edge_label = inner.into_inner()
-        .find(|p| p.as_rule() == Rule::edge_label)
-        .map(|p| p.as_str().to_string());
+    let mut edge_label = None;
+    let mut hop_range  = None;
 
-    Ok((direction, edge_label))
+    for child in inner.into_inner() {
+        match child.as_rule() {
+            Rule::edge_label => {
+                edge_label = Some(child.as_str().to_string());
+            }
+            Rule::hop_range => {
+                hop_range = Some(parse_hop_range(child)?);
+            }
+            r => return Err(QueryError::Parse(format!("unexpected in edge: {r:?}"))),
+        }
+    }
+
+    Ok((direction, edge_label, hop_range))
+}
+
+fn parse_hop_range(pair: Pair<Rule>) -> Result<HopRange, QueryError> {
+    let mut inner = pair.into_inner();
+    let min: usize = inner.next()
+        .ok_or_else(|| QueryError::Parse("hop_range missing min".into()))?
+        .as_str().parse()
+        .map_err(|_| QueryError::Parse("bad hop_range min".into()))?;
+    let max = match inner.next() {
+        Some(p) => p.as_str().parse()
+            .map_err(|_| QueryError::Parse("bad hop_range max".into()))?,
+        None => min,
+    };
+    Ok(HopRange { min, max })
+}
+
+// ── MERGE ─────────────────────────────────────────────────
+
+fn parse_merge_query(pair: Pair<Rule>) -> Result<MergeQuery, QueryError> {
+    let mut pattern   = None;
+    let mut on_create = Vec::new();
+    let mut on_match  = Vec::new();
+    let mut ret       = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::merge_pattern   => { pattern = Some(parse_merge_pattern(inner)?); }
+            Rule::on_create_clause => { on_create = parse_on_clause(inner)?; }
+            Rule::on_match_clause  => { on_match = parse_on_clause(inner)?; }
+            Rule::return_clause    => { ret = Some(parse_return_clause(inner)?); }
+            r => return Err(QueryError::Parse(format!("unexpected in merge_query: {r:?}"))),
+        }
+    }
+
+    Ok(MergeQuery {
+        pattern:   pattern.ok_or_else(|| QueryError::Parse("missing MERGE pattern".into()))?,
+        on_create,
+        on_match,
+        ret,
+    })
+}
+
+fn parse_merge_pattern(pair: Pair<Rule>) -> Result<MergePattern, QueryError> {
+    let inner = pair.into_inner().next()
+        .ok_or_else(|| QueryError::Parse("empty merge_pattern".into()))?;
+
+    match inner.as_rule() {
+        Rule::merge_edge_pattern => Ok(MergePattern::Edge(parse_merge_edge_pattern(inner)?)),
+        Rule::merge_node_pattern => Ok(MergePattern::Node(parse_merge_node_pattern(inner)?)),
+        r => Err(QueryError::Parse(format!("unexpected in merge_pattern: {r:?}"))),
+    }
+}
+
+fn parse_merge_node_pattern(pair: Pair<Rule>) -> Result<MergeNodePattern, QueryError> {
+    let mut inner = pair.into_inner();
+    let alias = inner.next()
+        .ok_or_else(|| QueryError::Parse("merge node missing alias".into()))?
+        .as_str().to_string();
+
+    let mut label      = None;
+    let mut properties = Vec::new();
+
+    for child in inner {
+        match child.as_rule() {
+            Rule::ident    => { label = Some(child.as_str().to_string()); }
+            Rule::prop_map => { properties = parse_prop_map(child)?; }
+            r => return Err(QueryError::Parse(format!("unexpected in merge_node_pattern: {r:?}"))),
+        }
+    }
+
+    Ok(MergeNodePattern { alias, label, properties })
+}
+
+fn parse_merge_edge_pattern(pair: Pair<Rule>) -> Result<MergeEdgePattern, QueryError> {
+    let mut inner = pair.into_inner();
+
+    let from = parse_merge_node_pattern(
+        inner.next().ok_or_else(|| QueryError::Parse("merge edge missing 'from' node".into()))?
+    )?;
+
+    let edge_dir_pair = inner.next()
+        .ok_or_else(|| QueryError::Parse("merge edge missing direction".into()))?;
+    let (direction, edge_label, _hop_range) = parse_edge_dir(edge_dir_pair)?;
+
+    let to = parse_merge_node_pattern(
+        inner.next().ok_or_else(|| QueryError::Parse("merge edge missing 'to' node".into()))?
+    )?;
+
+    Ok(MergeEdgePattern { from, edge_label, direction, to })
+}
+
+fn parse_prop_map(pair: Pair<Rule>) -> Result<Vec<(String, Expr)>, QueryError> {
+    let mut props = Vec::new();
+    for child in pair.into_inner() {
+        if child.as_rule() == Rule::prop_pair {
+            let mut pp = child.into_inner();
+            let key = pp.next()
+                .ok_or_else(|| QueryError::Parse("prop_pair missing key".into()))?
+                .as_str().to_string();
+            let val_pair = pp.next()
+                .ok_or_else(|| QueryError::Parse("prop_pair missing value".into()))?;
+            let val = parse_atom(val_pair)?;
+            props.push((key, val));
+        }
+    }
+    Ok(props)
+}
+
+fn parse_on_clause(pair: Pair<Rule>) -> Result<Vec<SetAssignment>, QueryError> {
+    let mut assignments = Vec::new();
+    for child in pair.into_inner() {
+        if child.as_rule() == Rule::set_clause {
+            for sc_child in child.into_inner() {
+                if sc_child.as_rule() == Rule::set_assignment {
+                    assignments.push(parse_set_assignment(sc_child)?);
+                }
+            }
+        }
+    }
+    Ok(assignments)
+}
+
+fn parse_set_assignment(pair: Pair<Rule>) -> Result<SetAssignment, QueryError> {
+    let mut inner = pair.into_inner();
+    let prop_pair = inner.next()
+        .ok_or_else(|| QueryError::Parse("set_assignment missing prop".into()))?;
+    let (alias, field) = parse_prop(prop_pair)?;
+    let val_pair = inner.next()
+        .ok_or_else(|| QueryError::Parse("set_assignment missing value".into()))?;
+    let value = parse_atom(val_pair)?;
+    Ok(SetAssignment { alias, field, value })
 }
 
 // ── WHERE ─────────────────────────────────────────────────

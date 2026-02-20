@@ -883,48 +883,52 @@ Por último (não bloqueia o resto):
 
 ---
 
-## Go SDK — Pré-requisito para Migração
+## Go SDK — ~~Pré-requisito para Migração~~ FEITO (2026-02-20)
 
-O EVA-Mind é escrito em Go. O `nietzsche-sdk` atual é só Rust.
-
-**Arquivo alvo**: novo `sdks/go/` (similar a `sdks/python/`)
+**Nome**: `sdk-papa-caolho`
+**Localização**: `sdks/go/`
+**Módulo Go**: `sdk-papa-caolho`
+**Cobertura**: 22/22 RPCs | 25 testes unitários | go build + go vet limpos
 
 ```go
-// nietzsche-go-sdk
-client, _ := nietzsche.Connect("localhost:50051")
+import nietzsche "sdk-papa-caolho"
 
-// MERGE
-res, _ := client.MergeNode(ctx, &nietzsche.MergeNodeRequest{
-    Collection: "eva_sessions",
-    MatchField: "id",
-    MatchValue: sessionID,
-    OnCreate: &nietzsche.NodeData{
-        Content: map[string]any{"started_at": time.Now(), "turn_count": 0},
-    },
-    OnMatchSet: map[string]any{"turn_count": nietzsche.Increment(1)},
-})
+client, _ := nietzsche.ConnectInsecure("localhost:50052")
+defer client.Close()
 
-// KNN
-results, _ := client.KnnSearch(ctx, &nietzsche.KnnRequest{
+// Insert node
+node, _ := client.InsertNode(ctx, nietzsche.InsertNodeOpts{
+    Coords:     embedding,
+    Content:    map[string]string{"text": "memory"},
+    NodeType:   "Semantic",
     Collection: "memories",
-    Vector:     embedding,
-    K:          20,
-    Filter:     nietzsche.FieldEq("idoso_id", patientID),
 })
 
-// NQL
-rows, _ := client.Query(ctx, `
-    MATCH (e:Event {id: $id})-[:RELATED_TO*1..4]-(related:Event)
-    WHERE related.id <> $id
-    RETURN related ORDER BY related.importance DESC LIMIT 10
-`, map[string]any{"id": eventID})
+// KNN search
+results, _ := client.KnnSearch(ctx, embedding, 20, "memories")
+
+// NQL query with typed params
+qr, _ := client.Query(ctx,
+    "MATCH (m:Memory) WHERE m.energy > $min RETURN m LIMIT 10",
+    map[string]interface{}{"min": 0.5}, "memories")
+
+// Sleep cycle
+sleep, _ := client.TriggerSleep(ctx, nietzsche.SleepOpts{Collection: "memories"})
+
+// Zaratustra evolution
+z, _ := client.InvokeZaratustra(ctx, nietzsche.ZaratustraOpts{Cycles: 1})
 ```
 
-- [ ] Gerado a partir do `.proto` via `protoc-gen-go-grpc`
-- [ ] Wrapper idiomático Go (sem expor proto diretamente)
-- [ ] Métodos: `Connect`, `InsertNode`, `MergeNode`, `MergeEdge`, `GetNode`, `DeleteNode`,
-      `InsertEdge`, `KnnSearch`, `Query`, `Bfs`, `CreateCollection`, `HealthCheck`
-- [ ] Context propagation + timeout defaults
+- [x] Gerado a partir do `.proto` via `protoc-gen-go-grpc`
+- [x] Wrapper idiomático Go (sem expor proto diretamente)
+- [x] Métodos: `Connect`, `ConnectInsecure`, `Close`, `InsertNode`, `GetNode`, `DeleteNode`,
+      `UpdateEnergy`, `InsertEdge`, `DeleteEdge`, `Query`, `KnnSearch`, `Bfs`, `Dijkstra`,
+      `Diffuse`, `CreateCollection`, `DropCollection`, `ListCollections`, `TriggerSleep`,
+      `InvokeZaratustra`, `InsertSensory`, `GetSensory`, `Reconstruct`, `DegradeSensory`,
+      `GetStats`, `HealthCheck`
+- [x] Context propagation nativo (todos os métodos aceitam `context.Context`)
+- [ ] MergeNode / MergeEdge (aguarda FASE D no servidor)
+- [ ] CacheGet/CacheSet/ListRPush/ListLRange (aguarda FASE C no servidor)
 - [ ] Exemplos em `sdks/go/examples/`
 
 ---
@@ -974,7 +978,8 @@ rows, _ := client.Query(ctx, `
 - [ ] **I.4** gRPC: `MediaPut`, `MediaGet`, `MediaDelete`, `MediaList`, `ConsolidateAudio`
 
 ### SDK
-- [ ] **SDK-Go** Cliente Go idiomático gerado do proto + wrapper (inclui Table Store + Media Store)
+- [x] **SDK-Go** Cliente Go idiomático gerado do proto + wrapper — `sdk-papa-caolho` (22 RPCs, 25 testes)
+- [ ] **SDK-Go** Adicionar métodos Table Store + Media Store (quando FASE H/I estiverem prontas no servidor)
 
 ### Métricas de Sucesso Finais
 ```

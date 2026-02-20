@@ -43,6 +43,13 @@ pub struct PoincareMetric;
 
 pub struct EuclideanMetric;
 
+/// Lorentz (Hyperboloid) metric for the upper sheet of the two-sheeted hyperboloid.
+///
+/// Points live on H^n: -t^2 + x_1^2 + ... + x_{n-1}^2 = -1 (upper sheet: t > 0).
+/// coord[0] is the time-like component; coords[1..] are space-like.
+/// Distance: d(x,y) = acosh(-<x,y>_L) where <x,y>_L uses Minkowski signature (-, +, ..., +).
+pub struct LorentzMetric;
+
 #[derive(Debug, Clone)]
 pub enum FilterExpr {
     Match {
@@ -322,5 +329,62 @@ impl<const N: usize> Metric<N> for CosineMetric {
     fn distance_binary(a: &BinaryHyperVector<N>, b: &HyperVector<N>) -> f64 {
         // Approximates Hamming distance for binary vectors.
         a.l2_distance_sq_to_float(b)
+    }
+}
+
+impl<const N: usize> Metric<N> for LorentzMetric {
+    fn name() -> &'static str {
+        "lorentz"
+    }
+
+    #[inline(always)]
+    fn distance(a: &[f64; N], b: &[f64; N]) -> f64 {
+        // Minkowski inner product with signature (-, +, +, ..., +)
+        let mut inner = -a[0] * b[0];
+        for i in 1..N {
+            inner += a[i] * b[i];
+        }
+        // d(a,b) = acosh(-<a,b>_L)
+        // On the hyperboloid, -<x,y>_L >= 1 always (equality iff x == y)
+        let arg = (-inner).max(1.0 + 1e-12);
+        arg.acosh()
+    }
+
+    fn validate(vector: &[f64; N]) -> Result<(), String> {
+        if !vector.iter().all(|v| v.is_finite()) {
+            return Err("Lorentz vector contains non-finite values".to_string());
+        }
+        // Upper sheet: t > 0
+        if vector[0] <= 0.0 {
+            return Err(format!(
+                "Lorentz vector must be on upper sheet (x[0] > 0), got x[0] = {}",
+                vector[0]
+            ));
+        }
+        // Hyperboloid constraint: -t^2 + |x|^2 = -1  =>  t^2 - |x|^2 = 1
+        let t_sq = vector[0] * vector[0];
+        let spatial_sq: f64 = vector[1..].iter().map(|&x| x * x).sum();
+        let minkowski_norm = t_sq - spatial_sq;
+        if (minkowski_norm - 1.0).abs() > 1e-6 {
+            return Err(format!(
+                "Vector not on unit hyperboloid: t^2 - |x|^2 = {minkowski_norm} (expected 1.0)"
+            ));
+        }
+        Ok(())
+    }
+
+    fn distance_quantized(_a: &QuantizedHyperVector<N>, _b: &HyperVector<N>) -> f64 {
+        panic!(
+            "Scalar quantization is not supported for LorentzMetric. \
+             Quantizing hyperboloid coordinates destroys the Minkowski norm constraint. \
+             Use QuantizationMode::None for Lorentz collections."
+        );
+    }
+
+    fn distance_binary(_a: &BinaryHyperVector<N>, _b: &HyperVector<N>) -> f64 {
+        panic!(
+            "Binary quantization is permanently rejected for hyperbolic metrics. \
+             sign(x) destroys hierarchical information encoded in magnitude."
+        );
     }
 }

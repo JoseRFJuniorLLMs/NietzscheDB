@@ -15,9 +15,33 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tonic::transport::Channel;
 use std::time::Instant;
 use sysinfo::{Pid, System};
+
+/// Shared operation counters for Prometheus metrics.
+pub struct OperationMetrics {
+    pub search_count: AtomicU64,
+    pub search_latency_sum_us: AtomicU64,
+    pub insert_count: AtomicU64,
+    pub insert_latency_sum_us: AtomicU64,
+    pub delete_count: AtomicU64,
+    pub error_count: AtomicU64,
+}
+
+impl OperationMetrics {
+    pub fn new() -> Self {
+        Self {
+            search_count: AtomicU64::new(0),
+            search_latency_sum_us: AtomicU64::new(0),
+            insert_count: AtomicU64::new(0),
+            insert_latency_sum_us: AtomicU64::new(0),
+            delete_count: AtomicU64::new(0),
+            error_count: AtomicU64::new(0),
+        }
+    }
+}
 #[cfg(not(windows))]
 use tikv_jemalloc_ctl::epoch;
 use tower_http::cors::CorsLayer;
@@ -111,6 +135,7 @@ pub async fn start_http_server(
 
     let start_time = Arc::new(Instant::now());
     let embedding_state = Arc::new(embedding_info);
+    let ops_metrics = Arc::new(OperationMetrics::new());
 
     let app = Router::new()
         .route(
@@ -144,7 +169,7 @@ pub async fn start_http_server(
         ))
         .fallback(static_handler)
         .layer(CorsLayer::permissive())
-        .with_state((manager, start_time, embedding_state));
+        .with_state((manager, start_time, embedding_state, ops_metrics));
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
     println!("HTTP Dashboard listening on http://{addr}");
@@ -215,10 +240,11 @@ struct CollectionSummary {
 }
 
 async fn get_cluster_status(
-    State((manager, _, _)): State<(
+    State((manager, _, _, _)): State<(
         Arc<CollectionManager>,
         Arc<Instant>,
         Arc<Option<EmbeddingInfo>>,
+        Arc<OperationMetrics>,
     )>,
 ) -> Json<crate::manager::ClusterState> {
     let state = manager.cluster_state.read().await;
@@ -226,10 +252,11 @@ async fn get_cluster_status(
 }
 
 async fn list_collections(
-    State((manager, _, _)): State<(
+    State((manager, _, _, _)): State<(
         Arc<CollectionManager>,
         Arc<Instant>,
         Arc<Option<EmbeddingInfo>>,
+        Arc<OperationMetrics>,
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> Json<Vec<CollectionSummary>> {
@@ -263,10 +290,11 @@ struct InsertPayload {
 }
 
 async fn create_collection(
-    State((manager, _, _)): State<(
+    State((manager, _, _, _)): State<(
         Arc<CollectionManager>,
         Arc<Instant>,
         Arc<Option<EmbeddingInfo>>,
+        Arc<OperationMetrics>,
     )>,
     Extension(ctx): Extension<RequestContext>,
     Json(payload): Json<CreateCollectionRequest>,
@@ -287,14 +315,16 @@ async fn create_collection(
 
 async fn insert_vector(
     Path(name): Path<String>,
-    State((manager, _, _)): State<(
+    State((manager, _, _, ops)): State<(
         Arc<CollectionManager>,
         Arc<Instant>,
         Arc<Option<EmbeddingInfo>>,
+        Arc<OperationMetrics>,
     )>,
     Extension(ctx): Extension<RequestContext>,
     Json(payload): Json<InsertPayload>,
 ) -> impl IntoResponse {
+    let start = Instant::now();
     if let Some(col) = manager.get(&ctx.user_id, &name).await {
         let clock = manager.cluster_state.read().await.logical_clock;
         let meta = payload.metadata.unwrap_or_default();
@@ -309,35 +339,51 @@ async fn insert_vector(
             )
             .await
         {
-            Ok(()) => StatusCode::OK.into_response(),
-            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+            Ok(()) => {
+                ops.insert_count.fetch_add(1, Ordering::Relaxed);
+                ops.insert_latency_sum_us.fetch_add(start.elapsed().as_micros() as u64, Ordering::Relaxed);
+                StatusCode::OK.into_response()
+            }
+            Err(e) => {
+                ops.error_count.fetch_add(1, Ordering::Relaxed);
+                (StatusCode::INTERNAL_SERVER_ERROR, e).into_response()
+            }
         }
     } else {
+        ops.error_count.fetch_add(1, Ordering::Relaxed);
         (StatusCode::NOT_FOUND, "Collection not found").into_response()
     }
 }
 
 async fn delete_collection(
     Path(name): Path<String>,
-    State((manager, _, _)): State<(
+    State((manager, _, _, ops)): State<(
         Arc<CollectionManager>,
         Arc<Instant>,
         Arc<Option<EmbeddingInfo>>,
+        Arc<OperationMetrics>,
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
     match manager.delete_collection(&ctx.user_id, &name).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(e) => (StatusCode::NOT_FOUND, e).into_response(),
+        Ok(()) => {
+            ops.delete_count.fetch_add(1, Ordering::Relaxed);
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Err(e) => {
+            ops.error_count.fetch_add(1, Ordering::Relaxed);
+            (StatusCode::NOT_FOUND, e).into_response()
+        }
     }
 }
 
 async fn get_stats(
     Path(name): Path<String>,
-    State((manager, _, _)): State<(
+    State((manager, _, _, _)): State<(
         Arc<CollectionManager>,
         Arc<Instant>,
         Arc<Option<EmbeddingInfo>>,
+        Arc<OperationMetrics>,
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
@@ -357,10 +403,11 @@ async fn get_stats(
 
 async fn get_collection_digest(
     Path(name): Path<String>,
-    State((manager, _, _)): State<(
+    State((manager, _, _, _)): State<(
         Arc<CollectionManager>,
         Arc<Instant>,
         Arc<Option<EmbeddingInfo>>,
+        Arc<OperationMetrics>,
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
@@ -375,10 +422,11 @@ async fn get_collection_digest(
 }
 
 async fn get_status(
-    State((_, start_time, embedding)): State<(
+    State((_, start_time, embedding, _)): State<(
         Arc<CollectionManager>,
         Arc<Instant>,
         Arc<Option<EmbeddingInfo>>,
+        Arc<OperationMetrics>,
     )>,
 ) -> Json<serde_json::Value> {
     let dim = std::env::var("HS_DIMENSION").unwrap_or("1024".to_string());
@@ -407,10 +455,11 @@ async fn get_status(
 }
 
 async fn get_metrics(
-    State((manager, _, _)): State<(
+    State((manager, _, _, _)): State<(
         Arc<CollectionManager>,
         Arc<Instant>,
         Arc<Option<EmbeddingInfo>>,
+        Arc<OperationMetrics>,
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
@@ -451,10 +500,11 @@ async fn get_metrics(
 }
 
 async fn get_prometheus_metrics(
-    State((manager, _, _)): State<(
+    State((manager, _, _, ops)): State<(
         Arc<CollectionManager>,
         Arc<Instant>,
         Arc<Option<EmbeddingInfo>>,
+        Arc<OperationMetrics>,
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
@@ -480,6 +530,16 @@ async fn get_prometheus_metrics(
 
     let disk_mb = calculate_dir_size("./data").unwrap_or(0) / 1_048_576;
 
+    // Operation counters
+    let search_count = ops.search_count.load(Ordering::Relaxed);
+    let search_latency_sum = ops.search_latency_sum_us.load(Ordering::Relaxed);
+    let insert_count = ops.insert_count.load(Ordering::Relaxed);
+    let insert_latency_sum = ops.insert_latency_sum_us.load(Ordering::Relaxed);
+    let delete_count = ops.delete_count.load(Ordering::Relaxed);
+    let error_count = ops.error_count.load(Ordering::Relaxed);
+    let avg_search_us = if search_count > 0 { search_latency_sum / search_count } else { 0 };
+    let avg_insert_us = if insert_count > 0 { insert_latency_sum / insert_count } else { 0 };
+
     let body = format!(
         "# HELP hyperspace_active_collections Number of collections in memory\n\
          # TYPE hyperspace_active_collections gauge\n\
@@ -498,7 +558,25 @@ async fn get_prometheus_metrics(
          hyperspace_disk_usage_mb {disk_mb}\n\
          # HELP hyperspace_cpu_usage_percent CPU usage percent\n\
          # TYPE hyperspace_cpu_usage_percent gauge\n\
-         hyperspace_cpu_usage_percent {cpu_percent}\n"
+         hyperspace_cpu_usage_percent {cpu_percent}\n\
+         # HELP hyperspace_search_total Total search operations via REST API\n\
+         # TYPE hyperspace_search_total counter\n\
+         hyperspace_search_total {search_count}\n\
+         # HELP hyperspace_search_latency_avg_us Average search latency in microseconds\n\
+         # TYPE hyperspace_search_latency_avg_us gauge\n\
+         hyperspace_search_latency_avg_us {avg_search_us}\n\
+         # HELP hyperspace_insert_total Total insert operations via REST API\n\
+         # TYPE hyperspace_insert_total counter\n\
+         hyperspace_insert_total {insert_count}\n\
+         # HELP hyperspace_insert_latency_avg_us Average insert latency in microseconds\n\
+         # TYPE hyperspace_insert_latency_avg_us gauge\n\
+         hyperspace_insert_latency_avg_us {avg_insert_us}\n\
+         # HELP hyperspace_delete_total Total delete operations via REST API\n\
+         # TYPE hyperspace_delete_total counter\n\
+         hyperspace_delete_total {delete_count}\n\
+         # HELP hyperspace_errors_total Total error responses via REST API\n\
+         # TYPE hyperspace_errors_total counter\n\
+         hyperspace_errors_total {error_count}\n"
     );
 
     (
@@ -535,10 +613,11 @@ struct PeekParams {
 
 async fn peek_collection(
     Path(name): Path<String>,
-    State((manager, _, _)): State<(
+    State((manager, _, _, _)): State<(
         Arc<CollectionManager>,
         Arc<Instant>,
         Arc<Option<EmbeddingInfo>>,
+        Arc<OperationMetrics>,
     )>,
     Extension(ctx): Extension<RequestContext>,
     Query(params): Query<PeekParams>,
@@ -570,14 +649,16 @@ fn default_ef_search() -> usize {
 
 async fn search_collection(
     Path(name): Path<String>,
-    State((manager, _, _)): State<(
+    State((manager, _, _, ops)): State<(
         Arc<CollectionManager>,
         Arc<Instant>,
         Arc<Option<EmbeddingInfo>>,
+        Arc<OperationMetrics>,
     )>,
     Extension(ctx): Extension<RequestContext>,
     Json(payload): Json<SearchReq>,
 ) -> impl IntoResponse {
+    let start = Instant::now();
     let k = payload.top_k.unwrap_or(10);
     if let Some(col) = manager.get(&ctx.user_id, &name).await {
         let dummy_params = SearchParams {
@@ -591,6 +672,8 @@ async fn search_collection(
             .await
         {
             Ok(res) => {
+                ops.search_count.fetch_add(1, Ordering::Relaxed);
+                ops.search_latency_sum_us.fetch_add(start.elapsed().as_micros() as u64, Ordering::Relaxed);
                 let mapped: Vec<serde_json::Value> = res
                     .iter()
                     .map(|(id, dist, meta)| {
@@ -603,9 +686,13 @@ async fn search_collection(
                     .collect();
                 Json(mapped).into_response()
             }
-            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+            Err(e) => {
+                ops.error_count.fetch_add(1, Ordering::Relaxed);
+                (StatusCode::INTERNAL_SERVER_ERROR, e).into_response()
+            }
         }
     } else {
+        ops.error_count.fetch_add(1, Ordering::Relaxed);
         (StatusCode::NOT_FOUND, "Collection not found").into_response()
     }
 }
@@ -620,10 +707,11 @@ async fn get_logs() -> Json<Vec<String>> {
 
 async fn rebuild_collection_http(
     Path(name): Path<String>,
-    State((manager, _, _)): State<(
+    State((manager, _, _, _)): State<(
         Arc<CollectionManager>,
         Arc<Instant>,
         Arc<Option<EmbeddingInfo>>,
+        Arc<OperationMetrics>,
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
@@ -634,10 +722,11 @@ async fn rebuild_collection_http(
 }
 
 async fn trigger_vacuum_http(
-    State((_manager, _, _)): State<(
+    State((_manager, _, _, _)): State<(
         Arc<CollectionManager>,
         Arc<Instant>,
         Arc<Option<EmbeddingInfo>>,
+        Arc<OperationMetrics>,
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
@@ -680,10 +769,11 @@ async fn trigger_vacuum_http(
 }
 
 async fn get_usage_report_http(
-    State((manager, _, _)): State<(
+    State((manager, _, _, _)): State<(
         Arc<CollectionManager>,
         Arc<Instant>,
         Arc<Option<EmbeddingInfo>>,
+        Arc<OperationMetrics>,
     )>,
     Extension(ctx): Extension<RequestContext>,
 ) -> impl IntoResponse {
