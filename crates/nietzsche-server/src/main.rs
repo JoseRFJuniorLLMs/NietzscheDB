@@ -39,6 +39,9 @@ use nietzsche_zaratustra::ZaratustraEngine;
 #[cfg(feature = "gpu")]
 use nietzsche_hnsw_gpu::GpuVectorStore;
 
+#[cfg(feature = "tpu")]
+use nietzsche_tpu::TpuVectorStore;
+
 mod auth;
 mod cluster_service;
 mod config;
@@ -128,6 +131,51 @@ async fn main() -> anyhow::Result<()> {
             }
         } else {
             info!("GPU feature compiled in but NIETZSCHE_VECTOR_BACKEND != gpu — using CPU HNSW");
+        }
+    }
+
+    // ── TPU vector backend injection ──────────────────────────────────────────
+    // Activated when compiled with `--features tpu` AND
+    // `NIETZSCHE_VECTOR_BACKEND=tpu` is set at runtime.
+    // Requires `PJRT_PLUGIN_PATH` pointing to libtpu.so on a Cloud TPU VM.
+    // Falls back to CPU scan per collection if PJRT init fails.
+    #[cfg(feature = "tpu")]
+    {
+        let backend = std::env::var("NIETZSCHE_VECTOR_BACKEND")
+            .unwrap_or_default()
+            .to_lowercase();
+
+        if backend == "tpu" {
+            info!(
+                plugin = %std::env::var("PJRT_PLUGIN_PATH").unwrap_or_else(|_| "(not set)".into()),
+                "TPU vector backend requested — initialising PJRT for all collections"
+            );
+
+            for col in cm.list() {
+                match TpuVectorStore::new(col.dim) {
+                    Ok(tpu_store) => {
+                        if let Some(shared) = cm.get(&col.name) {
+                            let mut db = shared.write().await;
+                            db.set_vector_store(AnyVectorStore::tpu(Box::new(tpu_store)));
+                            info!(
+                                collection = %col.name,
+                                dim        = col.dim,
+                                backend    = "TpuVectorStore(PJRT/MHLO)",
+                                "TPU backend active"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        warn!(
+                            collection = %col.name,
+                            error      = %e,
+                            "TPU init failed — keeping CPU HNSW for this collection"
+                        );
+                    }
+                }
+            }
+        } else {
+            info!("TPU feature compiled in but NIETZSCHE_VECTOR_BACKEND != tpu — using CPU HNSW");
         }
     }
 

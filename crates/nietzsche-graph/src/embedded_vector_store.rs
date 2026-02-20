@@ -465,6 +465,7 @@ impl VectorStore for EmbeddedVectorStore {
 /// Controlled by `NIETZSCHE_VECTOR_BACKEND` env var:
 /// - `"embedded"` or `"hnsw"` → `EmbeddedVectorStore`
 /// - `"gpu"`                   → GPU backend (inject via [`AnyVectorStore::gpu`])
+/// - `"tpu"`                   → TPU backend (inject via [`AnyVectorStore::tpu`])
 /// - anything else (or unset) → `MockVectorStore` (legacy default)
 pub enum AnyVectorStore {
     Embedded(EmbeddedVectorStore),
@@ -472,6 +473,10 @@ pub enum AnyVectorStore {
     /// GPU-accelerated backend (e.g. nietzsche-hnsw-gpu with NVIDIA cuVS CAGRA).
     /// Injected at server startup — nietzsche-graph itself does not depend on CUDA.
     Gpu(Box<dyn crate::db::VectorStore>),
+    /// Google TPU-accelerated backend via PJRT C API (MHLO dot-product kernel).
+    /// Runs on Cloud TPU VMs (v5e / v6e Trillium / v7 Ironwood).
+    /// Injected at server startup — nietzsche-graph itself does not depend on pjrt.
+    Tpu(Box<dyn crate::db::VectorStore>),
 }
 
 impl AnyVectorStore {
@@ -548,6 +553,19 @@ impl AnyVectorStore {
         Self::Gpu(store)
     }
 
+    /// Inject a Google TPU-accelerated [`VectorStore`] implementation.
+    ///
+    /// ```rust,no_run
+    /// use nietzsche_tpu::TpuVectorStore;
+    /// use nietzsche_graph::embedded_vector_store::AnyVectorStore;
+    ///
+    /// let tpu = TpuVectorStore::new(1536).expect("PJRT init failed");
+    /// let vs  = AnyVectorStore::tpu(Box::new(tpu));
+    /// ```
+    pub fn tpu(store: Box<dyn crate::db::VectorStore>) -> Self {
+        Self::Tpu(store)
+    }
+
     pub fn backend_name(&self) -> &'static str {
         match self {
             Self::Embedded(s) => match s.metric() {
@@ -557,6 +575,7 @@ impl AnyVectorStore {
             },
             Self::Mock(_) => "MockVectorStore(LinearScan)",
             Self::Gpu(_)  => "GpuVectorStore(CAGRA/cuVS)",
+            Self::Tpu(_)  => "TpuVectorStore(PJRT/MHLO)",
         }
     }
 }
@@ -567,6 +586,7 @@ impl VectorStore for AnyVectorStore {
             Self::Embedded(s) => s.upsert(id, vector),
             Self::Mock(s)     => s.upsert(id, vector),
             Self::Gpu(s)      => s.upsert(id, vector),
+            Self::Tpu(s)      => s.upsert(id, vector),
         }
     }
 
@@ -575,6 +595,7 @@ impl VectorStore for AnyVectorStore {
             Self::Embedded(s) => s.delete(id),
             Self::Mock(s)     => s.delete(id),
             Self::Gpu(s)      => s.delete(id),
+            Self::Tpu(s)      => s.delete(id),
         }
     }
 
@@ -583,6 +604,7 @@ impl VectorStore for AnyVectorStore {
             Self::Embedded(s) => s.knn(query, k),
             Self::Mock(s)     => s.knn(query, k),
             Self::Gpu(s)      => s.knn(query, k),
+            Self::Tpu(s)      => s.knn(query, k),
         }
     }
 }

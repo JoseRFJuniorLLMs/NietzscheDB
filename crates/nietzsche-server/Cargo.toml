@@ -16,11 +16,17 @@ default = []
 # Build: cargo build --release --features gpu
 # Run:   NIETZSCHE_VECTOR_BACKEND=gpu ./nietzsche-server
 gpu = ["dep:nietzsche-hnsw-gpu"]
+# Google TPU-accelerated vector search via PJRT C API + MHLO MLIR.
+# Requires: Cloud TPU VM (v5e / v6e Trillium / v7 Ironwood) OR local libtpu.so.
+# Build: cargo build --release --features tpu
+# Run:   PJRT_PLUGIN_PATH=/lib/libtpu.so NIETZSCHE_VECTOR_BACKEND=tpu ./nietzsche-server
+tpu = ["dep:nietzsche-tpu", "nietzsche-tpu/tpu"]
 
 [dependencies]
 nietzsche-api         = { workspace = true }
 nietzsche-graph       = { workspace = true }
 nietzsche-hnsw-gpu    = { workspace = true, optional = true }
+nietzsche-tpu         = { workspace = true, optional = true }
 nietzsche-sleep       = { workspace = true }
 nietzsche-query       = { workspace = true }
 nietzsche-zaratustra  = { workspace = true }
