@@ -66,13 +66,13 @@ export function OverviewPage() {
                                         status?.config?.metric === 'poincare' ? 'Hyperbolic (Poincaré)' :
                                             status?.config?.metric || 'Unknown'
                             } />
-                            <ConfigRow label="Quantization" value={status?.config?.quantization || "Scalar I8"} />
+                            <ConfigRow label="Quantization" value={(status as any)?.config?.quantization || "Scalar I8"} />
                             <ConfigRow label="Uptime" value={status?.uptime} />
                             <ConfigRow label="Embedding" value={status?.embedding?.enabled ? "Enabled" : "Disabled"} />
                             {status?.embedding?.enabled && (
                                 <>
-                                    <ConfigRow label="Provider" value={status?.embedding?.provider} />
-                                    <ConfigRow label="Model" value={status?.embedding?.model} />
+                                    <ConfigRow label="Provider" value={(status as any)?.embedding?.provider} />
+                                    <ConfigRow label="Model" value={(status as any)?.embedding?.model} />
                                 </>
                             )}
                         </div>

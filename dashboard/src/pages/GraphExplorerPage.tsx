@@ -6,21 +6,17 @@ import {
     CosmographBars,
     CosmographSearch,
     CosmographTypeColorLegend,
-    CosmographSizeLegend,
     CosmographButtonFitView,
     CosmographButtonPlayPause,
     CosmographButtonZoomInOut,
     CosmographButtonRectangularSelection,
     CosmographButtonPolygonalSelection,
-    CosmographPointColorStrategy,
     CosmographPointSizeStrategy,
-    CosmographLinkColorStrategy,
     CosmographLinkWidthStrategy,
 } from "@cosmograph/cosmograph"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { ChevronLeft, ChevronRight, RefreshCw, AlertCircle, Filter } from "lucide-react"
-import { Button } from "@/components/ui/button"
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -76,7 +72,6 @@ export function GraphExplorerPage() {
     const barsEdgeRef         = useRef<HTMLDivElement>(null)
     const searchRef           = useRef<HTMLDivElement>(null)
     const legendColorRef      = useRef<HTMLDivElement>(null)
-    const legendSizeRef       = useRef<HTMLDivElement>(null)
     const btnFitRef           = useRef<HTMLDivElement>(null)
     const btnPlayRef          = useRef<HTMLDivElement>(null)
     const btnZoomRef          = useRef<HTMLDivElement>(null)
@@ -122,7 +117,8 @@ export function GraphExplorerPage() {
     })
 
     // ── Build points / links arrays for Cosmograph ────────────────────────────
-    const points = graphData?.nodes?.map(n => ({
+    const points = graphData?.nodes?.map((n, i) => ({
+        _idx:       i,
         id:         n.id,
         node_type:  n.node_type,
         energy:     n.energy,
@@ -152,6 +148,7 @@ export function GraphExplorerPage() {
         const cosmo = new Cosmograph(graphContainerRef.current, {
             // ── Data mapping ────────────────────────────────────────────────
             pointIdBy:       "id",
+            pointIndexBy:    "_idx",
             pointColorBy:    "color",
             pointSizeBy:     "energy",
             pointSizeRange:  [2, 14],
@@ -163,7 +160,7 @@ export function GraphExplorerPage() {
             linkTargetBy:    "target",
             linkWidthBy:     "weight",
             linkWidthRange:  [0.3, 3],
-            linkWidthStrategy: CosmographLinkWidthStrategy.Auto,
+            linkWidthStrategy: CosmographLinkWidthStrategy.Sum,
             linkIncludeColumns: ["*"],
 
             // ── Appearance ──────────────────────────────────────────────────
@@ -208,10 +205,7 @@ export function GraphExplorerPage() {
     // ── Feed data into Cosmograph ─────────────────────────────────────────────
     useEffect(() => {
         if (!cosmoRef.current || !initialized) return
-        cosmoRef.current.setConfig({
-            points,
-            links,
-        } as any)
+        cosmoRef.current.setConfig({ points: points as any, links: links as any })
     }, [points, links, initialized])
 
     // ── Initialize Components after Cosmograph is ready ───────────────────────
@@ -267,7 +261,7 @@ export function GraphExplorerPage() {
         // ── Color Legend ─────────────────────────────────────────────────────
         if (legendColorRef.current && !legendColorInst.current) {
             legendColorInst.current = new CosmographTypeColorLegend(
-                cosmo, legendColorRef.current, { accessor: "node_type" }
+                cosmo, legendColorRef.current, {}
             )
         }
 
