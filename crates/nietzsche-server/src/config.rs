@@ -43,6 +43,19 @@ pub struct Config {
 
     /// HTTP dashboard listen port (0 = disabled).
     pub dashboard_port: u16,
+
+    // ── Cluster ──────────────────────────────────────────────────────────────
+    /// Enable cluster mode (false = standalone).
+    pub cluster_enabled: bool,
+
+    /// Human-readable name for this node (e.g. "shard-0").
+    pub cluster_node_name: String,
+
+    /// Role: "primary" | "replica" | "coordinator". Default "primary".
+    pub cluster_role: String,
+
+    /// Comma-separated seed peers: "name@host:port,name@host:port".
+    pub cluster_seeds: String,
 }
 
 impl Config {
@@ -59,8 +72,16 @@ impl Config {
             hausdorff_threshold: env_parse("NIETZSCHE_HAUSDORFF_THRESHOLD", 0.15_f32),
             max_connections:     env_parse("NIETZSCHE_MAX_CONNECTIONS", 1024),
             dashboard_port:      env_parse("NIETZSCHE_DASHBOARD_PORT", 8080_u16),
+            cluster_enabled:     env_bool("NIETZSCHE_CLUSTER_ENABLED"),
+            cluster_node_name:   env_str("NIETZSCHE_CLUSTER_NODE_NAME", "nietzsche-0"),
+            cluster_role:        env_str("NIETZSCHE_CLUSTER_ROLE", "primary"),
+            cluster_seeds:       env_str("NIETZSCHE_CLUSTER_SEEDS", ""),
         }
     }
+}
+
+fn env_bool(key: &str) -> bool {
+    std::env::var(key).map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false)
 }
 
 fn env_str(key: &str, default: &str) -> String {

@@ -51,9 +51,11 @@ pub mod proto {
 pub const NIETZSCHE_DESCRIPTOR: &[u8] =
     tonic::include_file_descriptor_set!("nietzsche_descriptor");
 
+pub mod cdc;
 pub mod server;
 pub mod validation;
 
+pub use cdc::CdcBroadcaster;
 pub use server::NietzscheServer;
 pub use proto::nietzsche as pb;
 pub use validation::{

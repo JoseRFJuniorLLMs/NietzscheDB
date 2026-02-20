@@ -35,6 +35,7 @@ nietzsche-hyp-ops      = { path = "crates/nietzsche-hyp-ops" }
 nietzsche-sensory      = { path = "crates/nietzsche-sensory" }
 nietzsche-zaratustra   = { path = "crates/nietzsche-zaratustra" }
 nietzsche-cluster      = { path = "crates/nietzsche-cluster" }
+nietzsche-algo         = { path = "crates/nietzsche-algo" }
 memmap2 = "0.9"
 parking_lot = "0.12"
 ratatui = "0.24"
@@ -43,6 +44,8 @@ smallvec = "1.11"
 proptest = "1.0"
 criterion = { version = "0.5", features = ["html_reports"] }
 rayon = "1.10"
+async-stream = "0.3"
+tokio-stream = "0.1"
 
 
 [profile.release]

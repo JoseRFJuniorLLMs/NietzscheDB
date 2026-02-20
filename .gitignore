@@ -1,5 +1,7 @@
 /target/
 **/target/
+.env
+*.env
 sdks/python/venv
 __pycache__
 **/*.pyc

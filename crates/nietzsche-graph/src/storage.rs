@@ -533,6 +533,12 @@ impl GraphStorage {
             .map_err(|e| GraphError::Storage(e.to_string()))
     }
 
+    /// Delete a metadata key.
+    pub fn delete_meta(&self, key: &str) -> Result<(), GraphError> {
+        self.db.delete_cf(&self.cf_meta(), key.as_bytes())
+            .map_err(|e| GraphError::Storage(e.to_string()))
+    }
+
     // ── AdjacencyIndex reconstruction ──────────────────
 
     /// Reconstruct the in-memory `AdjacencyIndex` from all edges in RocksDB.

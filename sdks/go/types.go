@@ -1,4 +1,4 @@
-// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
+// Copyright (C) 2025-2026 Jose R F Junior <petweofc@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 package nietzsche
@@ -100,14 +100,14 @@ type CollectionConfig struct {
 
 // InsertSensoryOpts configures sensory data insertion.
 type InsertSensoryOpts struct {
-	NodeID         string  // existing node UUID to attach sensory data to
-	Modality       string  // "text"|"audio"|"image"|"fused"
+	NodeID         string    // existing node UUID to attach sensory data to
+	Modality       string    // "text"|"audio"|"image"|"fused"
 	Latent         []float32 // pre-compressed Euclidean vector
-	OriginalShape  []byte  // JSON-encoded shape metadata
-	OriginalBytes  uint32  // size of the original raw data
-	EncoderVersion uint32  // encoder version for decoder compatibility
-	ModalityMeta   []byte  // JSON metadata (e.g. sample_rate, duration_ms)
-	Collection     string  // "" → "default"
+	OriginalShape  []byte    // JSON-encoded shape metadata
+	OriginalBytes  uint32    // size of the original raw data
+	EncoderVersion uint32    // encoder version for decoder compatibility
+	ModalityMeta   []byte    // JSON metadata (e.g. sample_rate, duration_ms)
+	Collection     string    // "" → "default"
 }
 
 // ── Result types ────────────────────────────────────────────────────────────
@@ -187,7 +187,7 @@ type SensoryResult struct {
 	NodeID                string
 	Modality              string
 	Dim                   uint32
-	QuantLevel            string  // "f32"|"f16"|"int8"|"pq"|"gone"
+	QuantLevel            string // "f32"|"f16"|"int8"|"pq"|"gone"
 	ReconstructionQuality float32
 	CompressionRatio      float32
 	EncoderVersion        uint32
@@ -207,10 +207,10 @@ type ReconstructResult struct {
 // ZaratustraResult contains full metrics from the Zaratustra evolution cycle.
 type ZaratustraResult struct {
 	// Will to Power
-	NodesUpdated      uint64
-	MeanEnergyBefore  float32
-	MeanEnergyAfter   float32
-	TotalEnergyDelta  float32
+	NodesUpdated     uint64
+	MeanEnergyBefore float32
+	MeanEnergyAfter  float32
+	TotalEnergyDelta float32
 	// Eternal Recurrence
 	EchoesCreated uint64
 	EchoesEvicted uint64
