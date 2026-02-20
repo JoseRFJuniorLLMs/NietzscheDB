@@ -53,7 +53,7 @@ export function SettingsPage() {
 function ClientSnippets({ apiKey, dimension }: any) {
     const snippet_py = `import requests
 
-API_URL = "http://localhost:50050/api"
+API_URL = "http://localhost:8080/api"
 HEADERS = {"x-api-key": "${apiKey}"}
 
 # 1. Create Collection
@@ -66,13 +66,13 @@ requests.post(f"{API_URL}/collections", json={
 # 2. Insert Vector (Not exposed in HTTP yet, use gRPC for high Perf)
 # ...`
 
-    const snippet_curl = `curl -X GET http://localhost:50050/api/cluster/status \\
+    const snippet_curl = `curl -X GET http://localhost:8080/api/cluster/status \\
   -H "x-api-key: ${apiKey}"`
 
     const snippet_js = `import axios from "axios";
 
 const client = axios.create({
-  baseURL: "http://localhost:50050/api",
+  baseURL: "http://localhost:8080/api",
   headers: { "x-api-key": "${apiKey}" },
 });
 

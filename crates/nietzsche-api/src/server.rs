@@ -95,6 +95,7 @@ fn node_to_proto(node: Node) -> nietzsche::NodeResponse {
         created_at:      meta.created_at,
         content:         content_bytes,
         node_type:       format!("{:?}", meta.node_type),
+        expires_at:      meta.expires_at.unwrap_or(0),
     }
 }
 
@@ -293,6 +294,7 @@ impl NietzscheDb for NietzscheServer {
 
         let mut node = Node::new(id, embedding, content);
         if r.energy > 0.0 { node.energy = r.energy; }
+        if r.expires_at > 0 { node.meta.expires_at = Some(r.expires_at); }
         debug!(node_id = %id, collection = %col(&r.collection), "inserting node");
 
         let shared = get_col!(self.cm, &r.collection);
@@ -1582,10 +1584,9 @@ impl NietzscheDb for NietzscheServer {
     ) -> Result<Response<nietzsche::ReconstructResponse>, Status> {
         let r = req.into_inner();
         let node_id = parse_uuid(&r.node_id, "node_id")?;
-        // Reconstruct request has no collection field in proto — use default
-        let col_name = "default".to_string();
+        let col_name = col(&r.collection);
 
-        let shared = get_col!(self.cm, &col_name);
+        let shared = get_col!(self.cm, col_name);
         let db = shared.read().await;
         let graph_storage = db.storage();
         let sensory = SensoryStorage::new(graph_storage.db_handle());

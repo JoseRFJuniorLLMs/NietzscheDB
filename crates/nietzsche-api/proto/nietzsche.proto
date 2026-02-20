@@ -151,6 +151,7 @@ message InsertNodeRequest {
   string         node_type  = 4;
   float          energy     = 5;  // default 1.0
   string         collection = 6;  // empty → "default"
+  int64          expires_at = 7;  // optional TTL: Unix seconds; 0 = never expires
 }
 
 message NodeIdRequest {
@@ -174,6 +175,7 @@ message NodeResponse {
   int64          created_at      = 7;  // Unix seconds
   bytes          content         = 8;  // JSON bytes
   string         node_type       = 9;
+  int64          expires_at      = 10; // TTL: Unix seconds; 0 = never expires
 }
 
 // ── Edge messages ──────────────────────────────────────────────────────────
@@ -417,8 +419,9 @@ message SensoryResponse {
 }
 
 message ReconstructRequest {
-  string node_id = 1;
-  string quality = 2;   // "full" | "degraded" | "best_available"
+  string node_id    = 1;
+  string quality    = 2;   // "full" | "degraded" | "best_available"
+  string collection = 3;   // empty → "default"
 }
 
 message ReconstructResponse {

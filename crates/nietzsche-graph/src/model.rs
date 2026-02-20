@@ -280,6 +280,12 @@ pub struct NodeMeta {
     /// Unix timestamp (seconds) of creation.
     pub created_at: i64,
 
+    /// Optional TTL: Unix timestamp (seconds) after which this node expires.
+    /// `None` means the node never expires.
+    /// Expired nodes are candidates for garbage collection by the JanitorTask.
+    #[serde(default)]
+    pub expires_at: Option<i64>,
+
     /// Arbitrary key→value metadata.
     #[serde(with = "as_json_string")]
     pub metadata: HashMap<String, serde_json::Value>,
@@ -291,6 +297,14 @@ impl NodeMeta {
         self.energy <= 0.0
             || self.hausdorff_local < 0.5
             || self.hausdorff_local > 1.9
+    }
+
+    /// Returns true if this node has expired based on the current time.
+    pub fn is_expired(&self) -> bool {
+        match self.expires_at {
+            Some(exp) => now_unix() >= exp,
+            None => false,
+        }
     }
 }
 
@@ -354,6 +368,7 @@ impl Node {
                 lsystem_generation: 0,
                 hausdorff_local: 1.0,
                 created_at: now_unix(),
+                expires_at: None,
                 metadata: HashMap::new(),
             },
             embedding,

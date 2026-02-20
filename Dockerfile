@@ -46,7 +46,7 @@ COPY --from=builder /build/target/release/nietzsche-server ./nietzsche-server
 
 # ── Configuration (override at docker run / Kubernetes env) ──────────────────
 ENV NIETZSCHE_DATA_DIR=/data/nietzsche
-ENV NIETZSCHE_PORT=50051
+ENV NIETZSCHE_PORT=50052
 ENV NIETZSCHE_LOG_LEVEL=info
 ENV NIETZSCHE_SLEEP_INTERVAL_SECS=300
 ENV NIETZSCHE_SLEEP_NOISE=0.02
@@ -59,7 +59,7 @@ ENV NIETZSCHE_DASHBOARD_PORT=8080
 VOLUME ["/data/nietzsche"]
 
 # gRPC port + HTTP dashboard
-EXPOSE 50051 8080
+EXPOSE 50052 8080
 
 LABEL org.opencontainers.image.title="NietzscheDB Server"
 LABEL org.opencontainers.image.description="Temporal Hyperbolic Graph Database — production gRPC server"
