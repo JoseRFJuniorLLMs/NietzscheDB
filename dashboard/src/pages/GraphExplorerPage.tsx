@@ -21,11 +21,13 @@ interface CosmoNode {
     x:          number
     y:          number
     created_at: number
+    [key: string]: unknown
 }
 
 interface CosmoLink {
     source: string
     target: string
+    [key: string]: unknown
 }
 
 interface GraphData {
