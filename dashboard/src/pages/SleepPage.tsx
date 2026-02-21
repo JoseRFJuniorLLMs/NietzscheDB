@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import {
     Moon, Play, Loader2, ArrowRight, CheckCircle2, XCircle,
 } from "lucide-react"
@@ -35,8 +35,18 @@ export default function SleepPage() {
     const [threshold, setThreshold] = useState("0.15")
     const [running, setRunning] = useState(false)
     const [lastResult, setLastResult] = useState<SleepResult | null>(null)
-    const [history, setHistory] = useState<SleepResult[]>([])
+    const [history, setHistory] = useState<SleepResult[]>(() => {
+        try {
+            const saved = localStorage.getItem("nietzsche_sleep_history")
+            return saved ? JSON.parse(saved) : []
+        } catch { return [] }
+    })
     const [error, setError] = useState<string | null>(null)
+
+    // Persist history to localStorage
+    useEffect(() => {
+        localStorage.setItem("nietzsche_sleep_history", JSON.stringify(history))
+    }, [history])
 
     const execute = useCallback(async () => {
         setRunning(true)

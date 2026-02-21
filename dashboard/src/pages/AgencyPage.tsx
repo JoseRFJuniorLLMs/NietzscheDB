@@ -62,7 +62,7 @@ export default function AgencyPage() {
 function HealthTab() {
     const { data, isLoading, error } = useQuery({
         queryKey: ["agency-health"],
-        queryFn: getAgencyHealthLatest,
+        queryFn: () => getAgencyHealthLatest(),
         refetchInterval: 10000,
     })
 
@@ -93,7 +93,7 @@ function HealthTab() {
 function ObserverTab() {
     const { data, isLoading, error } = useQuery({
         queryKey: ["agency-observer"],
-        queryFn: getObserver,
+        queryFn: () => getObserver(),
         refetchInterval: 15000,
     })
 
@@ -140,7 +140,7 @@ function ObserverTab() {
 function EvolutionTab() {
     const { data, isLoading, error } = useQuery({
         queryKey: ["agency-evolution"],
-        queryFn: getEvolution,
+        queryFn: () => getEvolution(),
         refetchInterval: 10000,
     })
 
@@ -208,7 +208,7 @@ function EvolutionTab() {
 function NarrativeTab() {
     const { data, isLoading, error, refetch } = useQuery({
         queryKey: ["agency-narrative"],
-        queryFn: getNarrative,
+        queryFn: () => getNarrative(),
     })
 
     if (isLoading) return <LoadingSkeleton />
@@ -245,7 +245,7 @@ function DesiresTab() {
     const qc = useQueryClient()
     const { data, isLoading, error } = useQuery({
         queryKey: ["agency-desires"],
-        queryFn: getDesires,
+        queryFn: () => getDesires(),
         refetchInterval: 10000,
     })
     const [fulfilling, setFulfilling] = useState<string | null>(null)

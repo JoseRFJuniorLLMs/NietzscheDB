@@ -11,14 +11,14 @@ const AuthContext = createContext<AuthContextType>(null!)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [apiKey, setApiKeyState] = useState<string | null>(
-        localStorage.getItem("hyperspace_api_key")
+        localStorage.getItem("nietzsche_api_key")
     )
 
     const setApiKey = (key: string | null) => {
         if (key) {
-            localStorage.setItem("hyperspace_api_key", key)
+            localStorage.setItem("nietzsche_api_key", key)
         } else {
-            localStorage.removeItem("hyperspace_api_key")
+            localStorage.removeItem("nietzsche_api_key")
         }
         setApiKeyState(key)
     }
