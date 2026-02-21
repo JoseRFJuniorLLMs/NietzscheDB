@@ -79,6 +79,13 @@ pub enum AgencyIntent {
         strategy: EvolutionStrategy,
         reason: String,
     },
+
+    /// Trigger semantic GC: merge redundant nodes into an archetype.
+    /// Produced when: NiilistaGcDaemon detects near-duplicate embeddings.
+    TriggerSemanticGc {
+        archetype_id: Uuid,
+        redundant_ids: Vec<Uuid>,
+    },
 }
 
 /// Converts agency events into executable intents.
@@ -117,6 +124,7 @@ impl AgencyReactor {
         let mut knowledge_gaps = Vec::new();
         let mut health_reports = Vec::new();
         let mut wake_ups = Vec::new();
+        let mut redundancies: Vec<(Uuid, Vec<Uuid>)> = Vec::new();
 
         loop {
             match self.rx.try_recv() {
@@ -132,6 +140,9 @@ impl AgencyReactor {
                     }
                     AgencyEvent::HealthReport(report) => {
                         health_reports.push(report);
+                    }
+                    AgencyEvent::SemanticRedundancy { archetype_id, redundant_ids, .. } => {
+                        redundancies.push((archetype_id, redundant_ids));
                     }
                     AgencyEvent::DaemonWakeUp { reason } => {
                         wake_ups.push(reason);
@@ -218,6 +229,14 @@ impl AgencyReactor {
                     }
                 }
             }
+        }
+
+        // ── Semantic redundancy → trigger GC merge ──────────────────────
+        for (archetype_id, redundant_ids) in redundancies {
+            intents.push(AgencyIntent::TriggerSemanticGc {
+                archetype_id,
+                redundant_ids,
+            });
         }
 
         // ── Health reports → persist + modulate Zaratustra + evolve rules ─

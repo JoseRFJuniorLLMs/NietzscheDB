@@ -243,6 +243,7 @@ mod tests {
                 hausdorff_local: hausdorff,
                 expires_at: None,
                 metadata: HashMap::new(),
+                is_phantom: false,
             },
             embedding: PoincareVector::origin(8),
         };

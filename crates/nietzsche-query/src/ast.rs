@@ -58,6 +58,22 @@ pub enum Query {
     // ── Narrative Engine (Phase 15.7) ───────────────────
     /// `NARRATE [IN "col"] [WINDOW n] [FORMAT fmt]`
     Narrate(NarrateQuery),
+    // ── Psychoanalyze (Lineage) ──────────────────────────
+    /// `PSYCHOANALYZE $node` — return the evolutionary lineage of a node.
+    Psychoanalyze(PsychoanalyzeQuery),
+}
+
+// ── PSYCHOANALYZE ────────────────────────────────────────────
+
+/// `PSYCHOANALYZE $node_id`
+///
+/// Returns the evolutionary lineage of a concept node: creation source,
+/// L-System generation, energy trajectory, sleep/dream events, merges,
+/// and structural role in the Poincaré ball.
+#[derive(Debug, Clone)]
+pub struct PsychoanalyzeQuery {
+    /// Target node — `$param` or a bound alias.
+    pub target: ReconstructTarget,
 }
 
 // ── CREATE / SET / DELETE ────────────────────────────────────

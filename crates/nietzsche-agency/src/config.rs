@@ -46,6 +46,14 @@ pub struct AgencyConfig {
     /// BFS depth for agency-triggered dreams.
     pub desire_dream_depth: usize,
 
+    // -- NiilistaGcDaemon --
+    /// Poincaré distance below which two nodes are considered redundant.
+    pub niilista_distance_threshold: f32,
+    /// Minimum cluster size to emit a SemanticRedundancy event.
+    pub niilista_min_group_size: usize,
+    /// Maximum nodes to scan per tick (embedding loads are expensive).
+    pub niilista_max_scan: usize,
+
     // -- Evolution --
     /// Minimum ticks between evolution suggestions.
     pub evolution_cooldown_ticks: u64,
@@ -69,6 +77,9 @@ impl Default for AgencyConfig {
             counterfactual_max_hops: 3,
             desire_dream_threshold: 0.6,
             desire_dream_depth: 5,
+            niilista_distance_threshold: 0.01,
+            niilista_min_group_size: 2,
+            niilista_max_scan: 200,
             evolution_cooldown_ticks: 5,
         }
     }
@@ -106,6 +117,9 @@ impl AgencyConfig {
             counterfactual_max_hops:        env_usize("AGENCY_CF_MAX_HOPS", 3),
             desire_dream_threshold:         env_f32("AGENCY_DESIRE_DREAM_THRESHOLD", 0.6),
             desire_dream_depth:             env_usize("AGENCY_DESIRE_DREAM_DEPTH", 5),
+            niilista_distance_threshold:    env_f32("AGENCY_NIILISTA_DISTANCE", 0.01),
+            niilista_min_group_size:        env_usize("AGENCY_NIILISTA_MIN_GROUP", 2),
+            niilista_max_scan:              env_usize("AGENCY_NIILISTA_MAX_SCAN", 200),
             evolution_cooldown_ticks:       env_u64("AGENCY_EVOLUTION_COOLDOWN", 5),
         }
     }

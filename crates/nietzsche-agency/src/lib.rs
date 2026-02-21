@@ -49,7 +49,7 @@ pub mod store;
 
 pub use config::AgencyConfig;
 pub use counterfactual::{CounterfactualEngine, CounterfactualOp, CounterfactualResult};
-pub use daemons::{AgencyDaemon, DaemonReport};
+pub use daemons::{AgencyDaemon, DaemonReport, NiilistaGcDaemon};
 pub use desire::{DesireEngine, DesireSignal, list_pending_desires, fulfill_desire};
 pub use engine::{AgencyEngine, AgencyTickReport};
 pub use error::AgencyError;

@@ -27,10 +27,12 @@
 //! ```
 
 pub mod cycle;
+pub mod fusion;
 pub mod riemannian;
 pub mod snapshot;
 
 pub use cycle::{SensoryConsolidator, SleepConfig, SleepCycle, SleepError, SleepReport};
+pub use fusion::{fuse_episodic_memories, FusionConfig, FusionReport};
 pub use riemannian::{
     conformal_factor, exp_map, project_into_ball, random_tangent, riemannian_grad, AdamState,
     RiemannianAdam,

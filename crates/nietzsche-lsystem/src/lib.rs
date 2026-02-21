@@ -32,7 +32,7 @@ pub mod rules;
 // ── Engine ────────────────────────────────────────────────────────────────────
 pub use engine::{
     LSystemEngine, LSystemError, LSystemReport, SensoryDegrader,
-    DEFAULT_HAUSDORFF_HI, DEFAULT_HAUSDORFF_LO,
+    DEFAULT_CIRCUIT_BREAKER_SIGMA, DEFAULT_HAUSDORFF_HI, DEFAULT_HAUSDORFF_LO,
 };
 
 // ── Hausdorff ─────────────────────────────────────────────────────────────────

@@ -166,6 +166,12 @@ pub enum QueryResult {
         window_hours: Option<u64>,
         format:       Option<String>,
     },
+    // ── Psychoanalyze (Lineage) ─────────────────────────
+    /// `PSYCHOANALYZE $node` — evolutionary lineage of a concept.
+    PsychoanalyzeResult {
+        node_id:    Uuid,
+        lineage:    serde_json::Value,
+    },
 }
 
 /// A typed scalar value returned by aggregation or property-projection queries.
@@ -295,6 +301,8 @@ pub fn execute(
             window_hours: n.window_hours,
             format:       n.format.clone(),
         }]),
+        // ── Psychoanalyze (Lineage) ─────────────────────────
+        Query::Psychoanalyze(pq) => execute_psychoanalyze(pq, storage, adjacency, params),
     }
 }
 
@@ -408,9 +416,103 @@ fn execute_explain(
         Query::ShowArchetypes   => "ShowArchetypes".into(),
         Query::ShareArchetype(s)=> format!("ShareArchetype(to={})", s.target_collection),
         Query::Narrate(n)       => format!("Narrate(window={:?}, format={:?})", n.window_hours, n.format),
+        Query::Psychoanalyze(_) => "Psychoanalyze(MetaScan + AdjacencyScan)".to_string(),
     };
     let full_plan = format!("{} | {}", plan, cost);
     Ok(vec![QueryResult::ExplainPlan(full_plan)])
+}
+
+// ─────────────────────────────────────────────
+// PSYCHOANALYZE executor
+// ─────────────────────────────────────────────
+
+fn execute_psychoanalyze(
+    pq:        &PsychoanalyzeQuery,
+    storage:   &GraphStorage,
+    adjacency: &AdjacencyIndex,
+    params:    &Params,
+) -> Result<Vec<QueryResult>, QueryError> {
+    // Resolve target node ID
+    let node_id = match &pq.target {
+        ReconstructTarget::Param(p) => {
+            params.get(p)
+                .and_then(|v| if let ParamValue::Uuid(u) = v { Some(*u) } else { None })
+                .ok_or_else(|| QueryError::ParamNotFound { name: p.clone() })?
+        }
+        ReconstructTarget::Alias(_a) => {
+            return Err(QueryError::Execution("PSYCHOANALYZE requires a $param, not an alias".into()));
+        }
+    };
+
+    // Load NodeMeta
+    let meta = storage.get_node_meta(&node_id)
+        .map_err(|e| QueryError::Execution(e.to_string()))?
+        .ok_or_else(|| QueryError::Execution(format!("node {} not found", node_id)))?;
+
+    // Gather adjacency info
+    let neighbors_out = adjacency.neighbors_out(&node_id);
+    let neighbors_in  = adjacency.neighbors_in(&node_id);
+
+    // Classify creation source
+    let origin = if meta.lsystem_generation > 0 {
+        format!("L-System generation {}", meta.lsystem_generation)
+    } else {
+        "manual insertion".to_string()
+    };
+
+    // Classify structural role based on depth
+    let structural_role = if meta.depth < 0.2 {
+        "core semantic (near center)"
+    } else if meta.depth < 0.5 {
+        "mid-level concept"
+    } else if meta.depth < 0.8 {
+        "specific knowledge"
+    } else {
+        "peripheral / episodic (near boundary)"
+    };
+
+    // Classify health status
+    let health = if meta.is_phantom {
+        "phantom (structural scar — topology preserved, inactive)"
+    } else if meta.energy <= 0.0 {
+        "depleted (energy = 0, prunable)"
+    } else if meta.energy < 0.3 {
+        "fading (low energy, at risk)"
+    } else if meta.energy > 0.85 {
+        "hyperactive (potential inflation)"
+    } else {
+        "healthy"
+    };
+
+    // Check for fusion metadata
+    let fusion_info = meta.content.get("fusion")
+        .map(|f| f.clone())
+        .unwrap_or(serde_json::Value::Null);
+
+    // Build lineage JSON
+    let lineage = serde_json::json!({
+        "node_id": node_id.to_string(),
+        "origin": origin,
+        "node_type": format!("{:?}", meta.node_type),
+        "created_at": meta.created_at,
+        "lsystem_generation": meta.lsystem_generation,
+        "structural_role": structural_role,
+        "depth": meta.depth,
+        "energy": meta.energy,
+        "health_status": health,
+        "is_phantom": meta.is_phantom,
+        "hausdorff_local": meta.hausdorff_local,
+        "expires_at": meta.expires_at,
+        "connections": {
+            "outgoing": neighbors_out.len(),
+            "incoming": neighbors_in.len(),
+            "total": neighbors_out.len() + neighbors_in.len(),
+        },
+        "fusion": fusion_info,
+        "metadata": meta.metadata,
+    });
+
+    Ok(vec![QueryResult::PsychoanalyzeResult { node_id, lineage }])
 }
 
 // ─────────────────────────────────────────────
@@ -2668,5 +2770,62 @@ mod tests {
         assert!((super::parse_interval_str("2w").unwrap() - 1209600.0).abs() < 1e-6);
         assert!((super::parse_interval_str("3600s").unwrap() - 3600.0).abs() < 1e-6);
         assert!((super::parse_interval_str("1.5h").unwrap() - 5400.0).abs() < 1e-6);
+    }
+
+    // ── PSYCHOANALYZE tests ─────────────────────────────
+
+    #[test]
+    fn psychoanalyze_returns_lineage() {
+        let dir = tmp();
+        let storage = open_storage(&dir);
+        let adjacency = AdjacencyIndex::new();
+
+        let mut node = node_at(0.3, 0.7);
+        node.meta.lsystem_generation = 4;
+        let nid = node.id;
+        storage.put_node(&node).unwrap();
+
+        // Add an edge so adjacency is interesting
+        let neighbor = node_at(0.4, 0.6);
+        let nid2 = neighbor.id;
+        storage.put_node(&neighbor).unwrap();
+        let edge = nietzsche_graph::Edge::new(nid, nid2, nietzsche_graph::EdgeType::Association, 0.8);
+        storage.put_edge(&edge).unwrap();
+        adjacency.add_edge(&edge);
+
+        let mut params = Params::new();
+        params.insert("node_id".to_string(), ParamValue::Uuid(nid));
+
+        let results = execute(
+            &crate::parser::parse("PSYCHOANALYZE $node_id").unwrap(),
+            &storage, &adjacency, &params,
+        ).unwrap();
+
+        assert_eq!(results.len(), 1);
+        match &results[0] {
+            QueryResult::PsychoanalyzeResult { node_id, lineage } => {
+                assert_eq!(*node_id, nid);
+                assert_eq!(lineage["lsystem_generation"], 4);
+                assert_eq!(lineage["connections"]["outgoing"], 1);
+                assert!(lineage["origin"].as_str().unwrap().contains("L-System generation 4"));
+            }
+            _ => panic!("expected PsychoanalyzeResult"),
+        }
+    }
+
+    #[test]
+    fn psychoanalyze_not_found() {
+        let dir = tmp();
+        let storage = open_storage(&dir);
+        let adjacency = AdjacencyIndex::new();
+
+        let mut params = Params::new();
+        params.insert("x".to_string(), ParamValue::Uuid(Uuid::new_v4()));
+
+        let err = execute(
+            &crate::parser::parse("PSYCHOANALYZE $x").unwrap(),
+            &storage, &adjacency, &params,
+        );
+        assert!(err.is_err());
     }
 }

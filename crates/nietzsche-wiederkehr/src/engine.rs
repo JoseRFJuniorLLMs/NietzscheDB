@@ -246,6 +246,7 @@ mod tests {
                 hausdorff_local: 1.0,
                 expires_at: None,
                 metadata: std::collections::HashMap::new(),
+                is_phantom: false,
             },
             embedding: nietzsche_graph::PoincareVector::origin(8),
         };

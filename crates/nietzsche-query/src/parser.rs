@@ -56,6 +56,8 @@ fn parse_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
             Rule::share_archetype_query    => return Ok(Query::ShareArchetype(parse_share_archetype(inner)?)),
             // Narrative Engine (Phase 15.7)
             Rule::narrate_query            => return Ok(Query::Narrate(parse_narrate(inner)?)),
+            // Psychoanalyze (Lineage)
+            Rule::psychoanalyze_query      => return Ok(Query::Psychoanalyze(parse_psychoanalyze(inner)?)),
             Rule::EOI                      => {}
             r => return Err(QueryError::Parse(format!("unexpected rule: {r:?}"))),
         }
@@ -1293,6 +1295,24 @@ fn parse_narrate(pair: Pair<Rule>) -> Result<NarrateQuery, QueryError> {
     Ok(NarrateQuery { collection, window_hours, format })
 }
 
+// ── PSYCHOANALYZE (Lineage) ──────────────────────────────────
+
+fn parse_psychoanalyze(pair: Pair<Rule>) -> Result<PsychoanalyzeQuery, QueryError> {
+    let target_pair = pair.into_inner().next()
+        .ok_or_else(|| QueryError::Parse("PSYCHOANALYZE missing target".into()))?;
+
+    let src = target_pair.into_inner().next()
+        .ok_or_else(|| QueryError::Parse("PSYCHOANALYZE missing target value".into()))?;
+
+    let target = match src.as_rule() {
+        Rule::param => ReconstructTarget::Param(src.as_str()[1..].to_string()),
+        Rule::ident => ReconstructTarget::Alias(src.as_str().to_string()),
+        r => return Err(QueryError::Parse(format!("unexpected psychoanalyze_target: {r:?}"))),
+    };
+
+    Ok(PsychoanalyzeQuery { target })
+}
+
 // ── RECONSTRUCT (Phase 11) ────────────────────────────────
 
 fn parse_reconstruct_query(pair: Pair<Rule>) -> Result<ReconstructQuery, QueryError> {
@@ -2060,5 +2080,27 @@ mod tests {
         assert!(n.collection.is_none());
         assert!(n.window_hours.is_none());
         assert!(n.format.is_none());
+    }
+
+    // ── PSYCHOANALYZE (Lineage) ─────────────────────────
+
+    #[test]
+    fn parse_psychoanalyze_param() {
+        let q = parse("PSYCHOANALYZE $node_id").unwrap();
+        let Query::Psychoanalyze(pq) = q else { panic!("expected Psychoanalyze") };
+        match &pq.target {
+            ReconstructTarget::Param(p) => assert_eq!(p, "node_id"),
+            _ => panic!("expected Param target"),
+        }
+    }
+
+    #[test]
+    fn parse_psychoanalyze_alias() {
+        let q = parse("PSYCHOANALYZE mynode").unwrap();
+        let Query::Psychoanalyze(pq) = q else { panic!("expected Psychoanalyze") };
+        match &pq.target {
+            ReconstructTarget::Alias(a) => assert_eq!(a, "mynode"),
+            _ => panic!("expected Alias target"),
+        }
     }
 }

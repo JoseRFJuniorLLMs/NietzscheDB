@@ -404,6 +404,15 @@ pub struct NodeMeta {
     /// Arbitrary key→value metadata.
     #[serde(with = "as_json_string")]
     pub metadata: HashMap<String, serde_json::Value>,
+
+    /// Phantom node flag: structural "scar" left after pruning/TTL expiry.
+    ///
+    /// Phantom nodes retain their topological connections (edges, adjacency)
+    /// so the hyperbolic geometry doesn't collapse, but are excluded from
+    /// KNN search and active traversal. This mimics how the brain preserves
+    /// structural memory traces that facilitate re-learning.
+    #[serde(default)]
+    pub is_phantom: bool,
 }
 
 impl NodeMeta {
@@ -420,6 +429,11 @@ impl NodeMeta {
             Some(exp) => now_unix() >= exp,
             None => false,
         }
+    }
+
+    /// Returns true if this node is a phantom (structural scar).
+    pub fn is_phantom(&self) -> bool {
+        self.is_phantom
     }
 }
 
@@ -485,6 +499,7 @@ impl Node {
                 created_at: now_unix(),
                 expires_at: None,
                 metadata: HashMap::new(),
+                is_phantom: false,
             },
             embedding,
         }

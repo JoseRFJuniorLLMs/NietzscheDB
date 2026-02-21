@@ -269,6 +269,7 @@ mod tests {
             created_at: 0,
             expires_at: None,
             metadata: std::collections::HashMap::new(),
+            is_phantom: false,
         };
 
         let result = simulate_add(&mut shadow, new_meta, &[aid, bid], &config);

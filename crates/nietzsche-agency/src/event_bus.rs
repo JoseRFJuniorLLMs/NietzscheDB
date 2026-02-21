@@ -46,6 +46,16 @@ pub enum AgencyEvent {
     /// Observer generated a periodic health report.
     HealthReport(Box<HealthReport>),
 
+    /// NiilistaGcDaemon detected a cluster of near-duplicate nodes.
+    SemanticRedundancy {
+        /// Total nodes in the redundancy group.
+        group_size: usize,
+        /// Node selected as the surviving archetype (highest energy).
+        archetype_id: Uuid,
+        /// Nodes to be phantomized (all except archetype).
+        redundant_ids: Vec<Uuid>,
+    },
+
     /// Observer triggered a daemon wake-up due to critical thresholds.
     DaemonWakeUp { reason: WakeUpReason },
 }

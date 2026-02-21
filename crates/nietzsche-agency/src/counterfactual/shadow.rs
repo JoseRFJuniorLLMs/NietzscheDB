@@ -213,6 +213,7 @@ mod tests {
             created_at: 0,
             expires_at: None,
             metadata: std::collections::HashMap::new(),
+            is_phantom: false,
         };
         shadow.simulate_add_node(new_meta);
         shadow.simulate_add_edge(aid, new_id, 0.9);
