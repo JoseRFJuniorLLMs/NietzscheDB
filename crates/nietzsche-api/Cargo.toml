@@ -14,6 +14,9 @@ nietzsche-zaratustra  = { workspace = true }
 nietzsche-sensory     = { workspace = true }
 nietzsche-algo        = { workspace = true }
 nietzsche-cluster     = { workspace = true }
+nietzsche-wiederkehr  = { workspace = true }
+nietzsche-dream       = { workspace = true }
+nietzsche-narrative   = { workspace = true }
 tonic             = { workspace = true }
 prost             = { workspace = true }
 serde             = { workspace = true }

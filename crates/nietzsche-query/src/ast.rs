@@ -2,6 +2,8 @@
 // NQL Abstract Syntax Tree  (v2)
 // ─────────────────────────────────────────────
 
+use serde::{Serialize, Deserialize};
+
 /// Top-level NQL query.
 #[derive(Debug, Clone)]
 pub enum Query {
@@ -27,6 +29,35 @@ pub enum Query {
     MatchSet(MatchSetQuery),
     /// `MATCH (n) [WHERE …] DELETE n`
     MatchDelete(MatchDeleteQuery),
+    /// `CREATE DAEMON name ON (n:Label) WHEN … THEN … EVERY … ENERGY …`
+    CreateDaemon(CreateDaemonQuery),
+    /// `DROP DAEMON name`
+    DropDaemon(DropDaemonQuery),
+    /// `SHOW DAEMONS`
+    ShowDaemons,
+    // ── Dream Queries (Phase 15.2) ──────────────────────
+    /// `DREAM FROM $node [DEPTH n] [NOISE f]`
+    DreamFrom(DreamFromQuery),
+    /// `APPLY DREAM $dream_id`
+    ApplyDream(ApplyDreamQuery),
+    /// `REJECT DREAM $dream_id`
+    RejectDream(RejectDreamQuery),
+    /// `SHOW DREAMS`
+    ShowDreams,
+    // ── Synesthesia (Phase 15.3) ────────────────────────
+    /// `TRANSLATE $node FROM modality TO modality [QUALITY q]`
+    Translate(TranslateQuery),
+    // ── Eternal Return (Phase 15.4) ─────────────────────
+    /// `COUNTERFACTUAL SET … MATCH … WHERE … RETURN …`
+    Counterfactual(CounterfactualQuery),
+    // ── Collective Unconscious (Phase 15.6) ─────────────
+    /// `SHOW ARCHETYPES`
+    ShowArchetypes,
+    /// `SHARE ARCHETYPE $node_id TO "collection"`
+    ShareArchetype(ShareArchetypeQuery),
+    // ── Narrative Engine (Phase 15.7) ───────────────────
+    /// `NARRATE [IN "col"] [WINDOW n] [FORMAT fmt]`
+    Narrate(NarrateQuery),
 }
 
 // ── CREATE / SET / DELETE ────────────────────────────────────
@@ -55,6 +86,99 @@ pub struct MatchDeleteQuery {
     pub pattern:    Pattern,
     pub conditions: Vec<Condition>,
     pub targets:    Vec<String>,
+}
+
+// ── DAEMON Agents ────────────────────────────────────────
+
+/// Action a daemon executes when its WHEN condition fires.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DaemonAction {
+    /// `DELETE n`
+    Delete { alias: String },
+    /// `SET n.field = val, …`
+    Set { assignments: Vec<SetAssignment> },
+    /// `DIFFUSE FROM n WITH t=[…] MAX_HOPS k`
+    Diffuse { alias: String, t_values: Vec<f64>, max_hops: usize },
+}
+
+/// `CREATE DAEMON name ON (n:Label) WHEN cond THEN action EVERY interval ENERGY e`
+#[derive(Debug, Clone)]
+pub struct CreateDaemonQuery {
+    pub name:        String,
+    pub on_pattern:  NodePattern,
+    pub when_cond:   Condition,
+    pub then_action: DaemonAction,
+    /// Interval expression (e.g. `INTERVAL("1h")`) stored as an Expr.
+    pub every:       Expr,
+    /// Initial energy budget (0.0–1.0). Defaults to 1.0.
+    pub energy:      Option<f64>,
+}
+
+/// `DROP DAEMON name`
+#[derive(Debug, Clone)]
+pub struct DropDaemonQuery {
+    pub name: String,
+}
+
+// ── Dream Queries (Phase 15.2) ────────────────────────────
+
+/// `DREAM FROM $node [DEPTH n] [NOISE f]`
+#[derive(Debug, Clone)]
+pub struct DreamFromQuery {
+    pub seed:  DiffuseFrom,
+    pub depth: Option<usize>,
+    pub noise: Option<f64>,
+}
+
+/// `APPLY DREAM $dream_id`
+#[derive(Debug, Clone)]
+pub struct ApplyDreamQuery {
+    pub dream_id: String,
+}
+
+/// `REJECT DREAM $dream_id`
+#[derive(Debug, Clone)]
+pub struct RejectDreamQuery {
+    pub dream_id: String,
+}
+
+// ── Synesthesia (Phase 15.3) ──────────────────────────────
+
+/// `TRANSLATE $node FROM modality TO modality [QUALITY q]`
+#[derive(Debug, Clone)]
+pub struct TranslateQuery {
+    pub target:        ReconstructTarget,
+    pub from_modality: String,
+    pub to_modality:   String,
+    pub quality:       Option<String>,
+}
+
+// ── Eternal Return — Counterfactual (Phase 15.4) ──────────
+
+/// `COUNTERFACTUAL SET alias.field = val, … MATCH (n) WHERE … RETURN …`
+#[derive(Debug, Clone)]
+pub struct CounterfactualQuery {
+    pub overlays: Vec<SetAssignment>,
+    pub inner:    MatchQuery,
+}
+
+// ── Collective Unconscious (Phase 15.6) ───────────────────
+
+/// `SHARE ARCHETYPE $node_id TO "collection"`
+#[derive(Debug, Clone)]
+pub struct ShareArchetypeQuery {
+    pub node_param:        String,
+    pub target_collection: String,
+}
+
+// ── Narrative Engine (Phase 15.7) ─────────────────────────
+
+/// `NARRATE [IN "col"] [WINDOW hours] [FORMAT fmt]`
+#[derive(Debug, Clone)]
+pub struct NarrateQuery {
+    pub collection:   Option<String>,
+    pub window_hours: Option<u64>,
+    pub format:       Option<String>,
 }
 
 // ── INVOKE ZARATUSTRA (Phase C) ───────────────────────────
@@ -103,7 +227,7 @@ pub struct MergeEdgePattern {
     pub to:         MergeNodePattern,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetAssignment {
     pub alias: String,
     pub field: String,
@@ -114,9 +238,11 @@ pub struct SetAssignment {
 
 #[derive(Debug, Clone)]
 pub struct MatchQuery {
-    pub pattern:    Pattern,
-    pub conditions: Vec<Condition>,
-    pub ret:        ReturnClause,
+    pub pattern:      Pattern,
+    pub conditions:   Vec<Condition>,
+    pub ret:          ReturnClause,
+    /// `AS OF CYCLE n` — Eternal Return time-travel (Phase 15.4).
+    pub as_of_cycle:  Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -125,7 +251,7 @@ pub enum Pattern {
     Path(PathPattern),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodePattern {
     pub alias: String,
     pub label: Option<String>,
@@ -156,7 +282,7 @@ pub enum Direction {
 
 // ── Conditions ────────────────────────────────────────────
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Condition {
     Compare { left: Expr, op: CompOp, right: Expr },
     And(Box<Condition>, Box<Condition>),
@@ -171,13 +297,13 @@ pub enum Condition {
 }
 
 /// Comparison operators.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CompOp {
     Lt, Lte, Gt, Gte, Eq, Neq,
 }
 
 /// String match operators.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StringCompOp {
     Contains,
     StartsWith,
@@ -186,7 +312,7 @@ pub enum StringCompOp {
 
 // ── Expressions ───────────────────────────────────────────
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Expr {
     /// `alias.field`, e.g. `n.energy`
     Property { alias: String, field: String },
@@ -215,7 +341,7 @@ pub enum Expr {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum HDistArg {
     Param(String),
     Vector(Vec<f64>),
@@ -225,7 +351,7 @@ pub enum HDistArg {
 
 /// Built-in functions named after the mathematicians whose work
 /// underpins NietzscheDB.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MathFunc {
     /// Henri Poincaré — distance in the Poincaré ball model
     PoincareDist,
@@ -263,7 +389,7 @@ pub enum MathFunc {
 }
 
 /// Argument to a mathematician-named function.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MathFuncArg {
     Property(String, String),
     Param(String),

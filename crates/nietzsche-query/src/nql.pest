@@ -17,7 +17,7 @@
 // ─────────────────────────────────────────────────────────
 
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
-COMMENT    = _{ "--" ~ (!"\n" ~ ANY)* }
+COMMENT    = _{ "--" ~ !(">") ~ (!"\n" ~ ANY)* }
 
 // ── Character classes ────────────────────────────────────
 
@@ -61,6 +61,31 @@ kw_merge       = _{ ^"MERGE"      }
 kw_on          = _{ ^"ON"         }
 kw_set         = _{ ^"SET"        }
 kw_delete      = _{ ^"DELETE"     }
+kw_daemon      = _{ ^"DAEMON"     }
+kw_daemons     = _{ ^"DAEMONS"    }
+kw_when        = _{ ^"WHEN"       }
+kw_then        = _{ ^"THEN"       }
+kw_every       = _{ ^"EVERY"      }
+kw_energy      = _{ ^"ENERGY"     }
+kw_show        = _{ ^"SHOW"       }
+kw_drop        = _{ ^"DROP"       }
+kw_dream       = _{ ^"DREAM"     }
+kw_dreams      = _{ ^"DREAMS"    }
+kw_apply       = _{ ^"APPLY"     }
+kw_reject      = _{ ^"REJECT"    }
+kw_depth       = _{ ^"DEPTH"     }
+kw_noise       = _{ ^"NOISE"     }
+kw_translate   = _{ ^"TRANSLATE" }
+kw_to          = _{ ^"TO"        }
+kw_counterfactual = _{ ^"COUNTERFACTUAL" }
+kw_as_of       = _{ ^"AS" ~ ^"OF" }
+kw_cycle       = _{ ^"CYCLE"     }
+kw_archetypes  = _{ ^"ARCHETYPES" }
+kw_share       = _{ ^"SHARE"     }
+kw_archetype   = _{ ^"ARCHETYPE" }
+kw_narrate     = _{ ^"NARRATE"   }
+kw_window      = _{ ^"WINDOW"    }
+kw_format      = _{ ^"FORMAT"    }
 
 // ── Terminals ────────────────────────────────────────────
 
@@ -205,8 +230,7 @@ return_clause = {
     ~ return_item ~ ("," ~ return_item)*
     ~ group_by?
     ~ order_by?
-    ~ limit_clause?
-    ~ skip_clause?
+    ~ (skip_clause ~ limit_clause? | limit_clause ~ skip_clause?)?
 }
 
 // ── DIFFUSE query ───────────────────────────────────────
@@ -251,6 +275,7 @@ merge_query = {
 match_query = {
     match_clause
     ~ where_clause?
+    ~ as_of_cycle_clause?
     ~ (set_clause ~ return_clause? | delete_clause | return_clause)
 }
 
@@ -308,6 +333,118 @@ create_query        = { kw_create ~ create_node_pattern ~ return_clause? }
 delete_target  = { ident }
 delete_clause  = { kw_delete ~ delete_target ~ ("," ~ delete_target)* }
 
+// ── DAEMON queries ──────────────────────────────────────
+//
+// CREATE DAEMON guardian ON (n:Memory)
+//   WHEN n.energy > 0.8
+//   THEN DIFFUSE FROM n WITH t=[0.1, 1.0] MAX_HOPS 5
+//   EVERY INTERVAL("1h")
+//   ENERGY 0.8
+//
+// DROP DAEMON guardian
+// SHOW DAEMONS
+
+daemon_name = @{ ident }
+
+// THEN action: DELETE n | SET n.x = v, … | DIFFUSE FROM n WITH t=[…] MAX_HOPS k
+daemon_delete_action  = { kw_delete ~ ident }
+daemon_set_action     = { kw_set ~ set_assignment ~ ("," ~ set_assignment)* }
+daemon_diffuse_action = {
+    kw_diffuse ~ kw_from ~ ident
+    ~ diffuse_t?
+    ~ diffuse_hops?
+}
+daemon_action = { daemon_delete_action | daemon_set_action | daemon_diffuse_action }
+
+daemon_when   = { kw_when ~ conditions }
+daemon_then   = { kw_then ~ daemon_action }
+daemon_every  = { kw_every ~ atom }
+daemon_energy = { kw_energy ~ (float | integer) }
+
+create_daemon_query = {
+    kw_create ~ kw_daemon ~ daemon_name
+    ~ kw_on ~ node_pattern
+    ~ daemon_when
+    ~ daemon_then
+    ~ daemon_every
+    ~ daemon_energy?
+}
+
+drop_daemon_query  = { kw_drop ~ kw_daemon ~ daemon_name }
+show_daemons_query = { kw_show ~ kw_daemons }
+
+// ── DREAM queries (Phase 15.2) ──────────────────────────
+//
+// DREAM FROM $node DEPTH 3 NOISE 0.1
+// APPLY DREAM $dream_id
+// REJECT DREAM $dream_id
+// SHOW DREAMS
+
+dream_seed   = { param | ident }
+dream_depth  = { kw_depth ~ integer }
+dream_noise  = { kw_noise ~ (float | integer) }
+
+dream_from_query = {
+    kw_dream ~ kw_from ~ dream_seed
+    ~ dream_depth?
+    ~ dream_noise?
+}
+
+apply_dream_query  = { kw_apply ~ kw_dream ~ param }
+reject_dream_query = { kw_reject ~ kw_dream ~ param }
+show_dreams_query  = { kw_show ~ kw_dreams }
+
+// ── TRANSLATE query (Phase 15.3 — Synesthesia) ─────────
+//
+// TRANSLATE $node FROM audio TO text QUALITY high
+
+translate_target = { param | ident }
+translate_from   = { kw_from ~ ident }
+translate_to     = { kw_to ~ ident }
+translate_query  = {
+    kw_translate ~ translate_target
+    ~ translate_from
+    ~ translate_to
+    ~ (kw_quality ~ quality_level)?
+}
+
+// ── AS OF CYCLE clause (Phase 15.4 — Eternal Return) ────
+//
+// MATCH (n) WHERE … AS OF CYCLE 3 RETURN …
+
+as_of_cycle_clause = { kw_as_of ~ kw_cycle ~ integer }
+
+// ── COUNTERFACTUAL query (Phase 15.4 — Eternal Return) ──
+//
+// COUNTERFACTUAL SET n.energy = 0.5 MATCH (n) WHERE … RETURN …
+
+counterfactual_query = {
+    kw_counterfactual ~ set_clause ~ match_query
+}
+
+// ── Collective Unconscious (Phase 15.6) ──────────────────
+//
+// SHOW ARCHETYPES
+// SHARE ARCHETYPE $node_id TO "collection"
+
+show_archetypes_query  = { kw_show ~ kw_archetypes }
+share_archetype_query  = { kw_share ~ kw_archetype ~ param ~ kw_to ~ string }
+
+// ── NARRATE query (Phase 15.7 — Narrative Engine) ────────
+//
+// NARRATE IN "memories" WINDOW 24 FORMAT json
+
+narrate_in     = { kw_in ~ string }
+narrate_window = { kw_window ~ integer }
+narrate_format = { kw_format ~ ident }
+
+narrate_query = {
+    kw_narrate
+    ~ narrate_in?
+    ~ narrate_window?
+    ~ narrate_format?
+}
+
 // ── Top-level ───────────────────────────────────────────
 
-query = { SOI ~ (explain_query | invoke_zaratustra_query | begin_tx_query | commit_tx_query | rollback_tx_query | reconstruct_query | diffuse_query | create_query | merge_query | match_query) ~ EOI }
+query = { SOI ~ (explain_query | invoke_zaratustra_query | begin_tx_query | commit_tx_query | rollback_tx_query | reconstruct_query | diffuse_query | show_dreams_query | apply_dream_query | reject_dream_query | dream_from_query | show_archetypes_query | share_archetype_query | show_daemons_query | drop_daemon_query | create_daemon_query | counterfactual_query | translate_query | narrate_query | create_query | merge_query | match_query) ~ EOI }

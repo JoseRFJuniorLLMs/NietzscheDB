@@ -1,0 +1,112 @@
+/// Configuration for the agency engine and its daemons.
+#[derive(Debug, Clone)]
+pub struct AgencyConfig {
+    /// Seconds between agency engine ticks (0 = disabled).
+    pub tick_secs: u64,
+
+    // -- EntropyDaemon --
+    /// Hausdorff variance threshold above which an entropy spike is emitted.
+    pub entropy_variance_threshold: f32,
+    /// Number of angular regions for entropy partitioning.
+    pub entropy_region_count: usize,
+
+    // -- CoherenceDaemon --
+    /// Maximum Jaccard overlap(t=0.1, t=10.0) before a coherence drop alert.
+    pub coherence_overlap_threshold: f64,
+
+    // -- GapDaemon --
+    /// Number of angular sectors for gap detection.
+    pub gap_sector_count: usize,
+    /// Number of radial depth bands.
+    pub gap_depth_bins: usize,
+    /// Minimum relative density per sector (fraction of expected uniform).
+    pub gap_min_density: f64,
+
+    // -- Observer --
+    /// Number of ticks between full health reports.
+    pub observer_report_interval: usize,
+    /// Mean energy below which the observer emits a wake-up.
+    pub observer_wake_energy_threshold: f32,
+    /// Hausdorff lower bound for wake-up.
+    pub observer_wake_hausdorff_lo: f32,
+    /// Hausdorff upper bound for wake-up.
+    pub observer_wake_hausdorff_hi: f32,
+
+    // -- Reactor --
+    /// Minimum ticks between repeated sleep/lsystem intents (cooldown).
+    pub reactor_cooldown_ticks: u64,
+
+    // -- Counterfactual --
+    /// Max BFS hops for impact propagation.
+    pub counterfactual_max_hops: usize,
+
+    // -- Desire → Action --
+    /// Minimum desire priority to trigger an automatic dream (0.0–1.0).
+    pub desire_dream_threshold: f32,
+    /// BFS depth for agency-triggered dreams.
+    pub desire_dream_depth: usize,
+
+    // -- Evolution --
+    /// Minimum ticks between evolution suggestions.
+    pub evolution_cooldown_ticks: u64,
+}
+
+impl Default for AgencyConfig {
+    fn default() -> Self {
+        Self {
+            tick_secs: 60,
+            entropy_variance_threshold: 0.25,
+            entropy_region_count: 8,
+            coherence_overlap_threshold: 0.70,
+            gap_sector_count: 16,
+            gap_depth_bins: 5,
+            gap_min_density: 0.1,
+            observer_report_interval: 5,
+            observer_wake_energy_threshold: 0.3,
+            observer_wake_hausdorff_lo: 0.5,
+            observer_wake_hausdorff_hi: 1.9,
+            reactor_cooldown_ticks: 3,
+            counterfactual_max_hops: 3,
+            desire_dream_threshold: 0.6,
+            desire_dream_depth: 5,
+            evolution_cooldown_ticks: 5,
+        }
+    }
+}
+
+impl AgencyConfig {
+    /// Build from environment variables, falling back to defaults.
+    pub fn from_env() -> Self {
+        fn env_u64(key: &str, default: u64) -> u64 {
+            std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+        }
+        fn env_usize(key: &str, default: usize) -> usize {
+            std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+        }
+        fn env_f32(key: &str, default: f32) -> f32 {
+            std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+        }
+        fn env_f64(key: &str, default: f64) -> f64 {
+            std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+        }
+
+        Self {
+            tick_secs:                      env_u64("AGENCY_TICK_SECS", 60),
+            entropy_variance_threshold:     env_f32("AGENCY_ENTROPY_THRESHOLD", 0.25),
+            entropy_region_count:           env_usize("AGENCY_ENTROPY_REGIONS", 8),
+            coherence_overlap_threshold:    env_f64("AGENCY_COHERENCE_THRESHOLD", 0.70),
+            gap_sector_count:               env_usize("AGENCY_GAP_SECTORS", 16),
+            gap_depth_bins:                 env_usize("AGENCY_GAP_DEPTH_BINS", 5),
+            gap_min_density:                env_f64("AGENCY_GAP_MIN_DENSITY", 0.1),
+            observer_report_interval:       env_usize("AGENCY_OBSERVER_INTERVAL", 5),
+            observer_wake_energy_threshold: env_f32("AGENCY_OBSERVER_ENERGY_WAKE", 0.3),
+            observer_wake_hausdorff_lo:     env_f32("AGENCY_OBSERVER_HAUSDORFF_LO", 0.5),
+            observer_wake_hausdorff_hi:     env_f32("AGENCY_OBSERVER_HAUSDORFF_HI", 1.9),
+            reactor_cooldown_ticks:         env_u64("AGENCY_REACTOR_COOLDOWN", 3),
+            counterfactual_max_hops:        env_usize("AGENCY_CF_MAX_HOPS", 3),
+            desire_dream_threshold:         env_f32("AGENCY_DESIRE_DREAM_THRESHOLD", 0.6),
+            desire_dream_depth:             env_usize("AGENCY_DESIRE_DREAM_DEPTH", 5),
+            evolution_cooldown_ticks:       env_u64("AGENCY_EVOLUTION_COOLDOWN", 5),
+        }
+    }
+}

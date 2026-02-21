@@ -31,5 +31,7 @@
 pub mod types;
 pub mod storage;
 pub mod encoder;
+pub mod translate;
 
 pub use types::*;
+pub use translate::{translate_modality, TranslationResult};

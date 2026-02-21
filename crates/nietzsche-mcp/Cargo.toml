@@ -1,0 +1,19 @@
+[package]
+name = "nietzsche-mcp"
+version = "0.1.0"
+edition = "2021"
+description = "MCP (Model Context Protocol) server for NietzscheDB — exposes graph, query, and vector capabilities to AI assistants"
+
+[dependencies]
+nietzsche-graph   = { workspace = true }
+nietzsche-query   = { workspace = true }
+nietzsche-algo    = { workspace = true }
+serde             = { workspace = true }
+serde_json        = "1.0"
+tokio             = { workspace = true }
+tracing           = { workspace = true }
+thiserror         = { workspace = true }
+uuid              = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

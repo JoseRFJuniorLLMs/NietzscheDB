@@ -1,0 +1,17 @@
+[package]
+name = "nietzsche-media"
+version = "0.1.0"
+edition = "2021"
+description = "Media/blob store for NietzscheDB — stores files via OpenDAL (local, S3, GCS, etc.)"
+
+[dependencies]
+opendal = { version = "0.45", features = ["services-fs", "services-memory"] }
+serde = { workspace = true }
+serde_json = "1.0"
+uuid = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

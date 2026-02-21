@@ -32,6 +32,11 @@ nietzsche-query       = { workspace = true }
 nietzsche-zaratustra  = { workspace = true }
 nietzsche-algo        = { workspace = true }
 nietzsche-cluster     = { workspace = true }
+nietzsche-wiederkehr  = { workspace = true }
+nietzsche-agency      = { workspace = true }
+nietzsche-lsystem     = { workspace = true }
+nietzsche-dream       = { workspace = true }
+nietzsche-narrative   = { workspace = true }
 tokio           = { workspace = true }
 tonic           = { workspace = true }
 tracing         = { workspace = true }

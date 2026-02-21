@@ -34,7 +34,11 @@ use tracing_subscriber::{fmt, EnvFilter};
 use nietzsche_api::{CdcBroadcaster, NietzscheServer};
 use nietzsche_graph::{CollectionManager, embedded_vector_store::AnyVectorStore};
 use nietzsche_sleep::{SleepConfig, SleepCycle};
-use nietzsche_zaratustra::ZaratustraEngine;
+use nietzsche_zaratustra::{ZaratustraEngine, ZaratustraConfig};
+#[allow(unused_imports)]
+use nietzsche_lsystem::LSystemEngine;
+use nietzsche_dream::{DreamConfig, DreamEngine};
+use nietzsche_narrative::{NarrativeConfig, NarrativeEngine};
 
 #[cfg(feature = "gpu")]
 use nietzsche_hnsw_gpu::GpuVectorStore;
@@ -385,6 +389,302 @@ async fn main() -> anyhow::Result<()> {
         });
     } else {
         info!("scheduled backup disabled (NIETZSCHE_BACKUP_INTERVAL_SECS=0)");
+    }
+
+    // ── Wiederkehr daemon engine ─────────────────────────────────────────────
+    // Background loop that ticks daemon agents. Reads `DAEMON_TICK_SECS` (default 30, 0 = disabled).
+    {
+        let daemon_cfg = nietzsche_wiederkehr::DaemonEngineConfig::from_env();
+        if daemon_cfg.tick_secs > 0 {
+            let cm_daemon  = Arc::clone(&cm);
+            let tick_dur   = Duration::from_secs(daemon_cfg.tick_secs);
+            let engine     = nietzsche_wiederkehr::DaemonEngine::new(daemon_cfg);
+
+            tokio::spawn(async move {
+                info!(tick_secs = tick_dur.as_secs(), "Wiederkehr daemon engine started");
+                loop {
+                    tokio::time::sleep(tick_dur).await;
+
+                    let Some(shared) = cm_daemon.get_or_default("default") else {
+                        warn!("wiederkehr: 'default' collection not found — skipping");
+                        continue;
+                    };
+
+                    // Tick under read lock (put_daemon internally writes to CF_META
+                    // which is safe even under read lock since CF_META updates are
+                    // atomic at the RocksDB level).
+                    let db = shared.read().await;
+                    match engine.tick(db.storage()) {
+                        Ok(result) => {
+                            if !result.intents.is_empty() || !result.reaped.is_empty() {
+                                info!(
+                                    intents = result.intents.len(),
+                                    reaped  = result.reaped.len(),
+                                    "Wiederkehr tick complete"
+                                );
+                            }
+                            // Execute intents that require mutation
+                            for intent in result.intents {
+                                match intent {
+                                    nietzsche_wiederkehr::DaemonIntent::DeleteNode(nid) => {
+                                        drop(db);
+                                        let mut db_w = shared.write().await;
+                                        if let Err(e) = db_w.delete_node(nid) {
+                                            warn!(node_id = %nid, error = %e, "daemon delete failed");
+                                        }
+                                        drop(db_w);
+                                        break; // re-tick next cycle
+                                    }
+                                    nietzsche_wiederkehr::DaemonIntent::SetNodeFields { node_id, fields } => {
+                                        if let Ok(Some(mut meta)) = db.storage().get_node_meta(&node_id) {
+                                            if let serde_json::Value::Object(map) = fields {
+                                                for (k, v) in map {
+                                                    meta.content[&k] = v;
+                                                }
+                                            }
+                                            if let Err(e) = db.storage().put_node_meta(&meta) {
+                                                warn!(node_id = %node_id, error = %e, "daemon set failed");
+                                            }
+                                        }
+                                    }
+                                    nietzsche_wiederkehr::DaemonIntent::DiffuseFromNode { node_id, t_values, max_hops } => {
+                                        // Diffuse intents are logged; actual diffusion
+                                        // can be triggered via the standard NQL pipeline.
+                                        info!(
+                                            node_id  = %node_id,
+                                            t_values = ?t_values,
+                                            max_hops = max_hops,
+                                            "daemon diffuse intent (logged)"
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => warn!(error = %e, "Wiederkehr tick failed"),
+                    }
+                }
+            });
+        } else {
+            info!("Wiederkehr daemon engine disabled (DAEMON_TICK_SECS=0)");
+        }
+    }
+
+    // ── Agency engine ─────────────────────────────────────────────────────────
+    // Background loop for autonomous daemons (entropy, coherence, gap detection),
+    // meta-observer health reports, reactor (event → intent), desire engine,
+    // evolution, dream triggers, narrative generation, and Zaratustra modulation.
+    // Reads `AGENCY_TICK_SECS` (default 60, 0 = disabled).
+    // Multi-collection: iterates all collections, one engine per collection.
+    {
+        let agency_cfg = nietzsche_agency::AgencyConfig::from_env();
+        if agency_cfg.tick_secs > 0 {
+            let cm_agency  = Arc::clone(&cm);
+            let tick_dur   = Duration::from_secs(agency_cfg.tick_secs);
+
+            // Build collection → engine map for multi-collection support
+            let mut engines: std::collections::HashMap<String, nietzsche_agency::AgencyEngine> =
+                std::collections::HashMap::new();
+            for col_info in cm_agency.list() {
+                let engine = nietzsche_agency::AgencyEngine::new(agency_cfg.clone());
+                engines.insert(col_info.name.clone(), engine);
+            }
+            // Ensure at least the "default" collection has an engine
+            engines
+                .entry("default".to_string())
+                .or_insert_with(|| nietzsche_agency::AgencyEngine::new(agency_cfg.clone()));
+
+            // Initialize Observer Identity for each collection
+            for (col_name, eng) in &engines {
+                if let Some(shared) = cm_agency.get_or_default(col_name) {
+                    let db = shared.blocking_read();
+                    match eng.ensure_observer_identity(db.storage()) {
+                        Ok(id) => info!(collection = %col_name, observer_id = %id, "Observer Identity ready"),
+                        Err(e) => warn!(collection = %col_name, error = %e, "failed to create Observer Identity"),
+                    }
+                }
+            }
+
+            // Shared Zaratustra config for modulation (wrapped in Arc<Mutex>)
+            let zara_config = Arc::new(tokio::sync::Mutex::new(ZaratustraConfig::from_env()));
+
+            // Shared dream + narrative engines
+            let dream_engine = DreamEngine::new(DreamConfig::from_env());
+            let narrative_engine = NarrativeEngine::new(NarrativeConfig::default());
+
+            tokio::spawn(async move {
+                info!(
+                    tick_secs   = tick_dur.as_secs(),
+                    collections = engines.len(),
+                    "Agency engine started (multi-collection)"
+                );
+                loop {
+                    tokio::time::sleep(tick_dur).await;
+
+                    for (col_name, engine) in &mut engines {
+                        let Some(shared) = cm_agency.get_or_default(col_name) else {
+                            continue;
+                        };
+
+                        let db = shared.read().await;
+                        match engine.tick(db.storage(), db.adjacency()) {
+                            Ok(report) => {
+                                if let Some(ref health) = report.health_report {
+                                    info!(
+                                        collection       = %col_name,
+                                        global_hausdorff = health.global_hausdorff,
+                                        mean_energy      = health.mean_energy,
+                                        coherence        = health.coherence_score,
+                                        gap_count        = health.gap_count,
+                                        entropy_spikes   = health.entropy_spike_count,
+                                        duration_ms      = report.duration_ms,
+                                        "Agency health report"
+                                    );
+                                }
+
+                                // Execute intents produced by the reactor
+                                for intent in report.intents {
+                                    match intent {
+                                        nietzsche_agency::AgencyIntent::PersistHealthReport { report: hr } => {
+                                            if let Err(e) = nietzsche_agency::put_health_report(db.storage(), &hr) {
+                                                warn!(error = %e, "agency: failed to persist health report");
+                                            } else {
+                                                let _ = nietzsche_agency::prune_health_reports(db.storage());
+                                            }
+                                        }
+                                        nietzsche_agency::AgencyIntent::TriggerSleepCycle { reason } => {
+                                            info!(collection = %col_name, reason = %reason, "agency: triggering sleep cycle");
+                                            drop(db);
+                                            let mut db_w = shared.write().await;
+                                            let seed: u64 = rand::random();
+                                            let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(seed);
+                                            let sleep_cfg = SleepConfig {
+                                                noise: 0.02, adam_steps: 10, adam_lr: 5e-3,
+                                                hausdorff_threshold: 0.15,
+                                            };
+                                            match SleepCycle::run(&sleep_cfg, &mut *db_w, &mut rng) {
+                                                Ok(r) => info!(hausdorff_delta = r.hausdorff_delta, committed = r.committed, "agency sleep cycle complete"),
+                                                Err(e) => warn!(error = %e, "agency sleep cycle failed"),
+                                            }
+                                            break;
+                                        }
+                                        nietzsche_agency::AgencyIntent::TriggerLSystemGrowth { reason } => {
+                                            info!(collection = %col_name, reason = %reason, "agency: triggering L-System growth");
+                                            drop(db);
+                                            let mut db_w = shared.write().await;
+                                            let lsystem = nietzsche_lsystem::LSystemEngine::new(vec![
+                                                nietzsche_lsystem::ProductionRule::growth_child("agency-grow", 3),
+                                                nietzsche_lsystem::ProductionRule::lateral_association("agency-assoc", 3),
+                                                nietzsche_lsystem::ProductionRule::prune_fading("agency-prune", 0.1),
+                                            ]);
+                                            match lsystem.tick(&mut *db_w) {
+                                                Ok(r) => info!(spawned = r.nodes_spawned, pruned = r.nodes_pruned, "agency L-System tick complete"),
+                                                Err(e) => warn!(error = %e, "agency L-System tick failed"),
+                                            }
+                                            break;
+                                        }
+                                        nietzsche_agency::AgencyIntent::SignalKnowledgeGap { sectors, suggested_depth_range } => {
+                                            info!(
+                                                collection = %col_name,
+                                                gap_sectors = sectors.len(),
+                                                depth_range = ?(suggested_depth_range.0, suggested_depth_range.1),
+                                                "agency: knowledge gap → desires persisted"
+                                            );
+                                        }
+                                        nietzsche_agency::AgencyIntent::TriggerDream { seed_node_id, depth, reason } => {
+                                            info!(collection = %col_name, seed = %seed_node_id, depth = depth, reason = %reason, "agency: triggering dream");
+                                            match dream_engine.dream_from(db.storage(), seed_node_id, Some(depth), None) {
+                                                Ok(session) => {
+                                                    let event_count = session.events.len();
+                                                    // Auto-apply dreams with significant events
+                                                    if event_count > 0 {
+                                                        match dream_engine.apply_dream(db.storage(), &session.id) {
+                                                            Ok(_) => info!(dream_id = %session.id, events = event_count, "agency dream applied"),
+                                                            Err(e) => warn!(error = %e, "agency dream apply failed"),
+                                                        }
+                                                    } else {
+                                                        info!(dream_id = %session.id, "agency dream: no events, skipping");
+                                                    }
+                                                }
+                                                Err(e) => warn!(error = %e, "agency dream_from failed"),
+                                            }
+                                        }
+                                        nietzsche_agency::AgencyIntent::ModulateZaratustra { alpha, decay, reason } => {
+                                            info!(alpha = alpha, decay = decay, reason = %reason, "agency: modulating Zaratustra");
+                                            let mut zc = zara_config.lock().await;
+                                            zc.alpha = alpha;
+                                            zc.decay = decay;
+                                        }
+                                        nietzsche_agency::AgencyIntent::GenerateNarrative { collection, reason } => {
+                                            match narrative_engine.narrate(db.storage(), &collection, None) {
+                                                Ok(report) => {
+                                                    info!(
+                                                        collection = %collection,
+                                                        events     = report.events.len(),
+                                                        reason     = %reason,
+                                                        summary    = %report.summary,
+                                                        "agency narrative generated"
+                                                    );
+                                                    // Persist narrative to CF_META for dashboard access
+                                                    if let Ok(json) = serde_json::to_vec(&report.summary) {
+                                                        let _ = db.storage().put_meta("agency:latest_narrative", &json);
+                                                    }
+                                                }
+                                                Err(e) => warn!(error = %e, "agency narrative failed"),
+                                            }
+                                        }
+                                        nietzsche_agency::AgencyIntent::EvolveLSystemRules { strategy, reason } => {
+                                            info!(strategy = ?strategy, reason = %reason, "agency: evolving L-System rules");
+                                            // Load evolution state, advance generation, persist
+                                            if let Ok(mut state) = nietzsche_agency::RuleEvolution::load_state(db.storage()) {
+                                                state.generation += 1;
+                                                state.last_strategy = format!("{:?}", strategy);
+                                                let _ = nietzsche_agency::RuleEvolution::save_state(db.storage(), &state);
+                                            }
+                                            // Apply evolved rules via L-System tick
+                                            let evolved = nietzsche_agency::RuleEvolution::evolve_rules(&strategy, 0);
+                                            let rules: Vec<_> = evolved.iter().map(|er| {
+                                                match er.rule_type {
+                                                    nietzsche_agency::EvolvedRuleType::GrowthChild =>
+                                                        nietzsche_lsystem::ProductionRule::growth_child(&er.name, er.max_generation),
+                                                    nietzsche_agency::EvolvedRuleType::LateralAssociation =>
+                                                        nietzsche_lsystem::ProductionRule::lateral_association(&er.name, er.max_generation),
+                                                    nietzsche_agency::EvolvedRuleType::PruneFading =>
+                                                        nietzsche_lsystem::ProductionRule::prune_fading(&er.name, er.energy_threshold),
+                                                    nietzsche_agency::EvolvedRuleType::EnergyBoost { .. } =>
+                                                        nietzsche_lsystem::ProductionRule::prune_fading(&er.name, er.energy_threshold),
+                                                }
+                                            }).collect();
+                                            if !rules.is_empty() {
+                                                drop(db);
+                                                let mut db_w = shared.write().await;
+                                                let lsystem = nietzsche_lsystem::LSystemEngine::new(rules);
+                                                match lsystem.tick(&mut *db_w) {
+                                                    Ok(r) => info!(spawned = r.nodes_spawned, pruned = r.nodes_pruned, "evolved L-System tick complete"),
+                                                    Err(e) => warn!(error = %e, "evolved L-System tick failed"),
+                                                }
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if !report.desires.is_empty() {
+                                    info!(
+                                        collection   = %col_name,
+                                        desires      = report.desires.len(),
+                                        top_priority = report.desires.first().map(|d| d.priority).unwrap_or(0.0),
+                                        "Motor de Desejo: desires available"
+                                    );
+                                }
+                            }
+                            Err(e) => warn!(collection = %col_name, error = %e, "Agency tick failed"),
+                        }
+                    }
+                }
+            });
+        } else {
+            info!("Agency engine disabled (AGENCY_TICK_SECS=0)");
+        }
     }
 
     // ── CDC broadcaster ───────────────────────────────────────────────────────

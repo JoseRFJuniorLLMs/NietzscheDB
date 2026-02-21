@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://github.com/JoseRFJuniorLLMs/NietzscheDB/blob/main/LICENSE_AGPLv3.md"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/built%20with-Rust%20nightly-orange.svg" alt="Rust"></a>
-  <img src="https://img.shields.io/badge/crates-25%20workspace-informational.svg" alt="Crates">
+  <img src="https://img.shields.io/badge/crates-38%20workspace-informational.svg" alt="Crates">
   <img src="https://img.shields.io/badge/gRPC-55%2B%20RPCs-blueviolet.svg" alt="RPCs">
   <img src="https://img.shields.io/badge/geometry-Poincar%C3%A9%20Ball-purple.svg" alt="Hyperbolic">
   <img src="https://img.shields.io/badge/category-Temporal%20Hyperbolic%20Graph%20DB-red.svg" alt="Category">
@@ -58,10 +58,18 @@ The name for what NietzscheDB actually is:
 │   · Multi-scale search via hyperbolic heat diffusion    │
 │   · Active memory reconsolidation during idle cycles    │
 │   · GPU/TPU-accelerated vector search                   │
-│   · 11 built-in graph algorithms                        │
+│   · 11 built-in graph algorithms (PageRank, Louvain,...) │
 │   · Hybrid BM25+ANN search with RRF fusion              │
+│   · Filtered KNN with Roaring Bitmaps                    │
+│   · Product Quantization (magnitude-preserving)          │
 │   · RBAC + AES-256-CTR encryption at-rest                │
 │   · Schema validation + metadata secondary indexes       │
+│   · Multi-vector per node (Named Vectors)                │
+│   · Media/blob storage via OpenDAL (S3, GCS, local)      │
+│   · Relational tables via SQLite (hybrid graph+SQL)      │
+│   · MCP server for AI assistant integration              │
+│   · Prometheus/OpenTelemetry metrics export              │
+│   · Kafka Connect sink for CDC streaming                 │
 │   · Autonomous evolution (Zaratustra cycle)             │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
@@ -69,7 +77,7 @@ The name for what NietzscheDB actually is:
 
 **In plain language:**
 - *For users:* "A memory database that thinks in hierarchies, grows like a plant, and sleeps to consolidate what it learned."
-- *For engineers:* "A hyperbolic graph with native L-System growth, heat kernel diffusion as a search primitive, GPU/TPU vector backends, 45+ gRPC RPCs, and periodic Riemannian reconsolidation."
+- *For engineers:* "A hyperbolic graph with native L-System growth, heat kernel diffusion as a search primitive, GPU/TPU vector backends, 55+ gRPC RPCs, MCP server for AI assistants, Prometheus metrics, filtered KNN, Product Quantization, and periodic Riemannian reconsolidation."
 - *For the market:* The category does not exist yet. This is it.
 
 ---
@@ -108,31 +116,44 @@ It is a fork of **[YARlabs/hyperspace-db](https://github.com/YARlabs/hyperspace-
 | Security | API key at best | RBAC (Admin/Writer/Reader) + AES-256-CTR encryption at-rest |
 | Data integrity | No schema enforcement | Per-NodeType schema validation (required fields + types) |
 | Consistency | Single-store | ACID saga pattern across graph + vector store |
+| Vector compression | Scalar/binary quant | Product Quantization (magnitude-preserving — depth safe) |
+| Multi-vector | Single embedding only | Named Vectors: multiple embeddings per node with different metrics |
+| AI integration | REST API only | MCP server (19 tools) + REST + gRPC |
+| Media storage | External service | Built-in OpenDAL store (S3, GCS, local filesystem) |
+| Relational data | Separate RDBMS | Built-in SQLite table store with NodeRef foreign keys |
+| Observability | External setup | Built-in Prometheus metrics (12 counters/gauges/histograms) |
+| CDC streaming | External CDC | Built-in Kafka Connect sink (6 mutation types) |
 
 ---
 
 ## Architecture
 
-NietzscheDB is built as a **Rust nightly workspace** with 25 crates in two layers:
+NietzscheDB is built as a **Rust nightly workspace** with 38 crates in two layers:
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         NietzscheDB Layer (16 crates)                   │
-│                                                                         │
-│  Engine:     nietzsche-graph    nietzsche-query     nietzsche-hyp-ops   │
-│  Growth:     nietzsche-lsystem  nietzsche-pregel    nietzsche-sleep     │
-│  Evolution:  nietzsche-zaratustra                                       │
-│  Analytics:  nietzsche-algo     nietzsche-sensory                       │
-│  Infra:      nietzsche-api      nietzsche-server    nietzsche-cluster   │
-│  SDKs:       nietzsche-sdk                                              │
-│  Accel:      nietzsche-hnsw-gpu nietzsche-tpu       nietzsche-cugraph   │
-├─────────────────────────────────────────────────────────────────────────┤
-│                     HyperspaceDB Layer (9 crates — fork base)           │
-│                                                                         │
-│  hyperspace-core   hyperspace-index   hyperspace-store                  │
-│  hyperspace-server hyperspace-proto   hyperspace-cli                    │
-│  hyperspace-embed  hyperspace-wasm    hyperspace-sdk                    │
-└─────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         NietzscheDB Layer (29 crates)                        │
+│                                                                              │
+│  Engine:     nietzsche-graph    nietzsche-query     nietzsche-hyp-ops        │
+│  Growth:     nietzsche-lsystem  nietzsche-pregel    nietzsche-sleep          │
+│  Evolution:  nietzsche-zaratustra                                            │
+│  Analytics:  nietzsche-algo     nietzsche-sensory                            │
+│  Visionary:  nietzsche-dream    nietzsche-narrative  nietzsche-agency        │
+│  Wiederkehr: nietzsche-wiederkehr                                            │
+│  Infra:      nietzsche-api      nietzsche-server    nietzsche-cluster        │
+│  SDKs:       nietzsche-sdk      nietzsche-mcp                                │
+│  Accel:      nietzsche-hnsw-gpu nietzsche-tpu       nietzsche-cugraph        │
+│  Search:     nietzsche-filtered-knn  nietzsche-named-vectors  nietzsche-pq   │
+│  Index:      nietzsche-secondary-idx                                         │
+│  Observe:    nietzsche-metrics                                               │
+│  Storage:    nietzsche-table    nietzsche-media      nietzsche-kafka          │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                     HyperspaceDB Layer (9 crates — fork base)                │
+│                                                                              │
+│  hyperspace-core   hyperspace-index   hyperspace-store                       │
+│  hyperspace-server hyperspace-proto   hyperspace-cli                         │
+│  hyperspace-embed  hyperspace-wasm    hyperspace-sdk                         │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### HyperspaceDB Foundation (fork base)
@@ -152,7 +173,7 @@ The storage and indexing foundation, inheriting all of HyperspaceDB v2.0:
 
 ### NietzscheDB Extensions
 
-Sixteen new crates built on top of the foundation:
+Twenty-nine new crates built on top of the foundation:
 
 #### `nietzsche-graph` — Hyperbolic Graph Engine
 - `Node` = `NodeMeta` (~100 bytes: id, depth, energy, node_type, hausdorff_local, content) + `PoincareVector` (embedding, stored separately for 10-25x traversal speedup)
@@ -192,6 +213,15 @@ Query types:
 | `DIFFUSE` | Multi-scale heat-kernel activation propagation |
 | `RECONSTRUCT` | Decode sensory data from latent vector |
 | `EXPLAIN` | Return execution plan with cost estimates |
+| `DREAM FROM` | Speculative graph exploration via hyperbolic diffusion with noise |
+| `APPLY/REJECT DREAM` | Accept or discard dream simulation results |
+| `TRANSLATE` | Cross-modal projection (Synesthesia) via Poincare ball log/exp map |
+| `MATCH ... AS OF CYCLE` | Time-travel query on named snapshots (Eternal Return) |
+| `COUNTERFACTUAL` | What-if query with ephemeral property overlays |
+| `CREATE/DROP/SHOW DAEMON` | Autonomous daemon agents (Wiederkehr) |
+| `SHOW ARCHETYPES` | List shared cross-collection archetypes |
+| `SHARE ARCHETYPE` | Publish elite node for cross-collection discovery |
+| `NARRATE` | Generate human-readable narrative from graph evolution |
 
 ```sql
 -- Hyperbolic nearest-neighbor search with depth filter
@@ -255,6 +285,27 @@ DIFFUSE FROM $seed
   WITH t = [0.1, 1.0, 10.0]
   MAX_HOPS 6
 RETURN path
+
+-- Dream Queries — speculative exploration
+DREAM FROM $seed DEPTH 5 NOISE 0.05
+SHOW DREAMS
+APPLY DREAM "dream_xxx"
+
+-- Daemon Agents — autonomous graph patrols
+CREATE DAEMON guardian ON (n:Memory)
+  WHEN n.energy > 0.8
+  THEN DIFFUSE FROM n WITH t=[0.1, 1.0] MAX_HOPS 5
+  EVERY INTERVAL("1h")
+  ENERGY 0.8
+SHOW DAEMONS
+
+-- Time-travel via named snapshots
+MATCH (n:Memory) AS OF CYCLE 3
+WHERE n.energy > 0.5
+RETURN n
+
+-- Narrative Engine
+NARRATE IN "memories" WINDOW 24 FORMAT json
 ```
 
 **Built-in geometric functions:**
@@ -297,6 +348,59 @@ Multi-scale activation propagation across the hyperbolic graph:
 - **Modified Bessel functions** `I_k(t)` for computing Chebyshev coefficients analytically
 - Multiple diffusion scales: `t=0.1` activates direct neighbors (focused recall), `t=10.0` activates structurally connected but semantically distant nodes (free association)
 - `HyperbolicLaplacian` + `apply_heat_kernel` + `chebyshev_coefficients` as stable public API
+
+#### `nietzsche-wiederkehr` — DAEMON Agents
+Autonomous agents that live inside the database, patrolling the graph and executing actions when conditions are met:
+- **DaemonDef** with configurable WHEN conditions, THEN actions, EVERY interval, and ENERGY budget
+- **DaemonEngine** tick loop: evaluate conditions, collect intents, decay energy, reap dead daemons
+- **Will to Power** priority scheduler: BinaryHeap-based scheduling with energy × urgency weighting
+- NQL: `CREATE DAEMON`, `DROP DAEMON`, `SHOW DAEMONS`
+- 18 unit tests (store, evaluator, engine, priority)
+
+#### `nietzsche-dream` — Dream Queries
+Speculative graph exploration via hyperbolic diffusion with stochastic noise:
+- **DreamEngine**: BFS exploration from seed node with noise-perturbed energy detection
+- Energy spike and curvature anomaly event detection
+- Pending/Applied/Rejected dream lifecycle with persistent sessions
+- NQL: `DREAM FROM`, `APPLY DREAM`, `REJECT DREAM`, `SHOW DREAMS`
+- 8 unit tests (store, engine)
+
+#### `nietzsche-narrative` — Narrative Engine
+Story arc detection and generation from graph evolution:
+- **NarrativeEngine**: scans nodes, computes energy statistics, detects elite emergence and decay events
+- Configurable time window, elite/decay thresholds
+- JSON and text output formats with auto-generated summaries
+- NQL: `NARRATE IN "collection" WINDOW hours FORMAT json|text`
+- 4 unit tests
+
+#### Synesthesia (in `nietzsche-sensory`)
+Cross-modal projection via hyperbolic parallel transport:
+- `translate_modality()`: log_map → modal rotation → exp_map on the Poincare ball
+- Preserves hierarchical depth (radius) while changing modality direction
+- Quality loss estimation per modality pair
+- NQL: `TRANSLATE $node FROM text TO audio`
+
+#### Eternal Return (in `nietzsche-query`)
+Temporal queries and counterfactual reasoning:
+- `AS OF CYCLE N`: time-travel queries on named snapshots
+- `COUNTERFACTUAL SET ... MATCH ...`: what-if queries with ephemeral overlays
+
+#### Collective Unconscious (in `nietzsche-cluster`)
+Cross-collection archetype sharing via gossip protocol:
+- `ArchetypeRegistry`: DashMap-based registry with merge_peer_archetypes for gossip
+- NQL: `SHOW ARCHETYPES`, `SHARE ARCHETYPE $node TO "collection"`
+- 4 unit tests
+
+#### `nietzsche-agency` — Autonomous Agency Engine
+Graph-level autonomous intelligence with counterfactual reasoning:
+- **AgencyEngine** tick loop: runs 3 built-in daemons (Entropy, Gap, Coherence) + MetaObserver
+- **EntropyDaemon**: detects Hausdorff variance spikes across angular regions
+- **GapDaemon**: identifies knowledge gaps in depth×angle sectors
+- **CoherenceDaemon**: measures multi-scale diffusion overlap (Chebyshev heat kernel)
+- **MetaObserver**: produces HealthReports with energy percentiles, fractal status, wake-up triggers
+- **CounterfactualEngine**: what-if simulations via ShadowGraph (remove/add nodes without mutating real graph)
+- **AgencyEventBus**: tokio broadcast channel for cross-system event propagation
+- 20+ unit tests (event_bus, engine, observer, daemons, shadow, simulator)
 
 #### `nietzsche-sleep` — Reconsolidation Sleep Cycle
 EVA-Mind sleeps. During sleep:
@@ -366,6 +470,78 @@ GPU-accelerated graph algorithms via NVIDIA cuGraph:
 - Dynamic FFI loader for `libcugraph.so` at runtime
 - cudarc + NVRTC for Poincare kernel compilation
 - Feature flag: `--features cuda`
+
+#### `nietzsche-mcp` — Model Context Protocol Server
+JSON-RPC 2.0 server for AI assistant integration (Claude, GPT, etc.):
+- **19 tools**: graph CRUD, NQL query, KNN search, traversal, graph algorithms, diffusion, stats
+- Stdin/stdout transport (standard MCP protocol)
+- Parameter validation with typed `ParamValue` (String, Float, Int, Bool, Vector)
+- 19 unit tests
+
+#### `nietzsche-metrics` — Prometheus/OpenTelemetry Metrics
+Observability export layer:
+- **NODES_INSERTED**, **EDGES_INSERTED**, **QUERIES_EXECUTED** (CounterVec by collection)
+- **QUERY_DURATION_SECONDS**, **KNN_DURATION_SECONDS**, **DIFFUSION_DURATION_SECONDS** (Histogram)
+- **NODE_COUNT**, **EDGE_COUNT**, **DAEMON_COUNT**, **DAEMON_ENERGY_TOTAL** (Gauge)
+- Singleton `MetricsRegistry` with Prometheus text format export (`/metrics`)
+- 6 unit tests
+
+#### `nietzsche-filtered-knn` — Filtered KNN with Roaring Bitmaps
+Pre-filtered nearest-neighbor search using Roaring Bitmaps:
+- **NodeFilter** enum: EnergyRange, NodeType, ContentField, ContentFieldExists, And, Or
+- Energy range filter leverages `CF_ENERGY_IDX` for efficient range scans
+- JSON dot-path navigation for content field filtering
+- Poincare distance computation for hyperbolic KNN
+- 15 integration tests
+
+#### `nietzsche-named-vectors` — Multi-Vector per Node
+Multiple named vector embeddings per node:
+- `NamedVector { node_id, name, coordinates, metric }` with VectorMetric (Poincare, Cosine, Euclidean)
+- Persisted in CF_META with key `nvec:{node_id}:{name}` (bincode serialization)
+- `NamedVectorStore` with put/get/list/delete/delete_all operations
+- 8 unit tests
+
+#### `nietzsche-pq` — Product Quantization
+Magnitude-preserving vector compression (NOT binary quantization — preserves hyperbolic depth):
+- **Codebook** training via k-means clustering per sub-vector partition
+- **PQEncoder** with encode/decode: M sub-vectors × K=256 centroids
+- **Asymmetric Distance Computation (ADC)** via precomputed DistanceTable
+- KEY: `test_magnitude_preservation` proves PQ preserves `‖x‖` = depth in Poincare ball
+- Configurable: `PQConfig { m: 8, k: 256, max_iterations: 25 }`
+- 12 unit tests
+
+#### `nietzsche-secondary-idx` — Secondary Indexes
+Arbitrary JSON field indexing for fast lookups:
+- `IndexDef { name, field_path, index_type: String|Float|Int }`
+- Persisted in CF_META: definitions at `idx_def:{name}`, entries at `sidx:{name}:{sortable_value}:{node_id}`
+- Float encoding: IEEE 754 sign-magnitude to lexicographic order (16 hex chars)
+- `SecondaryIndexBuilder` with create_index, drop_index, insert_entry, lookup, range_lookup
+- 13 unit tests
+
+#### `nietzsche-kafka` — Kafka Connect Sink
+Change data capture sink for streaming mutations:
+- `GraphMutation` enum: InsertNode, DeleteNode, InsertEdge, DeleteEdge, SetEnergy, SetContent
+- `KafkaSink` with process_message/process_batch (BatchResult with succeeded/failed/errors)
+- SetContent merges JSON fields into existing node content
+- 9 unit tests
+
+#### `nietzsche-table` — Relational Table Store (SQLite)
+Bridging graph and relational paradigms:
+- `TableSchema` with `ColumnDef { name, col_type, nullable, default }`
+- Column types: Text, Integer, Float, Bool, Uuid, Json, **NodeRef** (FK to graph nodes)
+- `TableStore` wrapping rusqlite::Connection with create/drop/insert/query/delete/list/schema
+- Schema metadata persisted in `_nietzsche_table_meta` internal table
+- File-backed or in-memory operation modes
+- 15 unit tests
+
+#### `nietzsche-media` — Media/Blob Store (OpenDAL)
+Backend-agnostic media storage for files associated with graph nodes:
+- Powered by **Apache OpenDAL** — supports local filesystem, S3, GCS, Azure, and more
+- `MediaMeta { id, node_id, filename, media_type, content_type, size_bytes, created_at }`
+- Media types: Image, Audio, Video, Document, Binary
+- `MediaStore` with put/get/get_meta/delete/list_for_node/exists
+- Flat key structure: `{node_id}/{media_id}` and `{node_id}/{media_id}.meta`
+- 8 unit tests
 
 #### `nietzsche-api` — Unified gRPC API
 Single endpoint for all NietzscheDB capabilities — **55+ RPCs** over a single `NietzscheDB` service. Every data-plane RPC accepts a `collection` field; empty -> `"default"`.
@@ -598,7 +774,7 @@ sleep, _ := client.TriggerSleep(ctx, nietzsche.SleepOpts{Noise: 0.02})
 fmt.Printf("deltaH=%.3f committed=%v\n", sleep.HausdorffDelta, sleep.Committed)
 ```
 
-Go SDK covers all 55+ RPCs: collections, nodes, edges, query, search, traversal, algorithms, backup, CDC, merge, sensory, lifecycle.
+Go SDK covers all 55+ RPCs: collections, nodes, edges, batch operations, query, search, traversal, algorithms, backup, CDC, merge, sensory, lifecycle.
 
 ### TypeScript & C++
 Located in `sdks/ts/` and `sdks/cpp/`.
@@ -621,7 +797,7 @@ PHASE 9   Public API + SDKs                 ✅ COMPLETE
 PHASE 10  Benchmarks, hardening, production ✅ COMPLETE
 PHASE 11  Sensory compression layer         ✅ COMPLETE
 PHASE Z   Zaratustra evolution engine       ✅ COMPLETE
-PHASE A+B Unified gRPC API (45+ RPCs)       ✅ COMPLETE
+PHASE A+B Unified gRPC API (55+ RPCs)       ✅ COMPLETE
 PHASE D   Merge semantics (upsert)          ✅ COMPLETE
 PHASE G   Cluster foundation (gossip)       ✅ COMPLETE
 PHASE GPU GPU acceleration (cuVS CAGRA)     ✅ COMPLETE
@@ -643,12 +819,27 @@ P3.12 Schema Validation (per-NodeType)     ✅ COMPLETE
 
 ── Consolidation Sprint (2026-02-21) ──────────────────────
 C0.1  Bug fixes (5 real bugs)              ✅ COMPLETE
-C0.2  Test coverage (+156 new tests)       ✅ COMPLETE
+C0.2  Test coverage (+389 new tests)       ✅ COMPLETE
+       Sprint 1: +166 (algo, zaratustra, gpu, graph, query, sparse, autotuner, snapshot)
+       Sprint 2: +127 (tpu: 28, cugraph: 41, sdk: 28, wasm: 30)
+       Sprint 3: +96  (embed: 49, cli: 47) — 100% module coverage
 C1.1  NQL Time Functions (NOW/INTERVAL)    ✅ COMPLETE
 C1.2  ListStore list_del method            ✅ COMPLETE
 C2.1  SparseVector type                    ✅ COMPLETE
 C2.2  HNSW Auto-tuner (ef_search)          ✅ COMPLETE
 C2.3  Named Snapshots (time-travel)        ✅ COMPLETE
+
+── Expansion Sprint (2026-02-21) ──────────────────────
+E0.1  MCP Server (AI assistant tools)      ✅ COMPLETE  (19 tools, 19 tests)
+E0.2  Prometheus/OTel metrics export       ✅ COMPLETE  (12 metrics, 6 tests)
+E0.3  Filtered KNN + Roaring Bitmaps       ✅ COMPLETE  (5 filter types, 15 tests)
+E0.4  Named Vectors (multi-vector/node)    ✅ COMPLETE  (3 metrics, 8 tests)
+E0.5  Product Quantization (PQ)            ✅ COMPLETE  (magnitude-preserving, 12 tests)
+E0.6  Secondary Indexes (arbitrary field)  ✅ COMPLETE  (3 index types, 13 tests)
+E0.7  Kafka Connect Sink (CDC)             ✅ COMPLETE  (6 mutation types, 9 tests)
+E0.8  Table Store (SQLite)                 ✅ COMPLETE  (7 column types, 15 tests)
+E0.9  Media/Blob Store (OpenDAL)           ✅ COMPLETE  (5 media types, 8 tests)
+E1.0  Go SDK batch RPCs                    ✅ COMPLETE  (42/42 RPCs)
 ```
 
 ---
@@ -975,7 +1166,7 @@ CPU-only build (default) compiles and runs correctly — GPU/TPU paths simply no
 
 ```
 NietzscheDB/
-├── Cargo.toml                ← unified Rust workspace (25 crates)
+├── Cargo.toml                ← unified Rust workspace (38 crates)
 ├── rust-toolchain.toml       ← nightly channel
 ├── Dockerfile                ← multi-stage production image
 ├── docker-compose.yaml       ← nietzsche + hyperspace + prometheus + grafana
@@ -1000,7 +1191,20 @@ NietzscheDB/
 │   ├── nietzsche-algo/       ← 11 graph algorithms
 │   ├── nietzsche-sensory/    ← sensory compression layer       [Phase 11]
 │   ├── nietzsche-cluster/    ← gossip cluster foundation       [Phase G]
-│   ├── nietzsche-api/        ← unified gRPC API (45+ RPCs)
+│   ├── nietzsche-wiederkehr/ ← DAEMON agents + Will to Power scheduler
+│   ├── nietzsche-dream/      ← dream queries (speculative exploration)
+│   ├── nietzsche-narrative/  ← narrative engine (story arc detection)
+│   ├── nietzsche-agency/     ← autonomous agency + counterfactual engine
+│   ├── nietzsche-mcp/        ← MCP server for AI assistants (19 tools)
+│   ├── nietzsche-metrics/    ← Prometheus/OpenTelemetry metrics export
+│   ├── nietzsche-filtered-knn/ ← filtered KNN with Roaring Bitmaps
+│   ├── nietzsche-named-vectors/ ← multi-vector per node
+│   ├── nietzsche-pq/         ← Product Quantization (magnitude-preserving)
+│   ├── nietzsche-secondary-idx/ ← secondary indexes by arbitrary field
+│   ├── nietzsche-kafka/      ← Kafka Connect sink (CDC streaming)
+│   ├── nietzsche-table/      ← relational table store (SQLite)
+│   ├── nietzsche-media/      ← media/blob store (OpenDAL: S3, GCS, local)
+│   ├── nietzsche-api/        ← unified gRPC API (55+ RPCs)
 │   ├── nietzsche-sdk/        ← Rust client SDK
 │   ├── nietzsche-server/     ← production binary + dashboard
 │   ├── nietzsche-hnsw-gpu/   ← GPU vector search (cuVS CAGRA)
@@ -1010,7 +1214,7 @@ NietzscheDB/
 │   ├── src/pages/            ← Overview, Collections, Nodes, Graph, Data, Settings
 │   └── dist/                 ← single-file HTML (embedded in binary)
 ├── sdks/
-│   ├── go/                   ← sdk-papa-caolho (45+ RPCs, full coverage)
+│   ├── go/                   ← sdk-papa-caolho (55+ RPCs, full coverage)
 │   ├── python/               ← gRPC client + proto generation
 │   ├── ts/                   ← TypeScript SDK
 │   └── cpp/                  ← C++ SDK
@@ -1060,6 +1264,9 @@ NietzscheDB closes gaps that no existing database fills:
 - **No database ships 11 graph algorithms with both gRPC and REST interfaces.** PageRank, Louvain, A*, WCC, SCC, betweenness, closeness, degree, label propagation, triangle count, Jaccard — all built-in.
 - **No graph database has built-in hybrid BM25+ANN search.** NietzscheDB fuses full-text BM25 with hyperbolic KNN via Reciprocal Rank Fusion (RRF) in a single API call.
 - **No graph database has application-level encryption with per-CF key derivation.** AES-256-CTR with HKDF-SHA256 derives unique keys per column family from a single master key.
+- **No graph database has magnitude-preserving Product Quantization.** PQ compresses vectors while preserving `‖x‖` — critical for hyperbolic depth semantics. Binary Quantization is explicitly rejected (destroys hierarchy).
+- **No graph database ships with a built-in MCP server.** NietzscheDB exposes 19 tools via the Model Context Protocol for direct AI assistant integration.
+- **No graph database bridges graph + relational + blob storage in one engine.** SQLite table store with NodeRef foreign keys + OpenDAL media store (S3/GCS/local) — unified under one API.
 
 Key references:
 - Krioukov et al., "Hyperbolic Geometry of Complex Networks" (2010)
@@ -1099,5 +1306,5 @@ Commercial licensing available — see [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENS
 </p>
 
 <p align="center">
-  Built for <strong>EVA-Mind</strong> · Powered by <strong>Rust nightly</strong> · <strong>25 crates</strong> · <strong>55+ gRPC RPCs</strong> · <strong>GPU/TPU</strong> · <strong>RBAC + Encryption</strong>
+  Built for <strong>EVA-Mind</strong> · Powered by <strong>Rust nightly</strong> · <strong>38 crates</strong> · <strong>55+ gRPC RPCs</strong> · <strong>MCP + Prometheus</strong> · <strong>GPU/TPU</strong> · <strong>RBAC + Encryption</strong>
 </p>

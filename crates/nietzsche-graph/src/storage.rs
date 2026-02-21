@@ -1,6 +1,6 @@
 use rocksdb::{
     BlockBasedOptions, Cache, ColumnFamilyDescriptor, DB, DBCompressionType, Options,
-    SliceTransform,
+    ReadOptions, SliceTransform,
 };
 use uuid::Uuid;
 
@@ -395,8 +395,14 @@ impl GraphStorage {
         let start_key = energy_index_key(min_energy, &Uuid::nil());
         let end_key   = energy_index_key(max_energy, &Uuid::max());
 
-        let iter = self.db.iterator_cf(
+        // The energy CF has a 4-byte prefix extractor for bloom filters.
+        // We need total_order_seek to scan across different energy prefixes.
+        let mut read_opts = ReadOptions::default();
+        read_opts.set_total_order_seek(true);
+
+        let iter = self.db.iterator_cf_opt(
             &self.cf_energy(),
+            read_opts,
             rocksdb::IteratorMode::From(&start_key, rocksdb::Direction::Forward),
         );
 

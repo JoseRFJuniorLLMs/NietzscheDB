@@ -191,11 +191,13 @@ pub struct NietzscheServer {
     cdc: Arc<CdcBroadcaster>,
     /// Optional cluster registry for gossip protocol. `None` if cluster mode disabled.
     cluster_registry: Option<ClusterRegistry>,
+    /// Archetype registry for Collective Unconscious.
+    archetype_registry: nietzsche_cluster::ArchetypeRegistry,
 }
 
 impl NietzscheServer {
     pub fn new(cm: Arc<CollectionManager>, cdc: Arc<CdcBroadcaster>) -> Self {
-        Self { cm, cdc, cluster_registry: None }
+        Self { cm, cdc, cluster_registry: None, archetype_registry: nietzsche_cluster::ArchetypeRegistry::new() }
     }
 
     /// Set the cluster registry for gossip support.
@@ -733,6 +735,241 @@ impl NietzscheDb for NietzscheServer {
                     path_ids.push(format!("delete:removed:{}", matched_ids.len()));
                     drop(db_w);
                     db = shared.read().await;
+                }
+                // ── DAEMON Agents (Wiederkehr) ────────────────────────
+                QueryResult::CreateDaemonRequest {
+                    name, on_pattern, when_cond, then_action, every, energy,
+                } => {
+                    let interval_secs = match &every {
+                        nietzsche_query::Expr::MathFunc {
+                            func: nietzsche_query::MathFunc::Interval,
+                            args,
+                        } => {
+                            if let Some(nietzsche_query::MathFuncArg::Str(s)) = args.first() {
+                                nietzsche_wiederkehr::parse_interval_str(s)
+                            } else { 3600.0 }
+                        }
+                        nietzsche_query::Expr::Float(f) => *f,
+                        nietzsche_query::Expr::Int(i)   => *i as f64,
+                        _ => 3600.0,
+                    };
+                    let def = nietzsche_wiederkehr::DaemonDef {
+                        name:          name.clone(),
+                        on_pattern,
+                        when_cond,
+                        then_action,
+                        every,
+                        energy:        energy.unwrap_or(1.0),
+                        last_run:      0.0,
+                        interval_secs,
+                    };
+                    nietzsche_wiederkehr::put_daemon(db.storage(), &def)
+                        .map_err(|e| Status::internal(format!("daemon store error: {e}")))?;
+                    path_ids.push(format!("daemon:created:{}", name));
+                }
+                QueryResult::DropDaemonRequest { name } => {
+                    nietzsche_wiederkehr::delete_daemon(db.storage(), &name)
+                        .map_err(|e| Status::internal(format!("daemon store error: {e}")))?;
+                    path_ids.push(format!("daemon:dropped:{}", name));
+                }
+                QueryResult::ShowDaemonsRequest => {
+                    let daemons = nietzsche_wiederkehr::list_daemons(db.storage())
+                        .map_err(|e| Status::internal(format!("daemon store error: {e}")))?;
+                    for d in daemons {
+                        let row = vec![
+                            ("name".into(),          ScalarValue::Str(d.name)),
+                            ("energy".into(),        ScalarValue::Float(d.energy)),
+                            ("interval_secs".into(), ScalarValue::Float(d.interval_secs)),
+                            ("last_run".into(),      ScalarValue::Float(d.last_run)),
+                        ];
+                        scalar_rows.push(nietzsche::ScalarRow {
+                            entries: row.into_iter().map(|(col_name, val)| {
+                                let mut entry = nietzsche::ScalarEntry {
+                                    column: col_name,
+                                    is_null: false,
+                                    ..Default::default()
+                                };
+                                match val {
+                                    ScalarValue::Float(f) => entry.value = Some(
+                                        nietzsche::scalar_entry::Value::FloatVal(f)
+                                    ),
+                                    ScalarValue::Str(s) => entry.value = Some(
+                                        nietzsche::scalar_entry::Value::StringVal(s)
+                                    ),
+                                    _ => entry.is_null = true,
+                                }
+                                entry
+                            }).collect(),
+                        });
+                    }
+                }
+                // ── Dream Queries (Phase 15.2) ────────────────────────
+                QueryResult::DreamFromRequest { seed_param, seed_alias: _, depth, noise } => {
+                    let seed_id = seed_param.as_ref()
+                        .and_then(|p| params.get(p))
+                        .and_then(|v| if let ParamValue::Uuid(u) = v { Some(*u) } else { None })
+                        .ok_or_else(|| Status::invalid_argument("DREAM FROM requires a $param UUID"))?;
+                    let engine = nietzsche_dream::DreamEngine::new(
+                        nietzsche_dream::DreamConfig::from_env(),
+                    );
+                    let session = engine.dream_from(db.storage(), seed_id, depth, noise)
+                        .map_err(|e| Status::internal(format!("dream error: {e}")))?;
+                    scalar_rows.push(nietzsche::ScalarRow {
+                        entries: vec![
+                            nietzsche::ScalarEntry { column: "dream_id".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::StringVal(session.id)) },
+                            nietzsche::ScalarEntry { column: "status".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::StringVal(format!("{:?}", session.status))) },
+                            nietzsche::ScalarEntry { column: "events".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::IntVal(session.events.len() as i64)) },
+                            nietzsche::ScalarEntry { column: "deltas".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::IntVal(session.dream_nodes.len() as i64)) },
+                        ],
+                    });
+                }
+                QueryResult::ApplyDreamRequest { dream_id } => {
+                    let engine = nietzsche_dream::DreamEngine::new(
+                        nietzsche_dream::DreamConfig::from_env(),
+                    );
+                    drop(db);
+                    let db_w = shared.read().await;
+                    engine.apply_dream(db_w.storage(), &dream_id)
+                        .map_err(|e| Status::internal(format!("dream apply error: {e}")))?;
+                    path_ids.push(format!("dream:applied:{}", dream_id));
+                    drop(db_w);
+                    db = shared.read().await;
+                }
+                QueryResult::RejectDreamRequest { dream_id } => {
+                    let engine = nietzsche_dream::DreamEngine::new(
+                        nietzsche_dream::DreamConfig::from_env(),
+                    );
+                    engine.reject_dream(db.storage(), &dream_id)
+                        .map_err(|e| Status::internal(format!("dream reject error: {e}")))?;
+                    path_ids.push(format!("dream:rejected:{}", dream_id));
+                }
+                QueryResult::ShowDreamsRequest => {
+                    let dreams = nietzsche_dream::list_dreams(db.storage())
+                        .map_err(|e| Status::internal(format!("dream store error: {e}")))?;
+                    for d in dreams {
+                        scalar_rows.push(nietzsche::ScalarRow {
+                            entries: vec![
+                                nietzsche::ScalarEntry { column: "dream_id".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::StringVal(d.id)) },
+                                nietzsche::ScalarEntry { column: "status".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::StringVal(format!("{:?}", d.status))) },
+                                nietzsche::ScalarEntry { column: "seed_node".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::StringVal(d.seed_node.to_string())) },
+                                nietzsche::ScalarEntry { column: "events".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::IntVal(d.events.len() as i64)) },
+                            ],
+                        });
+                    }
+                }
+                // ── Synesthesia (Phase 15.3) ────────────────────────
+                QueryResult::TranslateRequest { node_id, node_alias: _, from_modality, to_modality, quality: _ } => {
+                    let nid = node_id.ok_or_else(|| Status::invalid_argument("TRANSLATE requires a node UUID"))?;
+                    let graph_storage = db.storage();
+                    let sensory = SensoryStorage::new(graph_storage.db_handle());
+                    let sm = sensory.get(&nid)
+                        .map_err(|e| Status::internal(format!("sensory get: {e}")))?
+                        .ok_or_else(|| Status::not_found(format!("no sensory data for {nid}")))?;
+                    let target_mod = parse_modality(&to_modality, &serde_json::json!({}))?;
+                    let result = nietzsche_sensory::translate_modality(&sm, target_mod);
+                    sensory.put(&nid, &result.translated)
+                        .map_err(|e| Status::internal(format!("sensory put: {e}")))?;
+                    path_ids.push(format!(
+                        "translate:{}:{}->{}:loss={:.4}",
+                        nid, from_modality, to_modality, result.quality_loss
+                    ));
+                }
+                // ── Counterfactual (Phase 15.4) ────────────────────────
+                QueryResult::CounterfactualRequest { overlays, inner_results } => {
+                    path_ids.push(format!("counterfactual:overlays={}", overlays));
+                    for inner in inner_results {
+                        match inner {
+                            QueryResult::Node(n) => nodes.push(node_to_proto(n)),
+                            QueryResult::Scalar(row) => {
+                                let entries = row.into_iter().map(|(col_name, val)| {
+                                    let mut entry = nietzsche::ScalarEntry {
+                                        column:  col_name,
+                                        is_null: false,
+                                        ..Default::default()
+                                    };
+                                    match val {
+                                        ScalarValue::Float(f) => entry.value = Some(
+                                            nietzsche::scalar_entry::Value::FloatVal(f)
+                                        ),
+                                        ScalarValue::Int(i) => entry.value = Some(
+                                            nietzsche::scalar_entry::Value::IntVal(i)
+                                        ),
+                                        ScalarValue::Str(s) => entry.value = Some(
+                                            nietzsche::scalar_entry::Value::StringVal(s)
+                                        ),
+                                        ScalarValue::Bool(b) => entry.value = Some(
+                                            nietzsche::scalar_entry::Value::BoolVal(b)
+                                        ),
+                                        ScalarValue::Null => entry.is_null = true,
+                                    }
+                                    entry
+                                }).collect();
+                                scalar_rows.push(nietzsche::ScalarRow { entries });
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                // ── Collective Unconscious (Phase 15.6) ────────────────
+                QueryResult::ShowArchetypesRequest => {
+                    let archetypes = self.archetype_registry.list();
+                    for a in archetypes {
+                        scalar_rows.push(nietzsche::ScalarRow {
+                            entries: vec![
+                                nietzsche::ScalarEntry { column: "node_id".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::StringVal(a.node_id.to_string())) },
+                                nietzsche::ScalarEntry { column: "source_collection".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::StringVal(a.source_collection.clone())) },
+                                nietzsche::ScalarEntry { column: "target_collection".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::StringVal(a.target_collection.clone())) },
+                                nietzsche::ScalarEntry { column: "energy".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::FloatVal(a.energy)) },
+                            ],
+                        });
+                    }
+                }
+                QueryResult::ShareArchetypeRequest { node_id: nid, target_collection } => {
+                    let meta = db.storage().get_node_meta(&nid)
+                        .map_err(graph_err)?
+                        .ok_or_else(|| Status::not_found(format!("node {} not found", nid)))?;
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() as i64;
+                    let archetype = nietzsche_cluster::Archetype {
+                        node_id:           nid,
+                        source_collection: col(&inner.collection).to_string(),
+                        target_collection: target_collection.clone(),
+                        energy:            meta.energy as f64,
+                        depth:             meta.depth as f64,
+                        content:           meta.content.clone(),
+                        shared_at:         now,
+                    };
+                    self.archetype_registry.share(archetype);
+                    path_ids.push(format!("archetype:shared:{}:{}", nid, target_collection));
+                }
+                // ── Narrative Engine (Phase 15.7) ────────────────────────
+                QueryResult::NarrateRequest { collection, window_hours, format: fmt } => {
+                    let col_name_str = collection.as_deref().unwrap_or("default");
+                    let engine = nietzsche_narrative::NarrativeEngine::new(
+                        nietzsche_narrative::NarrativeConfig::default(),
+                    );
+                    let report = engine.narrate(db.storage(), col_name_str, window_hours)
+                        .map_err(|e| Status::internal(format!("narrative error: {e}")))?;
+                    let fmt_str = fmt.as_deref().unwrap_or("text");
+                    if fmt_str == "json" {
+                        let json = serde_json::to_string(&report).unwrap_or_default();
+                        scalar_rows.push(nietzsche::ScalarRow {
+                            entries: vec![
+                                nietzsche::ScalarEntry { column: "narrative".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::StringVal(json)) },
+                            ],
+                        });
+                    } else {
+                        scalar_rows.push(nietzsche::ScalarRow {
+                            entries: vec![
+                                nietzsche::ScalarEntry { column: "summary".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::StringVal(report.summary)) },
+                                nietzsche::ScalarEntry { column: "total_nodes".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::IntVal(report.total_nodes as i64)) },
+                                nietzsche::ScalarEntry { column: "total_edges".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::IntVal(report.total_edges as i64)) },
+                                nietzsche::ScalarEntry { column: "events".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::IntVal(report.events.len() as i64)) },
+                            ],
+                        });
+                    }
                 }
                 // Phase F: transaction control — acknowledged; actual Tx state
                 // is managed by the connection session layer (future phases).

@@ -1,0 +1,16 @@
+[package]
+name = "nietzsche-table"
+version = "0.1.0"
+edition = "2021"
+description = "Relational table store (SQLite) for NietzscheDB — bridges graph and relational data"
+
+[dependencies]
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { workspace = true }
+serde_json = "1.0"
+uuid = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

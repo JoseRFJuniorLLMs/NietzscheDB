@@ -1,0 +1,16 @@
+[package]
+name = "nietzsche-named-vectors"
+version = "0.1.0"
+edition = "2021"
+description = "Named Vectors — multi-vector-per-node support for NietzscheDB"
+
+[dependencies]
+nietzsche-graph = { workspace = true }
+serde = { workspace = true }
+serde_json = "1.0"
+uuid = { workspace = true }
+thiserror = { workspace = true }
+bincode = "1"
+
+[dev-dependencies]
+tempfile = "3"

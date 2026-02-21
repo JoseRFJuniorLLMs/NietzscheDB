@@ -39,6 +39,23 @@ fn parse_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
             Rule::begin_tx_query           => return Ok(Query::BeginTx),
             Rule::commit_tx_query          => return Ok(Query::CommitTx),
             Rule::rollback_tx_query        => return Ok(Query::RollbackTx),
+            Rule::create_daemon_query      => return Ok(Query::CreateDaemon(parse_create_daemon(inner)?)),
+            Rule::drop_daemon_query        => return Ok(Query::DropDaemon(parse_drop_daemon(inner)?)),
+            Rule::show_daemons_query       => return Ok(Query::ShowDaemons),
+            // Dream Queries (Phase 15.2)
+            Rule::dream_from_query         => return Ok(Query::DreamFrom(parse_dream_from(inner)?)),
+            Rule::apply_dream_query        => return Ok(Query::ApplyDream(parse_apply_dream(inner)?)),
+            Rule::reject_dream_query       => return Ok(Query::RejectDream(parse_reject_dream(inner)?)),
+            Rule::show_dreams_query        => return Ok(Query::ShowDreams),
+            // Synesthesia (Phase 15.3)
+            Rule::translate_query          => return Ok(Query::Translate(parse_translate(inner)?)),
+            // Eternal Return (Phase 15.4)
+            Rule::counterfactual_query     => return Ok(Query::Counterfactual(parse_counterfactual(inner)?)),
+            // Collective Unconscious (Phase 15.6)
+            Rule::show_archetypes_query    => return Ok(Query::ShowArchetypes),
+            Rule::share_archetype_query    => return Ok(Query::ShareArchetype(parse_share_archetype(inner)?)),
+            // Narrative Engine (Phase 15.7)
+            Rule::narrate_query            => return Ok(Query::Narrate(parse_narrate(inner)?)),
             Rule::EOI                      => {}
             r => return Err(QueryError::Parse(format!("unexpected rule: {r:?}"))),
         }
@@ -47,15 +64,14 @@ fn parse_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
 }
 
 fn parse_explain_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
-    for inner in pair.into_inner() {
-        match inner.as_rule() {
-            Rule::match_query       => return Ok(Query::Explain(Box::new(parse_match_or_mutate_query(inner)?))),
-            Rule::diffuse_query     => return Ok(Query::Explain(Box::new(Query::Diffuse(parse_diffuse_query(inner)?)))),
-            Rule::reconstruct_query => return Ok(Query::Explain(Box::new(Query::Reconstruct(parse_reconstruct_query(inner)?)))),
-            r => return Err(QueryError::Parse(format!("unexpected in explain_query: {r:?}"))),
-        }
+    let inner = pair.into_inner().next()
+        .ok_or_else(|| QueryError::Parse("EXPLAIN requires a query".into()))?;
+    match inner.as_rule() {
+        Rule::match_query       => Ok(Query::Explain(Box::new(parse_match_or_mutate_query(inner)?))),
+        Rule::diffuse_query     => Ok(Query::Explain(Box::new(Query::Diffuse(parse_diffuse_query(inner)?)))),
+        Rule::reconstruct_query => Ok(Query::Explain(Box::new(Query::Reconstruct(parse_reconstruct_query(inner)?)))),
+        r => Err(QueryError::Parse(format!("unexpected in explain_query: {r:?}"))),
     }
-    Err(QueryError::Parse("EXPLAIN requires a query".into()))
 }
 
 // ── MATCH (with optional SET / DELETE) ──────────────────────
@@ -63,19 +79,27 @@ fn parse_explain_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
 /// Parse a unified match_query which may contain SET or DELETE clauses.
 /// Returns Query::Match, Query::MatchSet, or Query::MatchDelete.
 fn parse_match_or_mutate_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
-    let mut pattern     = None;
-    let mut conditions  = Vec::new();
-    let mut ret         = None;
-    let mut assignments = Vec::new();
-    let mut targets     = Vec::new();
-    let mut has_set     = false;
-    let mut has_delete  = false;
+    let mut pattern      = None;
+    let mut conditions   = Vec::new();
+    let mut ret          = None;
+    let mut assignments  = Vec::new();
+    let mut targets      = Vec::new();
+    let mut has_set      = false;
+    let mut has_delete   = false;
+    let mut as_of_cycle  = None;
 
     for inner in pair.into_inner() {
         match inner.as_rule() {
             Rule::match_clause  => { pattern = Some(parse_pattern(inner)?); }
             Rule::where_clause  => { conditions = parse_where_clause(inner)?; }
             Rule::return_clause => { ret = Some(parse_return_clause(inner)?); }
+            Rule::as_of_cycle_clause => {
+                let n: u32 = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("AS OF CYCLE missing value".into()))?
+                    .as_str().parse()
+                    .map_err(|_| QueryError::Parse("bad AS OF CYCLE value".into()))?;
+                as_of_cycle = Some(n);
+            }
             Rule::set_clause    => {
                 has_set = true;
                 for child in inner.into_inner() {
@@ -119,9 +143,10 @@ fn parse_match_or_mutate_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
         }))
     } else {
         Ok(Query::Match(MatchQuery {
-            pattern:    pat,
+            pattern:      pat,
             conditions,
-            ret: ret.ok_or_else(|| QueryError::Parse("missing RETURN clause".into()))?,
+            ret:          ret.ok_or_else(|| QueryError::Parse("missing RETURN clause".into()))?,
+            as_of_cycle,
         }))
     }
 }
@@ -969,6 +994,305 @@ fn parse_invoke_zaratustra(pair: Pair<Rule>) -> Result<InvokeZaratustraQuery, Qu
     Ok(InvokeZaratustraQuery { collection, cycles, alpha, decay })
 }
 
+// ── DAEMON Agents ─────────────────────────────────────────
+
+fn parse_create_daemon(pair: Pair<Rule>) -> Result<CreateDaemonQuery, QueryError> {
+    let mut name       = None;
+    let mut on_pattern = None;
+    let mut when_cond  = None;
+    let mut then_action = None;
+    let mut every      = None;
+    let mut energy     = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::daemon_name => {
+                name = Some(inner.as_str().to_string());
+            }
+            Rule::node_pattern => {
+                on_pattern = Some(parse_node_pattern(inner)?);
+            }
+            Rule::daemon_when => {
+                let cond_pair = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("WHEN missing condition".into()))?;
+                when_cond = Some(parse_or_cond(
+                    cond_pair.into_inner().next()
+                        .ok_or_else(|| QueryError::Parse("empty WHEN conditions".into()))?
+                )?);
+            }
+            Rule::daemon_then => {
+                let action_pair = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("THEN missing action".into()))?;
+                then_action = Some(parse_daemon_action(action_pair)?);
+            }
+            Rule::daemon_every => {
+                let atom_pair = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("EVERY missing expression".into()))?;
+                every = Some(parse_atom(atom_pair)?);
+            }
+            Rule::daemon_energy => {
+                let num_pair = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("ENERGY missing value".into()))?;
+                let f: f64 = num_pair.as_str().parse()
+                    .map_err(|_| QueryError::Parse("bad ENERGY value".into()))?;
+                energy = Some(f);
+            }
+            r => return Err(QueryError::Parse(format!("unexpected in create_daemon_query: {r:?}"))),
+        }
+    }
+
+    Ok(CreateDaemonQuery {
+        name:        name.ok_or_else(|| QueryError::Parse("CREATE DAEMON missing name".into()))?,
+        on_pattern:  on_pattern.ok_or_else(|| QueryError::Parse("CREATE DAEMON missing ON pattern".into()))?,
+        when_cond:   when_cond.ok_or_else(|| QueryError::Parse("CREATE DAEMON missing WHEN condition".into()))?,
+        then_action: then_action.ok_or_else(|| QueryError::Parse("CREATE DAEMON missing THEN action".into()))?,
+        every:       every.ok_or_else(|| QueryError::Parse("CREATE DAEMON missing EVERY interval".into()))?,
+        energy,
+    })
+}
+
+fn parse_daemon_action(pair: Pair<Rule>) -> Result<DaemonAction, QueryError> {
+    let inner = pair.into_inner().next()
+        .ok_or_else(|| QueryError::Parse("empty daemon_action".into()))?;
+    match inner.as_rule() {
+        Rule::daemon_delete_action => {
+            let alias = inner.into_inner().next()
+                .ok_or_else(|| QueryError::Parse("DELETE action missing alias".into()))?
+                .as_str().to_string();
+            Ok(DaemonAction::Delete { alias })
+        }
+        Rule::daemon_set_action => {
+            let mut assignments = Vec::new();
+            for child in inner.into_inner() {
+                if child.as_rule() == Rule::set_assignment {
+                    assignments.push(parse_set_assignment(child)?);
+                }
+            }
+            Ok(DaemonAction::Set { assignments })
+        }
+        Rule::daemon_diffuse_action => {
+            let mut alias    = None;
+            let mut t_values = vec![1.0_f64];
+            let mut max_hops = 10_usize;
+
+            for child in inner.into_inner() {
+                match child.as_rule() {
+                    Rule::ident => { alias = Some(child.as_str().to_string()); }
+                    Rule::diffuse_t => {
+                        let list_pair = child.into_inner().next()
+                            .ok_or_else(|| QueryError::Parse("DIFFUSE WITH t= missing list".into()))?;
+                        t_values = parse_num_list(list_pair)?;
+                    }
+                    Rule::diffuse_hops => {
+                        max_hops = child.into_inner().next()
+                            .ok_or_else(|| QueryError::Parse("MAX_HOPS missing value".into()))?
+                            .as_str().parse()
+                            .map_err(|_| QueryError::Parse("bad MAX_HOPS value".into()))?;
+                    }
+                    r => return Err(QueryError::Parse(format!("unexpected in daemon_diffuse_action: {r:?}"))),
+                }
+            }
+
+            Ok(DaemonAction::Diffuse {
+                alias:    alias.ok_or_else(|| QueryError::Parse("DIFFUSE action missing alias".into()))?,
+                t_values,
+                max_hops,
+            })
+        }
+        r => Err(QueryError::Parse(format!("unexpected daemon_action inner: {r:?}"))),
+    }
+}
+
+fn parse_drop_daemon(pair: Pair<Rule>) -> Result<DropDaemonQuery, QueryError> {
+    let name = pair.into_inner().next()
+        .ok_or_else(|| QueryError::Parse("DROP DAEMON missing name".into()))?
+        .as_str().to_string();
+    Ok(DropDaemonQuery { name })
+}
+
+// ── Dream Queries (Phase 15.2) ────────────────────────────
+
+fn parse_dream_from(pair: Pair<Rule>) -> Result<DreamFromQuery, QueryError> {
+    let mut seed  = None;
+    let mut depth = None;
+    let mut noise = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::dream_seed => {
+                let src = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("DREAM FROM missing seed".into()))?;
+                seed = Some(match src.as_rule() {
+                    Rule::param => DiffuseFrom::Param(src.as_str()[1..].to_string()),
+                    Rule::ident => DiffuseFrom::Alias(src.as_str().to_string()),
+                    r => return Err(QueryError::Parse(format!("unexpected dream_seed: {r:?}"))),
+                });
+            }
+            Rule::dream_depth => {
+                let n: usize = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("DEPTH missing value".into()))?
+                    .as_str().parse()
+                    .map_err(|_| QueryError::Parse("bad DEPTH value".into()))?;
+                depth = Some(n);
+            }
+            Rule::dream_noise => {
+                let n_pair = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("NOISE missing value".into()))?;
+                let f: f64 = n_pair.as_str().parse()
+                    .map_err(|_| QueryError::Parse("bad NOISE value".into()))?;
+                noise = Some(f);
+            }
+            r => return Err(QueryError::Parse(format!("unexpected in dream_from_query: {r:?}"))),
+        }
+    }
+
+    Ok(DreamFromQuery {
+        seed:  seed.ok_or_else(|| QueryError::Parse("DREAM FROM is required".into()))?,
+        depth,
+        noise,
+    })
+}
+
+fn parse_apply_dream(pair: Pair<Rule>) -> Result<ApplyDreamQuery, QueryError> {
+    let param = pair.into_inner().next()
+        .ok_or_else(|| QueryError::Parse("APPLY DREAM missing param".into()))?;
+    Ok(ApplyDreamQuery { dream_id: param.as_str()[1..].to_string() })
+}
+
+fn parse_reject_dream(pair: Pair<Rule>) -> Result<RejectDreamQuery, QueryError> {
+    let param = pair.into_inner().next()
+        .ok_or_else(|| QueryError::Parse("REJECT DREAM missing param".into()))?;
+    Ok(RejectDreamQuery { dream_id: param.as_str()[1..].to_string() })
+}
+
+// ── Synesthesia (Phase 15.3) ──────────────────────────────
+
+fn parse_translate(pair: Pair<Rule>) -> Result<TranslateQuery, QueryError> {
+    let mut target        = None;
+    let mut from_modality = None;
+    let mut to_modality   = None;
+    let mut quality       = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::translate_target => {
+                let src = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("TRANSLATE missing target".into()))?;
+                target = Some(match src.as_rule() {
+                    Rule::param => ReconstructTarget::Param(src.as_str()[1..].to_string()),
+                    Rule::ident => ReconstructTarget::Alias(src.as_str().to_string()),
+                    r => return Err(QueryError::Parse(format!("unexpected translate_target: {r:?}"))),
+                });
+            }
+            Rule::translate_from => {
+                let modality = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("FROM missing modality".into()))?
+                    .as_str().to_string();
+                from_modality = Some(modality);
+            }
+            Rule::translate_to => {
+                let modality = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("TO missing modality".into()))?
+                    .as_str().to_string();
+                to_modality = Some(modality);
+            }
+            Rule::quality_level => {
+                quality = Some(inner.as_str().to_string());
+            }
+            r => return Err(QueryError::Parse(format!("unexpected in translate_query: {r:?}"))),
+        }
+    }
+
+    Ok(TranslateQuery {
+        target:        target.ok_or_else(|| QueryError::Parse("TRANSLATE target required".into()))?,
+        from_modality: from_modality.ok_or_else(|| QueryError::Parse("FROM modality required".into()))?,
+        to_modality:   to_modality.ok_or_else(|| QueryError::Parse("TO modality required".into()))?,
+        quality,
+    })
+}
+
+// ── Counterfactual (Phase 15.4) ───────────────────────────
+
+fn parse_counterfactual(pair: Pair<Rule>) -> Result<CounterfactualQuery, QueryError> {
+    let mut overlays = Vec::new();
+    let mut inner_match = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::set_clause => {
+                for child in inner.into_inner() {
+                    if child.as_rule() == Rule::set_assignment {
+                        overlays.push(parse_set_assignment(child)?);
+                    }
+                }
+            }
+            Rule::match_query => {
+                let mq = parse_match_or_mutate_query(inner)?;
+                if let Query::Match(m) = mq {
+                    inner_match = Some(m);
+                } else {
+                    return Err(QueryError::Parse("COUNTERFACTUAL inner must be a MATCH query".into()));
+                }
+            }
+            r => return Err(QueryError::Parse(format!("unexpected in counterfactual_query: {r:?}"))),
+        }
+    }
+
+    Ok(CounterfactualQuery {
+        overlays,
+        inner: inner_match.ok_or_else(|| QueryError::Parse("COUNTERFACTUAL missing MATCH".into()))?,
+    })
+}
+
+// ── Collective Unconscious (Phase 15.6) ───────────────────
+
+fn parse_share_archetype(pair: Pair<Rule>) -> Result<ShareArchetypeQuery, QueryError> {
+    let mut inner = pair.into_inner();
+    let param = inner.next()
+        .ok_or_else(|| QueryError::Parse("SHARE ARCHETYPE missing param".into()))?;
+    let node_param = param.as_str()[1..].to_string();
+    let string_pair = inner.next()
+        .ok_or_else(|| QueryError::Parse("SHARE ARCHETYPE missing target collection".into()))?;
+    let raw = string_pair.as_str();
+    let target_collection = raw[1..raw.len()-1].to_string();
+    Ok(ShareArchetypeQuery { node_param, target_collection })
+}
+
+// ── Narrative Engine (Phase 15.7) ─────────────────────────
+
+fn parse_narrate(pair: Pair<Rule>) -> Result<NarrateQuery, QueryError> {
+    let mut collection   = None;
+    let mut window_hours = None;
+    let mut format       = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::narrate_in => {
+                let s = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("NARRATE IN missing string".into()))?
+                    .as_str();
+                collection = Some(s[1..s.len()-1].to_string());
+            }
+            Rule::narrate_window => {
+                let n: u64 = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("WINDOW missing value".into()))?
+                    .as_str().parse()
+                    .map_err(|_| QueryError::Parse("bad WINDOW value".into()))?;
+                window_hours = Some(n);
+            }
+            Rule::narrate_format => {
+                let f = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("FORMAT missing value".into()))?
+                    .as_str().to_string();
+                format = Some(f);
+            }
+            r => return Err(QueryError::Parse(format!("unexpected in narrate_query: {r:?}"))),
+        }
+    }
+
+    Ok(NarrateQuery { collection, window_hours, format })
+}
+
 // ── RECONSTRUCT (Phase 11) ────────────────────────────────
 
 fn parse_reconstruct_query(pair: Pair<Rule>) -> Result<ReconstructQuery, QueryError> {
@@ -1537,5 +1861,204 @@ mod tests {
         // This tests that NOW() and INTERVAL() can both appear in expressions
         let nql = r#"MATCH (n) WHERE NOW() > INTERVAL("7d") RETURN n"#;
         assert!(parse(nql).is_ok());
+    }
+
+    // ── DAEMON Agents ─────────────────────────────────────
+
+    #[test]
+    fn parse_create_daemon_full() {
+        let nql = r#"CREATE DAEMON guardian ON (n:Memory) WHEN n.energy > 0.8 THEN DIFFUSE FROM n WITH t=[0.1, 1.0] MAX_HOPS 5 EVERY INTERVAL("1h") ENERGY 0.8"#;
+        let q = parse(nql).unwrap();
+        let Query::CreateDaemon(d) = q else { panic!("expected CreateDaemon") };
+        assert_eq!(d.name, "guardian");
+        assert_eq!(d.on_pattern.alias, "n");
+        assert_eq!(d.on_pattern.label.as_deref(), Some("Memory"));
+        assert!(matches!(d.then_action, DaemonAction::Diffuse { ref alias, .. } if alias == "n"));
+        if let DaemonAction::Diffuse { t_values, max_hops, .. } = &d.then_action {
+            assert_eq!(t_values.len(), 2);
+            assert_eq!(*max_hops, 5);
+        }
+        assert!((d.energy.unwrap() - 0.8).abs() < 1e-10);
+    }
+
+    #[test]
+    fn parse_create_daemon_delete_action() {
+        let nql = r#"CREATE DAEMON reaper ON (n:Memory) WHEN n.energy < 0.01 THEN DELETE n EVERY INTERVAL("30m") ENERGY 0.5"#;
+        let q = parse(nql).unwrap();
+        let Query::CreateDaemon(d) = q else { panic!("expected CreateDaemon") };
+        assert_eq!(d.name, "reaper");
+        assert!(matches!(d.then_action, DaemonAction::Delete { ref alias } if alias == "n"));
+    }
+
+    #[test]
+    fn parse_create_daemon_set_action() {
+        let nql = r#"CREATE DAEMON tagger ON (n:Memory) WHEN n.energy > 0.9 THEN SET n.tagged = true EVERY INTERVAL("2h")"#;
+        let q = parse(nql).unwrap();
+        let Query::CreateDaemon(d) = q else { panic!("expected CreateDaemon") };
+        assert_eq!(d.name, "tagger");
+        if let DaemonAction::Set { assignments } = &d.then_action {
+            assert_eq!(assignments.len(), 1);
+            assert_eq!(assignments[0].field, "tagged");
+        } else {
+            panic!("expected Set action");
+        }
+        // No ENERGY clause → default None
+        assert!(d.energy.is_none());
+    }
+
+    #[test]
+    fn parse_create_daemon_default_energy() {
+        let nql = r#"CREATE DAEMON watcher ON (n) WHEN n.depth > 0.5 THEN DELETE n EVERY INTERVAL("1h")"#;
+        let q = parse(nql).unwrap();
+        let Query::CreateDaemon(d) = q else { panic!("expected CreateDaemon") };
+        assert!(d.energy.is_none());
+        assert!(d.on_pattern.label.is_none());
+    }
+
+    #[test]
+    fn parse_create_daemon_no_label() {
+        let nql = r#"CREATE DAEMON sweep ON (n) WHEN n.energy < 0.1 THEN DELETE n EVERY INTERVAL("5m")"#;
+        let q = parse(nql).unwrap();
+        let Query::CreateDaemon(d) = q else { panic!("expected CreateDaemon") };
+        assert!(d.on_pattern.label.is_none());
+    }
+
+    #[test]
+    fn parse_drop_daemon() {
+        let q = parse("DROP DAEMON guardian").unwrap();
+        let Query::DropDaemon(d) = q else { panic!("expected DropDaemon") };
+        assert_eq!(d.name, "guardian");
+    }
+
+    #[test]
+    fn parse_show_daemons() {
+        let q = parse("SHOW DAEMONS").unwrap();
+        assert!(matches!(q, Query::ShowDaemons));
+    }
+
+    #[test]
+    fn parse_daemon_reject_invalid() {
+        assert!(parse("CREATE DAEMON").is_err());
+        assert!(parse("CREATE DAEMON x").is_err());
+        assert!(parse("DROP DAEMON").is_err());
+    }
+
+    // ── Dream Queries (Phase 15.2) ──────────────────────
+
+    #[test]
+    fn parse_dream_from_full() {
+        let q = parse("DREAM FROM $node DEPTH 3 NOISE 0.1").unwrap();
+        let Query::DreamFrom(d) = q else { panic!("expected DreamFrom") };
+        assert!(matches!(d.seed, DiffuseFrom::Param(ref s) if s == "node"));
+        assert_eq!(d.depth, Some(3));
+        assert!((d.noise.unwrap() - 0.1).abs() < 1e-10);
+    }
+
+    #[test]
+    fn parse_dream_from_minimal() {
+        let q = parse("DREAM FROM $n").unwrap();
+        let Query::DreamFrom(d) = q else { panic!("expected DreamFrom") };
+        assert!(d.depth.is_none());
+        assert!(d.noise.is_none());
+    }
+
+    #[test]
+    fn parse_apply_dream() {
+        let q = parse("APPLY DREAM $dream123").unwrap();
+        let Query::ApplyDream(d) = q else { panic!("expected ApplyDream") };
+        assert_eq!(d.dream_id, "dream123");
+    }
+
+    #[test]
+    fn parse_reject_dream() {
+        let q = parse("REJECT DREAM $d1").unwrap();
+        let Query::RejectDream(d) = q else { panic!("expected RejectDream") };
+        assert_eq!(d.dream_id, "d1");
+    }
+
+    #[test]
+    fn parse_show_dreams() {
+        let q = parse("SHOW DREAMS").unwrap();
+        assert!(matches!(q, Query::ShowDreams));
+    }
+
+    // ── Synesthesia (Phase 15.3) ────────────────────────
+
+    #[test]
+    fn parse_translate_full() {
+        let q = parse("TRANSLATE $node FROM audio TO text QUALITY high").unwrap();
+        let Query::Translate(t) = q else { panic!("expected Translate") };
+        assert!(matches!(t.target, ReconstructTarget::Param(ref s) if s == "node"));
+        assert_eq!(t.from_modality, "audio");
+        assert_eq!(t.to_modality, "text");
+        assert_eq!(t.quality.as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn parse_translate_minimal() {
+        let q = parse("TRANSLATE $n FROM image TO text").unwrap();
+        let Query::Translate(t) = q else { panic!("expected Translate") };
+        assert!(t.quality.is_none());
+    }
+
+    // ── Eternal Return (Phase 15.4) ─────────────────────
+
+    #[test]
+    fn parse_match_as_of_cycle() {
+        let q = parse("MATCH (n) WHERE n.energy > 0.5 AS OF CYCLE 3 RETURN n").unwrap();
+        let Query::Match(m) = q else { panic!("expected Match") };
+        assert_eq!(m.as_of_cycle, Some(3));
+    }
+
+    #[test]
+    fn parse_match_no_cycle() {
+        let q = parse("MATCH (n) WHERE n.energy > 0.5 RETURN n").unwrap();
+        let Query::Match(m) = q else { panic!("expected Match") };
+        assert!(m.as_of_cycle.is_none());
+    }
+
+    #[test]
+    fn parse_counterfactual() {
+        let q = parse("COUNTERFACTUAL SET n.energy = 0.5 MATCH (n) WHERE n.depth > 0.3 RETURN n").unwrap();
+        let Query::Counterfactual(c) = q else { panic!("expected Counterfactual") };
+        assert_eq!(c.overlays.len(), 1);
+        assert_eq!(c.overlays[0].field, "energy");
+        assert!(!c.inner.conditions.is_empty());
+    }
+
+    // ── Collective Unconscious (Phase 15.6) ─────────────
+
+    #[test]
+    fn parse_show_archetypes() {
+        let q = parse("SHOW ARCHETYPES").unwrap();
+        assert!(matches!(q, Query::ShowArchetypes));
+    }
+
+    #[test]
+    fn parse_share_archetype() {
+        let q = parse(r#"SHARE ARCHETYPE $node_id TO "memories""#).unwrap();
+        let Query::ShareArchetype(s) = q else { panic!("expected ShareArchetype") };
+        assert_eq!(s.node_param, "node_id");
+        assert_eq!(s.target_collection, "memories");
+    }
+
+    // ── Narrative Engine (Phase 15.7) ───────────────────
+
+    #[test]
+    fn parse_narrate_full() {
+        let q = parse(r#"NARRATE IN "memories" WINDOW 24 FORMAT json"#).unwrap();
+        let Query::Narrate(n) = q else { panic!("expected Narrate") };
+        assert_eq!(n.collection.as_deref(), Some("memories"));
+        assert_eq!(n.window_hours, Some(24));
+        assert_eq!(n.format.as_deref(), Some("json"));
+    }
+
+    #[test]
+    fn parse_narrate_minimal() {
+        let q = parse("NARRATE").unwrap();
+        let Query::Narrate(n) = q else { panic!("expected Narrate") };
+        assert!(n.collection.is_none());
+        assert!(n.window_hours.is_none());
+        assert!(n.format.is_none());
     }
 }

@@ -20,6 +20,10 @@
 //!   DELETE /api/edge/:id          → delete edge (default collection)
 //!   POST /api/query               → NQL query (default collection)
 //!   POST /api/sleep               → trigger sleep cycle (default collection)
+//!   GET  /api/agency/health        → all persisted HealthReports
+//!   GET  /api/agency/health/latest → most recent HealthReport
+//!   GET  /api/agency/counterfactual/remove/:id → simulate removing node
+//!   POST /api/agency/counterfactual/add        → simulate adding node
 
 use std::sync::Arc;
 use std::net::SocketAddr;
@@ -98,6 +102,18 @@ pub async fn serve(
         // Export
         .route("/api/export/nodes", get(export_nodes))
         .route("/api/export/edges", get(export_edges))
+        // Agency
+        .route("/api/agency/health", get(agency_health))
+        .route("/api/agency/health/latest", get(agency_health_latest))
+        .route("/api/agency/counterfactual/remove/:id", get(agency_cf_remove))
+        .route("/api/agency/counterfactual/add", post(agency_cf_add))
+        .route("/api/agency/desires", get(agency_desires))
+        .route("/api/agency/desires/:id/fulfill", post(agency_fulfill_desire))
+        .route("/api/agency/observer", get(agency_observer))
+        .route("/api/agency/evolution", get(agency_evolution))
+        .route("/api/agency/narrative", get(agency_narrative))
+        .route("/api/agency/quantum/map", post(agency_quantum_map))
+        .route("/api/agency/quantum/fidelity", post(agency_quantum_fidelity))
         // Cluster
         .route("/api/cluster/status", get(cluster_status))
         .route("/api/cluster/ring", get(cluster_ring))
@@ -982,4 +998,250 @@ async fn cluster_ring(
             })).into_response()
         }
     }
+}
+
+// ── Agency endpoints ────────────────────────────────────────────────────────
+
+// GET /api/agency/health — all persisted HealthReports
+async fn agency_health(
+    State((cm, _ops)): State<AppState>,
+) -> impl IntoResponse {
+    let shared = default_col!(cm);
+    let db = shared.read().await;
+    match nietzsche_agency::list_health_reports(db.storage()) {
+        Ok(reports) => Json(serde_json::json!({
+            "count": reports.len(),
+            "reports": reports,
+        })).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// GET /api/agency/health/latest — most recent HealthReport
+async fn agency_health_latest(
+    State((cm, _ops)): State<AppState>,
+) -> impl IntoResponse {
+    let shared = default_col!(cm);
+    let db = shared.read().await;
+    match nietzsche_agency::get_latest_health_report(db.storage()) {
+        Ok(Some(report)) => Json(serde_json::json!(report)).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "no health reports yet"}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// GET /api/agency/counterfactual/remove/:id — simulate removing a node
+async fn agency_cf_remove(
+    State((cm, _ops)): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let uuid = match id.parse::<Uuid>() {
+        Ok(u)  => u,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "invalid uuid"}))).into_response(),
+    };
+    let shared = default_col!(cm);
+    let db = shared.read().await;
+    let config = nietzsche_agency::AgencyConfig::default();
+    match nietzsche_agency::CounterfactualEngine::what_if_remove(db.storage(), db.adjacency(), uuid, &config) {
+        Ok(result) => Json(serde_json::json!({
+            "operation": "remove_node",
+            "node_id": uuid.to_string(),
+            "mean_energy_delta": result.mean_energy_delta,
+            "affected_radius": result.affected_radius,
+            "impact_scores": result.impact_scores.iter().take(50).map(|(id, score)| {
+                serde_json::json!({"node_id": id.to_string(), "score": score})
+            }).collect::<Vec<_>>(),
+            "energy_changes": result.energy_changes.iter().take(50).map(|ec| {
+                serde_json::json!({"node_id": ec.node_id.to_string(), "before": ec.before, "after": ec.after})
+            }).collect::<Vec<_>>(),
+        })).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// POST /api/agency/counterfactual/add — simulate adding a node
+#[derive(Deserialize)]
+struct CfAddRequest {
+    energy:     Option<f32>,
+    depth:      Option<f32>,
+    connect_to: Vec<String>,
+}
+
+async fn agency_cf_add(
+    State((cm, _ops)): State<AppState>,
+    Json(req): Json<CfAddRequest>,
+) -> impl IntoResponse {
+    let connect_to: Vec<Uuid> = match req.connect_to.iter().map(|s| s.parse::<Uuid>()).collect::<Result<Vec<_>, _>>() {
+        Ok(ids) => ids,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "invalid uuid in connect_to"}))).into_response(),
+    };
+
+    let new_meta = nietzsche_graph::NodeMeta {
+        id: Uuid::new_v4(),
+        depth: req.depth.unwrap_or(0.3),
+        content: serde_json::json!({"source": "counterfactual_simulation"}),
+        node_type: nietzsche_graph::NodeType::Semantic,
+        energy: req.energy.unwrap_or(0.7),
+        lsystem_generation: 0,
+        hausdorff_local: 1.0,
+        created_at: 0,
+        expires_at: None,
+        metadata: std::collections::HashMap::new(),
+    };
+
+    let shared = default_col!(cm);
+    let db = shared.read().await;
+    let config = nietzsche_agency::AgencyConfig::default();
+    match nietzsche_agency::CounterfactualEngine::what_if_add(db.storage(), db.adjacency(), new_meta, connect_to, &config) {
+        Ok(result) => Json(serde_json::json!({
+            "operation": "add_node",
+            "mean_energy_delta": result.mean_energy_delta,
+            "affected_radius": result.affected_radius,
+            "impact_scores": result.impact_scores.iter().take(50).map(|(id, score)| {
+                serde_json::json!({"node_id": id.to_string(), "score": score})
+            }).collect::<Vec<_>>(),
+            "energy_changes": result.energy_changes.iter().take(50).map(|ec| {
+                serde_json::json!({"node_id": ec.node_id.to_string(), "before": ec.before, "after": ec.after})
+            }).collect::<Vec<_>>(),
+        })).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// GET /api/agency/desires — list all pending desire signals
+async fn agency_desires(
+    State((cm, _ops)): State<AppState>,
+) -> impl IntoResponse {
+    let shared = default_col!(cm);
+    let db = shared.read().await;
+    match nietzsche_agency::list_pending_desires(db.storage()) {
+        Ok(desires) => Json(serde_json::json!({
+            "count": desires.len(),
+            "desires": desires,
+        })).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// POST /api/agency/desires/:id/fulfill — mark a desire as fulfilled
+async fn agency_fulfill_desire(
+    State((cm, _ops)): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let uuid = match id.parse::<Uuid>() {
+        Ok(u) => u,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "invalid uuid"}))).into_response(),
+    };
+    let shared = default_col!(cm);
+    let db = shared.read().await;
+    match nietzsche_agency::fulfill_desire(db.storage(), uuid) {
+        Ok(true) => Json(serde_json::json!({"fulfilled": uuid.to_string()})).into_response(),
+        Ok(false) => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "desire not found"}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// GET /api/agency/observer — get the Observer Identity meta-node
+async fn agency_observer(
+    State((cm, _ops)): State<AppState>,
+) -> impl IntoResponse {
+    let shared = default_col!(cm);
+    let db = shared.read().await;
+    match nietzsche_agency::ObserverIdentity::get_id(db.storage()) {
+        Ok(Some(id)) => {
+            match db.storage().get_node_meta(&id) {
+                Ok(Some(meta)) => Json(serde_json::json!({
+                    "observer_id": id.to_string(),
+                    "energy": meta.energy,
+                    "depth": meta.depth,
+                    "hausdorff_local": meta.hausdorff_local,
+                    "is_observer": nietzsche_agency::ObserverIdentity::is_observer(&meta),
+                    "content": meta.content,
+                })).into_response(),
+                Ok(None) => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "observer node not found in graph"}))).into_response(),
+                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+            }
+        }
+        Ok(None) => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "observer identity not yet created — agency engine must tick first"}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// GET /api/agency/evolution — current evolution state and strategy
+async fn agency_evolution(
+    State((cm, _ops)): State<AppState>,
+) -> impl IntoResponse {
+    let shared = default_col!(cm);
+    let db = shared.read().await;
+    match nietzsche_agency::RuleEvolution::load_state(db.storage()) {
+        Ok(state) => Json(serde_json::json!({
+            "generation": state.generation,
+            "last_strategy": state.last_strategy,
+            "fitness_history": state.fitness_history,
+        })).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// GET /api/agency/narrative — latest generated narrative
+async fn agency_narrative(
+    State((cm, _ops)): State<AppState>,
+) -> impl IntoResponse {
+    let shared = default_col!(cm);
+    let db = shared.read().await;
+    match db.storage().get_meta("agency:latest_narrative") {
+        Ok(Some(bytes)) => {
+            let summary: String = serde_json::from_slice(&bytes).unwrap_or_default();
+            Json(serde_json::json!({"narrative": summary})).into_response()
+        }
+        Ok(None) => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "no narrative yet — agency engine must tick first"}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// POST /api/agency/quantum/map — map Poincaré embeddings to Bloch states
+#[derive(Deserialize)]
+struct QuantumMapRequest {
+    nodes: Vec<QuantumNodeInput>,
+}
+
+#[derive(Deserialize)]
+struct QuantumNodeInput {
+    embedding: Vec<f64>,
+    energy: f32,
+}
+
+async fn agency_quantum_map(
+    Json(req): Json<QuantumMapRequest>,
+) -> impl IntoResponse {
+    let states: Vec<_> = req.nodes.iter().map(|n| {
+        let state = nietzsche_agency::poincare_to_bloch(&n.embedding, n.energy);
+        serde_json::json!({
+            "theta": state.theta,
+            "phi": state.phi,
+            "purity": state.purity,
+            "bloch_vector": state.vector,
+        })
+    }).collect();
+    Json(serde_json::json!({"states": states})).into_response()
+}
+
+// POST /api/agency/quantum/fidelity — compute fidelity between two groups
+#[derive(Deserialize)]
+struct FidelityRequest {
+    group_a: Vec<QuantumNodeInput>,
+    group_b: Vec<QuantumNodeInput>,
+}
+
+async fn agency_quantum_fidelity(
+    Json(req): Json<FidelityRequest>,
+) -> impl IntoResponse {
+    let a: Vec<_> = req.group_a.iter().map(|n| nietzsche_agency::poincare_to_bloch(&n.embedding, n.energy)).collect();
+    let b: Vec<_> = req.group_b.iter().map(|n| nietzsche_agency::poincare_to_bloch(&n.embedding, n.energy)).collect();
+    let proxy = nietzsche_agency::entanglement_proxy(&a, &b);
+    Json(serde_json::json!({
+        "entanglement_proxy": proxy,
+        "group_a_size": a.len(),
+        "group_b_size": b.len(),
+    })).into_response()
 }
