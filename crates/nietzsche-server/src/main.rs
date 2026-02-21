@@ -496,7 +496,7 @@ async fn main() -> anyhow::Result<()> {
             // Initialize Observer Identity for each collection
             for (col_name, eng) in &engines {
                 if let Some(shared) = cm_agency.get_or_default(col_name) {
-                    let db = shared.blocking_read();
+                    let db = shared.read().await;
                     match eng.ensure_observer_identity(db.storage()) {
                         Ok(id) => info!(collection = %col_name, observer_id = %id, "Observer Identity ready"),
                         Err(e) => warn!(collection = %col_name, error = %e, "failed to create Observer Identity"),
