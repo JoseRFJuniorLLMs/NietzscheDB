@@ -44,10 +44,10 @@ export function AuthPage() {
                 <CardHeader>
                     <div className="flex justify-center mb-4">
                         <div className="h-16 w-16 flex items-center justify-center font-bold text-primary text-3xl">
-                            [H]
+                            [N]
                         </div>
                     </div>
-                    <CardTitle className="text-2xl text-center">HyperspaceDB Console</CardTitle>
+                    <CardTitle className="text-2xl text-center">NietzscheDB Console</CardTitle>
                     <CardDescription className="text-center">Secure Control Plane Access</CardDescription>
                 </CardHeader>
                 <form onSubmit={handleSubmit}>

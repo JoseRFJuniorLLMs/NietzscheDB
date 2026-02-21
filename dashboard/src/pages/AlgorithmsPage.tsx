@@ -17,7 +17,7 @@ import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { runAlgorithm, api, type AlgoParams } from "@/lib/api"
+import { runAlgorithm, api, DEFAULT_COLLECTION, type AlgoParams } from "@/lib/api"
 
 interface AlgoDef {
     id: string
@@ -109,7 +109,7 @@ const ALGORITHMS: AlgoDef[] = [
 export default function AlgorithmsPage() {
     const [selected, setSelected] = useState<AlgoDef | null>(null)
     const [paramValues, setParamValues] = useState<Record<string, string>>({})
-    const [collection, setCollection] = useState("")
+    const [collection, setCollection] = useState(DEFAULT_COLLECTION)
     const [result, setResult] = useState<any>(null)
     const [executing, setExecuting] = useState(false)
     const [error, setError] = useState<string | null>(null)

@@ -8,7 +8,7 @@ import { Copy, Download, Archive } from "lucide-react"
 
 export function SettingsPage() {
     const { data: status } = useQuery({ queryKey: ['status'], queryFn: fetchStatus })
-    const apiKey = localStorage.getItem("hyperspace_api_key") || "YOUR_KEY"
+    const apiKey = localStorage.getItem("nietzsche_api_key") || "YOUR_KEY"
 
     return (
         <div className="space-y-6 fade-in">
@@ -19,7 +19,7 @@ export function SettingsPage() {
                     <Card className="h-full">
                         <CardHeader>
                             <CardTitle>Integration Snippets</CardTitle>
-                            <CardDescription>Connect your agents to Hyperspace</CardDescription>
+                            <CardDescription>Connect your agents to NietzscheDB</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <ClientSnippets apiKey={apiKey} dimension={status?.config?.dimension || 1024} />

@@ -4,15 +4,15 @@
 //! serves a single-page HTML dashboard for graph visualization, CRUD forms,
 //! NQL console, and stats panel.
 //!
-//! All data-plane endpoints target the `"default"` collection.  A `?collection=`
-//! query parameter can be added in the future (Fase B+).
+//! All data-plane endpoints accept `?collection=name` (default: `"default"`).
+//! `/api/graph` also accepts `&limit=N` (default 500, max 5000).
 //!
 //! Endpoints:
 //!   GET  /                        → dashboard HTML
 //!   GET  /api/stats               → total node/edge counts + version
 //!   GET  /api/health              → liveness probe
 //!   GET  /api/collections         → list all collections
-//!   GET  /api/graph               → default collection: all nodes + edges (≤500 each)
+//!   GET  /api/graph               → nodes + edges (≤limit, default 500, max 5000)
 //!   GET  /api/node/:id            → single node (default collection)
 //!   POST /api/node                → insert node (default collection)
 //!   DELETE /api/node/:id          → delete node (default collection)
@@ -135,17 +135,27 @@ pub async fn serve(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Get the default collection, or return 500 if somehow unavailable.
-macro_rules! default_col {
-    ($cm:expr) => {
-        match $cm.get_or_default("default") {
+/// Resolve a collection by optional name, falling back to "default".
+macro_rules! resolve_col {
+    ($cm:expr, $col:expr) => {{
+        let col_name = $col.as_deref().unwrap_or("default");
+        match $cm.get_or_default(col_name) {
             Some(db) => db,
             None => return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "default collection unavailable"})),
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": format!("collection '{}' not found", col_name)})),
             ).into_response(),
         }
+    }};
+    ($cm:expr) => {
+        resolve_col!($cm, Option::<String>::None)
     };
+}
+
+/// Query param for endpoints that only need an optional collection.
+#[derive(Deserialize)]
+struct CollectionQuery {
+    collection: Option<String>,
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -211,45 +221,63 @@ async fn list_collections(State((cm, _ops)): State<AppState>) -> impl IntoRespon
     Json(list)
 }
 
-// GET /api/graph — default collection, max 500 nodes + edges
+// GET /api/graph?collection=name&limit=1000
+#[derive(Deserialize)]
+struct GraphParams {
+    collection: Option<String>,
+    limit:      Option<usize>,
+}
+
 #[derive(Serialize)]
 struct GraphResponse {
     nodes: Vec<NodeJson>,
     edges: Vec<EdgeJson>,
 }
 
-async fn graph(State((cm, _ops)): State<AppState>) -> impl IntoResponse {
-    let shared = default_col!(cm);
+async fn graph(
+    State((cm, _ops)): State<AppState>,
+    Query(p): Query<GraphParams>,
+) -> impl IntoResponse {
+    let col_name = p.collection.as_deref().unwrap_or("default");
+    let max = p.limit.unwrap_or(500).min(5000);
+    let shared = match cm.get_or_default(col_name) {
+        Some(db) => db,
+        None => return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": format!("collection '{}' not found", col_name)})),
+        ).into_response(),
+    };
     let db = shared.read().await;
-    let nodes: Vec<NodeJson> = db
-        .storage()
-        .scan_nodes()
-        .unwrap_or_default()
-        .into_iter()
-        .take(500)
-        .map(NodeJson::from)
-        .collect();
-    let edges: Vec<EdgeJson> = db
-        .storage()
-        .scan_edges()
-        .unwrap_or_default()
-        .into_iter()
-        .take(500)
-        .map(EdgeJson::from)
-        .collect();
+    let nodes: Vec<NodeJson> = match db.storage().scan_nodes() {
+        Ok(ns) => ns.into_iter().take(max).map(NodeJson::from).collect(),
+        Err(e) => {
+            warn!(collection = col_name, error = %e, "scan_nodes failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("scan_nodes failed: {}", e)}))).into_response();
+        }
+    };
+    let edges: Vec<EdgeJson> = match db.storage().scan_edges() {
+        Ok(es) => es.into_iter().take(max).map(EdgeJson::from).collect(),
+        Err(e) => {
+            warn!(collection = col_name, error = %e, "scan_edges failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("scan_edges failed: {}", e)}))).into_response();
+        }
+    };
     Json(GraphResponse { nodes, edges }).into_response()
 }
 
-// GET /api/node/:id
+// GET /api/node/:id?collection=
 async fn get_node(
     State((cm, _ops)): State<AppState>,
     Path(id): Path<String>,
+    Query(cq): Query<CollectionQuery>,
 ) -> impl IntoResponse {
     let uuid = match id.parse::<Uuid>() {
         Ok(u)  => u,
         Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid uuid"}))).into_response(),
     };
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, cq.collection);
     let db = shared.read().await;
     match db.get_node(uuid) {
         Ok(Some(n)) => Json(NodeJson::from(n)).into_response(),
@@ -261,11 +289,12 @@ async fn get_node(
 // POST /api/node
 #[derive(Deserialize)]
 struct InsertNodeRequest {
-    id:        Option<String>,
-    node_type: Option<String>,
-    energy:    Option<f32>,
-    content:   Option<serde_json::Value>,
-    embedding: Option<Vec<f64>>,
+    id:         Option<String>,
+    node_type:  Option<String>,
+    energy:     Option<f32>,
+    content:    Option<serde_json::Value>,
+    embedding:  Option<Vec<f64>>,
+    collection: Option<String>,
 }
 
 async fn insert_node(
@@ -293,7 +322,7 @@ async fn insert_node(
     node.node_type = node_type;
     if let Some(e) = req.energy { node.energy = e; }
 
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, req.collection);
     let mut db = shared.write().await;
     match db.insert_node(node) {
         Ok(_)  => Json(serde_json::json!({"id": id.to_string()})).into_response(),
@@ -301,16 +330,17 @@ async fn insert_node(
     }
 }
 
-// DELETE /api/node/:id
+// DELETE /api/node/:id?collection=
 async fn delete_node(
     State((cm, _ops)): State<AppState>,
     Path(id): Path<String>,
+    Query(cq): Query<CollectionQuery>,
 ) -> impl IntoResponse {
     let uuid = match id.parse::<Uuid>() {
         Ok(u)  => u,
         Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid uuid"}))).into_response(),
     };
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, cq.collection);
     let mut db = shared.write().await;
     match db.delete_node(uuid) {
         Ok(_)  => Json(serde_json::json!({"deleted": uuid.to_string()})).into_response(),
@@ -321,10 +351,11 @@ async fn delete_node(
 // POST /api/edge
 #[derive(Deserialize)]
 struct InsertEdgeRequest {
-    from:      String,
-    to:        String,
-    edge_type: Option<String>,
-    weight:    Option<f32>,
+    from:       String,
+    to:         String,
+    edge_type:  Option<String>,
+    weight:     Option<f32>,
+    collection: Option<String>,
 }
 
 async fn insert_edge(
@@ -348,7 +379,7 @@ async fn insert_edge(
     let edge = Edge::new(from, to, edge_type, req.weight.unwrap_or(1.0));
     let id   = edge.id;
 
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, req.collection);
     let mut db = shared.write().await;
     match db.insert_edge(edge) {
         Ok(_)  => Json(serde_json::json!({"id": id.to_string()})).into_response(),
@@ -356,16 +387,17 @@ async fn insert_edge(
     }
 }
 
-// DELETE /api/edge/:id
+// DELETE /api/edge/:id?collection=
 async fn delete_edge(
     State((cm, _ops)): State<AppState>,
     Path(id): Path<String>,
+    Query(cq): Query<CollectionQuery>,
 ) -> impl IntoResponse {
     let uuid = match id.parse::<Uuid>() {
         Ok(u)  => u,
         Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid uuid"}))).into_response(),
     };
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, cq.collection);
     let mut db = shared.write().await;
     match db.delete_edge(uuid) {
         Ok(_)  => Json(serde_json::json!({"deleted": uuid.to_string()})).into_response(),
@@ -375,7 +407,10 @@ async fn delete_edge(
 
 // POST /api/query
 #[derive(Deserialize)]
-struct QueryRequest { nql: String }
+struct QueryRequest {
+    nql: String,
+    collection: Option<String>,
+}
 
 async fn query_nql(
     State((cm, _ops)): State<AppState>,
@@ -385,7 +420,7 @@ async fn query_nql(
         Ok(q)  => q,
         Err(e) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
     };
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, req.collection);
     let db     = shared.read().await;
     let params = Params::new();
     match nql_execute(&query, db.storage(), db.adjacency(), &params) {
@@ -405,6 +440,7 @@ struct SleepRequest {
     noise:               Option<f64>,
     adam_steps:          Option<usize>,
     hausdorff_threshold: Option<f32>,
+    collection:          Option<String>,
 }
 
 async fn trigger_sleep(
@@ -417,7 +453,7 @@ async fn trigger_sleep(
         adam_lr:             5e-3,
         hausdorff_threshold: req.hausdorff_threshold.unwrap_or(0.15),
     };
-    let shared   = default_col!(cm);
+    let shared   = resolve_col!(cm, req.collection);
     let mut db   = shared.write().await;
     let seed: u64 = rand::random();
     let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(seed);
@@ -437,13 +473,14 @@ async fn trigger_sleep(
 #[derive(Deserialize)]
 struct BatchInsertNodesRequest {
     nodes: Vec<InsertNodeRequest>,
+    collection: Option<String>,
 }
 
 async fn batch_insert_nodes(
     State((cm, _ops)): State<AppState>,
     Json(req): Json<BatchInsertNodesRequest>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, req.collection);
     let mut db = shared.write().await;
 
     let mut nodes_vec = Vec::with_capacity(req.nodes.len());
@@ -482,13 +519,14 @@ async fn batch_insert_nodes(
 #[derive(Deserialize)]
 struct BatchInsertEdgesRequest {
     edges: Vec<InsertEdgeRequest>,
+    collection: Option<String>,
 }
 
 async fn batch_insert_edges(
     State((cm, _ops)): State<AppState>,
     Json(req): Json<BatchInsertEdgesRequest>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, req.collection);
     let mut db = shared.write().await;
 
     let mut edges_vec = Vec::with_capacity(req.edges.len());
@@ -524,7 +562,6 @@ async fn batch_insert_edges(
 
 #[derive(Deserialize)]
 struct AlgoParams {
-    #[allow(dead_code)]
     collection: Option<String>,
     damping: Option<f64>,
     iterations: Option<usize>,
@@ -535,12 +572,12 @@ struct AlgoParams {
     threshold: Option<f64>,
 }
 
-// GET /api/algo/pagerank
+// GET /api/algo/pagerank?collection=
 async fn algo_pagerank(
     State((cm, _ops)): State<AppState>,
     Query(p): Query<AlgoParams>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, p.collection);
     let db = shared.read().await;
     let config = nietzsche_algo::PageRankConfig {
         damping_factor: p.damping.unwrap_or(0.85),
@@ -561,12 +598,12 @@ async fn algo_pagerank(
     }
 }
 
-// GET /api/algo/louvain
+// GET /api/algo/louvain?collection=
 async fn algo_louvain(
     State((cm, _ops)): State<AppState>,
     Query(p): Query<AlgoParams>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, p.collection);
     let db = shared.read().await;
     let config = nietzsche_algo::LouvainConfig {
         max_iterations: p.iterations.unwrap_or(10),
@@ -587,12 +624,12 @@ async fn algo_louvain(
     }
 }
 
-// GET /api/algo/labelprop
+// GET /api/algo/labelprop?collection=
 async fn algo_labelprop(
     State((cm, _ops)): State<AppState>,
     Query(p): Query<AlgoParams>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, p.collection);
     let db = shared.read().await;
     let max_iter = p.iterations.unwrap_or(10);
     match nietzsche_algo::label_propagation(db.storage(), db.adjacency(), max_iter) {
@@ -609,12 +646,12 @@ async fn algo_labelprop(
     }
 }
 
-// GET /api/algo/betweenness
+// GET /api/algo/betweenness?collection=
 async fn algo_betweenness(
     State((cm, _ops)): State<AppState>,
     Query(p): Query<AlgoParams>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, p.collection);
     let db = shared.read().await;
     let sample = p.sample.filter(|&s| s > 0);
     match nietzsche_algo::betweenness_centrality(db.storage(), db.adjacency(), sample) {
@@ -629,12 +666,12 @@ async fn algo_betweenness(
     }
 }
 
-// GET /api/algo/closeness
+// GET /api/algo/closeness?collection=
 async fn algo_closeness(
     State((cm, _ops)): State<AppState>,
-    Query(_p): Query<AlgoParams>,
+    Query(p): Query<AlgoParams>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, p.collection);
     let db = shared.read().await;
     match nietzsche_algo::closeness_centrality(db.storage(), db.adjacency()) {
         Ok(r) => Json(serde_json::json!({
@@ -647,24 +684,26 @@ async fn algo_closeness(
     }
 }
 
-// GET /api/algo/degree
+// GET /api/algo/degree?collection=
 async fn algo_degree(
     State((cm, _ops)): State<AppState>,
     Query(p): Query<AlgoParams>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, p.collection);
     let db = shared.read().await;
     let direction = match p.direction.as_deref() {
         Some("in")  => nietzsche_algo::Direction::In,
         Some("out") => nietzsche_algo::Direction::Out,
         _           => nietzsche_algo::Direction::Both,
     };
-    let node_ids: Vec<Uuid> = db.storage()
-        .scan_nodes_meta()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|n| n.id)
-        .collect();
+    let node_ids: Vec<Uuid> = match db.storage().scan_nodes_meta() {
+        Ok(metas) => metas.into_iter().map(|n| n.id).collect(),
+        Err(e) => {
+            warn!(error = %e, "scan_nodes_meta failed for degree centrality");
+            return (StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("scan_nodes_meta failed: {}", e)}))).into_response();
+        }
+    };
     let r = nietzsche_algo::degree_centrality(db.adjacency(), direction, &node_ids);
     Json(serde_json::json!({
         "algorithm": "degree_centrality",
@@ -674,12 +713,12 @@ async fn algo_degree(
     })).into_response()
 }
 
-// GET /api/algo/wcc
+// GET /api/algo/wcc?collection=
 async fn algo_wcc(
     State((cm, _ops)): State<AppState>,
-    Query(_p): Query<AlgoParams>,
+    Query(p): Query<AlgoParams>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, p.collection);
     let db = shared.read().await;
     match nietzsche_algo::weakly_connected_components(db.storage(), db.adjacency()) {
         Ok(r) => Json(serde_json::json!({
@@ -695,12 +734,12 @@ async fn algo_wcc(
     }
 }
 
-// GET /api/algo/scc
+// GET /api/algo/scc?collection=
 async fn algo_scc(
     State((cm, _ops)): State<AppState>,
-    Query(_p): Query<AlgoParams>,
+    Query(p): Query<AlgoParams>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, p.collection);
     let db = shared.read().await;
     match nietzsche_algo::strongly_connected_components(db.storage(), db.adjacency()) {
         Ok(r) => Json(serde_json::json!({
@@ -716,12 +755,12 @@ async fn algo_scc(
     }
 }
 
-// GET /api/algo/triangles
+// GET /api/algo/triangles?collection=
 async fn algo_triangles(
     State((cm, _ops)): State<AppState>,
-    Query(_p): Query<AlgoParams>,
+    Query(p): Query<AlgoParams>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, p.collection);
     let db = shared.read().await;
     match nietzsche_algo::triangle_count(db.storage(), db.adjacency()) {
         Ok(count) => Json(serde_json::json!({
@@ -732,12 +771,12 @@ async fn algo_triangles(
     }
 }
 
-// GET /api/algo/jaccard
+// GET /api/algo/jaccard?collection=
 async fn algo_jaccard(
     State((cm, _ops)): State<AppState>,
     Query(p): Query<AlgoParams>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, p.collection);
     let db = shared.read().await;
     let top_k = p.top_k.unwrap_or(100);
     let threshold = p.threshold.unwrap_or(0.0);
@@ -756,7 +795,8 @@ async fn algo_jaccard(
 
 #[derive(Deserialize)]
 struct BackupParams {
-    label: Option<String>,
+    label:      Option<String>,
+    collection: Option<String>,
 }
 
 // POST /api/backup
@@ -765,7 +805,7 @@ async fn create_backup(
     Json(p): Json<BackupParams>,
 ) -> impl IntoResponse {
     let label = p.label.as_deref().unwrap_or("manual");
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, p.collection);
     let db = shared.read().await;
 
     let backup_dir = std::env::var("NIETZSCHE_BACKUP_DIR")
@@ -810,16 +850,17 @@ async fn list_backups() -> impl IntoResponse {
 
 #[derive(Deserialize)]
 struct SearchParams {
-    q: String,
-    limit: Option<usize>,
+    q:          String,
+    limit:      Option<usize>,
+    collection: Option<String>,
 }
 
-// GET /api/search?q=text&limit=10
+// GET /api/search?q=text&limit=10&collection=
 async fn fulltext_search(
     State((cm, _ops)): State<AppState>,
     Query(p): Query<SearchParams>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, p.collection);
     let db = shared.read().await;
     let limit = p.limit.unwrap_or(10);
     let fts = nietzsche_graph::FullTextIndex::new(db.storage());
@@ -838,15 +879,16 @@ async fn fulltext_search(
 
 #[derive(Deserialize)]
 struct ExportParams {
-    format: Option<String>, // "csv" or "jsonl", default "jsonl"
+    format:     Option<String>, // "csv" or "jsonl", default "jsonl"
+    collection: Option<String>,
 }
 
-// GET /api/export/nodes
+// GET /api/export/nodes?collection=
 async fn export_nodes(
     State((cm, _ops)): State<AppState>,
     Query(p): Query<ExportParams>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, p.collection);
     let db = shared.read().await;
     let mut buf = Vec::new();
 
@@ -870,12 +912,12 @@ async fn export_nodes(
     }
 }
 
-// GET /api/export/edges
+// GET /api/export/edges?collection=
 async fn export_edges(
     State((cm, _ops)): State<AppState>,
     Query(p): Query<ExportParams>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, p.collection);
     let db = shared.read().await;
     let mut buf = Vec::new();
 
@@ -1002,11 +1044,12 @@ async fn cluster_ring(
 
 // ── Agency endpoints ────────────────────────────────────────────────────────
 
-// GET /api/agency/health — all persisted HealthReports
+// GET /api/agency/health?collection=
 async fn agency_health(
     State((cm, _ops)): State<AppState>,
+    Query(cq): Query<CollectionQuery>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, cq.collection);
     let db = shared.read().await;
     match nietzsche_agency::list_health_reports(db.storage()) {
         Ok(reports) => Json(serde_json::json!({
@@ -1017,11 +1060,12 @@ async fn agency_health(
     }
 }
 
-// GET /api/agency/health/latest — most recent HealthReport
+// GET /api/agency/health/latest?collection=
 async fn agency_health_latest(
     State((cm, _ops)): State<AppState>,
+    Query(cq): Query<CollectionQuery>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, cq.collection);
     let db = shared.read().await;
     match nietzsche_agency::get_latest_health_report(db.storage()) {
         Ok(Some(report)) => Json(serde_json::json!(report)).into_response(),
@@ -1030,16 +1074,17 @@ async fn agency_health_latest(
     }
 }
 
-// GET /api/agency/counterfactual/remove/:id — simulate removing a node
+// GET /api/agency/counterfactual/remove/:id?collection=
 async fn agency_cf_remove(
     State((cm, _ops)): State<AppState>,
     Path(id): Path<String>,
+    Query(cq): Query<CollectionQuery>,
 ) -> impl IntoResponse {
     let uuid = match id.parse::<Uuid>() {
         Ok(u)  => u,
         Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "invalid uuid"}))).into_response(),
     };
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, cq.collection);
     let db = shared.read().await;
     let config = nietzsche_agency::AgencyConfig::default();
     match nietzsche_agency::CounterfactualEngine::what_if_remove(db.storage(), db.adjacency(), uuid, &config) {
@@ -1065,6 +1110,7 @@ struct CfAddRequest {
     energy:     Option<f32>,
     depth:      Option<f32>,
     connect_to: Vec<String>,
+    collection: Option<String>,
 }
 
 async fn agency_cf_add(
@@ -1090,7 +1136,7 @@ async fn agency_cf_add(
         is_phantom: false,
     };
 
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, req.collection);
     let db = shared.read().await;
     let config = nietzsche_agency::AgencyConfig::default();
     match nietzsche_agency::CounterfactualEngine::what_if_add(db.storage(), db.adjacency(), new_meta, connect_to, &config) {
@@ -1109,11 +1155,12 @@ async fn agency_cf_add(
     }
 }
 
-// GET /api/agency/desires — list all pending desire signals
+// GET /api/agency/desires?collection=
 async fn agency_desires(
     State((cm, _ops)): State<AppState>,
+    Query(cq): Query<CollectionQuery>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, cq.collection);
     let db = shared.read().await;
     match nietzsche_agency::list_pending_desires(db.storage()) {
         Ok(desires) => Json(serde_json::json!({
@@ -1124,16 +1171,17 @@ async fn agency_desires(
     }
 }
 
-// POST /api/agency/desires/:id/fulfill — mark a desire as fulfilled
+// POST /api/agency/desires/:id/fulfill?collection=
 async fn agency_fulfill_desire(
     State((cm, _ops)): State<AppState>,
     Path(id): Path<String>,
+    Query(cq): Query<CollectionQuery>,
 ) -> impl IntoResponse {
     let uuid = match id.parse::<Uuid>() {
         Ok(u) => u,
         Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "invalid uuid"}))).into_response(),
     };
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, cq.collection);
     let db = shared.read().await;
     match nietzsche_agency::fulfill_desire(db.storage(), uuid) {
         Ok(true) => Json(serde_json::json!({"fulfilled": uuid.to_string()})).into_response(),
@@ -1142,11 +1190,12 @@ async fn agency_fulfill_desire(
     }
 }
 
-// GET /api/agency/observer — get the Observer Identity meta-node
+// GET /api/agency/observer?collection=
 async fn agency_observer(
     State((cm, _ops)): State<AppState>,
+    Query(cq): Query<CollectionQuery>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, cq.collection);
     let db = shared.read().await;
     match nietzsche_agency::ObserverIdentity::get_id(db.storage()) {
         Ok(Some(id)) => {
@@ -1168,11 +1217,12 @@ async fn agency_observer(
     }
 }
 
-// GET /api/agency/evolution — current evolution state and strategy
+// GET /api/agency/evolution?collection=
 async fn agency_evolution(
     State((cm, _ops)): State<AppState>,
+    Query(cq): Query<CollectionQuery>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, cq.collection);
     let db = shared.read().await;
     match nietzsche_agency::RuleEvolution::load_state(db.storage()) {
         Ok(state) => Json(serde_json::json!({
@@ -1184,11 +1234,12 @@ async fn agency_evolution(
     }
 }
 
-// GET /api/agency/narrative — latest generated narrative
+// GET /api/agency/narrative?collection=
 async fn agency_narrative(
     State((cm, _ops)): State<AppState>,
+    Query(cq): Query<CollectionQuery>,
 ) -> impl IntoResponse {
-    let shared = default_col!(cm);
+    let shared = resolve_col!(cm, cq.collection);
     let db = shared.read().await;
     match db.storage().get_meta("agency:latest_narrative") {
         Ok(Some(bytes)) => {
