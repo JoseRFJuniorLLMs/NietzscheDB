@@ -10,6 +10,12 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    proxy: {
+      "/api": "http://localhost:8080",
+      "/metrics": "http://localhost:8080",
+    },
+  },
   build: {
     // Inline everything — produces a single index.html with no external assets
     assetsInlineLimit: 100_000_000,
