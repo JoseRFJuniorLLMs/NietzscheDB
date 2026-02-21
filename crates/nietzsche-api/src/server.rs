@@ -24,7 +24,7 @@ use tracing::{debug, instrument, warn};
 use uuid::Uuid;
 
 use nietzsche_graph::{
-    CollectionConfig, CollectionManager,
+    BackpressureSignal, CollectionConfig, CollectionManager,
     Edge, EdgeType, GraphError, Node, NodeType, PoincareVector,
     traversal::{BfsConfig, DijkstraConfig},
     bfs, dijkstra,
@@ -98,11 +98,21 @@ fn node_to_proto(node: Node) -> nietzsche::NodeResponse {
         content:         content_bytes,
         node_type:       format!("{:?}", meta.node_type),
         expires_at:      meta.expires_at.unwrap_or(0),
+        backpressure:    None, // populated only by write RPCs
     }
 }
 
 fn not_found() -> nietzsche::NodeResponse {
     nietzsche::NodeResponse { found: false, ..Default::default() }
+}
+
+/// Convert a graph-layer [`BackpressureSignal`] to the proto representation.
+fn bp_to_proto(bp: &BackpressureSignal) -> nietzsche::BackpressureSignal {
+    nietzsche::BackpressureSignal {
+        accept:            bp.accept,
+        reason:            bp.reason.clone(),
+        suggested_delay_ms: bp.suggested_delay_ms,
+    }
 }
 
 fn ok_status() -> nietzsche::StatusResponse {
@@ -314,9 +324,12 @@ impl NietzscheDb for NietzscheServer {
         let shared = get_col!(self.cm, &r.collection);
         let mut db = shared.write().await;
         db.insert_node(node.clone()).map_err(graph_err)?;
+        let bp = db.check_backpressure();
         self.cdc.publish(CdcEventType::InsertNode, id, col(&r.collection));
 
-        Ok(Response::new(node_to_proto(node)))
+        let mut resp = node_to_proto(node);
+        resp.backpressure = Some(bp_to_proto(&bp));
+        Ok(Response::new(resp))
     }
 
     async fn get_node(
@@ -1285,6 +1298,7 @@ impl NietzscheDb for NietzscheServer {
 
         let count = ids.len() as u32;
         db.insert_nodes_bulk(nodes_vec).map_err(graph_err)?;
+        let bp = db.check_backpressure();
         self.cdc.publish(
             CdcEventType::BatchInsertNodes { count },
             Uuid::nil(),
@@ -1294,6 +1308,7 @@ impl NietzscheDb for NietzscheServer {
         Ok(Response::new(nietzsche::BatchInsertNodesResponse {
             inserted: count,
             node_ids: ids,
+            backpressure: Some(bp_to_proto(&bp)),
         }))
     }
 

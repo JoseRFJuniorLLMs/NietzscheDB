@@ -1087,6 +1087,7 @@ async fn agency_cf_add(
         created_at: 0,
         expires_at: None,
         metadata: std::collections::HashMap::new(),
+        is_phantom: false,
     };
 
     let shared = default_col!(cm);

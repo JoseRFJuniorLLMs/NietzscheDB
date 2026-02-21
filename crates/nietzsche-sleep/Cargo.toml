@@ -20,3 +20,7 @@ criterion = { workspace = true }
 [[bench]]
 name    = "riemannian_bench"
 harness = false
+
+[[bench]]
+name    = "sleep_query_bench"
+harness = false

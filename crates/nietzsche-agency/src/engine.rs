@@ -1,7 +1,7 @@
 use nietzsche_graph::{AdjacencyIndex, GraphStorage};
 
 use crate::config::AgencyConfig;
-use crate::daemons::{AgencyDaemon, CoherenceDaemon, DaemonReport, EntropyDaemon, GapDaemon};
+use crate::daemons::{AgencyDaemon, CoherenceDaemon, DaemonReport, EntropyDaemon, GapDaemon, NiilistaGcDaemon};
 use crate::desire::{DesireEngine, DesireSignal};
 use crate::error::AgencyError;
 use crate::event_bus::{AgencyEvent, AgencyEventBus, SectorId};
@@ -63,6 +63,7 @@ impl AgencyEngine {
                 Box::new(EntropyDaemon),
                 Box::new(GapDaemon),
                 Box::new(CoherenceDaemon),
+                Box::new(NiilistaGcDaemon),
             ],
             observer,
             reactor,
@@ -320,7 +321,7 @@ mod tests {
         let report = engine.tick(&storage, &adjacency).unwrap();
 
         // All 3 daemons should have run
-        assert_eq!(report.daemon_reports.len(), 3);
+        assert_eq!(report.daemon_reports.len(), 4);
         for dr in &report.daemon_reports {
             assert!(dr.nodes_scanned > 0);
         }
@@ -379,7 +380,7 @@ mod tests {
         let mut engine = AgencyEngine::new(config);
         let report = engine.tick(&storage, &adjacency).unwrap();
 
-        assert_eq!(report.daemon_reports.len(), 3);
+        assert_eq!(report.daemon_reports.len(), 4);
         for dr in &report.daemon_reports {
             assert_eq!(dr.nodes_scanned, 0);
         }

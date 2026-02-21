@@ -456,8 +456,14 @@ impl GraphStorage {
         let start_key = energy_index_key(min_energy, &Uuid::nil());
         let end_key   = energy_index_key(f32::MAX, &Uuid::max());
 
-        let iter = self.db.iterator_cf(
+        // The energy CF has a 4-byte prefix extractor; total_order_seek is
+        // required to scan across different energy prefixes.
+        let mut read_opts = ReadOptions::default();
+        read_opts.set_total_order_seek(true);
+
+        let iter = self.db.iterator_cf_opt(
             &self.cf_energy(),
+            read_opts,
             rocksdb::IteratorMode::From(&start_key, rocksdb::Direction::Forward),
         );
 
@@ -475,6 +481,36 @@ impl GraphStorage {
             ids.push(node_id);
         }
         Ok(ids)
+    }
+
+    /// Count nodes with energy above `min_energy`, stopping after `limit`.
+    ///
+    /// Uses the energy secondary index (`CF_ENERGY_IDX`) for O(log N + limit)
+    /// performance — no full scan, no Vec allocation. Designed for the
+    /// backpressure check on the write hot-path.
+    pub fn count_energy_above(&self, min_energy: f32, limit: usize) -> Result<usize, GraphError> {
+        let start_key = energy_index_key(min_energy, &Uuid::nil());
+        let end_key   = energy_index_key(f32::MAX, &Uuid::max());
+
+        // The energy CF has a 4-byte prefix extractor; total_order_seek is
+        // required to scan across different energy prefixes.
+        let mut read_opts = ReadOptions::default();
+        read_opts.set_total_order_seek(true);
+
+        let iter = self.db.iterator_cf_opt(
+            &self.cf_energy(),
+            read_opts,
+            rocksdb::IteratorMode::From(&start_key, rocksdb::Direction::Forward),
+        );
+
+        let mut count = 0usize;
+        for item in iter {
+            let (key, _) = item.map_err(|e| GraphError::Storage(e.to_string()))?;
+            if key.as_ref() > end_key.as_slice() { break; }
+            count += 1;
+            if count >= limit { break; }
+        }
+        Ok(count)
     }
 
     // ── Metadata index operations ─────────────────────

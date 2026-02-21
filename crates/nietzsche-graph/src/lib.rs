@@ -51,7 +51,7 @@ pub mod wal;
 
 pub use adjacency::{AdjacencyIndex, AdjEntry};
 pub use collection_manager::{CollectionConfig, CollectionInfo, CollectionManager};
-pub use db::{MockVectorStore, NietzscheDB, VectorStore};
+pub use db::{BackpressureSignal, MockVectorStore, NietzscheDB, VectorStore};
 pub use embedded_vector_store::{AnyVectorStore, EmbeddedVectorStore, VectorMetric};
 pub use error::GraphError;
 pub use model::{Edge, EdgeType, Node, NodeMeta, NodeType, PoincareVector, SparseVector};

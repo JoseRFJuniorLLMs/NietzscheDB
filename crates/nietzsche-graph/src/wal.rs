@@ -34,6 +34,10 @@ pub enum GraphWalEntry {
     UpdateHausdorff { node_id: Uuid, hausdorff: f32 },
     /// A node's embedding was updated (during sleep/reconsolidation).
     UpdateEmbedding { node_id: Uuid, embedding: PoincareVector },
+    /// A node was phantomized (structural scar, topology preserved).
+    PhantomizeNode(Uuid),
+    /// A phantom node was reanimated (brought back to active state).
+    ReanimateNode { node_id: Uuid, energy: f32 },
     /// A transaction was started (saga pattern begin).
     TxBegin(Uuid),
     /// A transaction was committed (saga pattern checkpoint).
@@ -54,6 +58,8 @@ impl GraphWalEntry {
             Self::UpdateNodeEnergy {..}=> "UPDATE_ENERGY",
             Self::UpdateHausdorff {..} => "UPDATE_HAUSDORFF",
             Self::UpdateEmbedding {..} => "UPDATE_EMBEDDING",
+            Self::PhantomizeNode(_)   => "PHANTOMIZE_NODE",
+            Self::ReanimateNode {..}  => "REANIMATE_NODE",
             Self::TxBegin(_)          => "TX_BEGIN",
             Self::TxCommitted(_)      => "TX_COMMITTED",
             Self::TxRolledBack(_)     => "TX_ROLLED_BACK",

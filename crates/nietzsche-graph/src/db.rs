@@ -14,6 +14,39 @@ use crate::transaction::Transaction;
 use crate::wal::{GraphWal, GraphWalEntry};
 
 // ─────────────────────────────────────────────
+// Backpressure signal
+// ─────────────────────────────────────────────
+
+/// Signal returned by [`NietzscheDB::check_backpressure`] indicating whether
+/// the client should slow down its write rate.
+///
+/// Included in `InsertNode` and `BatchInsertNodes` gRPC responses so that
+/// EVA-Mind (or any SDK) can respect the database's consolidation needs.
+#[derive(Debug, Clone)]
+pub struct BackpressureSignal {
+    /// Whether the write was accepted. Currently always `true` — the database
+    /// never rejects writes, only suggests delays.
+    pub accept: bool,
+    /// Reason for backpressure. Empty string means no pressure.
+    /// Possible values: `"energy_inflated"`, `"capacity_high"`, `"capacity_warning"`.
+    pub reason: String,
+    /// Suggested delay in milliseconds before the next write. `0` = no delay.
+    pub suggested_delay_ms: u32,
+}
+
+impl BackpressureSignal {
+    /// No backpressure — everything is healthy.
+    pub fn ok() -> Self {
+        Self { accept: true, reason: String::new(), suggested_delay_ms: 0 }
+    }
+
+    /// `true` if the signal recommends slowing down.
+    pub fn is_pressured(&self) -> bool {
+        self.suggested_delay_ms > 0
+    }
+}
+
+// ─────────────────────────────────────────────
 // VectorStore trait
 // ─────────────────────────────────────────────
 
@@ -327,10 +360,70 @@ impl<V: VectorStore> NietzscheDB<V> {
         Ok(())
     }
 
+    /// Phantomize a node: structural scar that preserves topology.
+    ///
+    /// Unlike [`prune_node`], this method **keeps adjacency connections intact**
+    /// so the hyperbolic geometry doesn't collapse. The node is removed from
+    /// the vector store (no KNN results) and from the hot-tier cache, but its
+    /// edges and position in the Poincaré ball are preserved.
+    ///
+    /// Phantom nodes can be reanimated via [`reanimate_node`] if fresh data
+    /// arrives at a similar position, mimicking biological memory re-learning.
+    pub fn phantomize_node(&mut self, id: Uuid) -> Result<(), GraphError> {
+        // 1. WAL
+        self.wal.append(&GraphWalEntry::PhantomizeNode(id))?;
+
+        // 2. Set energy = 0, is_phantom = true
+        if let Some(mut meta) = self.storage.get_node_meta(&id)? {
+            let old_energy = meta.energy;
+            meta.energy = 0.0;
+            meta.is_phantom = true;
+            self.storage.put_node_meta_update_energy(&meta, old_energy)?;
+        }
+
+        // 3. Remove from vector store (no KNN results)
+        self.vector_store.delete(id)?;
+
+        // 4. Remove from hot-tier cache
+        self.hot_tier.remove(&id);
+
+        // 5. KEEP adjacency intact — topology is preserved!
+        Ok(())
+    }
+
+    /// Reanimate a phantom node, restoring it to active state.
+    ///
+    /// Re-inserts the embedding into the vector store and sets the new energy.
+    /// Returns `true` if the node was phantom and was reanimated, `false` if
+    /// the node doesn't exist or wasn't phantom.
+    pub fn reanimate_node(&mut self, id: Uuid, energy: f32) -> Result<bool, GraphError> {
+        let meta = match self.storage.get_node_meta(&id)? {
+            Some(m) if m.is_phantom => m,
+            _ => return Ok(false),
+        };
+
+        // 1. WAL
+        self.wal.append(&GraphWalEntry::ReanimateNode { node_id: id, energy })?;
+
+        // 2. Update meta: clear phantom flag, restore energy
+        let old_energy = meta.energy;
+        let mut meta = meta;
+        meta.energy = energy;
+        meta.is_phantom = false;
+        self.storage.put_node_meta_update_energy(&meta, old_energy)?;
+
+        // 3. Re-insert embedding into vector store
+        if let Some(emb) = self.storage.get_embedding(&id)? {
+            self.vector_store.upsert(id, &emb)?;
+        }
+
+        Ok(true)
+    }
+
     /// Hard-delete a node and all edges referencing it.
     ///
-    /// Prefer [`prune_node`] for normal operation; this is for administrative
-    /// data-correction workflows.
+    /// Prefer [`phantomize_node`] for normal operation; this is for
+    /// administrative data-correction workflows.
     pub fn delete_node(&mut self, id: Uuid) -> Result<(), GraphError> {
         // 0. Read metadata for index cleanup before deletion
         let meta_for_idx = if !self.indexed_fields.is_empty() {
@@ -371,8 +464,10 @@ impl<V: VectorStore> NietzscheDB<V> {
 
     /// Reap all expired nodes (TTL enforcement).
     ///
-    /// Scans `CF_NODES` for nodes where `expires_at <= now`, then hard-deletes
-    /// each one (including incident edges, vector store entry, adjacency).
+    /// Scans `CF_NODES` for nodes where `expires_at <= now`, then
+    /// **phantomizes** each one — preserving topological connections so the
+    /// hyperbolic geometry doesn't collapse (anti-esquecimento).
+    ///
     /// Returns the number of reaped nodes.
     ///
     /// Intended to be called periodically by a background task.
@@ -384,7 +479,7 @@ impl<V: VectorStore> NietzscheDB<V> {
         let expired_ids = self.storage.scan_expired_node_ids(now)?;
         let count = expired_ids.len();
         for id in expired_ids {
-            self.delete_node(id)?;
+            self.phantomize_node(id)?;
         }
         Ok(count)
     }
@@ -771,6 +866,67 @@ impl<V: VectorStore> NietzscheDB<V> {
     pub fn node_count(&self) -> Result<usize, GraphError> { self.storage.node_count() }
     pub fn edge_count(&self) -> Result<usize, GraphError> { self.storage.edge_count() }
 
+    // ── Backpressure ────────────────────────────────────
+
+    /// Check whether the database is under ingestion pressure.
+    ///
+    /// Returns a [`BackpressureSignal`] that write-path RPCs (InsertNode,
+    /// BatchInsertNodes) should include in their response. The signal tells
+    /// the client how long to wait before the next write.
+    ///
+    /// ## Checks performed (all O(1) or O(limit)):
+    ///
+    /// 1. **Capacity** — node count via `rocksdb.estimate-num-keys` (O(1)).
+    /// 2. **Energy inflation** — count of nodes with energy > 0.85 via the
+    ///    energy secondary index, capped at 100 iterations (O(100)).
+    pub fn check_backpressure(&self) -> BackpressureSignal {
+        let total = self.node_count().unwrap_or(0);
+
+        // ── capacity check (O(1)) ─────────────────────────
+        if total > 100_000 {
+            return BackpressureSignal {
+                accept: true,
+                reason: "capacity_high".into(),
+                suggested_delay_ms: 1000,
+            };
+        }
+        if total > 50_000 {
+            return BackpressureSignal {
+                accept: true,
+                reason: "capacity_warning".into(),
+                suggested_delay_ms: 200,
+            };
+        }
+
+        // ── energy inflation check (O(sample_limit)) ─────
+        // If more than half the (sampled) nodes have energy > 0.85, the
+        // graph is "overheated" and needs time to consolidate via
+        // Zaratustra or Sleep before ingesting more data.
+        //
+        // NOTE: we use the energy index to count nodes rather than
+        // `node_count()` (RocksDB estimate-num-keys), because the
+        // estimate can be 0 for small/fresh databases whose memtable
+        // hasn't flushed to SST files yet.
+        let sample_limit = 100usize;
+        let total_sampled = self.storage
+            .count_energy_above(0.0, sample_limit)
+            .unwrap_or(0);
+        if total_sampled >= 10 {
+            let inflated = self.storage
+                .count_energy_above(0.85, sample_limit)
+                .unwrap_or(0);
+            if inflated * 2 > total_sampled {
+                return BackpressureSignal {
+                    accept: true,
+                    reason: "energy_inflated".into(),
+                    suggested_delay_ms: 500,
+                };
+            }
+        }
+
+        BackpressureSignal::ok()
+    }
+
     // ── Transaction API ────────────────────────────────
 
     /// Begin a new ACID transaction.
@@ -1052,7 +1208,13 @@ mod tests {
         let reaped = db.reap_expired().unwrap();
         assert_eq!(reaped, 1);
 
-        assert!(db.get_node(expired_id).unwrap().is_none());
+        // Expired node is phantomized (not hard-deleted) — it still exists
+        // but with energy=0 and is_phantom=true.
+        let expired_meta = db.storage.get_node_meta(&expired_id).unwrap().unwrap();
+        assert!(expired_meta.is_phantom, "reaped node should be phantom");
+        assert_eq!(expired_meta.energy, 0.0);
+
+        // Fresh and eternal nodes are unaffected
         assert!(db.get_node(fresh_id).unwrap().is_some());
         assert!(db.get_node(eternal_id).unwrap().is_some());
     }
@@ -1069,5 +1231,153 @@ mod tests {
 
         let found = db.get_node(id).unwrap().unwrap();
         assert!((found.hausdorff_local - 1.5).abs() < 1e-6);
+    }
+
+    // ── Backpressure tests ─────────────────────────────
+
+    #[test]
+    fn backpressure_ok_on_small_graph() {
+        let dir = tmp();
+        let mut db = open_db(&dir);
+
+        // Insert a few healthy nodes
+        for i in 0..5 {
+            let mut node = make_node(&[0.1 * (i as f64 + 1.0), 0.0]);
+            node.energy = 0.5;
+            db.insert_node(node).unwrap();
+        }
+
+        let bp = db.check_backpressure();
+        assert!(bp.accept);
+        assert!(!bp.is_pressured(), "small healthy graph should not trigger backpressure");
+    }
+
+    #[test]
+    fn backpressure_detects_energy_inflation() {
+        let dir = tmp();
+        let mut db = open_db(&dir);
+
+        // Insert 20 nodes, all with very high energy (> 0.85)
+        for i in 0..20 {
+            let mut node = make_node(&[0.04 * (i as f64 + 1.0), 0.0]);
+            node.energy = 0.95;
+            db.insert_node(node).unwrap();
+        }
+
+        let bp = db.check_backpressure();
+        assert!(bp.accept, "writes should still be accepted");
+        assert!(bp.is_pressured(), "inflated energy should trigger backpressure");
+        assert_eq!(bp.reason, "energy_inflated");
+        assert!(bp.suggested_delay_ms > 0);
+    }
+
+    // ── Phantom Nodes ────────────────────────────────────────────────
+
+    #[test]
+    fn phantomize_preserves_topology() {
+        let dir = tmp();
+        let mut db = open_db(&dir);
+
+        // Build A → B → C chain
+        let a = make_node(&[0.1, 0.0]);
+        let b = make_node(&[0.2, 0.0]);
+        let c = make_node(&[0.3, 0.0]);
+        let (aid, bid, cid) = (a.id, b.id, c.id);
+        db.insert_node(a).unwrap();
+        db.insert_node(b).unwrap();
+        db.insert_node(c).unwrap();
+        db.insert_edge(Edge::association(aid, bid, 1.0)).unwrap();
+        db.insert_edge(Edge::association(bid, cid, 1.0)).unwrap();
+
+        // Phantomize B
+        db.phantomize_node(bid).unwrap();
+
+        // B's meta should be phantom with energy 0
+        let meta = db.storage.get_node_meta(&bid).unwrap().unwrap();
+        assert!(meta.is_phantom, "node should be phantom");
+        assert_eq!(meta.energy, 0.0);
+
+        // Topology preserved: A and C still connected through B
+        let out_a = db.adjacency.neighbors_out(&aid);
+        assert!(out_a.contains(&bid),
+            "A→B edge should survive phantomization");
+        let out_b = db.adjacency.neighbors_out(&bid);
+        assert!(out_b.contains(&cid),
+            "B→C edge should survive phantomization");
+
+        // Embedding still in RocksDB (geometry preserved)
+        assert!(db.storage.get_embedding(&bid).unwrap().is_some(),
+            "embedding should survive in RocksDB");
+    }
+
+    #[test]
+    fn reanimate_restores_phantom_node() {
+        let dir = tmp();
+        let mut db = open_db(&dir);
+
+        let node = make_node(&[0.1, 0.0]);
+        let id = node.id;
+        db.insert_node(node).unwrap();
+
+        // Phantomize
+        db.phantomize_node(id).unwrap();
+        let meta = db.storage.get_node_meta(&id).unwrap().unwrap();
+        assert!(meta.is_phantom);
+
+        // Reanimate with energy 0.8
+        let ok = db.reanimate_node(id, 0.8).unwrap();
+        assert!(ok, "should return true for phantom node");
+
+        // Verify restored state
+        let meta = db.storage.get_node_meta(&id).unwrap().unwrap();
+        assert!(!meta.is_phantom, "phantom flag should be cleared");
+        assert!((meta.energy - 0.8).abs() < 1e-6);
+    }
+
+    #[test]
+    fn reanimate_returns_false_for_non_phantom() {
+        let dir = tmp();
+        let mut db = open_db(&dir);
+
+        let node = make_node(&[0.1, 0.0]);
+        let id = node.id;
+        db.insert_node(node).unwrap();
+
+        // Try to reanimate a non-phantom node
+        let ok = db.reanimate_node(id, 0.5).unwrap();
+        assert!(!ok, "should return false for active node");
+    }
+
+    #[test]
+    fn reap_expired_phantomizes_instead_of_deleting() {
+        let dir = tmp();
+        let mut db = open_db(&dir);
+
+        // Insert node with TTL already expired
+        let mut node = make_node(&[0.1, 0.0]);
+        let id = node.id;
+        node.meta.expires_at = Some(1); // Unix epoch + 1 second = long expired
+        db.insert_node(node).unwrap();
+
+        // Build an edge so we can verify topology
+        let other = make_node(&[0.2, 0.0]);
+        let oid = other.id;
+        db.insert_node(other).unwrap();
+        db.insert_edge(Edge::association(id, oid, 1.0)).unwrap();
+
+        // Reap expired
+        let count = db.reap_expired().unwrap();
+        assert_eq!(count, 1);
+
+        // Node should be phantom, NOT hard-deleted
+        let meta = db.storage.get_node_meta(&id).unwrap();
+        assert!(meta.is_some(), "node should still exist as phantom");
+        let meta = meta.unwrap();
+        assert!(meta.is_phantom);
+        assert_eq!(meta.energy, 0.0);
+
+        // Topology preserved
+        let out = db.adjacency.neighbors_out(&id);
+        assert!(!out.is_empty(), "edges should survive reap");
     }
 }

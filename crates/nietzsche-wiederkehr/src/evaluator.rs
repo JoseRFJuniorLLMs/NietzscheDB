@@ -251,6 +251,7 @@ mod tests {
                 hausdorff_local: 1.0,
                 expires_at: None,
                 metadata: HashMap::new(),
+                is_phantom: false,
             },
             embedding: PoincareVector::origin(8),
         }

@@ -83,9 +83,10 @@ kw_cycle       = _{ ^"CYCLE"     }
 kw_archetypes  = _{ ^"ARCHETYPES" }
 kw_share       = _{ ^"SHARE"     }
 kw_archetype   = _{ ^"ARCHETYPE" }
-kw_narrate     = _{ ^"NARRATE"   }
-kw_window      = _{ ^"WINDOW"    }
-kw_format      = _{ ^"FORMAT"    }
+kw_narrate        = _{ ^"NARRATE"        }
+kw_window         = _{ ^"WINDOW"         }
+kw_format         = _{ ^"FORMAT"         }
+kw_psychoanalyze  = _{ ^"PSYCHOANALYZE"  }
 
 // ── Terminals ────────────────────────────────────────────
 
@@ -445,6 +446,14 @@ narrate_query = {
     ~ narrate_format?
 }
 
+// ── PSYCHOANALYZE query (Lineage / Explicabilidade) ──────
+//
+// PSYCHOANALYZE $node
+// Returns the evolutionary lineage of a concept node.
+
+psychoanalyze_target = { param | ident }
+psychoanalyze_query  = { kw_psychoanalyze ~ psychoanalyze_target }
+
 // ── Top-level ───────────────────────────────────────────
 
-query = { SOI ~ (explain_query | invoke_zaratustra_query | begin_tx_query | commit_tx_query | rollback_tx_query | reconstruct_query | diffuse_query | show_dreams_query | apply_dream_query | reject_dream_query | dream_from_query | show_archetypes_query | share_archetype_query | show_daemons_query | drop_daemon_query | create_daemon_query | counterfactual_query | translate_query | narrate_query | create_query | merge_query | match_query) ~ EOI }
+query = { SOI ~ (explain_query | invoke_zaratustra_query | begin_tx_query | commit_tx_query | rollback_tx_query | reconstruct_query | diffuse_query | show_dreams_query | apply_dream_query | reject_dream_query | dream_from_query | show_archetypes_query | share_archetype_query | show_daemons_query | drop_daemon_query | create_daemon_query | counterfactual_query | translate_query | psychoanalyze_query | narrate_query | create_query | merge_query | match_query) ~ EOI }

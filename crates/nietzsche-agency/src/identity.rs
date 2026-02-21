@@ -81,6 +81,7 @@ impl ObserverIdentity {
                 .as_millis() as i64,
             expires_at: None, // Never expires
             metadata,
+            is_phantom: false,
         };
 
         storage.put_node_meta(&meta)?;
@@ -228,6 +229,7 @@ mod tests {
             created_at: 0,
             expires_at: None,
             metadata: std::collections::HashMap::new(),
+            is_phantom: false,
         };
 
         // Without tag: not observer

@@ -154,6 +154,19 @@ message ListCollectionsResponse {
   repeated CollectionInfoProto collections = 1;
 }
 
+// ── Backpressure ────────────────────────────────────────────────────────────
+//
+// Returned by write RPCs (InsertNode, BatchInsertNodes) to signal ingestion
+// pressure. Clients should respect `suggested_delay_ms` before the next write.
+// This is the "Attention Gate" — the database tells the AI:
+// "Slow down, I need time to consolidate."
+
+message BackpressureSignal {
+  bool   accept            = 1;  // true = write accepted; false = rejected (future)
+  string reason            = 2;  // "" | "energy_inflated" | "capacity_high"
+  uint32 suggested_delay_ms = 3;  // 0 = no delay needed
+}
+
 // ── Node messages ──────────────────────────────────────────────────────────
 
 // Supported values: "Semantic", "Episodic", "Concept", "DreamSnapshot"
@@ -190,6 +203,8 @@ message NodeResponse {
   bytes          content         = 8;  // JSON bytes
   string         node_type       = 9;
   int64          expires_at      = 10; // TTL: Unix seconds; 0 = never expires
+  // Populated only on write RPCs (InsertNode). Absent on reads.
+  BackpressureSignal backpressure = 11;
 }
 
 // ── Edge messages ──────────────────────────────────────────────────────────
@@ -254,8 +269,9 @@ message BatchInsertNodesRequest {
 }
 
 message BatchInsertNodesResponse {
-  uint32          inserted = 1;
-  repeated string node_ids = 2;  // UUIDs of inserted nodes (parallel order)
+  uint32             inserted     = 1;
+  repeated string    node_ids     = 2;  // UUIDs of inserted nodes (parallel order)
+  BackpressureSignal backpressure = 3;  // ingestion pressure signal
 }
 
 message BatchInsertEdgesRequest {

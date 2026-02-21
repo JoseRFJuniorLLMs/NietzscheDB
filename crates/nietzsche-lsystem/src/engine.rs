@@ -40,6 +40,15 @@ use crate::rules::{check_condition, ProductionRule, RuleAction};
 pub const DEFAULT_HAUSDORFF_LO: f32 = 0.5;
 /// Default upper bound for the Hausdorff auto-prune gate.
 pub const DEFAULT_HAUSDORFF_HI: f32 = 1.9;
+/// Default sigma multiplier for the energy circuit breaker.
+///
+/// Spawning is blocked for any node whose energy exceeds `μ + σ_threshold × σ`
+/// (where μ and σ are the global mean and std of node energies). This prevents
+/// "semantic tumors" — runaway feedback loops where high-energy regions spawn
+/// children faster than the Hausdorff gate can contain them.
+///
+/// Set to `0.0` to disable the circuit breaker.
+pub const DEFAULT_CIRCUIT_BREAKER_SIGMA: f32 = 2.0;
 
 /// Trait for optional Phase 11 sensory degradation during L-System ticks.
 ///
@@ -65,20 +74,31 @@ pub trait SensoryDegrader {
 #[derive(Debug, Default)]
 pub struct LSystemEngine {
     /// Rules evaluated in order; first match wins per node per tick.
-    pub rules:          Vec<ProductionRule>,
+    pub rules:              Vec<ProductionRule>,
     /// Auto-prune nodes with local Hausdorff D < `hausdorff_lo`.
-    pub hausdorff_lo:   f32,
+    pub hausdorff_lo:       f32,
     /// Auto-prune nodes with local Hausdorff D > `hausdorff_hi`.
-    pub hausdorff_hi:   f32,
+    pub hausdorff_hi:       f32,
+    /// Energy circuit breaker: block spawning for nodes with energy > μ + k × σ.
+    ///
+    /// When set to a positive value, the engine computes the global mean (μ) and
+    /// standard deviation (σ) of all node energies each tick. Any node whose
+    /// energy exceeds `μ + circuit_breaker_sigma × σ` is prevented from spawning
+    /// children or siblings (prune and energy-update rules still apply).
+    ///
+    /// Set to `0.0` to disable. Default: [`DEFAULT_CIRCUIT_BREAKER_SIGMA`] (2.0).
+    pub circuit_breaker_sigma: f32,
 }
 
 impl LSystemEngine {
-    /// Construct an engine with the global Hausdorff target `[0.5, 1.9]`.
+    /// Construct an engine with the global Hausdorff target `[0.5, 1.9]`
+    /// and the default energy circuit breaker (`2σ`).
     pub fn new(rules: Vec<ProductionRule>) -> Self {
         Self {
             rules,
             hausdorff_lo: DEFAULT_HAUSDORFF_LO,
             hausdorff_hi: DEFAULT_HAUSDORFF_HI,
+            circuit_breaker_sigma: DEFAULT_CIRCUIT_BREAKER_SIGMA,
         }
     }
 
@@ -147,6 +167,25 @@ impl LSystemEngine {
         // ── Step 4: re-scan (Hausdorff values now persisted) ────────────
         let all_nodes: Vec<Node> = db.storage().scan_nodes()?;
 
+        // ── Step 4b: energy circuit breaker threshold ───────────────────
+        //
+        // Compute μ + k·σ across all node energies. Nodes above this
+        // threshold are "overheated" and will be blocked from spawning
+        // children/siblings, preventing semantic tumors (runaway feedback
+        // loops where high-energy regions grow uncontrollably).
+        let cb_threshold = if all_nodes.len() >= 2 && self.circuit_breaker_sigma > 0.0 {
+            let n = all_nodes.len() as f32;
+            let mean = all_nodes.iter().map(|nd| nd.energy).sum::<f32>() / n;
+            let variance = all_nodes.iter()
+                .map(|nd| (nd.energy - mean).powi(2))
+                .sum::<f32>() / n;
+            let std = variance.sqrt();
+            Some(mean + self.circuit_breaker_sigma * std)
+        } else {
+            None // disabled or < 2 nodes
+        };
+        let mut nodes_halted = 0usize;
+
         // ── Step 5: match rules → build pending list ─────────────────────
         let mut pending: Vec<PendingAction> = Vec::new();
 
@@ -168,6 +207,22 @@ impl LSystemEngine {
                     node.lsystem_generation,
                     &rule.condition,
                 ) {
+                    // Circuit breaker: block spawn actions for overheated nodes.
+                    // Prune and UpdateEnergy actions pass through — we only
+                    // freeze *growth*, not maintenance.
+                    if let Some(threshold) = cb_threshold {
+                        if node.energy > threshold {
+                            match &rule.action {
+                                RuleAction::SpawnChild { .. }
+                                | RuleAction::SpawnSibling { .. } => {
+                                    nodes_halted += 1;
+                                    break;
+                                }
+                                _ => {} // allow prune / energy updates
+                            }
+                        }
+                    }
+
                     if let Some(action) = make_pending(node, rule, &mut rng) {
                         pending.push(action);
                     }
@@ -190,6 +245,7 @@ impl LSystemEngine {
             global_hausdorff: global_d,
             total_nodes: final_nodes.len(),
             sensory_degraded,
+            nodes_halted,
         })
     }
 }
@@ -208,6 +264,11 @@ pub struct LSystemReport {
     pub total_nodes:        usize,
     /// Phase 11: number of nodes whose sensory latents were degraded this tick.
     pub sensory_degraded:   usize,
+    /// Number of nodes whose spawning was blocked by the energy circuit breaker.
+    ///
+    /// When > 0, the graph contains "overheated" regions with energy above
+    /// `μ + k·σ`. Growth is frozen in those regions until energy dissipates.
+    pub nodes_halted:       usize,
 }
 
 impl LSystemReport {
@@ -554,5 +615,93 @@ mod tests {
         // (default node has hausdorff_local = 1.0 which is within [0.5, 1.9])
         assert_eq!(report.nodes_spawned, 0);
         assert_eq!(report.edges_created, 0);
+    }
+
+    #[test]
+    fn circuit_breaker_halts_overheated_node() {
+        let dir = tmp();
+        let mut db = open_db(&dir);
+
+        // 5 "normal" nodes at energy 0.3
+        for i in 0..5 {
+            db.insert_node(seed_node(0.05 * (i as f64 + 1.0), 0.3)).unwrap();
+        }
+        // 1 "overheated" outlier at energy 0.99
+        let hot = seed_node(0.4, 0.99);
+        let hot_id = hot.id;
+        db.insert_node(hot).unwrap();
+
+        // Mean ≈ 0.415, std ≈ 0.254, threshold ≈ 0.923
+        // The hot node (0.99) exceeds threshold → should be halted.
+        let engine = LSystemEngine::new(vec![
+            ProductionRule::growth_child("grow", 5),
+        ]);
+
+        let report = engine.tick(&mut db).unwrap();
+        assert!(
+            report.nodes_halted >= 1,
+            "circuit breaker should halt the overheated node, halted={}",
+            report.nodes_halted,
+        );
+
+        // Verify the overheated node did NOT spawn a child
+        let all_edges = db.storage().scan_edges().unwrap();
+        let hot_children: Vec<_> = all_edges.iter()
+            .filter(|e| e.from == hot_id && e.edge_type == EdgeType::LSystemGenerated)
+            .collect();
+        assert!(
+            hot_children.is_empty(),
+            "overheated node should have no L-System children"
+        );
+    }
+
+    #[test]
+    fn circuit_breaker_allows_uniform_energy() {
+        let dir = tmp();
+        let mut db = open_db(&dir);
+
+        // Two nodes at the same energy → std = 0 → threshold = mean.
+        // Neither exceeds mean → no halting.
+        // (Using 2 nodes ensures local_hausdorff returns 1.0, avoiding
+        // spurious auto-prune from box-counting on tiny collinear sets.)
+        db.insert_node(seed_node(0.2, 0.8)).unwrap();
+        db.insert_node(seed_node(0.4, 0.8)).unwrap();
+
+        let engine = LSystemEngine::new(vec![
+            ProductionRule::growth_child("grow", 3),
+        ]);
+
+        let report = engine.tick(&mut db).unwrap();
+        assert_eq!(
+            report.nodes_halted, 0,
+            "uniform energy should not trigger circuit breaker"
+        );
+        assert!(
+            report.nodes_spawned > 0,
+            "nodes should still spawn normally"
+        );
+    }
+
+    #[test]
+    fn circuit_breaker_disabled_when_sigma_zero() {
+        let dir = tmp();
+        let mut db = open_db(&dir);
+
+        // Same outlier setup as the halt test
+        for i in 0..5 {
+            db.insert_node(seed_node(0.05 * (i as f64 + 1.0), 0.3)).unwrap();
+        }
+        db.insert_node(seed_node(0.4, 0.99)).unwrap();
+
+        let mut engine = LSystemEngine::new(vec![
+            ProductionRule::growth_child("grow", 5),
+        ]);
+        engine.circuit_breaker_sigma = 0.0; // disabled
+
+        let report = engine.tick(&mut db).unwrap();
+        assert_eq!(
+            report.nodes_halted, 0,
+            "circuit breaker should be disabled when sigma = 0"
+        );
     }
 }
