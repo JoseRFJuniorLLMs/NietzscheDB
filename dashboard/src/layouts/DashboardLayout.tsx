@@ -1,5 +1,8 @@
 import { Outlet, NavLink } from "react-router-dom"
-import { LayoutDashboard, Database, Search, Settings, Network } from "lucide-react"
+import {
+    LayoutDashboard, Database, Search, Settings, Network,
+    Terminal, GitBranch, Brain, Moon, Archive, Activity,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export function DashboardLayout() {
@@ -16,13 +19,26 @@ export function DashboardLayout() {
                     </div>
                 </div>
 
-                <nav className="space-y-1 px-4 flex-1">
+                <nav className="space-y-1 px-4 flex-1 overflow-y-auto">
                     <NavItem to="/" icon={LayoutDashboard} label="Overview" />
                     <NavItem to="/collections" icon={Database} label="Collections" />
                     <NavItem to="/nodes" icon={Network} label="Cluster Nodes" />
                     <NavItem to="/explorer" icon={Search} label="Data Explorer" />
                     <NavItem to="/graph" icon={Network} label="Graph Explorer" badge="New" />
                     <NavItem to="/settings" icon={Settings} label="Settings" />
+
+                    {/* Separator */}
+                    <div className="my-3 border-t border-border/30" />
+                    <div className="px-3 mb-1">
+                        <span className="text-[10px] uppercase tracking-widest text-muted-foreground/50 font-semibold">Advanced</span>
+                    </div>
+
+                    <NavItem to="/query" icon={Terminal} label="NQL Console" badge="AI" />
+                    <NavItem to="/algorithms" icon={GitBranch} label="Algorithms" />
+                    <NavItem to="/agency" icon={Brain} label="Agency" />
+                    <NavItem to="/sleep" icon={Moon} label="Sleep & Dream" />
+                    <NavItem to="/backup" icon={Archive} label="Backup & Export" />
+                    <NavItem to="/monitoring" icon={Activity} label="Monitoring" />
                 </nav>
 
                 <div className="p-4 border-t border-border/50">
