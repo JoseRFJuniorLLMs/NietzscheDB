@@ -35,4 +35,4 @@ pub use riemannian::{
     conformal_factor, exp_map, project_into_ball, random_tangent, riemannian_grad, AdamState,
     RiemannianAdam,
 };
-pub use snapshot::Snapshot;
+pub use snapshot::{NamedSnapshot, Snapshot, SnapshotRegistry};

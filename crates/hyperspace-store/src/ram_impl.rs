@@ -64,7 +64,7 @@ impl VectorStore {
         Ok(id as u32)
     }
 
-    pub fn get(&self, id: u32) -> &[u8] {
+    pub fn get(&self, id: u32) -> Vec<u8> {
         let id_val = id as usize;
         let segment_idx = id_val / CHUNK_SIZE;
         let local_idx = id_val % CHUNK_SIZE;
@@ -76,16 +76,9 @@ impl VectorStore {
         let segment = &segs[segment_idx];
 
         let data_guard = segment.read();
-        let ptr = data_guard.as_ptr();
         let start = local_idx * self.element_size;
-
-        // UNSAFE: We assume the Vec is pinned and never reallocated/resized.
-        // The pointer is valid as long as Vec exists (which is kept in Arc in self.segments).
-        // Since we wrap inner Vec in RwLock and Arc, the buffer address is stable.
-        unsafe {
-            let ptr = ptr.add(start);
-            std::slice::from_raw_parts(ptr, self.element_size)
-        }
+        let end = start + self.element_size;
+        data_guard[start..end].to_vec()
     }
 
     pub fn update(&self, id: u32, vector_bytes: &[u8]) -> Result<(), String> {

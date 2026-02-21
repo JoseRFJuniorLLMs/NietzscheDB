@@ -249,3 +249,179 @@ pub fn label_propagation(
         duration_ms: start.elapsed().as_millis() as u64,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nietzsche_graph::model::{Edge, Node, PoincareVector};
+    use nietzsche_graph::{AdjacencyIndex, GraphStorage};
+    use tempfile::TempDir;
+
+    fn open_temp_db() -> (GraphStorage, TempDir) {
+        let dir = TempDir::new().unwrap();
+        let storage = GraphStorage::open(dir.path().to_str().unwrap()).unwrap();
+        (storage, dir)
+    }
+
+    fn make_node(x: f32, y: f32) -> Node {
+        Node::new(
+            Uuid::new_v4(),
+            PoincareVector::new(vec![x, y]),
+            serde_json::json!({"label": "test"}),
+        )
+    }
+
+    fn build_graph(
+        nodes: &[Node],
+        edges: &[(usize, usize, f32)],
+    ) -> (GraphStorage, AdjacencyIndex, Vec<Uuid>, TempDir) {
+        let (storage, dir) = open_temp_db();
+        let adj = AdjacencyIndex::new();
+        let ids: Vec<Uuid> = nodes.iter().map(|n| n.id).collect();
+        for node in nodes {
+            storage.put_node(node).unwrap();
+        }
+        for &(from, to, weight) in edges {
+            let edge = Edge::association(ids[from], ids[to], weight);
+            storage.put_edge(&edge).unwrap();
+            adj.add_edge(&edge);
+        }
+        (storage, adj, ids, dir)
+    }
+
+    // ── Louvain tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn louvain_empty_graph() {
+        let (storage, _dir) = open_temp_db();
+        let adj = AdjacencyIndex::new();
+        let config = LouvainConfig::default();
+
+        let result = louvain(&storage, &adj, &config).unwrap();
+        assert!(result.communities.is_empty());
+        assert_eq!(result.community_count, 0);
+        assert_eq!(result.modularity, 0.0);
+    }
+
+    #[test]
+    fn louvain_single_node() {
+        let node = make_node(0.1, 0.1);
+        let (storage, adj, ids, _dir) = build_graph(&[node], &[]);
+        let config = LouvainConfig::default();
+
+        let result = louvain(&storage, &adj, &config).unwrap();
+        assert_eq!(result.communities.len(), 1);
+        assert_eq!(result.communities[0].0, ids[0]);
+        assert_eq!(result.community_count, 1);
+    }
+
+    #[test]
+    fn louvain_reduces_community_count() {
+        // Two dense cliques with a weak bridge.
+        // We test that Louvain merges nodes into fewer communities than n,
+        // and that the resulting modularity is non-negative.
+        let nodes: Vec<Node> = (0..6).map(|i| make_node(0.05 * i as f32, 0.05)).collect();
+        let edges = vec![
+            // Clique A: fully connected 0-1-2
+            (0, 1, 1.0), (1, 0, 1.0),
+            (0, 2, 1.0), (2, 0, 1.0),
+            (1, 2, 1.0), (2, 1, 1.0),
+            // Clique B: fully connected 3-4-5
+            (3, 4, 1.0), (4, 3, 1.0),
+            (3, 5, 1.0), (5, 3, 1.0),
+            (4, 5, 1.0), (5, 4, 1.0),
+            // Weak bridge
+            (2, 3, 0.1),
+        ];
+        let (storage, adj, _ids, _dir) = build_graph(&nodes, &edges);
+
+        let config = LouvainConfig::default();
+        let result = louvain(&storage, &adj, &config).unwrap();
+
+        // The algorithm should find structure (fewer communities than nodes)
+        assert!(
+            result.community_count < 6,
+            "expected Louvain to merge into fewer than 6 communities, got {}",
+            result.community_count
+        );
+        // Modularity should be non-negative for a graph with community structure
+        assert!(
+            result.modularity >= 0.0,
+            "modularity should be non-negative, got {}",
+            result.modularity
+        );
+        // All 6 nodes should be assigned
+        assert_eq!(result.communities.len(), 6);
+    }
+
+    #[test]
+    fn louvain_all_nodes_assigned() {
+        let nodes: Vec<Node> = (0..4).map(|i| make_node(0.1 * i as f32, 0.1)).collect();
+        let edges = vec![(0, 1, 1.0), (2, 3, 1.0)];
+        let (storage, adj, ids, _dir) = build_graph(&nodes, &edges);
+
+        let config = LouvainConfig::default();
+        let result = louvain(&storage, &adj, &config).unwrap();
+
+        // Every node should appear exactly once
+        let assigned_ids: std::collections::HashSet<Uuid> =
+            result.communities.iter().map(|(id, _)| *id).collect();
+        for id in &ids {
+            assert!(assigned_ids.contains(id), "node {id} not assigned a community");
+        }
+    }
+
+    // ── Label Propagation tests ──────────────────────────────────────────
+
+    #[test]
+    fn label_propagation_empty_graph() {
+        let (storage, _dir) = open_temp_db();
+        let adj = AdjacencyIndex::new();
+
+        let result = label_propagation(&storage, &adj, 10).unwrap();
+        assert!(result.labels.is_empty());
+        assert_eq!(result.community_count, 0);
+    }
+
+    #[test]
+    fn label_propagation_single_node() {
+        let node = make_node(0.1, 0.1);
+        let (storage, adj, _ids, _dir) = build_graph(&[node], &[]);
+
+        let result = label_propagation(&storage, &adj, 10).unwrap();
+        assert_eq!(result.labels.len(), 1);
+        assert_eq!(result.community_count, 1);
+    }
+
+    #[test]
+    fn label_propagation_connected_pair() {
+        // Two nodes connected bidirectionally should end up in the same community
+        let nodes: Vec<Node> = (0..2).map(|i| make_node(0.1 * i as f32, 0.1)).collect();
+        let edges = vec![(0, 1, 1.0), (1, 0, 1.0)];
+        let (storage, adj, ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = label_propagation(&storage, &adj, 20).unwrap();
+        let label_map: HashMap<Uuid, u64> = result.labels.into_iter().collect();
+        assert_eq!(
+            label_map[&ids[0]], label_map[&ids[1]],
+            "connected pair should share the same label"
+        );
+    }
+
+    #[test]
+    fn label_propagation_disconnected_components() {
+        // Two disconnected pairs: (0,1) and (2,3)
+        let nodes: Vec<Node> = (0..4).map(|i| make_node(0.1 * i as f32, 0.05)).collect();
+        let edges = vec![(0, 1, 1.0), (1, 0, 1.0), (2, 3, 1.0), (3, 2, 1.0)];
+        let (storage, adj, ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = label_propagation(&storage, &adj, 20).unwrap();
+        let label_map: HashMap<Uuid, u64> = result.labels.into_iter().collect();
+
+        // Within each pair, labels should match
+        assert_eq!(label_map[&ids[0]], label_map[&ids[1]]);
+        assert_eq!(label_map[&ids[2]], label_map[&ids[3]]);
+        // Between pairs, labels should differ
+        assert_ne!(label_map[&ids[0]], label_map[&ids[2]]);
+    }
+}

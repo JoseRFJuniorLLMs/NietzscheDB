@@ -116,11 +116,14 @@ math_func_name = @{
     | "LAPLACIAN_SCORE"
     | "FOURIER_COEFF"
     | "DIRICHLET_ENERGY"
+    | "NOW"
+    | "EPOCH_MS"
+    | "INTERVAL"
     ) ~ !ident_tail
 }
 
-math_func_arg = { param | num_list | number | prop | ident }
-math_func     = { math_func_name ~ "(" ~ math_func_arg ~ ("," ~ math_func_arg)* ~ ")" }
+math_func_arg = { param | num_list | number | string | prop | ident }
+math_func     = { math_func_name ~ "(" ~ (math_func_arg ~ ("," ~ math_func_arg)*)? ~ ")" }
 
 // ── Aggregation functions ───────────────────────────────
 

@@ -253,6 +253,13 @@ pub enum MathFunc {
     FourierCoeff,
     /// Peter Gustav Lejeune Dirichlet — local Dirichlet energy
     DirichletEnergy,
+    /// NOW() — current Unix timestamp in seconds (f64)
+    Now,
+    /// EPOCH_MS() — current Unix epoch in milliseconds (f64)
+    EpochMs,
+    /// INTERVAL("1h") — parse duration string to seconds (f64)
+    /// Supported units: s (seconds), m (minutes), h (hours), d (days), w (weeks)
+    Interval,
 }
 
 /// Argument to a mathematician-named function.
@@ -262,6 +269,7 @@ pub enum MathFuncArg {
     Param(String),
     Float(f64),
     Int(i64),
+    Str(String),
     Vector(Vec<f64>),
     Alias(String),
 }

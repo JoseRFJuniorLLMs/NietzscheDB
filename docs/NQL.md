@@ -16,6 +16,7 @@ NQL is a declarative query language designed for temporal hyperbolic graph datab
    - [WHERE Conditions](#where-conditions)
    - [Built-in Functions](#built-in-functions)
    - [Mathematician Functions](#mathematician-functions)
+   - [Time Functions](#time-functions)
    - [RETURN Clause](#return-clause)
    - [Aggregates](#aggregates)
 4. [DIFFUSE Query](#diffuse-query)
@@ -229,6 +230,29 @@ NQL names its geometric functions after the mathematicians whose work underpins 
 | `LAPLACIAN_SCORE(n)` | Pierre-Simon Laplace | Graph Laplacian diagonal score |
 | `FOURIER_COEFF(n, k)` | Joseph Fourier | Graph Fourier coefficient `cos(k·π·x)` |
 | `DIRICHLET_ENERGY(n)` | P.G.L. Dirichlet | Local Dirichlet energy (smoothness) |
+
+### Time Functions
+
+| Function | Args | Returns |
+|---|---|---|
+| `NOW()` | none | Current Unix timestamp in seconds (f64) |
+| `EPOCH_MS()` | none | Current Unix epoch in milliseconds (f64) |
+| `INTERVAL("duration")` | string | Duration converted to seconds (f64) |
+
+**INTERVAL units:** `s` (seconds), `m` (minutes), `h` (hours), `d` (days), `w` (weeks). Decimal values supported (e.g. `"1.5h"` = 5400 seconds).
+
+**Time function examples:**
+
+```sql
+-- Nodes created in the last 7 days
+MATCH (n) WHERE n.created_at > NOW() - INTERVAL("7d") RETURN n
+
+-- Nodes expiring within 1 hour
+MATCH (n) WHERE n.expires_at < EPOCH_MS() + INTERVAL("1h") * 1000.0 RETURN n
+
+-- Verify interval conversions
+MATCH (n) WHERE INTERVAL("30m") = 1800.0 RETURN n
+```
 
 **Usage examples:**
 

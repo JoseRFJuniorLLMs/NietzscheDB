@@ -196,6 +196,121 @@ fn poincare_sums(u: &[f32], v: &[f32]) -> (f64, f64, f64) {
 }
 
 // ─────────────────────────────────────────────
+// SparseVector (SPLADE / sparse embeddings)
+// ─────────────────────────────────────────────
+
+/// A sparse vector representation suitable for SPLADE-style embeddings.
+///
+/// Only non-zero dimensions are stored, using a pair of parallel arrays:
+/// - `indices`: sorted, unique dimension indices (`u32` to save space).
+/// - `values`:  the corresponding `f32` weights (same length as `indices`).
+///
+/// `dim` records the *logical* dimensionality of the full vector (e.g. 30522
+/// for a BERT-vocabulary SPLADE model).  It is not required for arithmetic
+/// but is useful for validation and display.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SparseVector {
+    /// Logical dimensionality of the full (dense) vector space.
+    pub dim: usize,
+    /// Sorted, unique indices of non-zero dimensions.
+    pub indices: Vec<u32>,
+    /// Values corresponding 1-to-1 with `indices`.
+    pub values: Vec<f32>,
+}
+
+impl SparseVector {
+    /// Construct a new `SparseVector`.
+    ///
+    /// # Panics
+    /// - If `indices.len() != values.len()`.
+    /// - If `indices` contains duplicates or is not sorted ascending.
+    /// - If any index is `>= dim`.
+    pub fn new(dim: usize, indices: Vec<u32>, values: Vec<f32>) -> Self {
+        assert_eq!(
+            indices.len(),
+            values.len(),
+            "indices and values must have the same length"
+        );
+        // Verify sorted-unique invariant
+        for w in indices.windows(2) {
+            assert!(
+                w[0] < w[1],
+                "indices must be strictly ascending (found {} >= {})",
+                w[0],
+                w[1]
+            );
+        }
+        if let Some(&last) = indices.last() {
+            assert!(
+                (last as usize) < dim,
+                "index {} is out of bounds for dim {}",
+                last,
+                dim
+            );
+        }
+        Self { dim, indices, values }
+    }
+
+    /// Number of stored (non-zero) entries.
+    #[inline]
+    pub fn nnz(&self) -> usize {
+        self.indices.len()
+    }
+
+    /// Density = nnz / dim.  Returns 0.0 when `dim == 0`.
+    #[inline]
+    pub fn density(&self) -> f64 {
+        if self.dim == 0 {
+            return 0.0;
+        }
+        self.nnz() as f64 / self.dim as f64
+    }
+
+    /// Sparse dot product: sum of `a_i * b_i` over shared indices.
+    ///
+    /// Runs in O(nnz_a + nnz_b) using a merge-join on the sorted index arrays.
+    pub fn dot(&self, other: &Self) -> f32 {
+        let mut sum = 0.0f64; // accumulate in f64 then narrow
+        let (mut i, mut j) = (0usize, 0usize);
+        let (ai, av) = (&self.indices, &self.values);
+        let (bi, bv) = (&other.indices, &other.values);
+
+        while i < ai.len() && j < bi.len() {
+            match ai[i].cmp(&bi[j]) {
+                std::cmp::Ordering::Less => i += 1,
+                std::cmp::Ordering::Greater => j += 1,
+                std::cmp::Ordering::Equal => {
+                    sum += (av[i] as f64) * (bv[j] as f64);
+                    i += 1;
+                    j += 1;
+                }
+            }
+        }
+        sum as f32
+    }
+
+    /// L2 norm: sqrt(sum of values^2).
+    #[inline]
+    pub fn norm(&self) -> f32 {
+        let sq_sum: f64 = self.values.iter().map(|&v| (v as f64) * (v as f64)).sum();
+        sq_sum.sqrt() as f32
+    }
+
+    /// Cosine similarity between two sparse vectors.
+    ///
+    /// Returns 0.0 if either vector has zero norm (to avoid NaN).
+    pub fn cosine_similarity(&self, other: &Self) -> f32 {
+        let d = self.dot(other);
+        let na = self.norm();
+        let nb = other.norm();
+        if na == 0.0 || nb == 0.0 {
+            return 0.0;
+        }
+        d / (na * nb)
+    }
+}
+
+// ─────────────────────────────────────────────
 // NodeType / EdgeType
 // ─────────────────────────────────────────────
 
@@ -601,5 +716,136 @@ mod tests {
         let decoded: Edge = bincode::deserialize(&encoded).expect("deserialize");
         assert_eq!(e.id, decoded.id);
         assert_eq!(e.edge_type, decoded.edge_type);
+    }
+
+    // ── SparseVector tests ──────────────────────
+
+    #[test]
+    fn sparse_new_basic() {
+        let sv = SparseVector::new(100, vec![2, 10, 50], vec![1.0, 2.0, 3.0]);
+        assert_eq!(sv.dim, 100);
+        assert_eq!(sv.nnz(), 3);
+    }
+
+    #[test]
+    fn sparse_density() {
+        let sv = SparseVector::new(1000, vec![0, 999], vec![1.0, 1.0]);
+        let d = sv.density();
+        assert!((d - 0.002).abs() < 1e-9, "expected 0.002, got {d}");
+    }
+
+    #[test]
+    fn sparse_density_empty_dim() {
+        let sv = SparseVector::new(0, vec![], vec![]);
+        assert_eq!(sv.density(), 0.0);
+    }
+
+    #[test]
+    fn sparse_dot_disjoint() {
+        let a = SparseVector::new(100, vec![0, 2, 4], vec![1.0, 2.0, 3.0]);
+        let b = SparseVector::new(100, vec![1, 3, 5], vec![4.0, 5.0, 6.0]);
+        assert_eq!(a.dot(&b), 0.0);
+    }
+
+    #[test]
+    fn sparse_dot_overlapping() {
+        // shared indices: 2, 5
+        let a = SparseVector::new(100, vec![2, 5, 8], vec![1.0, 3.0, 5.0]);
+        let b = SparseVector::new(100, vec![2, 4, 5], vec![2.0, 4.0, 6.0]);
+        // dot = 1*2 + 3*6 = 2 + 18 = 20
+        let d = a.dot(&b);
+        assert!((d - 20.0).abs() < 1e-6, "expected 20.0, got {d}");
+    }
+
+    #[test]
+    fn sparse_dot_identical() {
+        let a = SparseVector::new(10, vec![1, 3, 7], vec![2.0, 4.0, 6.0]);
+        // dot with self = 4 + 16 + 36 = 56
+        let d = a.dot(&a);
+        assert!((d - 56.0).abs() < 1e-5, "expected 56.0, got {d}");
+    }
+
+    #[test]
+    fn sparse_norm() {
+        let sv = SparseVector::new(10, vec![0, 1], vec![3.0, 4.0]);
+        let n = sv.norm();
+        assert!((n - 5.0).abs() < 1e-6, "expected 5.0, got {n}");
+    }
+
+    #[test]
+    fn sparse_norm_empty() {
+        let sv = SparseVector::new(10, vec![], vec![]);
+        assert_eq!(sv.norm(), 0.0);
+    }
+
+    #[test]
+    fn sparse_cosine_identical() {
+        let a = SparseVector::new(100, vec![0, 5, 99], vec![1.0, 2.0, 3.0]);
+        let cs = a.cosine_similarity(&a);
+        assert!((cs - 1.0).abs() < 1e-6, "expected 1.0, got {cs}");
+    }
+
+    #[test]
+    fn sparse_cosine_orthogonal() {
+        let a = SparseVector::new(100, vec![0, 1], vec![1.0, 0.0]);
+        let b = SparseVector::new(100, vec![2, 3], vec![0.0, 1.0]);
+        assert_eq!(a.cosine_similarity(&b), 0.0);
+    }
+
+    #[test]
+    fn sparse_cosine_zero_norm() {
+        let a = SparseVector::new(10, vec![], vec![]);
+        let b = SparseVector::new(10, vec![0], vec![1.0]);
+        assert_eq!(a.cosine_similarity(&b), 0.0);
+    }
+
+    #[test]
+    fn sparse_cosine_known_value() {
+        // a = [1, 2, 0], b = [2, 0, 3]  (only stored non-zero)
+        let a = SparseVector::new(3, vec![0, 1], vec![1.0, 2.0]);
+        let b = SparseVector::new(3, vec![0, 2], vec![2.0, 3.0]);
+        // dot = 1*2 = 2
+        // norm_a = sqrt(5), norm_b = sqrt(13)
+        // cosine = 2 / sqrt(65) ≈ 0.24806946
+        let cs = a.cosine_similarity(&b);
+        let expected = 2.0_f32 / 65.0_f32.sqrt();
+        assert!(
+            (cs - expected).abs() < 1e-5,
+            "expected {expected}, got {cs}"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "indices and values must have the same length")]
+    fn sparse_panics_length_mismatch() {
+        SparseVector::new(10, vec![0, 1], vec![1.0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "strictly ascending")]
+    fn sparse_panics_unsorted_indices() {
+        SparseVector::new(10, vec![5, 2], vec![1.0, 2.0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "strictly ascending")]
+    fn sparse_panics_duplicate_indices() {
+        SparseVector::new(10, vec![3, 3], vec![1.0, 2.0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "out of bounds")]
+    fn sparse_panics_index_out_of_bounds() {
+        SparseVector::new(10, vec![0, 10], vec![1.0, 2.0]);
+    }
+
+    #[test]
+    fn sparse_serde_roundtrip() {
+        let sv = SparseVector::new(30522, vec![100, 500, 10000, 30000], vec![0.5, 1.2, 0.8, 2.1]);
+        let encoded = bincode::serialize(&sv).expect("serialize");
+        let decoded: SparseVector = bincode::deserialize(&encoded).expect("deserialize");
+        assert_eq!(sv.dim, decoded.dim);
+        assert_eq!(sv.indices, decoded.indices);
+        assert_eq!(sv.values, decoded.values);
     }
 }

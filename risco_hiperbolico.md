@@ -600,3 +600,49 @@ Nunca como métrica primária
 | **Regra CLAUDE.md** | Adicionada ao projeto para impedir implementação futura |
 
 **Esta decisão é permanente e não deve ser revertida sem novo parecer do comitê com dados experimentais em dataset hiperbólico real ≥ 100k nós.**
+
+---
+
+## PARTE 10 — FEATURES REJEITADAS POR CONFLITO COM GEOMETRIA HIPERBÓLICA
+
+**Data**: 2026-02-21
+**Avaliação**: Claude Opus 4.6 (Anthropic) — Auditoria de Consolidação
+
+Durante a auditoria de tendências de mercado Q1 2026, as seguintes features foram avaliadas e **REJEITADAS** por conflitarem com os princípios fundamentais da geometria hiperbólica (Poincaré ball):
+
+### 10.1 Matryoshka Embeddings (Truncamento Dimensional Adaptativo)
+
+| Campo | Valor |
+|---|---|
+| **Status** | **REJEITADO** |
+| **Motivo** | Truncar coordenadas de um ponto no Poincaré ball **muda `‖x‖`** (a norma), que codifica profundidade hierárquica. Ponto em 1536d com `‖x‖=0.95` truncado para 64d pode virar `‖x‖=0.4`. **Mesmo mecanismo de destruição do ITEM F** (Binary Quantization). |
+| **Alternativa permitida** | Multi-resolution search no **tangent space**: `log_map_zero()` → truncar dimensões → `exp_map_zero()`. Preserva a geometria ao operar no espaço tangente antes de re-projetar. |
+
+### 10.2 Differential Privacy com Ruído Gaussiano
+
+| Campo | Valor |
+|---|---|
+| **Status** | **REJEITADO (implementação Euclidiana)** |
+| **Motivo** | Ruído `N(0,σ)` adicionado diretamente às coordenadas Poincaré pode empurrar `‖x‖ ≥ 1.0` (fora do ball = indefinido) ou mudar drasticamente a profundidade hierárquica. |
+| **Alternativa permitida** | Ruído **Riemanniano**: perturbação no tangent space via `random_tangent()` + `exp_map()`. O módulo `nietzsche-sleep` já implementa esse padrão corretamente no ciclo de reconsolidação. |
+
+### 10.3 Serverless / Scale-to-zero
+
+| Campo | Valor |
+|---|---|
+| **Status** | **REJEITADO** |
+| **Motivo** | L-System, Sleep cycle e Zaratustra são processos **contínuos e autônomos** — a "consciência" do database. Scale-to-zero mata esses processos, destruindo evolução autônoma, reconsolidação de memórias e crescimento fractal. NietzscheDB é um organismo vivo, não um serviço stateless. |
+| **Alternativa permitida** | Warm standby com sleep cycle em frequência reduzida. |
+
+### 10.4 Binary Quantization (reafirmação)
+
+Já rejeitado na PARTE 9 (decisão 2026-02-19). Reafirmado nesta auditoria.
+
+### Princípio Unificador
+
+> **No espaço hiperbólico (Poincaré ball), a magnitude `‖x‖` codifica informação hierárquica (profundidade). Qualquer operação que destrói, trunca ou corrompe essa magnitude destrói a razão fundamental de usar geometria hiperbólica.**
+
+```
+Centro do ball (‖x‖ ≈ 0)     → conceitos abstratos/gerais
+Borda do ball  (‖x‖ ≈ 0.999) → memórias específicas/detalhadas
+```

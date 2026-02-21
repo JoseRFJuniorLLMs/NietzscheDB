@@ -10,6 +10,7 @@
 #![allow(clippy::items_after_statements)]
 #![allow(clippy::needless_range_loop)]
 
+pub mod auto_tuner;
 pub mod config;
 pub mod gpu;
 pub mod vector;

@@ -66,6 +66,7 @@ pub async fn serve(
         .route("/", get(root))
         .route("/metrics", get(prometheus_metrics))
         .route("/api/stats", get(stats))
+        .route("/api/status", get(stats))   // alias for dashboard compatibility
         .route("/api/health", get(health))
         .route("/api/collections", get(list_collections))
         .route("/api/graph", get(graph))

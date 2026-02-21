@@ -76,3 +76,157 @@ pub fn jaccard_similarity(
 
     Ok(pairs)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nietzsche_graph::model::{Edge, Node, PoincareVector};
+    use nietzsche_graph::{AdjacencyIndex, GraphStorage};
+    use tempfile::TempDir;
+
+    fn open_temp_db() -> (GraphStorage, TempDir) {
+        let dir = TempDir::new().unwrap();
+        let storage = GraphStorage::open(dir.path().to_str().unwrap()).unwrap();
+        (storage, dir)
+    }
+
+    fn make_node(x: f32, y: f32) -> Node {
+        Node::new(
+            Uuid::new_v4(),
+            PoincareVector::new(vec![x, y]),
+            serde_json::json!({"label": "test"}),
+        )
+    }
+
+    fn build_graph(
+        nodes: &[Node],
+        edges: &[(usize, usize, f32)],
+    ) -> (GraphStorage, AdjacencyIndex, Vec<Uuid>, TempDir) {
+        let (storage, dir) = open_temp_db();
+        let adj = AdjacencyIndex::new();
+        let ids: Vec<Uuid> = nodes.iter().map(|n| n.id).collect();
+        for node in nodes {
+            storage.put_node(node).unwrap();
+        }
+        for &(from, to, weight) in edges {
+            let edge = Edge::association(ids[from], ids[to], weight);
+            storage.put_edge(&edge).unwrap();
+            adj.add_edge(&edge);
+        }
+        (storage, adj, ids, dir)
+    }
+
+    #[test]
+    fn jaccard_empty_graph() {
+        let (storage, _dir) = open_temp_db();
+        let adj = AdjacencyIndex::new();
+
+        let result = jaccard_similarity(&storage, &adj, 10, 0.0).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn jaccard_no_common_neighbors() {
+        // 0 -> 1, 2 -> 3 (disjoint; 0 and 2 share no neighbors)
+        let nodes: Vec<Node> = (0..4).map(|i| make_node(0.1 * i as f32, 0.1)).collect();
+        let edges = vec![(0, 1, 1.0), (2, 3, 1.0)];
+        let (storage, adj, _ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = jaccard_similarity(&storage, &adj, 100, 0.0).unwrap();
+        // No pairs with common neighbors
+        for pair in &result {
+            assert!(pair.score >= 0.0);
+        }
+    }
+
+    #[test]
+    fn jaccard_identical_neighborhoods() {
+        // Nodes 0 and 1 both connect to node 2 and node 3
+        // Jaccard(0,1) = |{2,3}| / |{2,3}| = 1.0
+        let nodes: Vec<Node> = (0..4).map(|i| make_node(0.05 * i as f32, 0.05)).collect();
+        let edges = vec![
+            (0, 2, 1.0), (0, 3, 1.0),
+            (1, 2, 1.0), (1, 3, 1.0),
+        ];
+        let (storage, adj, ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = jaccard_similarity(&storage, &adj, 100, 0.0).unwrap();
+
+        // Find the pair (0, 1) or (1, 0)
+        let pair_01 = result.iter().find(|p| {
+            (p.node_a == ids[0] && p.node_b == ids[1])
+                || (p.node_a == ids[1] && p.node_b == ids[0])
+        });
+        assert!(pair_01.is_some(), "pair (0,1) should appear");
+        let pair = pair_01.unwrap();
+        assert!(
+            (pair.score - 1.0).abs() < 1e-6,
+            "identical neighborhoods => Jaccard = 1.0, got {}",
+            pair.score
+        );
+    }
+
+    #[test]
+    fn jaccard_partial_overlap() {
+        // Node 0 neighbors: {2, 3}
+        // Node 1 neighbors: {2, 4}
+        // Intersection = {2}, Union = {2,3,4}
+        // Jaccard = 1/3
+        let nodes: Vec<Node> = (0..5).map(|i| make_node(0.05 * i as f32, 0.05)).collect();
+        let edges = vec![
+            (0, 2, 1.0), (0, 3, 1.0),
+            (1, 2, 1.0), (1, 4, 1.0),
+        ];
+        let (storage, adj, ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = jaccard_similarity(&storage, &adj, 100, 0.0).unwrap();
+
+        let pair_01 = result.iter().find(|p| {
+            (p.node_a == ids[0] && p.node_b == ids[1])
+                || (p.node_a == ids[1] && p.node_b == ids[0])
+        });
+        assert!(pair_01.is_some(), "pair (0,1) should appear");
+        let pair = pair_01.unwrap();
+        assert!(
+            (pair.score - 1.0 / 3.0).abs() < 1e-6,
+            "partial overlap => Jaccard = 1/3, got {}",
+            pair.score
+        );
+    }
+
+    #[test]
+    fn jaccard_respects_threshold() {
+        // Same as partial_overlap, but set threshold > 1/3
+        let nodes: Vec<Node> = (0..5).map(|i| make_node(0.05 * i as f32, 0.05)).collect();
+        let edges = vec![
+            (0, 2, 1.0), (0, 3, 1.0),
+            (1, 2, 1.0), (1, 4, 1.0),
+        ];
+        let (storage, adj, _ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = jaccard_similarity(&storage, &adj, 100, 0.5).unwrap();
+        // The only pair has Jaccard = 1/3 < 0.5, so it should be filtered out
+        for pair in &result {
+            assert!(
+                pair.score >= 0.5,
+                "all returned pairs should meet threshold"
+            );
+        }
+    }
+
+    #[test]
+    fn jaccard_respects_top_k() {
+        // Build a graph with multiple pairs of varying similarity
+        let nodes: Vec<Node> = (0..6).map(|i| make_node(0.05 * i as f32, 0.05)).collect();
+        let edges = vec![
+            (0, 4, 1.0), (0, 5, 1.0),
+            (1, 4, 1.0), (1, 5, 1.0),  // pair(0,1) Jaccard=1.0
+            (2, 4, 1.0),
+            (3, 4, 1.0), (3, 5, 1.0),  // pair(2,3) has some overlap
+        ];
+        let (storage, adj, _ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = jaccard_similarity(&storage, &adj, 1, 0.0).unwrap();
+        assert!(result.len() <= 1, "top_k=1 should return at most 1 pair");
+    }
+}

@@ -634,6 +634,9 @@ fn parse_math_func_name(s: &str) -> Result<MathFunc, QueryError> {
         "LAPLACIAN_SCORE"      => Ok(MathFunc::LaplacianScore),
         "FOURIER_COEFF"        => Ok(MathFunc::FourierCoeff),
         "DIRICHLET_ENERGY"     => Ok(MathFunc::DirichletEnergy),
+        "NOW"                  => Ok(MathFunc::Now),
+        "EPOCH_MS"             => Ok(MathFunc::EpochMs),
+        "INTERVAL"             => Ok(MathFunc::Interval),
         s => Err(QueryError::Parse(format!("unknown math function: {s}"))),
     }
 }
@@ -654,6 +657,12 @@ fn parse_math_func_arg(pair: Pair<Rule>) -> Result<MathFuncArg, QueryError> {
         Rule::prop => {
             let (alias, field) = parse_prop(inner)?;
             Ok(MathFuncArg::Property(alias, field))
+        }
+        Rule::string => {
+            let raw = inner.as_str();
+            // Strip surrounding quotes
+            let s = &raw[1..raw.len() - 1];
+            Ok(MathFuncArg::Str(s.to_string()))
         }
         Rule::ident => Ok(MathFuncArg::Alias(inner.as_str().to_string())),
         r => Err(QueryError::Parse(format!("unexpected math_func_arg inner: {r:?}"))),
@@ -679,6 +688,10 @@ fn validate_math_func_arity(func: &MathFunc, n: usize) -> Result<(), QueryError>
         MathFunc::GaussKernel    => (2, 2),
         MathFunc::ChebyshevCoeff => (2, 2),
         MathFunc::FourierCoeff   => (2, 2),
+        // time functions
+        MathFunc::Now     => (0, 0),
+        MathFunc::EpochMs => (0, 0),
+        MathFunc::Interval => (1, 1),
     };
     if n < min || n > max {
         return Err(QueryError::Parse(format!(
@@ -1478,5 +1491,51 @@ mod tests {
                 assert!(parse(&nql).is_ok(), "failed to parse {func_name}");
             }
         }
+    }
+
+    // ── Time function parser tests ──────────────────────
+
+    #[test]
+    fn parse_now() {
+        let nql = r#"MATCH (n) WHERE NOW() > 1700000000.0 RETURN n"#;
+        let query = parse(nql).unwrap();
+        if let Query::Match(m) = query {
+            assert!(!m.conditions.is_empty());
+            if let Condition::Compare { left, .. } = &m.conditions[0] {
+                assert!(matches!(left, Expr::MathFunc { func: MathFunc::Now, .. }));
+            } else { panic!("expected Compare") }
+        } else { panic!("expected Match") }
+    }
+
+    #[test]
+    fn parse_epoch_ms() {
+        let nql = r#"MATCH (n) WHERE EPOCH_MS() > 0.0 RETURN n"#;
+        let query = parse(nql).unwrap();
+        if let Query::Match(m) = query {
+            if let Condition::Compare { left, .. } = &m.conditions[0] {
+                assert!(matches!(left, Expr::MathFunc { func: MathFunc::EpochMs, .. }));
+            } else { panic!("expected Compare") }
+        } else { panic!("expected Match") }
+    }
+
+    #[test]
+    fn parse_interval() {
+        let nql = r#"MATCH (n) WHERE INTERVAL("1h") = 3600.0 RETURN n"#;
+        let query = parse(nql).unwrap();
+        if let Query::Match(m) = query {
+            if let Condition::Compare { left, .. } = &m.conditions[0] {
+                if let Expr::MathFunc { func, args } = left {
+                    assert_eq!(*func, MathFunc::Interval);
+                    assert!(matches!(&args[0], MathFuncArg::Str(s) if s == "1h"));
+                } else { panic!("expected MathFunc") }
+            } else { panic!("expected Compare") }
+        } else { panic!("expected Match") }
+    }
+
+    #[test]
+    fn parse_now_minus_interval() {
+        // This tests that NOW() and INTERVAL() can both appear in expressions
+        let nql = r#"MATCH (n) WHERE NOW() > INTERVAL("7d") RETURN n"#;
+        assert!(parse(nql).is_ok());
     }
 }

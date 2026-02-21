@@ -109,3 +109,120 @@ impl ZaratustraConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_alpha() {
+        let cfg = ZaratustraConfig::default();
+        assert!((cfg.alpha - 0.10).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn default_decay() {
+        let cfg = ZaratustraConfig::default();
+        assert!((cfg.decay - 0.02).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn default_energy_cap() {
+        let cfg = ZaratustraConfig::default();
+        assert!((cfg.energy_cap - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn default_echo_threshold() {
+        let cfg = ZaratustraConfig::default();
+        assert!((cfg.echo_threshold - 0.70).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn default_max_echoes_per_node() {
+        let cfg = ZaratustraConfig::default();
+        assert_eq!(cfg.max_echoes_per_node, 5);
+    }
+
+    #[test]
+    fn default_ubermensch_top_fraction() {
+        let cfg = ZaratustraConfig::default();
+        assert!((cfg.ubermensch_top_fraction - 0.10).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn default_propagation_steps() {
+        let cfg = ZaratustraConfig::default();
+        assert_eq!(cfg.propagation_steps, 3);
+    }
+
+    /// All env-var tests are combined into a single test function to avoid
+    /// race conditions from parallel test execution (env vars are process-global).
+    #[test]
+    fn from_env_all_scenarios() {
+        use std::sync::Mutex;
+        static ENV_LOCK: Mutex<()> = Mutex::new(());
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        // ── Scenario 1: defaults when nothing is set ─────────────────────────
+        std::env::remove_var("ZARATUSTRA_ALPHA");
+        std::env::remove_var("ZARATUSTRA_DECAY");
+        std::env::remove_var("ZARATUSTRA_ECHO_THRESHOLD");
+        std::env::remove_var("ZARATUSTRA_MAX_ECHOES");
+        std::env::remove_var("ZARATUSTRA_UBERMENSCH_FRACTION");
+        std::env::remove_var("ZARATUSTRA_PROPAGATION_STEPS");
+
+        let cfg = ZaratustraConfig::from_env();
+        let def = ZaratustraConfig::default();
+
+        assert!((cfg.alpha - def.alpha).abs() < f32::EPSILON);
+        assert!((cfg.decay - def.decay).abs() < f32::EPSILON);
+        assert!((cfg.echo_threshold - def.echo_threshold).abs() < f32::EPSILON);
+        assert_eq!(cfg.max_echoes_per_node, def.max_echoes_per_node);
+        assert!((cfg.ubermensch_top_fraction - def.ubermensch_top_fraction).abs() < f32::EPSILON);
+        assert_eq!(cfg.propagation_steps, def.propagation_steps);
+        // energy_cap is always 1.0 (not configurable via env)
+        assert!((cfg.energy_cap - 1.0).abs() < f32::EPSILON);
+
+        // ── Scenario 2: custom values ────────────────────────────────────────
+        std::env::set_var("ZARATUSTRA_ALPHA", "0.55");
+        std::env::set_var("ZARATUSTRA_DECAY", "0.08");
+        std::env::set_var("ZARATUSTRA_ECHO_THRESHOLD", "0.50");
+        std::env::set_var("ZARATUSTRA_MAX_ECHOES", "10");
+        std::env::set_var("ZARATUSTRA_UBERMENSCH_FRACTION", "0.25");
+        std::env::set_var("ZARATUSTRA_PROPAGATION_STEPS", "7");
+
+        let cfg = ZaratustraConfig::from_env();
+        assert!((cfg.alpha - 0.55).abs() < 1e-5);
+        assert!((cfg.decay - 0.08).abs() < 1e-5);
+        assert!((cfg.echo_threshold - 0.50).abs() < 1e-5);
+        assert_eq!(cfg.max_echoes_per_node, 10);
+        assert!((cfg.ubermensch_top_fraction - 0.25).abs() < 1e-5);
+        assert_eq!(cfg.propagation_steps, 7);
+
+        // ── Scenario 3: invalid values fall back to defaults ─────────────────
+        std::env::set_var("ZARATUSTRA_ALPHA", "not_a_float");
+        std::env::set_var("ZARATUSTRA_MAX_ECHOES", "abc");
+
+        let cfg = ZaratustraConfig::from_env();
+        assert!((cfg.alpha - 0.10).abs() < f32::EPSILON, "invalid float should fall back to default");
+        assert_eq!(cfg.max_echoes_per_node, 5, "invalid usize should fall back to default");
+
+        // ── Cleanup ──────────────────────────────────────────────────────────
+        std::env::remove_var("ZARATUSTRA_ALPHA");
+        std::env::remove_var("ZARATUSTRA_DECAY");
+        std::env::remove_var("ZARATUSTRA_ECHO_THRESHOLD");
+        std::env::remove_var("ZARATUSTRA_MAX_ECHOES");
+        std::env::remove_var("ZARATUSTRA_UBERMENSCH_FRACTION");
+        std::env::remove_var("ZARATUSTRA_PROPAGATION_STEPS");
+    }
+
+    #[test]
+    fn serde_roundtrip() {
+        let cfg = ZaratustraConfig::default();
+        let json = serde_json::to_string(&cfg).expect("serialize");
+        let parsed: ZaratustraConfig = serde_json::from_str(&json).expect("deserialize");
+        assert!((parsed.alpha - cfg.alpha).abs() < f32::EPSILON);
+        assert_eq!(parsed.propagation_steps, cfg.propagation_steps);
+    }
+}

@@ -123,3 +123,255 @@ pub fn run_will_to_power(
         total_energy_delta: total_delta,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nietzsche_graph::{AdjacencyIndex, GraphStorage, Edge, EdgeType, Node, PoincareVector};
+    use tempfile::TempDir;
+
+    fn open_temp_db() -> (GraphStorage, TempDir) {
+        let dir = TempDir::new().unwrap();
+        let storage = GraphStorage::open(dir.path().to_str().unwrap()).unwrap();
+        (storage, dir)
+    }
+
+    fn make_node(x: f32, y: f32, energy: f32) -> Node {
+        let mut node = Node::new(
+            Uuid::new_v4(),
+            PoincareVector::new(vec![x, y]),
+            serde_json::json!({"label": "test"}),
+        );
+        node.energy = energy;
+        node
+    }
+
+    fn default_config() -> ZaratustraConfig {
+        ZaratustraConfig::default()
+    }
+
+    #[test]
+    fn empty_graph_returns_default_report() {
+        let (storage, _dir) = open_temp_db();
+        let adjacency = AdjacencyIndex::new();
+        let report = run_will_to_power(&storage, &adjacency, &default_config()).unwrap();
+        assert_eq!(report.nodes_updated, 0);
+        assert!((report.mean_energy_before - 0.0).abs() < f32::EPSILON);
+        assert!((report.mean_energy_after - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn single_isolated_node_decays() {
+        let (storage, _dir) = open_temp_db();
+        let adjacency = AdjacencyIndex::new();
+        let node = make_node(0.1, 0.1, 0.5);
+        let id = node.id;
+        storage.put_node(&node).unwrap();
+
+        let cfg = ZaratustraConfig {
+            propagation_steps: 1,
+            decay: 0.1,
+            ..default_config()
+        };
+        let report = run_will_to_power(&storage, &adjacency, &cfg).unwrap();
+
+        assert_eq!(report.nodes_updated, 1);
+        // After 1 step: 0.5 * (1 - 0.1) = 0.45
+        let updated = storage.scan_nodes().unwrap();
+        let n = updated.iter().find(|n| n.id == id).unwrap();
+        assert!((n.energy - 0.45).abs() < 1e-5, "expected 0.45, got {}", n.energy);
+    }
+
+    #[test]
+    fn hub_gains_more_energy_than_leaf() {
+        // Create a star topology: hub -> leaf1, hub -> leaf2, hub -> leaf3
+        // All start with energy 0.5. Hub has energetic neighbours; leaves are isolated.
+        let (storage, _dir) = open_temp_db();
+        let adjacency = AdjacencyIndex::new();
+
+        let hub = make_node(0.1, 0.0, 0.5);
+        let leaf1 = make_node(0.2, 0.0, 0.8);
+        let leaf2 = make_node(0.0, 0.2, 0.8);
+        let leaf3 = make_node(0.0, 0.1, 0.8);
+
+        let hub_id = hub.id;
+        let leaf1_id = leaf1.id;
+
+        // Hub points to leaves (hub -> leaf_i)
+        // So hub's out-neighbours are the leaves (energetic).
+        let e1 = Edge::new(hub.id, leaf1.id, EdgeType::Association, 1.0);
+        let e2 = Edge::new(hub.id, leaf2.id, EdgeType::Association, 1.0);
+        let e3 = Edge::new(hub.id, leaf3.id, EdgeType::Association, 1.0);
+
+        storage.put_node(&hub).unwrap();
+        storage.put_node(&leaf1).unwrap();
+        storage.put_node(&leaf2).unwrap();
+        storage.put_node(&leaf3).unwrap();
+
+        adjacency.add_edge(&e1);
+        adjacency.add_edge(&e2);
+        adjacency.add_edge(&e3);
+
+        let cfg = ZaratustraConfig {
+            alpha: 0.5,
+            decay: 0.0,
+            propagation_steps: 1,
+            ..default_config()
+        };
+
+        run_will_to_power(&storage, &adjacency, &cfg).unwrap();
+
+        let nodes = storage.scan_nodes().unwrap();
+        let hub_after = nodes.iter().find(|n| n.id == hub_id).unwrap();
+        let leaf_after = nodes.iter().find(|n| n.id == leaf1_id).unwrap();
+
+        // Hub: 0.5 * (1-0) + 0.5 * mean(0.8, 0.8, 0.8) = 0.5 + 0.4 = 0.9
+        // Leaf1 (no out-neighbours): 0.8 * (1-0) + 0 = 0.8 (unchanged)
+        assert!(
+            hub_after.energy > leaf_after.energy,
+            "hub energy ({}) should exceed leaf energy ({})",
+            hub_after.energy,
+            leaf_after.energy,
+        );
+    }
+
+    #[test]
+    fn energy_is_capped_at_energy_cap() {
+        let (storage, _dir) = open_temp_db();
+        let adjacency = AdjacencyIndex::new();
+
+        let a = make_node(0.1, 0.0, 0.95);
+        let b = make_node(0.0, 0.1, 0.99);
+        let a_id = a.id;
+
+        // a -> b (a receives energy from b)
+        let edge = Edge::new(a.id, b.id, EdgeType::Association, 1.0);
+        storage.put_node(&a).unwrap();
+        storage.put_node(&b).unwrap();
+        adjacency.add_edge(&edge);
+
+        let cfg = ZaratustraConfig {
+            alpha: 0.5,
+            decay: 0.0,
+            energy_cap: 1.0,
+            propagation_steps: 5,
+            ..default_config()
+        };
+
+        run_will_to_power(&storage, &adjacency, &cfg).unwrap();
+
+        let nodes = storage.scan_nodes().unwrap();
+        let a_after = nodes.iter().find(|n| n.id == a_id).unwrap();
+        assert!(
+            a_after.energy <= 1.0 + f32::EPSILON,
+            "energy {} should not exceed cap 1.0",
+            a_after.energy,
+        );
+    }
+
+    #[test]
+    fn decay_reduces_energy_every_step() {
+        let (storage, _dir) = open_temp_db();
+        let adjacency = AdjacencyIndex::new();
+
+        let node = make_node(0.1, 0.1, 1.0);
+        let id = node.id;
+        storage.put_node(&node).unwrap();
+
+        let cfg = ZaratustraConfig {
+            alpha: 0.0,   // no neighbour influence
+            decay: 0.10,  // 10% decay per step
+            propagation_steps: 3,
+            ..default_config()
+        };
+
+        run_will_to_power(&storage, &adjacency, &cfg).unwrap();
+
+        // After 3 steps: 1.0 * (0.9)^3 = 0.729
+        let nodes = storage.scan_nodes().unwrap();
+        let n = nodes.iter().find(|n| n.id == id).unwrap();
+        assert!(
+            (n.energy - 0.729).abs() < 1e-4,
+            "expected ~0.729, got {}",
+            n.energy,
+        );
+    }
+
+    #[test]
+    fn report_mean_energy_before_and_after() {
+        let (storage, _dir) = open_temp_db();
+        let adjacency = AdjacencyIndex::new();
+
+        let n1 = make_node(0.1, 0.0, 0.4);
+        let n2 = make_node(0.0, 0.1, 0.6);
+        storage.put_node(&n1).unwrap();
+        storage.put_node(&n2).unwrap();
+
+        let cfg = ZaratustraConfig {
+            propagation_steps: 1,
+            decay: 0.0,
+            alpha: 0.0,
+            ..default_config()
+        };
+
+        let report = run_will_to_power(&storage, &adjacency, &cfg).unwrap();
+        // mean_before = (0.4+0.6)/2 = 0.5
+        assert!((report.mean_energy_before - 0.5).abs() < 1e-5);
+        // With alpha=0, decay=0, no change
+        assert!((report.mean_energy_after - 0.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn multiple_propagation_steps_accumulate() {
+        let (storage, _dir) = open_temp_db();
+        let adjacency = AdjacencyIndex::new();
+
+        // a -> b, both start at 0.5
+        let a = make_node(0.1, 0.0, 0.5);
+        let b = make_node(0.0, 0.1, 0.5);
+        let a_id = a.id;
+        let edge = Edge::new(a.id, b.id, EdgeType::Association, 1.0);
+        storage.put_node(&a).unwrap();
+        storage.put_node(&b).unwrap();
+        adjacency.add_edge(&edge);
+
+        let cfg1 = ZaratustraConfig {
+            alpha: 0.2,
+            decay: 0.0,
+            propagation_steps: 1,
+            ..default_config()
+        };
+        let cfg3 = ZaratustraConfig {
+            propagation_steps: 3,
+            ..cfg1.clone()
+        };
+
+        // Run 1-step first
+        run_will_to_power(&storage, &adjacency, &cfg1).unwrap();
+        let nodes_1 = storage.scan_nodes().unwrap();
+        let a_1 = nodes_1.iter().find(|n| n.id == a_id).unwrap().energy;
+
+        // Reset
+        let (storage2, _dir2) = open_temp_db();
+        let a2 = make_node(0.1, 0.0, 0.5);
+        let b2 = make_node(0.0, 0.1, 0.5);
+        // Re-use same IDs won't matter — different db
+        let edge2 = Edge::new(a2.id, b2.id, EdgeType::Association, 1.0);
+        let adj2 = AdjacencyIndex::new();
+        storage2.put_node(&a2).unwrap();
+        storage2.put_node(&b2).unwrap();
+        adj2.add_edge(&edge2);
+
+        run_will_to_power(&storage2, &adj2, &cfg3).unwrap();
+        let nodes_3 = storage2.scan_nodes().unwrap();
+        let a_3 = nodes_3.iter().find(|n| n.id == a2.id).unwrap().energy;
+
+        // 3 steps should accumulate more energy than 1 step
+        assert!(
+            a_3 > a_1,
+            "3-step energy {} should exceed 1-step energy {}",
+            a_3,
+            a_1,
+        );
+    }
+}
