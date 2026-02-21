@@ -195,8 +195,23 @@ pub fn execute(
     adjacency: &AdjacencyIndex,
     params:    &Params,
 ) -> Result<Vec<QueryResult>, QueryError> {
+    execute_with_indexes(query, storage, adjacency, params, &HashSet::new())
+}
+
+/// Execute a parsed NQL query with secondary index awareness.
+///
+/// When `indexed_fields` is non-empty, the executor will use
+/// `CF_META_IDX` scans for simple WHERE conditions on indexed fields
+/// instead of doing a full node scan.
+pub fn execute_with_indexes(
+    query:          &Query,
+    storage:        &GraphStorage,
+    adjacency:      &AdjacencyIndex,
+    params:         &Params,
+    indexed_fields: &HashSet<String>,
+) -> Result<Vec<QueryResult>, QueryError> {
     match query {
-        Query::Match(m)              => execute_match(m, storage, adjacency, params),
+        Query::Match(m)              => execute_match(m, storage, adjacency, params, indexed_fields),
         Query::Diffuse(d)            => execute_diffuse(d, storage, adjacency, params),
         Query::Reconstruct(r)        => execute_reconstruct(r, params),
         Query::Explain(inner)        => execute_explain(inner, storage, adjacency, params),
@@ -520,13 +535,14 @@ fn execute_psychoanalyze(
 // ─────────────────────────────────────────────
 
 fn execute_match(
-    query:     &MatchQuery,
-    storage:   &GraphStorage,
-    adjacency: &AdjacencyIndex,
-    params:    &Params,
+    query:          &MatchQuery,
+    storage:        &GraphStorage,
+    adjacency:      &AdjacencyIndex,
+    params:         &Params,
+    indexed_fields: &HashSet<String>,
 ) -> Result<Vec<QueryResult>, QueryError> {
     match &query.pattern {
-        Pattern::Node(np) => execute_node_match(query, np, storage, adjacency, params),
+        Pattern::Node(np) => execute_node_match(query, np, storage, adjacency, params, indexed_fields),
         Pattern::Path(pp) => execute_path_match(query, pp, storage, adjacency, params),
     }
 }
@@ -534,15 +550,26 @@ fn execute_match(
 // ── Node match ────────────────────────────────
 
 fn execute_node_match(
-    query:     &MatchQuery,
-    np:        &NodePattern,
-    storage:   &GraphStorage,
-    adjacency: &AdjacencyIndex,
-    params:    &Params,
+    query:          &MatchQuery,
+    np:             &NodePattern,
+    storage:        &GraphStorage,
+    adjacency:      &AdjacencyIndex,
+    params:         &Params,
+    indexed_fields: &HashSet<String>,
 ) -> Result<Vec<QueryResult>, QueryError> {
-    // ── Fast path: use energy secondary index when the only condition is energy > X ──
+    // ── Fast path 1: use energy secondary index for energy range queries ──
+    // ── Fast path 2: use metadata secondary index for indexed field queries ──
     let nodes = if let Some((min_e, max_e)) = extract_energy_range_hint(query) {
         storage.scan_nodes_energy_range(min_e, max_e)?
+    } else if let Some(indexed_ids) = extract_meta_index_hint(query, indexed_fields, params, storage) {
+        // Load only the nodes that matched the index scan
+        let mut out = Vec::with_capacity(indexed_ids.len());
+        for id in indexed_ids {
+            if let Ok(Some(node)) = storage.get_node(&id) {
+                out.push(node);
+            }
+        }
+        out
     } else {
         storage.scan_nodes()?
     };
@@ -1858,6 +1885,116 @@ fn expr_as_f32(expr: &Expr) -> Option<f32> {
         Expr::Float(f) => Some(*f as f32),
         Expr::Int(i)   => Some(*i as f32),
         _ => None,
+    }
+}
+
+/// Attempt to use the metadata secondary index for a simple WHERE condition.
+///
+/// Supports patterns:
+/// - `WHERE n.field = literal`  → `scan_meta_index_eq`
+/// - `WHERE n.field > literal`  → `scan_meta_index_range`
+/// - `WHERE n.field BETWEEN a AND b` → `scan_meta_index_range`
+///
+/// Returns `Some(Vec<Uuid>)` if the fast path was used, `None` otherwise.
+fn extract_meta_index_hint(
+    query:          &MatchQuery,
+    indexed_fields: &HashSet<String>,
+    params:         &Params,
+    storage:        &GraphStorage,
+) -> Option<Vec<Uuid>> {
+    if indexed_fields.is_empty() || query.conditions.len() != 1 {
+        return None;
+    }
+
+    let alias = match &query.pattern {
+        Pattern::Node(np) => &np.alias,
+        Pattern::Path(_) => return None,
+    };
+
+    extract_meta_index_scan(&query.conditions[0], alias, indexed_fields, params, storage)
+}
+
+fn extract_meta_index_scan(
+    cond:           &Condition,
+    alias:          &str,
+    indexed_fields: &HashSet<String>,
+    params:         &Params,
+    storage:        &GraphStorage,
+) -> Option<Vec<Uuid>> {
+    match cond {
+        Condition::Compare { left, op, right } => {
+            // Match: alias.field <op> literal
+            if let Expr::Property { alias: a, field } = left {
+                if a == alias && indexed_fields.contains(field) {
+                    if let Some(val) = expr_to_json_opt(right, params) {
+                        return meta_index_range_from_op(storage, field, op, &val);
+                    }
+                }
+            }
+            // Match: literal <op> alias.field (reversed)
+            if let Expr::Property { alias: a, field } = right {
+                if a == alias && indexed_fields.contains(field) {
+                    if let Some(val) = expr_to_json_opt(left, params) {
+                        let rev_op = reverse_op(op);
+                        return meta_index_range_from_op(storage, field, &rev_op, &val);
+                    }
+                }
+            }
+            None
+        }
+        Condition::Between { expr, low, high } => {
+            if let Expr::Property { alias: a, field } = expr {
+                if a == alias && indexed_fields.contains(field) {
+                    let lo = expr_to_json_opt(low, params)?;
+                    let hi = expr_to_json_opt(high, params)?;
+                    return storage.scan_meta_index_range(field, &lo, &hi).ok();
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn meta_index_range_from_op(
+    storage: &GraphStorage,
+    field:   &str,
+    op:      &CompOp,
+    val:     &serde_json::Value,
+) -> Option<Vec<Uuid>> {
+    let min_json = serde_json::Value::from(f64::MIN);
+    let max_json = serde_json::Value::from(f64::MAX);
+    match op {
+        CompOp::Eq  => storage.scan_meta_index_eq(field, val).ok(),
+        CompOp::Gt | CompOp::Gte => storage.scan_meta_index_range(field, val, &max_json).ok(),
+        CompOp::Lt | CompOp::Lte => storage.scan_meta_index_range(field, &min_json, val).ok(),
+        CompOp::Neq => None, // neq can't use a range scan efficiently
+    }
+}
+
+fn expr_to_json_opt(expr: &Expr, params: &Params) -> Option<serde_json::Value> {
+    match expr {
+        Expr::Float(f) => Some(serde_json::Value::from(*f)),
+        Expr::Int(i)   => Some(serde_json::Value::from(*i as f64)),
+        Expr::Str(s)   => Some(serde_json::Value::from(s.as_str())),
+        Expr::Param(name) => match params.get(name.as_str()) {
+            Some(ParamValue::Float(f)) => Some(serde_json::Value::from(*f)),
+            Some(ParamValue::Int(i))   => Some(serde_json::Value::from(*i as f64)),
+            Some(ParamValue::Str(s))   => Some(serde_json::Value::from(s.as_str())),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn reverse_op(op: &CompOp) -> CompOp {
+    match op {
+        CompOp::Lt  => CompOp::Gt,
+        CompOp::Lte => CompOp::Gte,
+        CompOp::Gt  => CompOp::Lt,
+        CompOp::Gte => CompOp::Lte,
+        CompOp::Eq  => CompOp::Eq,
+        CompOp::Neq => CompOp::Neq,
     }
 }
 

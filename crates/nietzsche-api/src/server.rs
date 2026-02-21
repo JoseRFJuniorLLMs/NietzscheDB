@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use tonic::{Request, Response, Status};
-use tracing::{debug, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
 use nietzsche_graph::{
@@ -30,7 +30,7 @@ use nietzsche_graph::{
     bfs, dijkstra,
 };
 use nietzsche_pregel::{DiffusionConfig, DiffusionEngine};
-use nietzsche_query::{ParamValue, Params, execute, parse};
+use nietzsche_query::{ParamValue, Params, execute_with_indexes, parse};
 use nietzsche_sleep::{SleepConfig, SleepCycle};
 use nietzsche_zaratustra::{ZaratustraConfig, ZaratustraEngine};
 use nietzsche_sensory::{
@@ -645,7 +645,8 @@ impl NietzscheDb for NietzscheServer {
 
         let shared  = get_col!(self.cm, &inner.collection);
         let mut db  = shared.read().await;
-        let results = execute(&ast, db.storage(), db.adjacency(), &params)
+        let idx_fields: std::collections::HashSet<String> = db.list_indexes().into_iter().collect();
+        let results = execute_with_indexes(&ast, db.storage(), db.adjacency(), &params, &idx_fields)
             .map_err(|e| Status::internal(e.to_string()))?;
 
         use nietzsche_query::{QueryResult, ScalarValue};
@@ -2259,5 +2260,60 @@ impl NietzscheDb for NietzscheServer {
         };
 
         Ok(Response::new(nietzsche::ListSchemasResponse { schemas }))
+    }
+
+    // ── Secondary Indexes (Phase E) ──────────────────────────────────────
+
+    #[instrument(skip(self, req))]
+    async fn create_index(
+        &self,
+        req: Request<nietzsche::CreateIndexRequest>,
+    ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        require_writer(&req)?;
+        let r = req.into_inner();
+
+        if r.field.is_empty() {
+            return Err(Status::invalid_argument("field must not be empty"));
+        }
+
+        let shared = get_col!(self.cm, &r.collection);
+        let mut db = shared.write().await;
+        db.create_index(&r.field).map_err(graph_err)?;
+
+        info!(field = %r.field, collection = %col(&r.collection), "CreateIndex");
+        Ok(Response::new(ok_status()))
+    }
+
+    #[instrument(skip(self, req))]
+    async fn drop_index(
+        &self,
+        req: Request<nietzsche::DropIndexRequest>,
+    ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        require_writer(&req)?;
+        let r = req.into_inner();
+
+        if r.field.is_empty() {
+            return Err(Status::invalid_argument("field must not be empty"));
+        }
+
+        let shared = get_col!(self.cm, &r.collection);
+        let mut db = shared.write().await;
+        db.drop_index(&r.field).map_err(graph_err)?;
+
+        info!(field = %r.field, collection = %col(&r.collection), "DropIndex");
+        Ok(Response::new(ok_status()))
+    }
+
+    #[instrument(skip(self, req))]
+    async fn list_indexes(
+        &self,
+        req: Request<nietzsche::ListIndexesRequest>,
+    ) -> Result<Response<nietzsche::ListIndexesResponse>, Status> {
+        let r = req.into_inner();
+        let shared = get_col!(self.cm, &r.collection);
+        let db = shared.read().await;
+        let fields = db.list_indexes();
+
+        Ok(Response::new(nietzsche::ListIndexesResponse { fields }))
     }
 }

@@ -54,5 +54,5 @@ pub use ast::{
     DiffuseFrom,
 };
 pub use error::QueryError;
-pub use executor::{execute, ParamValue, Params, QueryResult, ScalarValue};
+pub use executor::{execute, execute_with_indexes, ParamValue, Params, QueryResult, ScalarValue};
 pub use parser::parse;
