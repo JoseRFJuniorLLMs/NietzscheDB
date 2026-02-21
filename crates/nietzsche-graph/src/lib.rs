@@ -54,7 +54,7 @@ pub use collection_manager::{CollectionConfig, CollectionInfo, CollectionManager
 pub use db::{MockVectorStore, NietzscheDB, VectorStore};
 pub use embedded_vector_store::{AnyVectorStore, EmbeddedVectorStore, VectorMetric};
 pub use error::GraphError;
-pub use model::{Edge, EdgeType, Node, NodeMeta, NodeType, PoincareVector};
+pub use model::{Edge, EdgeType, Node, NodeMeta, NodeType, PoincareVector, SparseVector};
 pub use storage::{GraphStorage, NodeIterator, NodeMetaIterator, EdgeIterator};
 pub use transaction::{Transaction, TxError, TxOp, TxReport};
 pub use traversal::{

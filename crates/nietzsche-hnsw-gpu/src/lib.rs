@@ -447,3 +447,296 @@ impl VectorStore for GpuVectorStore {
             .collect())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nietzsche_graph::db::VectorStore;
+    use nietzsche_graph::model::PoincareVector;
+
+    /// Helper: create a PoincareVector from f32 coords.
+    fn pv(coords: Vec<f32>) -> PoincareVector {
+        PoincareVector::new(coords)
+    }
+
+    // ── Basic upsert and knn ─────────────────────────────────────────────────
+
+    #[test]
+    fn upsert_and_knn_single_vector() {
+        let mut store = GpuVectorStore::new(3).unwrap();
+        let id = Uuid::new_v4();
+        let vec = pv(vec![0.1, 0.2, 0.3]);
+
+        store.upsert(id, &vec).unwrap();
+        assert_eq!(store.len(), 1);
+
+        let results = store.knn(&vec, 1).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, id);
+        // Distance to self should be 0
+        assert!(results[0].1 < 1e-6, "distance to self should be ~0, got {}", results[0].1);
+    }
+
+    #[test]
+    fn upsert_and_knn_returns_nearest() {
+        let mut store = GpuVectorStore::new(2).unwrap();
+
+        let id_a = Uuid::new_v4();
+        let id_b = Uuid::new_v4();
+        let id_c = Uuid::new_v4();
+
+        // A at (0.1, 0.0), B at (0.2, 0.0), C at (0.9, 0.0)
+        store.upsert(id_a, &pv(vec![0.1, 0.0])).unwrap();
+        store.upsert(id_b, &pv(vec![0.2, 0.0])).unwrap();
+        store.upsert(id_c, &pv(vec![0.9, 0.0])).unwrap();
+
+        // Query near A
+        let query = pv(vec![0.1, 0.0]);
+        let results = store.knn(&query, 2).unwrap();
+
+        assert_eq!(results.len(), 2);
+        // Nearest to (0.1, 0.0) should be A (dist=0), then B (dist=0.1)
+        assert_eq!(results[0].0, id_a);
+        assert_eq!(results[1].0, id_b);
+    }
+
+    #[test]
+    fn knn_returns_sorted_by_distance() {
+        let mut store = GpuVectorStore::new(2).unwrap();
+
+        let ids: Vec<Uuid> = (0..5).map(|_| Uuid::new_v4()).collect();
+        let coords = [
+            vec![0.1, 0.0],
+            vec![0.3, 0.0],
+            vec![0.5, 0.0],
+            vec![0.7, 0.0],
+            vec![0.9, 0.0],
+        ];
+
+        for (i, id) in ids.iter().enumerate() {
+            store.upsert(*id, &pv(coords[i].clone())).unwrap();
+        }
+
+        let query = pv(vec![0.0, 0.0]); // origin
+        let results = store.knn(&query, 5).unwrap();
+
+        // Verify results are sorted ascending by distance
+        for i in 1..results.len() {
+            assert!(
+                results[i].1 >= results[i - 1].1 - 1e-6,
+                "results not sorted: dist[{}]={} < dist[{}]={}",
+                i,
+                results[i].1,
+                i - 1,
+                results[i - 1].1,
+            );
+        }
+    }
+
+    #[test]
+    fn knn_k_greater_than_n() {
+        let mut store = GpuVectorStore::new(2).unwrap();
+        let id = Uuid::new_v4();
+        store.upsert(id, &pv(vec![0.1, 0.1])).unwrap();
+
+        let results = store.knn(&pv(vec![0.0, 0.0]), 10).unwrap();
+        // Should return only 1 result even though k=10
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn knn_empty_store() {
+        let store = GpuVectorStore::new(2).unwrap();
+        let results = store.knn(&pv(vec![0.0, 0.0]), 5).unwrap();
+        assert!(results.is_empty());
+    }
+
+    // ── Delete ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn delete_marks_as_soft_deleted() {
+        let mut store = GpuVectorStore::new(2).unwrap();
+        let id = Uuid::new_v4();
+        store.upsert(id, &pv(vec![0.1, 0.1])).unwrap();
+        assert_eq!(store.len(), 1);
+
+        store.delete(id).unwrap();
+        assert_eq!(store.len(), 0);
+
+        // knn should not return the deleted vector
+        let results = store.knn(&pv(vec![0.1, 0.1]), 5).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn delete_nonexistent_is_noop() {
+        let mut store = GpuVectorStore::new(2).unwrap();
+        let id = Uuid::new_v4();
+        // Should not error
+        store.delete(id).unwrap();
+        assert_eq!(store.len(), 0);
+    }
+
+    #[test]
+    fn delete_then_reinsert() {
+        let mut store = GpuVectorStore::new(2).unwrap();
+        let id = Uuid::new_v4();
+
+        store.upsert(id, &pv(vec![0.1, 0.0])).unwrap();
+        store.delete(id).unwrap();
+        assert_eq!(store.len(), 0);
+
+        // Re-insert with different coords
+        store.upsert(id, &pv(vec![0.5, 0.0])).unwrap();
+        assert_eq!(store.len(), 1);
+
+        let results = store.knn(&pv(vec![0.5, 0.0]), 1).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, id);
+        assert!(results[0].1 < 1e-6, "should find the re-inserted vector");
+    }
+
+    #[test]
+    fn delete_excludes_from_knn_results() {
+        let mut store = GpuVectorStore::new(2).unwrap();
+
+        let id_a = Uuid::new_v4();
+        let id_b = Uuid::new_v4();
+        let id_c = Uuid::new_v4();
+
+        store.upsert(id_a, &pv(vec![0.1, 0.0])).unwrap();
+        store.upsert(id_b, &pv(vec![0.2, 0.0])).unwrap();
+        store.upsert(id_c, &pv(vec![0.3, 0.0])).unwrap();
+
+        // Delete B (the middle one)
+        store.delete(id_b).unwrap();
+        assert_eq!(store.len(), 2);
+
+        let results = store.knn(&pv(vec![0.2, 0.0]), 3).unwrap();
+        assert_eq!(results.len(), 2);
+        // B should not appear in results
+        assert!(
+            results.iter().all(|(uuid, _)| *uuid != id_b),
+            "deleted ID should not appear in results",
+        );
+    }
+
+    // ── Upsert overwrites ────────────────────────────────────────────────────
+
+    #[test]
+    fn upsert_same_id_overwrites() {
+        let mut store = GpuVectorStore::new(2).unwrap();
+        let id = Uuid::new_v4();
+
+        store.upsert(id, &pv(vec![0.1, 0.0])).unwrap();
+        store.upsert(id, &pv(vec![0.9, 0.0])).unwrap();
+        assert_eq!(store.len(), 1);
+
+        // Query near (0.9, 0.0) — should find the updated vector
+        let results = store.knn(&pv(vec![0.9, 0.0]), 1).unwrap();
+        assert_eq!(results[0].0, id);
+        assert!(results[0].1 < 1e-6, "should match the new position");
+    }
+
+    // ── Below GPU_THRESHOLD uses linear scan ─────────────────────────────────
+
+    #[test]
+    fn below_gpu_threshold_uses_cpu_linear_scan() {
+        // Insert fewer than GPU_THRESHOLD vectors (1000) and verify correctness.
+        // On CPU fallback (no cuda feature), this is always the path.
+        let dim = 4;
+        let mut store = GpuVectorStore::new(dim).unwrap();
+
+        let n = 50; // well below GPU_THRESHOLD=1000
+        let mut ids = Vec::with_capacity(n);
+
+        for i in 0..n {
+            let id = Uuid::new_v4();
+            let val = (i as f32 + 1.0) * 0.01; // 0.01..0.50
+            store.upsert(id, &pv(vec![val, 0.0, 0.0, 0.0])).unwrap();
+            ids.push((id, val));
+        }
+
+        assert_eq!(store.len(), n);
+        assert!(!GpuVectorStore::is_gpu_enabled(), "cuda feature should be off in test");
+
+        // knn for a query at origin should return closest vectors (smallest coords)
+        let query = pv(vec![0.0, 0.0, 0.0, 0.0]);
+        let results = store.knn(&query, 5).unwrap();
+
+        assert_eq!(results.len(), 5);
+        // Results should be sorted by distance (ascending)
+        for w in results.windows(2) {
+            assert!(w[0].1 <= w[1].1 + 1e-6);
+        }
+    }
+
+    // ── Dimension mismatch ───────────────────────────────────────────────────
+
+    #[test]
+    fn upsert_dimension_mismatch_returns_error() {
+        let mut store = GpuVectorStore::new(3).unwrap();
+        let id = Uuid::new_v4();
+        let wrong_dim = pv(vec![0.1, 0.2]); // 2 != 3
+        let result = store.upsert(id, &wrong_dim);
+        assert!(result.is_err(), "should error on dimension mismatch");
+    }
+
+    // ── Helper methods ───────────────────────────────────────────────────────
+
+    #[test]
+    fn is_empty_on_new_store() {
+        let store = GpuVectorStore::new(2).unwrap();
+        assert!(store.is_empty());
+        assert_eq!(store.dim(), 2);
+    }
+
+    #[test]
+    fn len_tracks_active_count() {
+        let mut store = GpuVectorStore::new(2).unwrap();
+        assert_eq!(store.len(), 0);
+
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+        store.upsert(id1, &pv(vec![0.1, 0.0])).unwrap();
+        assert_eq!(store.len(), 1);
+        store.upsert(id2, &pv(vec![0.2, 0.0])).unwrap();
+        assert_eq!(store.len(), 2);
+
+        store.delete(id1).unwrap();
+        assert_eq!(store.len(), 1);
+        store.delete(id2).unwrap();
+        assert_eq!(store.len(), 0);
+    }
+
+    #[test]
+    fn gpu_not_enabled_in_test() {
+        assert!(!GpuVectorStore::is_gpu_enabled());
+    }
+
+    #[test]
+    fn build_gpu_index_is_noop_without_cuda() {
+        let store = GpuVectorStore::new(2).unwrap();
+        // Should not error
+        store.build_gpu_index().unwrap();
+    }
+
+    // ── Correctness: knn distances are Euclidean ─────────────────────────────
+
+    #[test]
+    fn knn_distance_is_euclidean() {
+        let mut store = GpuVectorStore::new(2).unwrap();
+        let id = Uuid::new_v4();
+
+        store.upsert(id, &pv(vec![0.3, 0.4])).unwrap();
+
+        // Query from origin: Euclidean distance = sqrt(0.09 + 0.16) = 0.5
+        let results = store.knn(&pv(vec![0.0, 0.0]), 1).unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(
+            (results[0].1 - 0.5).abs() < 1e-5,
+            "expected distance 0.5, got {}",
+            results[0].1,
+        );
+    }
+}

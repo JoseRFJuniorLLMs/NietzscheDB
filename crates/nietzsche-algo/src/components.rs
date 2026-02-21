@@ -217,3 +217,174 @@ pub fn strongly_connected_components(
         duration_ms: start.elapsed().as_millis() as u64,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nietzsche_graph::model::{Edge, Node, PoincareVector};
+    use nietzsche_graph::{AdjacencyIndex, GraphStorage};
+    use tempfile::TempDir;
+
+    fn open_temp_db() -> (GraphStorage, TempDir) {
+        let dir = TempDir::new().unwrap();
+        let storage = GraphStorage::open(dir.path().to_str().unwrap()).unwrap();
+        (storage, dir)
+    }
+
+    fn make_node(x: f32, y: f32) -> Node {
+        Node::new(
+            Uuid::new_v4(),
+            PoincareVector::new(vec![x, y]),
+            serde_json::json!({"label": "test"}),
+        )
+    }
+
+    fn build_graph(
+        nodes: &[Node],
+        edges: &[(usize, usize, f32)],
+    ) -> (GraphStorage, AdjacencyIndex, Vec<Uuid>, TempDir) {
+        let (storage, dir) = open_temp_db();
+        let adj = AdjacencyIndex::new();
+        let ids: Vec<Uuid> = nodes.iter().map(|n| n.id).collect();
+        for node in nodes {
+            storage.put_node(node).unwrap();
+        }
+        for &(from, to, weight) in edges {
+            let edge = Edge::association(ids[from], ids[to], weight);
+            storage.put_edge(&edge).unwrap();
+            adj.add_edge(&edge);
+        }
+        (storage, adj, ids, dir)
+    }
+
+    // ── WCC tests ────────────────────────────────────────────────────────
+
+    #[test]
+    fn wcc_empty_graph() {
+        let (storage, _dir) = open_temp_db();
+        let adj = AdjacencyIndex::new();
+
+        let result = weakly_connected_components(&storage, &adj).unwrap();
+        assert!(result.components.is_empty());
+        assert_eq!(result.component_count, 0);
+        assert_eq!(result.largest_component_size, 0);
+    }
+
+    #[test]
+    fn wcc_single_component() {
+        // Path: 0 -> 1 -> 2 -> 3 (all weakly connected)
+        let nodes: Vec<Node> = (0..4).map(|i| make_node(0.1 * i as f32, 0.1)).collect();
+        let edges = vec![(0, 1, 1.0), (1, 2, 1.0), (2, 3, 1.0)];
+        let (storage, adj, ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = weakly_connected_components(&storage, &adj).unwrap();
+        assert_eq!(result.component_count, 1);
+        assert_eq!(result.largest_component_size, 4);
+
+        // All nodes should be in the same component
+        let comp_map: HashMap<Uuid, u64> = result.components.into_iter().collect();
+        let comp0 = comp_map[&ids[0]];
+        for id in &ids {
+            assert_eq!(comp_map[id], comp0, "all nodes should be in same WCC");
+        }
+    }
+
+    #[test]
+    fn wcc_two_components() {
+        // Component A: 0 -> 1
+        // Component B: 2 -> 3
+        // (disconnected)
+        let nodes: Vec<Node> = (0..4).map(|i| make_node(0.1 * i as f32, 0.05)).collect();
+        let edges = vec![(0, 1, 1.0), (2, 3, 1.0)];
+        let (storage, adj, ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = weakly_connected_components(&storage, &adj).unwrap();
+        assert_eq!(result.component_count, 2);
+        assert_eq!(result.largest_component_size, 2);
+
+        let comp_map: HashMap<Uuid, u64> = result.components.into_iter().collect();
+        assert_eq!(comp_map[&ids[0]], comp_map[&ids[1]]);
+        assert_eq!(comp_map[&ids[2]], comp_map[&ids[3]]);
+        assert_ne!(comp_map[&ids[0]], comp_map[&ids[2]]);
+    }
+
+    #[test]
+    fn wcc_isolated_nodes() {
+        // 4 isolated nodes = 4 components
+        let nodes: Vec<Node> = (0..4).map(|i| make_node(0.1 * i as f32, 0.1)).collect();
+        let (storage, adj, _ids, _dir) = build_graph(&nodes, &[]);
+
+        let result = weakly_connected_components(&storage, &adj).unwrap();
+        assert_eq!(result.component_count, 4);
+        assert_eq!(result.largest_component_size, 1);
+    }
+
+    // ── SCC tests ────────────────────────────────────────────────────────
+
+    #[test]
+    fn scc_empty_graph() {
+        let (storage, _dir) = open_temp_db();
+        let adj = AdjacencyIndex::new();
+
+        let result = strongly_connected_components(&storage, &adj).unwrap();
+        assert!(result.components.is_empty());
+        assert_eq!(result.component_count, 0);
+    }
+
+    #[test]
+    fn scc_cycle_is_single_component() {
+        // Cycle: 0 -> 1 -> 2 -> 0 (all mutually reachable)
+        let nodes: Vec<Node> = (0..3).map(|i| make_node(0.1 * i as f32, 0.1)).collect();
+        let edges = vec![(0, 1, 1.0), (1, 2, 1.0), (2, 0, 1.0)];
+        let (storage, adj, ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = strongly_connected_components(&storage, &adj).unwrap();
+        assert_eq!(result.component_count, 1);
+        assert_eq!(result.largest_component_size, 3);
+
+        let comp_map: HashMap<Uuid, u64> = result.components.into_iter().collect();
+        let c0 = comp_map[&ids[0]];
+        assert_eq!(comp_map[&ids[1]], c0);
+        assert_eq!(comp_map[&ids[2]], c0);
+    }
+
+    #[test]
+    fn scc_path_has_n_components() {
+        // Path: 0 -> 1 -> 2 -> 3 (no back edges => each node is its own SCC)
+        let nodes: Vec<Node> = (0..4).map(|i| make_node(0.1 * i as f32, 0.1)).collect();
+        let edges = vec![(0, 1, 1.0), (1, 2, 1.0), (2, 3, 1.0)];
+        let (storage, adj, _ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = strongly_connected_components(&storage, &adj).unwrap();
+        assert_eq!(result.component_count, 4, "each node in a DAG is its own SCC");
+        assert_eq!(result.largest_component_size, 1);
+
+        // All nodes should be in different components
+        let comp_map: HashMap<Uuid, u64> = result.components.into_iter().collect();
+        let comps: std::collections::HashSet<u64> = comp_map.values().copied().collect();
+        assert_eq!(comps.len(), 4);
+    }
+
+    #[test]
+    fn scc_two_cycles_with_bridge() {
+        // Cycle A: 0 -> 1 -> 0
+        // Cycle B: 2 -> 3 -> 2
+        // Bridge: 1 -> 2 (one-way, so cycles remain separate SCCs)
+        let nodes: Vec<Node> = (0..4).map(|i| make_node(0.05 * i as f32, 0.05)).collect();
+        let edges = vec![
+            (0, 1, 1.0), (1, 0, 1.0),  // Cycle A
+            (2, 3, 1.0), (3, 2, 1.0),  // Cycle B
+            (1, 2, 1.0),               // One-way bridge
+        ];
+        let (storage, adj, ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = strongly_connected_components(&storage, &adj).unwrap();
+        assert_eq!(result.component_count, 2, "two separate cycles = 2 SCCs");
+        assert_eq!(result.largest_component_size, 2);
+
+        let comp_map: HashMap<Uuid, u64> = result.components.into_iter().collect();
+        assert_eq!(comp_map[&ids[0]], comp_map[&ids[1]]);
+        assert_eq!(comp_map[&ids[2]], comp_map[&ids[3]]);
+        assert_ne!(comp_map[&ids[0]], comp_map[&ids[2]]);
+    }
+}

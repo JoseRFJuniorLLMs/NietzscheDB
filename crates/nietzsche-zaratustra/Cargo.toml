@@ -17,3 +17,6 @@ tracing          = { workspace = true }
 thiserror        = { workspace = true }
 uuid             = { workspace = true }
 rand             = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

@@ -191,3 +191,243 @@ pub fn degree_centrality(
     result.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nietzsche_graph::model::{Edge, Node, PoincareVector};
+    use nietzsche_graph::{AdjacencyIndex, GraphStorage};
+    use tempfile::TempDir;
+
+    fn open_temp_db() -> (GraphStorage, TempDir) {
+        let dir = TempDir::new().unwrap();
+        let storage = GraphStorage::open(dir.path().to_str().unwrap()).unwrap();
+        (storage, dir)
+    }
+
+    fn make_node(x: f32, y: f32) -> Node {
+        Node::new(
+            Uuid::new_v4(),
+            PoincareVector::new(vec![x, y]),
+            serde_json::json!({"label": "test"}),
+        )
+    }
+
+    fn build_graph(
+        nodes: &[Node],
+        edges: &[(usize, usize, f32)],
+    ) -> (GraphStorage, AdjacencyIndex, Vec<Uuid>, TempDir) {
+        let (storage, dir) = open_temp_db();
+        let adj = AdjacencyIndex::new();
+        let ids: Vec<Uuid> = nodes.iter().map(|n| n.id).collect();
+        for node in nodes {
+            storage.put_node(node).unwrap();
+        }
+        for &(from, to, weight) in edges {
+            let edge = Edge::association(ids[from], ids[to], weight);
+            storage.put_edge(&edge).unwrap();
+            adj.add_edge(&edge);
+        }
+        (storage, adj, ids, dir)
+    }
+
+    // ── Betweenness centrality tests ─────────────────────────────────────
+
+    #[test]
+    fn betweenness_empty_graph() {
+        let (storage, _dir) = open_temp_db();
+        let adj = AdjacencyIndex::new();
+
+        let result = betweenness_centrality(&storage, &adj, None).unwrap();
+        assert!(result.scores.is_empty());
+    }
+
+    #[test]
+    fn betweenness_path_graph() {
+        // Path: 0 -> 1 -> 2 -> 3
+        // Node 1 and node 2 are on all shortest paths between the endpoints
+        let nodes: Vec<Node> = (0..4).map(|i| make_node(0.1 * i as f32, 0.1)).collect();
+        let edges = vec![(0, 1, 1.0), (1, 2, 1.0), (2, 3, 1.0)];
+        let (storage, adj, ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = betweenness_centrality(&storage, &adj, None).unwrap();
+        let score_map: HashMap<Uuid, f64> = result.scores.into_iter().collect();
+
+        // Endpoints (0, 3) should have 0 betweenness
+        assert!(
+            score_map[&ids[0]].abs() < 1e-6,
+            "endpoint node 0 should have 0 betweenness"
+        );
+        assert!(
+            score_map[&ids[3]].abs() < 1e-6,
+            "endpoint node 3 should have 0 betweenness"
+        );
+
+        // Interior nodes (1, 2) should have positive betweenness
+        assert!(
+            score_map[&ids[1]] > 0.0,
+            "interior node 1 should have positive betweenness"
+        );
+        assert!(
+            score_map[&ids[2]] > 0.0,
+            "interior node 2 should have positive betweenness"
+        );
+    }
+
+    #[test]
+    fn betweenness_star_center_highest() {
+        // Star: 0 is the center, 1..4 connect to center
+        // Center should have highest betweenness because all shortest paths go through it
+        let nodes: Vec<Node> = (0..5).map(|i| make_node(0.05 * i as f32, 0.05)).collect();
+        let edges = vec![
+            (0, 1, 1.0), (0, 2, 1.0), (0, 3, 1.0), (0, 4, 1.0),
+            (1, 0, 1.0), (2, 0, 1.0), (3, 0, 1.0), (4, 0, 1.0),
+        ];
+        let (storage, adj, ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = betweenness_centrality(&storage, &adj, None).unwrap();
+        let score_map: HashMap<Uuid, f64> = result.scores.into_iter().collect();
+
+        let center_bc = score_map[&ids[0]];
+        for i in 1..5 {
+            assert!(
+                center_bc >= score_map[&ids[i]],
+                "center should have highest betweenness"
+            );
+        }
+    }
+
+    // ── Closeness centrality tests ───────────────────────────────────────
+
+    #[test]
+    fn closeness_empty_graph() {
+        let (storage, _dir) = open_temp_db();
+        let adj = AdjacencyIndex::new();
+
+        let result = closeness_centrality(&storage, &adj).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn closeness_star_center_highest() {
+        // Star: center -> all spokes, and spokes -> center
+        // Center has distance 1 to every other node
+        let nodes: Vec<Node> = (0..5).map(|i| make_node(0.05 * i as f32, 0.05)).collect();
+        let edges = vec![
+            (0, 1, 1.0), (0, 2, 1.0), (0, 3, 1.0), (0, 4, 1.0),
+        ];
+        let (storage, adj, ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = closeness_centrality(&storage, &adj).unwrap();
+        let score_map: HashMap<Uuid, f64> = result.into_iter().collect();
+
+        let center_cc = score_map[&ids[0]];
+        // Center can reach all 4 spokes at distance 1 => closeness = 4/4 = 1.0
+        assert!(
+            (center_cc - 1.0).abs() < 1e-6,
+            "center closeness should be 1.0, got {center_cc}"
+        );
+    }
+
+    #[test]
+    fn closeness_path_graph() {
+        // Path: 0 -> 1 -> 2
+        // Node 0 can reach 1 (dist 1) and 2 (dist 2), closeness = 2/3
+        // Node 1 can reach 2 (dist 1) only, closeness = 1/1 = 1.0
+        // Node 2 is a sink with no outgoing, closeness = 0
+        let nodes: Vec<Node> = (0..3).map(|i| make_node(0.1 * i as f32, 0.1)).collect();
+        let edges = vec![(0, 1, 1.0), (1, 2, 1.0)];
+        let (storage, adj, ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = closeness_centrality(&storage, &adj).unwrap();
+        let score_map: HashMap<Uuid, f64> = result.into_iter().collect();
+
+        // Node 0: reaches 2 nodes, total dist = 1+2 = 3, closeness = 2/3
+        assert!(
+            (score_map[&ids[0]] - 2.0 / 3.0).abs() < 1e-6,
+            "node 0 closeness expected 2/3, got {}",
+            score_map[&ids[0]]
+        );
+        // Node 1: reaches 1 node at dist 1, closeness = 1/1 = 1.0
+        assert!(
+            (score_map[&ids[1]] - 1.0).abs() < 1e-6,
+            "node 1 closeness expected 1.0, got {}",
+            score_map[&ids[1]]
+        );
+        // Node 2: reaches 0 nodes, closeness = 0
+        assert!(
+            score_map[&ids[2]].abs() < 1e-6,
+            "node 2 (sink) closeness should be 0, got {}",
+            score_map[&ids[2]]
+        );
+    }
+
+    // ── Degree centrality tests ──────────────────────────────────────────
+
+    #[test]
+    fn degree_centrality_single_node() {
+        let node = make_node(0.1, 0.1);
+        let adj = AdjacencyIndex::new();
+        let ids = vec![node.id];
+
+        let result = degree_centrality(&adj, Direction::Both, &ids);
+        assert_eq!(result.len(), 1);
+        assert!((result[0].1 - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn degree_centrality_star_out() {
+        // Star: center (node 0) has 4 outgoing edges
+        let nodes: Vec<Node> = (0..5).map(|i| make_node(0.05 * i as f32, 0.05)).collect();
+        let ids: Vec<Uuid> = nodes.iter().map(|n| n.id).collect();
+        let adj = AdjacencyIndex::new();
+
+        for i in 1..5 {
+            let edge = Edge::association(ids[0], ids[i], 1.0);
+            adj.add_edge(&edge);
+        }
+
+        let result = degree_centrality(&adj, Direction::Out, &ids);
+        let score_map: HashMap<Uuid, f64> = result.into_iter().collect();
+
+        // Center: 4 outgoing / (5-1) = 1.0
+        assert!(
+            (score_map[&ids[0]] - 1.0).abs() < 1e-6,
+            "center out-degree centrality should be 1.0"
+        );
+        // Spokes: 0 outgoing / (5-1) = 0.0
+        for i in 1..5 {
+            assert!(
+                score_map[&ids[i]].abs() < 1e-6,
+                "spoke out-degree centrality should be 0.0"
+            );
+        }
+    }
+
+    #[test]
+    fn degree_centrality_both_directions() {
+        // Triangle: 0->1, 1->2, 2->0
+        let nodes: Vec<Node> = (0..3).map(|i| make_node(0.1 * i as f32, 0.1)).collect();
+        let ids: Vec<Uuid> = nodes.iter().map(|n| n.id).collect();
+        let adj = AdjacencyIndex::new();
+
+        let e01 = Edge::association(ids[0], ids[1], 1.0);
+        let e12 = Edge::association(ids[1], ids[2], 1.0);
+        let e20 = Edge::association(ids[2], ids[0], 1.0);
+        adj.add_edge(&e01);
+        adj.add_edge(&e12);
+        adj.add_edge(&e20);
+
+        let result = degree_centrality(&adj, Direction::Both, &ids);
+        let score_map: HashMap<Uuid, f64> = result.into_iter().collect();
+
+        // Each node has 1 out + 1 in = 2 total, denom = 2 => centrality = 1.0
+        for i in 0..3 {
+            assert!(
+                (score_map[&ids[i]] - 1.0).abs() < 1e-6,
+                "node {i} both-degree centrality should be 1.0, got {}",
+                score_map[&ids[i]]
+            );
+        }
+    }
+}

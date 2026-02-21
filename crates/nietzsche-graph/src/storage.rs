@@ -879,6 +879,52 @@ impl GraphStorage {
             None => Ok(Vec::new()),
         }
     }
+
+    /// Delete all elements of a named list for a node. Returns the count of deleted entries.
+    ///
+    /// Also removes the sequence counter from CF_META.
+    pub fn list_del(
+        &self,
+        node_id: &Uuid,
+        list_name: &str,
+    ) -> Result<u64, GraphError> {
+        let name_hash = fnv1a_64(list_name.as_bytes());
+
+        // Build prefix for iteration: [node_id(16B) | name_hash(8B)]
+        let mut prefix = [0u8; 24];
+        prefix[0..16].copy_from_slice(node_id.as_bytes());
+        prefix[16..24].copy_from_slice(&name_hash.to_be_bytes());
+
+        let mut start_key = [0u8; 32];
+        start_key[0..24].copy_from_slice(&prefix);
+        // seq starts at 1
+
+        let iter = self.db.iterator_cf(
+            &self.cf_lists(),
+            rocksdb::IteratorMode::From(&start_key, rocksdb::Direction::Forward),
+        );
+
+        let mut batch = rocksdb::WriteBatch::default();
+        let mut count = 0u64;
+
+        for item in iter {
+            let (key, _) = item.map_err(|e| GraphError::Storage(e.to_string()))?;
+            if key.len() < 32 || &key[0..24] != &prefix[..] {
+                break;
+            }
+            batch.delete_cf(&self.cf_lists(), &*key);
+            count += 1;
+        }
+
+        // Remove the seq counter
+        let seq_meta_key = format!("list_seq:{}:{}", node_id, list_name);
+        batch.delete_cf(&self.cf_meta(), seq_meta_key.as_bytes());
+
+        self.db.write(batch)
+            .map_err(|e| GraphError::Storage(e.to_string()))?;
+
+        Ok(count)
+    }
 }
 
 // ─────────────────────────────────────────────
@@ -1304,5 +1350,95 @@ mod tests {
         // Meta updated
         let m = storage.get_node_meta(&id).unwrap().unwrap();
         assert!((m.energy - 0.33).abs() < 1e-6);
+    }
+
+    // ── ListStore tests ──────────────────────────
+
+    #[test]
+    fn list_rpush_and_lrange() {
+        let (storage, _dir) = open_temp_db();
+        let nid = Uuid::new_v4();
+        storage.list_rpush(&nid, "audio", b"chunk0").unwrap();
+        storage.list_rpush(&nid, "audio", b"chunk1").unwrap();
+        storage.list_rpush(&nid, "audio", b"chunk2").unwrap();
+
+        let all = storage.list_lrange(&nid, "audio", 0, -1).unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[0], b"chunk0");
+        assert_eq!(all[1], b"chunk1");
+        assert_eq!(all[2], b"chunk2");
+    }
+
+    #[test]
+    fn list_lrange_subset() {
+        let (storage, _dir) = open_temp_db();
+        let nid = Uuid::new_v4();
+        for i in 0..5 {
+            storage.list_rpush(&nid, "q", format!("v{i}").as_bytes()).unwrap();
+        }
+        // start=1 means skip first, stop=3 means include up to index 3
+        let sub = storage.list_lrange(&nid, "q", 1, 3).unwrap();
+        assert_eq!(sub.len(), 3);
+        assert_eq!(sub[0], b"v1");
+        assert_eq!(sub[2], b"v3");
+    }
+
+    #[test]
+    fn list_lrange_stop_minus_one() {
+        let (storage, _dir) = open_temp_db();
+        let nid = Uuid::new_v4();
+        storage.list_rpush(&nid, "x", b"a").unwrap();
+        storage.list_rpush(&nid, "x", b"b").unwrap();
+        storage.list_rpush(&nid, "x", b"c").unwrap();
+
+        // stop=-1 means "to the end"
+        let all = storage.list_lrange(&nid, "x", 0, -1).unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[0], b"a");
+        assert_eq!(all[2], b"c");
+    }
+
+    #[test]
+    fn list_len_returns_count() {
+        let (storage, _dir) = open_temp_db();
+        let nid = Uuid::new_v4();
+        assert_eq!(storage.list_len(&nid, "empty").unwrap(), 0);
+
+        storage.list_rpush(&nid, "items", b"1").unwrap();
+        storage.list_rpush(&nid, "items", b"2").unwrap();
+        assert_eq!(storage.list_len(&nid, "items").unwrap(), 2);
+    }
+
+    #[test]
+    fn list_del_removes_all() {
+        let (storage, _dir) = open_temp_db();
+        let nid = Uuid::new_v4();
+        storage.list_rpush(&nid, "tmp", b"a").unwrap();
+        storage.list_rpush(&nid, "tmp", b"b").unwrap();
+
+        let deleted = storage.list_del(&nid, "tmp").unwrap();
+        assert_eq!(deleted, 2);
+        assert_eq!(storage.list_len(&nid, "tmp").unwrap(), 0);
+    }
+
+    #[test]
+    fn list_isolation_between_names() {
+        let (storage, _dir) = open_temp_db();
+        let nid = Uuid::new_v4();
+        storage.list_rpush(&nid, "list_a", b"aa").unwrap();
+        storage.list_rpush(&nid, "list_b", b"bb").unwrap();
+
+        assert_eq!(storage.list_len(&nid, "list_a").unwrap(), 1);
+        assert_eq!(storage.list_len(&nid, "list_b").unwrap(), 1);
+        assert_eq!(storage.list_lrange(&nid, "list_a", 0, -1).unwrap()[0], b"aa");
+        assert_eq!(storage.list_lrange(&nid, "list_b", 0, -1).unwrap()[0], b"bb");
+    }
+
+    #[test]
+    fn list_empty_range() {
+        let (storage, _dir) = open_temp_db();
+        let nid = Uuid::new_v4();
+        let empty = storage.list_lrange(&nid, "nonexistent", 0, -1).unwrap();
+        assert!(empty.is_empty());
     }
 }

@@ -157,6 +157,7 @@ Sixteen new crates built on top of the foundation:
 #### `nietzsche-graph` — Hyperbolic Graph Engine
 - `Node` = `NodeMeta` (~100 bytes: id, depth, energy, node_type, hausdorff_local, content) + `PoincareVector` (embedding, stored separately for 10-25x traversal speedup)
 - `PoincareVector` with `Vec<f32>` coords (distance kernel promotes to f64 internally for numerical stability near the Poincare boundary)
+- `SparseVector` for SPLADE/sparse embeddings: sorted indices + values with O(nnz) dot product, cosine similarity, and L2 norm
 - `Edge` typed as `Association`, `LSystemGenerated`, `Hierarchical`, or `Pruned`
 - `AdjacencyIndex` using `DashMap` for lock-free concurrent access
 - `GraphStorage` over RocksDB with 10 column families: `nodes`, `embeddings`, `edges`, `adj_out`, `adj_in`, `meta`, `sensory`, `energy_idx`, `meta_idx`, `lists`
@@ -242,6 +243,9 @@ MATCH (n:Semantic) WHERE n.energy < 0.1 SET n.energy = 0.5 RETURN n
 -- Delete expired nodes
 MATCH (n) WHERE n.energy = 0.0 DELETE n
 
+-- Time-based queries with NOW() and INTERVAL()
+MATCH (n) WHERE n.created_at > NOW() - INTERVAL("7d") RETURN n LIMIT 50
+
 -- EXPLAIN with cost estimates
 EXPLAIN MATCH (n:Memory) WHERE n.energy > 0.3 RETURN n
 -- → NodeScan(label=Memory) -> Filter(conditions=1) | rows=~250, scan=EnergyIndexScan, index=CF_ENERGY_IDX, cost=~500µs
@@ -271,6 +275,9 @@ RETURN path
 | `MINKOWSKI_NORM(n)` | H. Minkowski | Conformal factor |
 | `RAMANUJAN_EXPANSION(n)` | S. Ramanujan | Spectral expansion ratio |
 | `FOURIER_COEFF(n, k)` | J. Fourier | Graph Fourier coefficient |
+| `NOW()` | — | Current Unix timestamp (seconds, f64) |
+| `EPOCH_MS()` | — | Current Unix epoch (milliseconds, f64) |
+| `INTERVAL("1h")` | — | Duration to seconds (s/m/h/d/w units) |
 
 #### `nietzsche-lsystem` — Fractal Growth Engine
 The knowledge graph is not static — it grows by **L-System production rules**:
@@ -302,6 +309,8 @@ EVA-Mind sleeps. During sleep:
 7. **Rollback** if identity was destroyed — dream discarded
 
 This prevents catastrophic forgetting while allowing genuine memory reorganization.
+
+**Time-travel / Versioning:** Named snapshots (`SnapshotRegistry`) allow creating labeled checkpoints of the entire embedding state, listing all snapshots with timestamps, and restoring any previous state — enabling temporal queries and safe experimentation.
 
 #### `nietzsche-zaratustra` — Autonomous Evolution Engine
 Three-phase autonomous cycle inspired by Nietzsche's philosophy:
@@ -631,6 +640,15 @@ P2.9  ListStore (RPUSH/LRANGE/LLEN)        ✅ COMPLETE
 P3.10 Query Cost Estimator (EXPLAIN)       ✅ COMPLETE
 P3.11 Hybrid BM25+ANN (RRF fusion)        ✅ COMPLETE
 P3.12 Schema Validation (per-NodeType)     ✅ COMPLETE
+
+── Consolidation Sprint (2026-02-21) ──────────────────────
+C0.1  Bug fixes (5 real bugs)              ✅ COMPLETE
+C0.2  Test coverage (+156 new tests)       ✅ COMPLETE
+C1.1  NQL Time Functions (NOW/INTERVAL)    ✅ COMPLETE
+C1.2  ListStore list_del method            ✅ COMPLETE
+C2.1  SparseVector type                    ✅ COMPLETE
+C2.2  HNSW Auto-tuner (ef_search)          ✅ COMPLETE
+C2.3  Named Snapshots (time-travel)        ✅ COMPLETE
 ```
 
 ---

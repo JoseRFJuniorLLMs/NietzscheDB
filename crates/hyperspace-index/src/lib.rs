@@ -270,7 +270,13 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         let inverted = DashMap::new();
         for (k, v) in deserialized.metadata.inverted {
-            let bitmap = RoaringBitmap::deserialize_from(&v[..]).unwrap_or_default();
+            let bitmap = match RoaringBitmap::deserialize_from(&v[..]) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("⚠️ Corrupted inverted bitmap for key '{k}': {e}. Using empty.");
+                    RoaringBitmap::new()
+                }
+            };
             inverted.insert(k, bitmap);
         }
 
@@ -278,14 +284,25 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         for (k, v) in deserialized.metadata.numeric {
             let mut inner_map = BTreeMap::new();
             for (val, bitmap_bytes) in v {
-                let bitmap = RoaringBitmap::deserialize_from(&bitmap_bytes[..]).unwrap_or_default();
+                let bitmap = match RoaringBitmap::deserialize_from(&bitmap_bytes[..]) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        eprintln!("⚠️ Corrupted numeric bitmap for key '{k}' val={val}: {e}. Using empty.");
+                        RoaringBitmap::new()
+                    }
+                };
                 inner_map.insert(val, bitmap);
             }
             numeric.insert(k, inner_map);
         }
 
-        let deleted =
-            RoaringBitmap::deserialize_from(&deserialized.metadata.deleted[..]).unwrap_or_default();
+        let deleted = match RoaringBitmap::deserialize_from(&deserialized.metadata.deleted[..]) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("⚠️ Corrupted deleted bitmap: {e}. Using empty (may resurrect deleted nodes).");
+                RoaringBitmap::new()
+            }
+        };
 
         let forward = DashMap::new();
         let mut has_nonempty_metadata = false;
@@ -1365,7 +1382,11 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                     if curr_obj as usize >= nodes_guard.len() {
                         break;
                     }
-                    let neighbors = nodes_guard[curr_obj as usize].layers[level].read();
+                    let node = &nodes_guard[curr_obj as usize];
+                    if level >= node.layers.len() {
+                        break;
+                    }
+                    let neighbors = node.layers[level].read();
                     let mut best_n = None;
                     for &n in neighbors.iter() {
                         let d = self.dist(n, &q_vec);
@@ -1405,12 +1426,17 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                     self.add_link(id, neighbor_id, level);
                     self.add_link(neighbor_id, id, level);
 
-                    // d) Pruning
-                    let neighbors_len = self.nodes.read()[neighbor_id as usize].layers[level]
-                        .read()
-                        .len();
-                    if neighbors_len > m_max {
-                        self.prune_connections(neighbor_id, level, m_max);
+                    // d) Pruning (with bounds check for concurrent safety)
+                    let nodes_guard = self.nodes.read();
+                    if (neighbor_id as usize) < nodes_guard.len()
+                        && level < nodes_guard[neighbor_id as usize].layers.len()
+                    {
+                        let neighbors_len =
+                            nodes_guard[neighbor_id as usize].layers[level].read().len();
+                        drop(nodes_guard);
+                        if neighbors_len > m_max {
+                            self.prune_connections(neighbor_id, level, m_max);
+                        }
                     }
                 }
 

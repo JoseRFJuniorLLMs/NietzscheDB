@@ -96,9 +96,19 @@ impl Wal {
         // Flush to OS cache (always)
         self.file.flush()?;
 
-        // Fsync to Disk (if Strict)
-        if self.mode == WalSyncMode::Strict {
-            self.file.get_ref().sync_all()?;
+        // Sync to disk based on durability mode
+        match self.mode {
+            WalSyncMode::Strict => {
+                // Full sync: data + filesystem metadata (slowest, safest)
+                self.file.get_ref().sync_all()?;
+            }
+            WalSyncMode::Batch => {
+                // Data sync only: skips FS metadata update (faster than Strict)
+                self.file.get_ref().sync_data()?;
+            }
+            WalSyncMode::Async => {
+                // No sync: relies on OS cache flush only (fastest, least durable)
+            }
         }
 
         Ok(())

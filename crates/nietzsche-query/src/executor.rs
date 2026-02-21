@@ -1380,7 +1380,66 @@ fn eval_math_func(
             }
             Ok(Value::Float(energy_sum))
         }
+
+        // ── Time functions ─────────────────────────────────────
+        MathFunc::Now => {
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs_f64();
+            Ok(Value::Float(secs))
+        }
+        MathFunc::EpochMs => {
+            let ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as f64;
+            Ok(Value::Float(ms))
+        }
+        MathFunc::Interval => {
+            let duration_str = match &args[0] {
+                MathFuncArg::Str(s) => s.clone(),
+                MathFuncArg::Param(name) => match params.get(name.as_str()) {
+                    Some(ParamValue::Str(s)) => s.clone(),
+                    _ => return Err(QueryError::Execution(
+                        format!("INTERVAL: param ${name} must be a string")
+                    )),
+                },
+                _ => return Err(QueryError::Execution(
+                    "INTERVAL expects a string argument like \"1h\", \"7d\", \"30m\"".into()
+                )),
+            };
+            let seconds = parse_interval_str(&duration_str)?;
+            Ok(Value::Float(seconds))
+        }
     }
+}
+
+/// Parse an interval string like "1h", "7d", "30m", "2w", "3600s" into seconds.
+fn parse_interval_str(s: &str) -> Result<f64, QueryError> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Err(QueryError::Execution("INTERVAL: empty string".into()));
+    }
+    // Find where the number ends and the unit starts
+    let (num_part, unit) = match s.rfind(|c: char| c.is_ascii_digit() || c == '.') {
+        Some(pos) => (&s[..=pos], s[pos + 1..].trim()),
+        None => return Err(QueryError::Execution(format!("INTERVAL: invalid format '{s}'"))),
+    };
+    let value: f64 = num_part.parse()
+        .map_err(|_| QueryError::Execution(format!("INTERVAL: invalid number '{num_part}'")))?;
+    let multiplier = match unit {
+        "s" | "sec" | "second" | "seconds" => 1.0,
+        "m" | "min" | "minute" | "minutes" => 60.0,
+        "h" | "hr" | "hour" | "hours"      => 3600.0,
+        "d" | "day" | "days"               => 86400.0,
+        "w" | "week" | "weeks"             => 604800.0,
+        "" => 1.0, // bare number = seconds
+        _ => return Err(QueryError::Execution(
+            format!("INTERVAL: unknown unit '{unit}'. Use s/m/h/d/w")
+        )),
+    };
+    Ok(value * multiplier)
 }
 
 // ── Math function argument resolvers ──────────────────────
@@ -2364,5 +2423,91 @@ mod tests {
             &storage, &adjacency, &Params::new(),
         );
         assert!(!results.is_empty());
+    }
+
+    // ── Time functions tests ────────────────────────────────
+
+    #[test]
+    fn now_returns_reasonable_timestamp() {
+        let dir = tmp();
+        let storage = open_storage(&dir);
+        let adjacency = AdjacencyIndex::new();
+        storage.put_node(&node_at(0.1, 1.0)).unwrap();
+
+        let results = parse_and_exec(
+            "MATCH (n) WHERE NOW() > 1700000000.0 RETURN n",
+            &storage, &adjacency, &Params::new(),
+        );
+        // NOW() should be > 1.7 billion (2023+), so all nodes match
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn epoch_ms_returns_milliseconds() {
+        let dir = tmp();
+        let storage = open_storage(&dir);
+        let adjacency = AdjacencyIndex::new();
+        storage.put_node(&node_at(0.1, 1.0)).unwrap();
+
+        let results = parse_and_exec(
+            "MATCH (n) WHERE EPOCH_MS() > 1700000000000.0 RETURN n",
+            &storage, &adjacency, &Params::new(),
+        );
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn interval_hours() {
+        let dir = tmp();
+        let storage = open_storage(&dir);
+        let adjacency = AdjacencyIndex::new();
+        storage.put_node(&node_at(0.1, 1.0)).unwrap();
+
+        // INTERVAL("1h") should equal 3600 seconds
+        let results = parse_and_exec(
+            "MATCH (n) WHERE INTERVAL(\"1h\") = 3600.0 RETURN n",
+            &storage, &adjacency, &Params::new(),
+        );
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn interval_days() {
+        let dir = tmp();
+        let storage = open_storage(&dir);
+        let adjacency = AdjacencyIndex::new();
+        storage.put_node(&node_at(0.1, 1.0)).unwrap();
+
+        // INTERVAL("7d") should equal 604800 seconds
+        let results = parse_and_exec(
+            "MATCH (n) WHERE INTERVAL(\"7d\") = 604800.0 RETURN n",
+            &storage, &adjacency, &Params::new(),
+        );
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn interval_minutes() {
+        let dir = tmp();
+        let storage = open_storage(&dir);
+        let adjacency = AdjacencyIndex::new();
+        storage.put_node(&node_at(0.1, 1.0)).unwrap();
+
+        // INTERVAL("30m") = 1800 seconds
+        let results = parse_and_exec(
+            "MATCH (n) WHERE INTERVAL(\"30m\") = 1800.0 RETURN n",
+            &storage, &adjacency, &Params::new(),
+        );
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn parse_interval_str_unit_test() {
+        assert!((super::parse_interval_str("1h").unwrap() - 3600.0).abs() < 1e-6);
+        assert!((super::parse_interval_str("7d").unwrap() - 604800.0).abs() < 1e-6);
+        assert!((super::parse_interval_str("30m").unwrap() - 1800.0).abs() < 1e-6);
+        assert!((super::parse_interval_str("2w").unwrap() - 1209600.0).abs() < 1e-6);
+        assert!((super::parse_interval_str("3600s").unwrap() - 3600.0).abs() < 1e-6);
+        assert!((super::parse_interval_str("1.5h").unwrap() - 5400.0).abs() < 1e-6);
     }
 }

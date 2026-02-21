@@ -160,3 +160,157 @@ pub fn triangle_count(
 
     Ok(count)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nietzsche_graph::model::{Edge, Node, PoincareVector};
+    use nietzsche_graph::{AdjacencyIndex, GraphStorage};
+    use tempfile::TempDir;
+
+    fn open_temp_db() -> (GraphStorage, TempDir) {
+        let dir = TempDir::new().unwrap();
+        let storage = GraphStorage::open(dir.path().to_str().unwrap()).unwrap();
+        (storage, dir)
+    }
+
+    fn make_node(x: f32, y: f32) -> Node {
+        Node::new(
+            Uuid::new_v4(),
+            PoincareVector::new(vec![x, y]),
+            serde_json::json!({"label": "test"}),
+        )
+    }
+
+    fn build_graph(
+        nodes: &[Node],
+        edges: &[(usize, usize, f32)],
+    ) -> (GraphStorage, AdjacencyIndex, Vec<Uuid>, TempDir) {
+        let (storage, dir) = open_temp_db();
+        let adj = AdjacencyIndex::new();
+        let ids: Vec<Uuid> = nodes.iter().map(|n| n.id).collect();
+        for node in nodes {
+            storage.put_node(node).unwrap();
+        }
+        for &(from, to, weight) in edges {
+            let edge = Edge::association(ids[from], ids[to], weight);
+            storage.put_edge(&edge).unwrap();
+            adj.add_edge(&edge);
+        }
+        (storage, adj, ids, dir)
+    }
+
+    // ── A* tests ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn astar_same_node() {
+        let node = make_node(0.1, 0.1);
+        let (storage, adj, ids, _dir) = build_graph(&[node], &[]);
+
+        let result = astar(&storage, &adj, ids[0], ids[0]).unwrap();
+        assert!(result.is_some(), "path from node to itself should exist");
+        let (path, cost) = result.unwrap();
+        assert_eq!(path, vec![ids[0]]);
+        assert!((cost - 0.0).abs() < 1e-6, "self-path cost should be 0");
+    }
+
+    #[test]
+    fn astar_direct_edge() {
+        let nodes: Vec<Node> = (0..2).map(|i| make_node(0.1 * i as f32, 0.1)).collect();
+        let edges = vec![(0, 1, 1.0)];
+        let (storage, adj, ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = astar(&storage, &adj, ids[0], ids[1]).unwrap();
+        assert!(result.is_some());
+        let (path, cost) = result.unwrap();
+        assert_eq!(path, vec![ids[0], ids[1]]);
+        assert!(cost > 0.0);
+    }
+
+    #[test]
+    fn astar_unreachable() {
+        // Two isolated nodes
+        let nodes: Vec<Node> = (0..2).map(|i| make_node(0.1 * i as f32, 0.1)).collect();
+        let (storage, adj, ids, _dir) = build_graph(&nodes, &[]);
+
+        let result = astar(&storage, &adj, ids[0], ids[1]).unwrap();
+        assert!(result.is_none(), "disconnected nodes should return None");
+    }
+
+    #[test]
+    fn astar_multi_hop_path() {
+        // Path: 0 -> 1 -> 2 -> 3
+        let nodes: Vec<Node> = (0..4).map(|i| make_node(0.1 * i as f32, 0.1)).collect();
+        let edges = vec![(0, 1, 1.0), (1, 2, 1.0), (2, 3, 1.0)];
+        let (storage, adj, ids, _dir) = build_graph(&nodes, &edges);
+
+        let result = astar(&storage, &adj, ids[0], ids[3]).unwrap();
+        assert!(result.is_some());
+        let (path, _cost) = result.unwrap();
+        assert_eq!(path.len(), 4);
+        assert_eq!(path[0], ids[0]);
+        assert_eq!(path[3], ids[3]);
+    }
+
+    #[test]
+    fn astar_nonexistent_node() {
+        let node = make_node(0.1, 0.1);
+        let (storage, adj, _ids, _dir) = build_graph(&[node], &[]);
+        let fake_id = Uuid::new_v4();
+
+        let result = astar(&storage, &adj, fake_id, fake_id).unwrap();
+        assert!(result.is_none(), "nonexistent start should return None");
+    }
+
+    // ── Triangle count tests ─────────────────────────────────────────────
+
+    #[test]
+    fn triangle_count_empty_graph() {
+        let (storage, _dir) = open_temp_db();
+        let adj = AdjacencyIndex::new();
+
+        let count = triangle_count(&storage, &adj).unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn triangle_count_no_triangles() {
+        // Path: 0 -> 1 -> 2 (no closing edge => 0 triangles)
+        let nodes: Vec<Node> = (0..3).map(|i| make_node(0.1 * i as f32, 0.1)).collect();
+        let edges = vec![(0, 1, 1.0), (1, 2, 1.0)];
+        let (storage, adj, _ids, _dir) = build_graph(&nodes, &edges);
+
+        let count = triangle_count(&storage, &adj).unwrap();
+        assert_eq!(count, 0, "path graph has no triangles");
+    }
+
+    #[test]
+    fn triangle_count_single_triangle() {
+        // Triangle: 0 -> 1, 1 -> 2, 0 -> 2
+        let nodes: Vec<Node> = (0..3).map(|i| make_node(0.1 * i as f32, 0.1)).collect();
+        let edges = vec![(0, 1, 1.0), (1, 2, 1.0), (0, 2, 1.0)];
+        let (storage, adj, _ids, _dir) = build_graph(&nodes, &edges);
+
+        let count = triangle_count(&storage, &adj).unwrap();
+        assert_eq!(count, 1, "three nodes with closing edge = 1 triangle");
+    }
+
+    #[test]
+    fn triangle_count_complete_4() {
+        // K4 (complete graph on 4 nodes): C(4,3) = 4 triangles
+        let nodes: Vec<Node> = (0..4).map(|i| make_node(0.05 * i as f32, 0.05)).collect();
+        // All directed edges (complete)
+        let mut edges = Vec::new();
+        for i in 0..4 {
+            for j in 0..4 {
+                if i != j {
+                    edges.push((i, j, 1.0));
+                }
+            }
+        }
+        let (storage, adj, _ids, _dir) = build_graph(&nodes, &edges);
+
+        let count = triangle_count(&storage, &adj).unwrap();
+        assert_eq!(count, 4, "K4 has C(4,3) = 4 triangles");
+    }
+}
