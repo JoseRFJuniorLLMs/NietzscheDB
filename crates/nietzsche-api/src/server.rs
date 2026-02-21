@@ -25,7 +25,7 @@ use uuid::Uuid;
 
 use nietzsche_graph::{
     BackpressureSignal, CollectionConfig, CollectionManager,
-    Edge, EdgeType, GraphError, Node, NodeType, PoincareVector,
+    Edge, EdgeType, GraphError, MetadataFilter, Node, NodeType, PoincareVector,
     traversal::{BfsConfig, DijkstraConfig},
     bfs, dijkstra,
 };
@@ -78,6 +78,31 @@ fn parse_node_type(s: &str) -> NodeType {
         "Concept"       => NodeType::Concept,
         "DreamSnapshot" => NodeType::DreamSnapshot,
         _               => NodeType::Semantic,
+    }
+}
+
+/// Convert proto KnnFilter list → MetadataFilter (AND semantics).
+fn proto_filters_to_metadata_filter(filters: &[nietzsche::KnnFilter]) -> MetadataFilter {
+    if filters.is_empty() {
+        return MetadataFilter::None;
+    }
+    let subs: Vec<MetadataFilter> = filters.iter().filter_map(|f| {
+        f.condition.as_ref().map(|c| match c {
+            nietzsche::knn_filter::Condition::MatchFilter(m) => MetadataFilter::Eq {
+                field: m.field.clone(),
+                value: m.value.clone(),
+            },
+            nietzsche::knn_filter::Condition::RangeFilter(r) => MetadataFilter::Range {
+                field: r.field.clone(),
+                gte: r.gte,
+                lte: r.lte,
+            },
+        })
+    }).collect();
+    if subs.len() == 1 {
+        subs.into_iter().next().unwrap()
+    } else {
+        MetadataFilter::And(subs)
     }
 }
 
@@ -532,8 +557,13 @@ impl NietzscheDb for NietzscheServer {
         match existing {
             Some(edge) => {
                 // ON MATCH: update edge metadata if provided
-                // Edge metadata updates would go here if edges had mutable content.
-                // For now, we just return the existing edge ID.
+                if !r.on_match_set.is_empty() {
+                    let on_match: serde_json::Value = serde_json::from_slice(&r.on_match_set)
+                        .map_err(|e| Status::invalid_argument(format!("invalid on_match_set JSON: {e}")))?;
+                    if on_match.as_object().map_or(false, |o| !o.is_empty()) {
+                        db.update_edge_metadata(edge.id, &on_match).map_err(graph_err)?;
+                    }
+                }
                 debug!(edge_id = %edge.id, "MergeEdge: matched existing");
                 Ok(Response::new(nietzsche::MergeEdgeResponse {
                     created: false,
@@ -567,6 +597,35 @@ impl NietzscheDb for NietzscheServer {
                 }))
             }
         }
+    }
+
+    // ── Edge metadata increment (D.2) ──────────────────────────────────
+
+    #[instrument(skip(self, req))]
+    async fn increment_edge_meta(
+        &self,
+        req: Request<nietzsche::IncrementEdgeMetaRequest>,
+    ) -> Result<Response<nietzsche::IncrementEdgeMetaResponse>, Status> {
+        require_writer(&req)?;
+        let r = req.into_inner();
+
+        let edge_id = parse_uuid(&r.edge_id, "edge_id")?;
+
+        if r.field.is_empty() {
+            return Err(Status::invalid_argument("field must not be empty"));
+        }
+
+        let shared = get_col!(self.cm, &r.collection);
+        let mut db = shared.write().await;
+
+        let new_value = db.increment_edge_metadata(edge_id, &r.field, r.delta)
+            .map_err(graph_err)?;
+
+        debug!(edge_id = %edge_id, field = %r.field, delta = r.delta, new_value, "IncrementEdgeMeta");
+
+        Ok(Response::new(nietzsche::IncrementEdgeMetaResponse {
+            new_value,
+        }))
     }
 
     // ── NQL query ─────────────────────────────────────────────────────────
@@ -989,6 +1048,9 @@ impl NietzscheDb for NietzscheServer {
                 QueryResult::TxBegin    => { path_ids.push("tx:begin".into()); }
                 QueryResult::TxCommit   => { path_ids.push("tx:commit".into()); }
                 QueryResult::TxRollback => { path_ids.push("tx:rollback".into()); }
+                QueryResult::PsychoanalyzeResult { node_id, lineage } => {
+                    path_ids.push(format!("psychoanalyze:{}:{}", node_id, lineage));
+                }
                 QueryResult::Scalar(row) => {
                     let entries = row.into_iter().map(|(col_name, val)| {
                         let mut entry = nietzsche::ScalarEntry {
@@ -1042,7 +1104,10 @@ impl NietzscheDb for NietzscheServer {
 
         let shared  = get_col!(self.cm, &r.collection);
         let db      = shared.read().await;
-        let results = db.knn(&query, k).map_err(graph_err)?;
+
+        // Convert proto filters → MetadataFilter
+        let filter = proto_filters_to_metadata_filter(&r.filters);
+        let results = db.knn_filtered(&query, k, &filter).map_err(graph_err)?;
 
         Ok(Response::new(nietzsche::KnnResponse {
             results: results.into_iter()
