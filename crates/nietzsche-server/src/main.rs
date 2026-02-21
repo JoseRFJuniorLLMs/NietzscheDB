@@ -632,6 +632,9 @@ async fn main() -> anyhow::Result<()> {
                                                 Err(e) => warn!(error = %e, "agency narrative failed"),
                                             }
                                         }
+                                        nietzsche_agency::AgencyIntent::TriggerSemanticGc { archetype_id, redundant_ids } => {
+                                            info!(archetype = %archetype_id, redundant = redundant_ids.len(), "agency: semantic GC triggered");
+                                        }
                                         nietzsche_agency::AgencyIntent::EvolveLSystemRules { strategy, reason } => {
                                             info!(strategy = ?strategy, reason = %reason, "agency: evolving L-System rules");
                                             // Load evolution state, advance generation, persist

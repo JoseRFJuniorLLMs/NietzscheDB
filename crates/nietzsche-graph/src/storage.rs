@@ -761,6 +761,17 @@ impl GraphStorage {
             .map_err(|e| GraphError::Storage(e.to_string()))
     }
 
+    /// Update an existing edge's data in-place (CF_EDGES only).
+    ///
+    /// Unlike `put_edge()`, this does NOT touch the adjacency lists (CF_ADJ_OUT/IN)
+    /// because from/to/id are unchanged. Use this for metadata-only updates
+    /// (MERGE ON MATCH, counter increment, etc.).
+    pub fn update_edge_only(&self, edge: &Edge) -> Result<(), GraphError> {
+        let edge_bytes = bincode::serialize(edge)?;
+        self.db.put_cf(&self.cf_edges(), edge.id.as_bytes(), &edge_bytes)
+            .map_err(|e| GraphError::Storage(e.to_string()))
+    }
+
     /// Retrieve an edge by ID. Returns `None` if not found.
     #[inline]
     pub fn get_edge(&self, id: &Uuid) -> Result<Option<Edge>, GraphError> {
