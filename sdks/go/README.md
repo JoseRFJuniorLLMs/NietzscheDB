@@ -81,17 +81,22 @@ func main() {
 
 ## API Coverage
 
-All 22 gRPC RPCs are covered:
+All 42/42 gRPC RPCs are covered:
 
 | Group | Methods |
 |-------|---------|
 | Collections | `CreateCollection`, `DropCollection`, `ListCollections` |
 | Nodes | `InsertNode`, `GetNode`, `DeleteNode`, `UpdateEnergy` |
 | Edges | `InsertEdge`, `DeleteEdge` |
-| Query | `Query` (NQL), `KnnSearch` |
+| Merge | `MergeNode`, `MergeEdge` |
+| Batch | `BatchInsertNodes`, `BatchInsertEdges` |
+| Query | `Query` (NQL), `KnnSearch`, `FullTextSearch` |
 | Traversal | `Bfs`, `Dijkstra`, `Diffuse` |
 | Lifecycle | `TriggerSleep`, `InvokeZaratustra` |
 | Sensory | `InsertSensory`, `GetSensory`, `Reconstruct`, `DegradeSensory` |
+| Algorithms | `RunPageRank`, `RunLouvain`, `RunLabelProp`, `RunBetweenness`, `RunCloseness`, `RunDegreeCentrality`, `RunWCC`, `RunSCC`, `RunAStar`, `RunTriangleCount`, `RunJaccardSimilarity` |
+| Backup | `CreateBackup`, `ListBackups`, `RestoreBackup` |
+| CDC | `SubscribeCDC` (server-streaming) |
 | Admin | `GetStats`, `HealthCheck` |
 
 ## Proto Regeneration

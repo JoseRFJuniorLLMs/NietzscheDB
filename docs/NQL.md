@@ -19,14 +19,25 @@ NQL is a declarative query language designed for temporal hyperbolic graph datab
    - [Time Functions](#time-functions)
    - [RETURN Clause](#return-clause)
    - [Aggregates](#aggregates)
-4. [DIFFUSE Query](#diffuse-query)
-5. [RECONSTRUCT Query](#reconstruct-query)
-6. [EXPLAIN](#explain)
-7. [Parameters](#parameters)
-8. [Multi-Collection Routing](#multi-collection-routing)
-9. [Complete Examples](#complete-examples)
-10. [Error Reference](#error-reference)
-11. [Grammar Summary](#grammar-summary)
+4. [CREATE Query](#create-query)
+5. [MATCH SET / DELETE](#match-set--delete)
+6. [MERGE Query](#merge-query)
+7. [DIFFUSE Query](#diffuse-query)
+8. [RECONSTRUCT Query](#reconstruct-query)
+9. [EXPLAIN](#explain)
+10. [DAEMON Queries](#daemon-queries)
+11. [Dream Queries](#dream-queries)
+12. [TRANSLATE (Synesthesia)](#translate-synesthesia)
+13. [Time-Travel (AS OF CYCLE)](#time-travel-as-of-cycle)
+14. [COUNTERFACTUAL](#counterfactual)
+15. [Archetypes](#archetypes)
+16. [NARRATE](#narrate)
+17. [Transactions](#transactions)
+18. [Parameters](#parameters)
+19. [Multi-Collection Routing](#multi-collection-routing)
+20. [Complete Examples](#complete-examples)
+21. [Error Reference](#error-reference)
+22. [Grammar Summary](#grammar-summary)
 
 ---
 
@@ -63,9 +74,27 @@ EXPLAIN MATCH (n) WHERE n.energy > 0.5 RETURN n LIMIT 5
 | Type | Keyword | Purpose |
 |---|---|---|
 | Pattern match | `MATCH` | Filter nodes/edges by properties and geometry |
+| Create | `CREATE` | Insert new nodes with labels and properties |
+| Update | `MATCH ... SET` | Update matched nodes' properties |
+| Delete | `MATCH ... DELETE` | Delete matched nodes |
+| Upsert | `MERGE` | Upsert nodes/edges (ON CREATE SET / ON MATCH SET) |
 | Diffusion | `DIFFUSE` | Multi-scale heat-kernel activation propagation |
-| Reconstruct | `RECONSTRUCT` | Decode sensory data from latent representation (Phase 11) |
+| Reconstruct | `RECONSTRUCT` | Decode sensory data from latent representation |
 | Explain | `EXPLAIN` | Return execution plan without running the query |
+| Dream | `DREAM FROM` | Speculative graph exploration via hyperbolic diffusion |
+| Apply Dream | `APPLY DREAM` | Accept dream simulation results |
+| Reject Dream | `REJECT DREAM` | Discard dream simulation results |
+| Show Dreams | `SHOW DREAMS` | List pending dream sessions |
+| Translate | `TRANSLATE` | Cross-modal projection via Poincare ball log/exp map |
+| Time-travel | `MATCH ... AS OF CYCLE` | Query on named snapshots |
+| Counterfactual | `COUNTERFACTUAL` | What-if query with ephemeral property overlays |
+| Create Daemon | `CREATE DAEMON` | Create autonomous daemon agent |
+| Drop Daemon | `DROP DAEMON` | Remove daemon agent |
+| Show Daemons | `SHOW DAEMONS` | List active daemon agents |
+| Show Archetypes | `SHOW ARCHETYPES` | List shared cross-collection archetypes |
+| Share Archetype | `SHARE ARCHETYPE` | Publish elite node for cross-collection discovery |
+| Narrate | `NARRATE` | Generate human-readable narrative from graph evolution |
+| Transaction | `BEGIN` / `COMMIT` / `ROLLBACK` | Transaction control |
 
 ---
 
@@ -345,6 +374,101 @@ ORDER BY avg_e DESC
 
 ---
 
+## CREATE Query
+
+Insert new nodes into the graph.
+
+### Syntax
+
+```
+CREATE (<alias>:<Label> { <property>: <value>, ... })
+[RETURN <alias>]
+```
+
+### Examples
+
+```sql
+-- Create a new episodic memory
+CREATE (n:Episodic {title: "first meeting", source: "manual"})
+RETURN n
+
+-- Create a concept node
+CREATE (c:Concept {title: "quantum mechanics", domain: "physics"})
+RETURN c
+
+-- Create with embedding (passed via params)
+CREATE (n:Semantic {title: "memory of the sea"})
+RETURN n
+```
+
+---
+
+## MATCH SET / DELETE
+
+Update or delete matched nodes.
+
+### SET Syntax
+
+```
+MATCH <pattern>
+[WHERE <condition>]
+SET <alias>.<field> = <expr> [, <alias>.<field> = <expr>]*
+[RETURN <alias>]
+```
+
+### DELETE Syntax
+
+```
+MATCH <pattern>
+[WHERE <condition>]
+DELETE <alias>
+```
+
+### Examples
+
+```sql
+-- Update energy of low-energy semantic nodes
+MATCH (n:Semantic) WHERE n.energy < 0.1 SET n.energy = 0.5 RETURN n
+
+-- Delete expired nodes
+MATCH (n) WHERE n.energy = 0.0 DELETE n
+
+-- Update multiple fields
+MATCH (n) WHERE n.id = $id SET n.energy = 0.9, n.title = "updated" RETURN n
+```
+
+---
+
+## MERGE Query
+
+Upsert pattern — insert if not exists, update if exists.
+
+### Syntax
+
+```
+MERGE (<alias>:<Label> { <match_key>: <value>, ... })
+[ON CREATE SET <alias>.<field> = <value>, ...]
+[ON MATCH SET <alias>.<field> = <value>, ...]
+[RETURN <alias>]
+```
+
+### Examples
+
+```sql
+-- Upsert a concept: create if new, update energy if existing
+MERGE (n:Concept {title: "AI Safety"})
+ON CREATE SET n.energy = 0.5, n.source = "auto"
+ON MATCH SET n.energy = 0.9
+RETURN n
+
+-- Upsert edge between nodes
+MERGE (a)-[:Association]->(b)
+ON CREATE SET a.energy = 0.6
+RETURN a, b
+```
+
+---
+
 ## DIFFUSE Query
 
 Propagates activation from a source node using the **Chebyshev heat-kernel approximation** of `e^(-tL)`, where `L` is the hyperbolic graph Laplacian.
@@ -473,6 +597,254 @@ EXPLAIN DIFFUSE FROM $seed WITH t = [1.0] MAX_HOPS 5 RETURN path
   "limit": 10,
   "estimated_cost": "O(log n)"
 }
+```
+
+---
+
+## DAEMON Queries
+
+Autonomous agents that live inside the database, patrolling the graph and executing actions when conditions are met. Daemons have energy budgets and decay over time.
+
+### CREATE DAEMON
+
+```sql
+CREATE DAEMON <name> ON (<alias>:<Label>)
+  WHEN <condition>
+  THEN <action>
+  EVERY INTERVAL("<duration>")
+  [ENERGY <float>]
+```
+
+**Actions:**
+
+| Action | Syntax | Description |
+|---|---|---|
+| Delete | `DELETE <alias>` | Remove matched nodes |
+| Set | `SET <alias>.<field> = <value>` | Update matched node fields |
+| Diffuse | `DIFFUSE FROM <alias> [WITH t=[...]] [MAX_HOPS n]` | Run diffusion from matched nodes |
+
+### DROP DAEMON / SHOW DAEMONS
+
+```sql
+DROP DAEMON <name>
+SHOW DAEMONS
+```
+
+### Examples
+
+```sql
+-- Guardian: detect curvature anomalies and diffuse to stabilize
+CREATE DAEMON guardian ON (n:Memory)
+  WHEN n.energy > 0.8
+  THEN DIFFUSE FROM n WITH t=[0.1, 1.0] MAX_HOPS 5
+  EVERY INTERVAL("1h")
+  ENERGY 0.8
+
+-- Archivist: forget old low-energy memories
+CREATE DAEMON archivist ON (n:Memory)
+  WHEN n.energy < 0.05 AND NOW() - n.created_at > INTERVAL("30d")
+  THEN DELETE n
+  EVERY INTERVAL("24h")
+  ENERGY 0.4
+
+-- List and manage
+SHOW DAEMONS
+DROP DAEMON archivist
+```
+
+**Energy budget:** Daemons decay energy each tick. When energy drops below threshold, the daemon is automatically reaped (deleted). Default energy: 1.0.
+
+---
+
+## Dream Queries
+
+Speculative graph exploration via hyperbolic diffusion with stochastic noise.
+
+### Syntax
+
+```sql
+-- Start a dream session
+DREAM FROM <$param | alias> [DEPTH <n>] [NOISE <float>]
+
+-- List pending dream sessions
+SHOW DREAMS
+
+-- Accept a dream's discoveries
+APPLY DREAM "<dream_id>"
+
+-- Reject a dream
+REJECT DREAM "<dream_id>"
+```
+
+### Examples
+
+```sql
+-- Explore speculatively from a seed node
+DREAM FROM $seed DEPTH 5 NOISE 0.05
+
+-- See what the database "dreamed"
+SHOW DREAMS
+
+-- Accept a useful discovery
+APPLY DREAM "dream_abc123"
+
+-- Reject an unhelpful dream
+REJECT DREAM "dream_xyz789"
+```
+
+Dream sessions detect energy spikes, curvature anomalies, and latent connections. Applied dreams modify node energy; rejected dreams are discarded.
+
+---
+
+## TRANSLATE (Synesthesia)
+
+Cross-modal projection via hyperbolic parallel transport on the Poincare ball.
+
+### Syntax
+
+```sql
+TRANSLATE <$param | alias> FROM <modality> TO <modality>
+```
+
+### Examples
+
+```sql
+-- "How does this text SOUND?" — translate text embedding to audio latent space
+TRANSLATE $node FROM text TO audio
+
+-- Cross-modal: visual to text
+TRANSLATE $image_node FROM visual TO text
+```
+
+The algorithm: `log_map(embedding) → modal rotation → exp_map(rotated)`. Preserves radius (hierarchical depth) while changing angle (modality).
+
+---
+
+## Time-Travel (AS OF CYCLE)
+
+Query named snapshots for historical state.
+
+### Syntax
+
+```sql
+MATCH <pattern> AS OF CYCLE <n>
+[WHERE <condition>]
+RETURN <clause>
+```
+
+### Examples
+
+```sql
+-- How was the graph 3 cycles ago?
+MATCH (n:Memory) AS OF CYCLE 3
+WHERE n.energy > 0.5
+RETURN n
+
+-- Compare current vs historical
+MATCH (n) AS OF CYCLE 1
+RETURN n.energy, n.depth
+```
+
+Uses the `SnapshotRegistry` to load embeddings from named snapshots. Returns a read-only view of the historical graph state.
+
+---
+
+## COUNTERFACTUAL
+
+What-if queries with ephemeral property overlays. No side effects on the real graph.
+
+### Syntax
+
+```sql
+COUNTERFACTUAL SET <alias>.<field> = <value> [, ...]
+MATCH <pattern>
+[WHERE <condition>]
+RETURN <clause>
+```
+
+### Examples
+
+```sql
+-- "What if this node had high energy?"
+COUNTERFACTUAL SET n.energy = 0.95
+MATCH (n:Memory)
+WHERE n.depth > 0.5
+RETURN n
+
+-- Test a hypothetical scenario
+COUNTERFACTUAL SET n.energy = 0.0
+MATCH (n)
+WHERE n.node_type = "Concept"
+RETURN COUNT(*) AS would_be_pruned
+```
+
+Creates an ephemeral overlay (Copy-on-Write) over the real graph. Discarded after the query — zero side effects.
+
+---
+
+## Archetypes
+
+Cross-collection archetype sharing via gossip protocol.
+
+### Syntax
+
+```sql
+-- List all shared archetypes
+SHOW ARCHETYPES
+
+-- Publish a node as archetype
+SHARE ARCHETYPE <$param> TO "<collection>"
+```
+
+### Examples
+
+```sql
+-- See archetypes from all collections
+SHOW ARCHETYPES
+
+-- Share an elite node to another collection
+SHARE ARCHETYPE $node_id TO "shared_knowledge"
+```
+
+---
+
+## NARRATE
+
+Generate human-readable narrative from graph evolution.
+
+### Syntax
+
+```sql
+NARRATE IN "<collection>" WINDOW <hours> FORMAT <json | text>
+```
+
+### Examples
+
+```sql
+-- What happened in the last 24 hours?
+NARRATE IN "memories" WINDOW 24 FORMAT json
+
+-- Weekly summary in text format
+NARRATE IN "default" WINDOW 168 FORMAT text
+```
+
+Returns narrative with energy statistics, elite emergence, decay events, and auto-generated summaries.
+
+---
+
+## Transactions
+
+NQL supports explicit transaction control.
+
+```sql
+BEGIN
+-- ... multiple queries ...
+COMMIT
+
+-- Or rollback
+BEGIN
+-- ... queries ...
+ROLLBACK
 ```
 
 ---
@@ -728,14 +1100,34 @@ LIMIT 25
 ## Grammar Summary
 
 ```peg
-query         = { match_query | diffuse_query | reconstruct_query | explain_query }
+query         = { explain_query | create_daemon_query | drop_daemon_query | show_daemons_query
+                | dream_from_query | apply_dream_query | reject_dream_query | show_dreams_query
+                | translate_query | counterfactual_query | show_archetypes_query
+                | share_archetype_query | narrate_query
+                | create_query | merge_query | match_set_query | match_delete_query
+                | match_query | diffuse_query | reconstruct_query
+                | begin_tx | commit_tx | rollback_tx }
+
 explain_query = { "EXPLAIN" ~ (match_query | diffuse_query | reconstruct_query) }
 
-match_query   = { match_clause ~ where_clause? ~ return_clause }
+-- Pattern matching
+match_query   = { match_clause ~ as_of_clause? ~ where_clause? ~ return_clause }
 match_clause  = { "MATCH" ~ (path_pattern | node_pattern) }
 node_pattern  = { "(" ~ ident ~ (":" ~ ident)? ~ ")" }
-path_pattern  = { node_pattern ~ ("-[:" ~ ident ~ "]->" | "<-[:" ~ ident ~ "]-")  ~ node_pattern }
+path_pattern  = { node_pattern ~ edge_pattern ~ node_pattern }
+edge_pattern  = { "-[:" ~ ident ~ ("*" ~ integer ~ ".." ~ integer)? ~ "]->"
+               | "<-[:" ~ ident ~ "]-" | "-[]->" }
 
+-- CRUD
+create_query      = { "CREATE" ~ node_with_props ~ return_clause? }
+merge_query       = { "MERGE" ~ (path_pattern | node_with_props)
+                      ~ ("ON" ~ "CREATE" ~ "SET" ~ set_assignments)?
+                      ~ ("ON" ~ "MATCH" ~ "SET" ~ set_assignments)?
+                      ~ return_clause? }
+match_set_query   = { match_clause ~ where_clause? ~ "SET" ~ set_assignments ~ return_clause? }
+match_delete_query = { match_clause ~ where_clause? ~ "DELETE" ~ ident }
+
+-- Conditions & expressions
 where_clause  = { "WHERE" ~ condition }
 condition     = { atom_cond ~ (("AND" | "OR") ~ condition)* }
 atom_cond     = { "NOT" ~ condition | "(" ~ condition ~ ")" | compare | in_cond | between_cond | string_op_cond }
@@ -749,20 +1141,57 @@ expr          = { hyperbolic_dist | sensory_dist | math_func_call | property | p
 hyperbolic_dist = { "HYPERBOLIC_DIST" ~ "(" ~ property ~ "," ~ (param | vector_lit) ~ ")" }
 math_func_call = { math_func_name ~ "(" ~ math_func_args ~ ")" }
 
+-- Return
 return_clause = { "RETURN" ~ "DISTINCT"? ~ return_items
                   ~ ("GROUP" ~ "BY" ~ group_by_items)?
                   ~ ("ORDER" ~ "BY" ~ order_by)?
                   ~ ("SKIP" ~ integer)?
                   ~ ("LIMIT" ~ integer)? }
 
+-- Diffusion & Reconstruct
 diffuse_query = { "DIFFUSE" ~ "FROM" ~ (param | ident)
                   ~ ("WITH" ~ "t" ~ "=" ~ "[" ~ float_list ~ "]")?
                   ~ ("MAX_HOPS" ~ integer)?
                   ~ ("RETURN" ~ return_clause)? }
-
 reconstruct_query = { "RECONSTRUCT" ~ (param | ident)
                       ~ ("MODALITY" ~ ident)?
                       ~ ("QUALITY" ~ ident)? }
+
+-- DAEMON Agents
+create_daemon_query = { "CREATE" ~ "DAEMON" ~ daemon_name ~ "ON" ~ node_pattern
+                        ~ daemon_when ~ daemon_then ~ daemon_every ~ daemon_energy? }
+daemon_when   = { "WHEN" ~ condition }
+daemon_then   = { "THEN" ~ daemon_action }
+daemon_action = { "DELETE" ~ ident | "SET" ~ set_assignments | "DIFFUSE" ~ "FROM" ~ ident ~ diffuse_t? ~ diffuse_hops? }
+daemon_every  = { "EVERY" ~ atom }
+daemon_energy = { "ENERGY" ~ (float | integer) }
+drop_daemon_query  = { "DROP" ~ "DAEMON" ~ daemon_name }
+show_daemons_query = { "SHOW" ~ "DAEMONS" }
+
+-- Dream Queries
+dream_from_query    = { "DREAM" ~ "FROM" ~ (param | ident) ~ ("DEPTH" ~ integer)? ~ ("NOISE" ~ float)? }
+apply_dream_query   = { "APPLY" ~ "DREAM" ~ string }
+reject_dream_query  = { "REJECT" ~ "DREAM" ~ string }
+show_dreams_query   = { "SHOW" ~ "DREAMS" }
+
+-- Synesthesia
+translate_query = { "TRANSLATE" ~ (param | ident) ~ "FROM" ~ ident ~ "TO" ~ ident }
+
+-- Time-travel & Counterfactual
+as_of_clause        = { "AS" ~ "OF" ~ "CYCLE" ~ integer }
+counterfactual_query = { "COUNTERFACTUAL" ~ "SET" ~ set_assignments ~ match_clause ~ where_clause? ~ return_clause }
+
+-- Archetypes
+show_archetypes_query  = { "SHOW" ~ "ARCHETYPES" }
+share_archetype_query  = { "SHARE" ~ "ARCHETYPE" ~ (param | ident) ~ "TO" ~ string }
+
+-- Narrative
+narrate_query = { "NARRATE" ~ "IN" ~ string ~ "WINDOW" ~ integer ~ "FORMAT" ~ ident }
+
+-- Transactions
+begin_tx    = { "BEGIN" }
+commit_tx   = { "COMMIT" }
+rollback_tx = { "ROLLBACK" }
 ```
 
 *(Simplified — see `crates/nietzsche-query/src/nql.pest` for the authoritative PEG grammar.)*

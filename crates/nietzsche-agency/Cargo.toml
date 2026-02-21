@@ -1,0 +1,20 @@
+[package]
+name = "nietzsche-agency"
+version = "0.1.0"
+edition = "2021"
+description = "Autonomous agency engine: daemons, observer, and counterfactual simulator for NietzscheDB"
+
+[dependencies]
+nietzsche-graph   = { path = "../nietzsche-graph" }
+nietzsche-pregel  = { path = "../nietzsche-pregel" }
+nietzsche-lsystem = { path = "../nietzsche-lsystem" }
+uuid              = { workspace = true }
+serde             = { workspace = true }
+serde_json        = { workspace = true }
+thiserror         = { workspace = true }
+tracing           = { workspace = true }
+tokio             = { workspace = true, features = ["sync"] }
+rand              = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

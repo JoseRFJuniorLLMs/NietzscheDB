@@ -39,6 +39,20 @@ nietzsche-algo         = { path = "crates/nietzsche-algo" }
 nietzsche-hnsw-gpu     = { path = "crates/nietzsche-hnsw-gpu" }
 nietzsche-tpu          = { path = "crates/nietzsche-tpu" }
 nietzsche-cugraph      = { path = "crates/nietzsche-cugraph" }
+nietzsche-wiederkehr   = { path = "crates/nietzsche-wiederkehr" }
+nietzsche-agency       = { path = "crates/nietzsche-agency" }
+nietzsche-dream        = { path = "crates/nietzsche-dream" }
+nietzsche-narrative    = { path = "crates/nietzsche-narrative" }
+nietzsche-mcp          = { path = "crates/nietzsche-mcp" }
+nietzsche-metrics      = { path = "crates/nietzsche-metrics" }
+nietzsche-named-vectors = { path = "crates/nietzsche-named-vectors" }
+nietzsche-pq           = { path = "crates/nietzsche-pq" }
+nietzsche-table        = { path = "crates/nietzsche-table" }
+nietzsche-kafka        = { path = "crates/nietzsche-kafka" }
+nietzsche-secondary-idx = { path = "crates/nietzsche-secondary-idx" }
+nietzsche-filtered-knn = { path = "crates/nietzsche-filtered-knn" }
+nietzsche-media        = { path = "crates/nietzsche-media" }
+rusqlite = { version = "0.31", features = ["bundled"] }
 memmap2 = "0.9"
 parking_lot = "0.12"
 ratatui = "0.24"

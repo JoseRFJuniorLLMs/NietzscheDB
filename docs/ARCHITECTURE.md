@@ -1,4 +1,101 @@
-# HyperspaceDB Architecture
+# NietzscheDB Architecture
+
+NietzscheDB is a **Temporal Hyperbolic Graph Database** built as a Rust nightly workspace with **38 crates** in two layers.
+
+## NietzscheDB System Overview
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         NietzscheDB Layer (29 crates)                        │
+│                                                                              │
+│  Engine:     nietzsche-graph    nietzsche-query     nietzsche-hyp-ops        │
+│  Growth:     nietzsche-lsystem  nietzsche-pregel    nietzsche-sleep          │
+│  Evolution:  nietzsche-zaratustra                                            │
+│  Analytics:  nietzsche-algo     nietzsche-sensory                            │
+│  Visionary:  nietzsche-dream    nietzsche-narrative  nietzsche-agency        │
+│  Wiederkehr: nietzsche-wiederkehr                                            │
+│  Infra:      nietzsche-api      nietzsche-server    nietzsche-cluster        │
+│  SDKs:       nietzsche-sdk      nietzsche-mcp                                │
+│  Accel:      nietzsche-hnsw-gpu nietzsche-tpu       nietzsche-cugraph        │
+│  Search:     nietzsche-filtered-knn  nietzsche-named-vectors  nietzsche-pq   │
+│  Index:      nietzsche-secondary-idx                                         │
+│  Observe:    nietzsche-metrics                                               │
+│  Storage:    nietzsche-table    nietzsche-media      nietzsche-kafka          │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                     HyperspaceDB Layer (9 crates — fork base)                │
+│                                                                              │
+│  hyperspace-core   hyperspace-index   hyperspace-store                       │
+│  hyperspace-server hyperspace-proto   hyperspace-cli                         │
+│  hyperspace-embed  hyperspace-wasm    hyperspace-sdk                         │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+## NietzscheDB Data Flow
+
+```
+Client Request
+    │
+    ├── gRPC (55+ RPCs) ──────────────────────────────┐
+    ├── HTTP REST (/api/*) ───────────────────────────┤
+    └── MCP (stdin/stdout, 19 tools) ─────────────────┤
+                                                       ▼
+                                              ┌─────────────────┐
+                                              │  nietzsche-api   │
+                                              │  (query router)  │
+                                              └────────┬────────┘
+                          ┌────────────────────────────┼────────────────────────────┐
+                          ▼                            ▼                            ▼
+                ┌─────────────────┐          ┌─────────────────┐          ┌─────────────────┐
+                │ nietzsche-query │          │ nietzsche-graph  │          │  nietzsche-algo  │
+                │  NQL executor   │          │  RocksDB 10 CFs  │          │  11 algorithms   │
+                └────────┬────────┘          └────────┬────────┘          └─────────────────┘
+                         │                            │
+                         ▼                            ▼
+              ┌──────────────────┐          ┌──────────────────┐
+              │ HyperspaceDB    │          │ Background Tasks  │
+              │ (HNSW index +   │          │ Sleep, Zaratustra │
+              │  mmap vectors)  │          │ Daemons, Agency   │
+              └──────────────────┘          └──────────────────┘
+```
+
+## RocksDB Column Families (10)
+
+| Column Family | Key | Value | Purpose |
+|---|---|---|---|
+| `nodes` | UUID bytes | NodeMeta (bincode) | Node metadata (~100 bytes each) |
+| `embeddings` | UUID bytes | PoincareVector (bincode) | Separated for 10-25x traversal speedup |
+| `edges` | UUID bytes | Edge (bincode) | Edge data (type, weight, created_at) |
+| `adj_out` | Source UUID | Vec<(EdgeId, TargetId)> | Outgoing adjacency lists |
+| `adj_in` | Target UUID | Vec<(EdgeId, SourceId)> | Incoming adjacency lists |
+| `meta` | String key | Bytes | Global metadata, daemon defs, schemas, named vectors |
+| `sensory` | UUID bytes | SensoryData (bincode) | Multi-modal latent vectors |
+| `energy_idx` | f64-sortable bytes | UUID | Energy secondary index for range scans |
+| `meta_idx` | FNV hash + value | UUID | Arbitrary field secondary indexes |
+| `lists` | `{node_id}:{list}:{seq}` | Bytes | Per-node ordered lists (RPUSH/LRANGE) |
+
+## Background Tasks
+
+NietzscheDB runs several autonomous background tasks:
+
+| Task | Interval | Purpose |
+|---|---|---|
+| Sleep Cycle | `NIETZSCHE_SLEEP_INTERVAL_SECS` | Riemannian reconsolidation with rollback |
+| Zaratustra | `ZARATUSTRA_INTERVAL_SECS` | Energy propagation, temporal echoes, elite identification |
+| DAEMON Engine | `DAEMON_TICK_SECS` | Evaluate daemon conditions, execute actions, decay energy |
+| Agency Engine | `AGENCY_TICK_SECS` | Entropy/Gap/Coherence daemons + MetaObserver |
+| TTL Reaper | `NIETZSCHE_TTL_REAPER_INTERVAL_SECS` | Scan and delete expired nodes |
+| Backup | `NIETZSCHE_BACKUP_INTERVAL_SECS` | Scheduled backup with auto-pruning |
+
+## Observability
+
+- **Prometheus metrics** via `nietzsche-metrics` (12 counters/gauges/histograms)
+- **HTTP `/metrics` endpoint** for Prometheus scraping
+- **Tracing** via `tracing` crate with configurable log levels
+- **Health check** via gRPC `HealthCheck` and HTTP `/api/health`
+
+---
+
+# HyperspaceDB Architecture (Fork Base)
 
 ## System Overview
 

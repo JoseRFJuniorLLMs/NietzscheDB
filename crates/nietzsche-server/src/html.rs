@@ -146,6 +146,20 @@ input[type=range]{width:100%;accent-color:var(--accent);height:14px;margin:2px 0
 #dtbl th{background:var(--panel);padding:6px 10px;text-align:left;border-bottom:1px solid var(--border);color:var(--dim);font-weight:500;position:sticky;top:0;z-index:10}
 #dtbl td{padding:5px 10px;border-bottom:1px solid #1e1e2a;color:var(--text)}
 #dtbl tr:hover td{background:var(--panel2)}
+
+/* AGENCY VIEW */
+.ag-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px;width:calc(50% - 8px);min-width:300px;display:inline-block;vertical-align:top;margin:0 8px 16px 0}
+.ag-title{font-size:14px;font-weight:600;margin-bottom:12px;color:var(--accent);display:flex;align-items:center;gap:6px}
+.ag-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+.ag-metric{background:var(--panel2);border-radius:4px;padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+.ag-label{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+.ag-val{font-size:18px;font-weight:700;line-height:1.2}
+.ag-val.good{color:#2ecc71}.ag-val.warn{color:#e67e22}.ag-val.bad{color:#e74c3c}
+.ag-list{max-height:200px;overflow-y:auto}
+.ag-item{background:var(--panel2);border-radius:4px;padding:8px 10px;margin-bottom:4px;font-size:12px;display:flex;justify-content:space-between;align-items:center}
+.ag-item .ag-pri{font-weight:600;color:var(--accent)}
+.ag-bar{height:4px;border-radius:2px;background:var(--border);margin-top:4px;overflow:hidden}
+.ag-bar-fill{height:100%;border-radius:2px;background:var(--accent);transition:width .3s}
 </style>
 </head>
 <body>
@@ -156,6 +170,7 @@ input[type=range]{width:100%;accent-color:var(--accent);height:14px;margin:2px 0
   <div class="tb-sep"></div>
   <button class="vbtn active" id="vg">⊞ Graph</button>
   <button class="vbtn" id="vd">≡ Data</button>
+  <button class="vbtn" id="va">◎ Agency</button>
   <div id="tbr">
     <button class="tbi" id="btnNql" title="NQL Console">⌨</button>
     <button class="tbi" title="Refresh" onclick="loadGraph()">↺</button>
@@ -346,6 +361,52 @@ input[type=range]{width:100%;accent-color:var(--accent);height:14px;margin:2px 0
         <thead id="dth"></thead>
         <tbody id="dtbd"></tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- AGENCY VIEW -->
+  <div id="av" style="display:none;flex:1;padding:20px;overflow-y:auto;gap:16px;flex-wrap:wrap;align-content:flex-start">
+    <!-- Health Card -->
+    <div class="ag-card" id="ag-health">
+      <div class="ag-title">Health Report</div>
+      <div class="ag-grid" id="ag-health-grid">
+        <div class="ag-metric"><span class="ag-label">Mean Energy</span><span class="ag-val" id="ag-energy">—</span></div>
+        <div class="ag-metric"><span class="ag-label">Hausdorff</span><span class="ag-val" id="ag-hausdorff">—</span></div>
+        <div class="ag-metric"><span class="ag-label">Coherence</span><span class="ag-val" id="ag-coherence">—</span></div>
+        <div class="ag-metric"><span class="ag-label">Gaps</span><span class="ag-val" id="ag-gaps">—</span></div>
+        <div class="ag-metric"><span class="ag-label">Entropy Spikes</span><span class="ag-val" id="ag-entropy">—</span></div>
+        <div class="ag-metric"><span class="ag-label">Fractal</span><span class="ag-val" id="ag-fractal">—</span></div>
+        <div class="ag-metric"><span class="ag-label">Nodes</span><span class="ag-val" id="ag-nodes">—</span></div>
+        <div class="ag-metric"><span class="ag-label">Edges</span><span class="ag-val" id="ag-edges">—</span></div>
+      </div>
+    </div>
+    <!-- Observer Identity -->
+    <div class="ag-card" id="ag-observer">
+      <div class="ag-title">Observer Identity</div>
+      <div class="ag-grid" id="ag-obs-grid">
+        <div class="ag-metric"><span class="ag-label">Energy</span><span class="ag-val" id="ag-obs-energy">—</span></div>
+        <div class="ag-metric"><span class="ag-label">Depth</span><span class="ag-val" id="ag-obs-depth">—</span></div>
+        <div class="ag-metric"><span class="ag-label">Hausdorff</span><span class="ag-val" id="ag-obs-hausdorff">—</span></div>
+      </div>
+    </div>
+    <!-- Desires -->
+    <div class="ag-card" id="ag-desires">
+      <div class="ag-title">Motor de Desejo</div>
+      <div id="ag-desire-list" class="ag-list"></div>
+    </div>
+    <!-- Evolution -->
+    <div class="ag-card" id="ag-evolution">
+      <div class="ag-title">Rule Evolution</div>
+      <div class="ag-grid">
+        <div class="ag-metric"><span class="ag-label">Generation</span><span class="ag-val" id="ag-evo-gen">—</span></div>
+        <div class="ag-metric"><span class="ag-label">Strategy</span><span class="ag-val" id="ag-evo-strat">—</span></div>
+      </div>
+      <div id="ag-evo-history" class="ag-list" style="margin-top:8px"></div>
+    </div>
+    <!-- Narrative -->
+    <div class="ag-card" id="ag-narrative">
+      <div class="ag-title">Narrative</div>
+      <div id="ag-narr-text" style="font-style:italic;color:var(--dim);line-height:1.5"></div>
     </div>
   </div>
 
@@ -740,16 +801,19 @@ document.getElementById('nqlClr').addEventListener('click',()=>{document.getElem
 
 // ── View toggle ───────────────────────────────────────────────────────
 let dataNodes=true;
-document.getElementById('vg').addEventListener('click',()=>{
-  document.getElementById('vg').classList.add('active');document.getElementById('vd').classList.remove('active');
-  document.getElementById('cw').style.display='block';document.getElementById('dv').style.display='none';
-  rsz();draw();
-});
-document.getElementById('vd').addEventListener('click',()=>{
-  document.getElementById('vd').classList.add('active');document.getElementById('vg').classList.remove('active');
-  document.getElementById('cw').style.display='none';document.getElementById('dv').style.display='flex';
-  renderTable();
-});
+function setView(v){
+  const views=[{id:'vg',el:'cw',dsp:'block'},{id:'vd',el:'dv',dsp:'flex'},{id:'va',el:'av',dsp:'flex'}];
+  views.forEach(({id,el,dsp})=>{
+    document.getElementById(id).classList.toggle('active',id===v);
+    document.getElementById(el).style.display=id===v?dsp:'none';
+  });
+  if(v==='vg'){rsz();draw();}
+  if(v==='vd'){renderTable();}
+  if(v==='va'){loadAgency();}
+}
+document.getElementById('vg').addEventListener('click',()=>setView('vg'));
+document.getElementById('vd').addEventListener('click',()=>setView('vd'));
+document.getElementById('va').addEventListener('click',()=>setView('va'));
 document.getElementById('dtNodes').addEventListener('click',()=>{
   dataNodes=true;document.getElementById('dtNodes').classList.add('active');document.getElementById('dtEdges').classList.remove('active');renderTable();
 });
@@ -797,6 +861,66 @@ async function loadGraph(){
   }
 }
 loadGraph();draw();
+
+// ── Agency Panel ──────────────────────────────────────────────────────
+async function loadAgency(){
+  try{
+    // Health
+    const hr=await fetch('/api/agency/health/latest').then(r=>r.ok?r.json():null).catch(()=>null);
+    if(hr){
+      const s=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+      s('ag-energy',hr.mean_energy?.toFixed(3)??'—');
+      s('ag-hausdorff',hr.global_hausdorff?.toFixed(3)??'—');
+      s('ag-coherence',hr.coherence_score?.toFixed(3)??'—');
+      s('ag-gaps',hr.gap_count??'—');
+      s('ag-entropy',hr.entropy_spike_count??'—');
+      s('ag-fractal',hr.is_fractal?'Yes':'No');
+      s('ag-nodes',hr.total_nodes??'—');
+      s('ag-edges',hr.total_edges??'—');
+      // Color coding
+      const ene=document.getElementById('ag-energy');
+      if(ene){ene.className='ag-val '+(hr.mean_energy>0.5?'good':hr.mean_energy>0.2?'warn':'bad');}
+      const hd=document.getElementById('ag-hausdorff');
+      if(hd){hd.className='ag-val '+(hr.is_fractal?'good':'warn');}
+    }
+    // Observer
+    const obs=await fetch('/api/agency/observer').then(r=>r.ok?r.json():null).catch(()=>null);
+    if(obs){
+      document.getElementById('ag-obs-energy').textContent=obs.energy?.toFixed(3)??'—';
+      document.getElementById('ag-obs-depth').textContent=obs.depth?.toFixed(3)??'—';
+      document.getElementById('ag-obs-hausdorff').textContent=obs.hausdorff_local?.toFixed(3)??'—';
+    }
+    // Desires
+    const dr=await fetch('/api/agency/desires').then(r=>r.ok?r.json():null).catch(()=>null);
+    const dl=document.getElementById('ag-desire-list');
+    if(dr&&dr.desires){
+      dl.innerHTML=dr.desires.length===0?'<div style="color:var(--dim);font-size:12px;padding:8px">No pending desires</div>':
+        dr.desires.slice(0,10).map(d=>`<div class="ag-item">
+          <div><span style="color:var(--dim);font-size:10px">Sector (${d.sector.depth_bin},${d.sector.angular_bin})</span><br>
+          <span style="font-size:11px">${d.suggested_query.slice(0,60)}</span></div>
+          <span class="ag-pri">${d.priority.toFixed(2)}</span>
+        </div>`).join('');
+    }else{dl.innerHTML='<div style="color:var(--dim);font-size:12px;padding:8px">No data</div>';}
+    // Evolution
+    const ev=await fetch('/api/agency/evolution').then(r=>r.ok?r.json():null).catch(()=>null);
+    if(ev){
+      document.getElementById('ag-evo-gen').textContent=ev.generation??0;
+      document.getElementById('ag-evo-strat').textContent=ev.last_strategy??'—';
+      const eh=document.getElementById('ag-evo-history');
+      if(ev.fitness_history&&ev.fitness_history.length>0){
+        eh.innerHTML=ev.fitness_history.slice(-5).reverse().map(f=>`<div class="ag-item">
+          <span>Gen ${f.generation}: ${f.strategy}</span>
+          <span class="ag-pri">${f.fitness.toFixed(3)}</span>
+        </div>`).join('');
+      }else{eh.innerHTML='<div style="color:var(--dim);font-size:12px;padding:4px">No history yet</div>';}
+    }
+    // Narrative
+    const nr=await fetch('/api/agency/narrative').then(r=>r.ok?r.json():null).catch(()=>null);
+    const nt=document.getElementById('ag-narr-text');
+    if(nr&&nr.narrative){nt.textContent=nr.narrative;}
+    else{nt.textContent='No narrative generated yet. Agency engine needs to tick with a health report.';}
+  }catch(e){console.error('agency load error',e);}
+}
 </script>
 </body>
 </html>"##;

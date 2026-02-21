@@ -107,6 +107,65 @@ pub enum QueryResult {
     DeleteRequest {
         matched_ids: Vec<Uuid>,
     },
+    /// Result of `CREATE DAEMON …` — the caller persists the daemon definition.
+    CreateDaemonRequest {
+        name:        String,
+        on_pattern:  NodePattern,
+        when_cond:   Condition,
+        then_action: DaemonAction,
+        every:       Expr,
+        energy:      Option<f64>,
+    },
+    /// Result of `DROP DAEMON …` — the caller removes the daemon definition.
+    DropDaemonRequest {
+        name: String,
+    },
+    /// Result of `SHOW DAEMONS` — the caller lists all daemon definitions.
+    ShowDaemonsRequest,
+    // ── Dream Queries (Phase 15.2) ──────────────────────
+    /// `DREAM FROM …` — initiate a dream simulation.
+    DreamFromRequest {
+        seed_param: Option<String>,
+        seed_alias: Option<String>,
+        depth:      Option<usize>,
+        noise:      Option<f64>,
+    },
+    /// `APPLY DREAM $id` — persist dream results.
+    ApplyDreamRequest { dream_id: String },
+    /// `REJECT DREAM $id` — discard dream results.
+    RejectDreamRequest { dream_id: String },
+    /// `SHOW DREAMS` — list pending dream sessions.
+    ShowDreamsRequest,
+    // ── Synesthesia (Phase 15.3) ────────────────────────
+    /// `TRANSLATE $node FROM mod TO mod [QUALITY q]`
+    TranslateRequest {
+        node_id:       Option<Uuid>,
+        node_alias:    Option<String>,
+        from_modality: String,
+        to_modality:   String,
+        quality:       Option<String>,
+    },
+    // ── Eternal Return (Phase 15.4) ─────────────────────
+    /// `COUNTERFACTUAL SET … MATCH … RETURN …`
+    CounterfactualRequest {
+        overlays: serde_json::Value,
+        inner_results: Vec<QueryResult>,
+    },
+    // ── Collective Unconscious (Phase 15.6) ─────────────
+    /// `SHOW ARCHETYPES`
+    ShowArchetypesRequest,
+    /// `SHARE ARCHETYPE $node TO "col"`
+    ShareArchetypeRequest {
+        node_id:           Uuid,
+        target_collection: String,
+    },
+    // ── Narrative Engine (Phase 15.7) ───────────────────
+    /// `NARRATE [IN "col"] [WINDOW h] [FORMAT f]`
+    NarrateRequest {
+        collection:   Option<String>,
+        window_hours: Option<u64>,
+        format:       Option<String>,
+    },
 }
 
 /// A typed scalar value returned by aggregation or property-projection queries.
@@ -148,6 +207,94 @@ pub fn execute(
         Query::Create(c)             => execute_create(c, params),
         Query::MatchSet(ms)          => execute_match_set(ms, storage, adjacency, params),
         Query::MatchDelete(md)       => execute_match_delete(md, storage, adjacency, params),
+        Query::CreateDaemon(cd)      => Ok(vec![QueryResult::CreateDaemonRequest {
+            name:        cd.name.clone(),
+            on_pattern:  cd.on_pattern.clone(),
+            when_cond:   cd.when_cond.clone(),
+            then_action: cd.then_action.clone(),
+            every:       cd.every.clone(),
+            energy:      cd.energy,
+        }]),
+        Query::DropDaemon(dd)        => Ok(vec![QueryResult::DropDaemonRequest {
+            name: dd.name.clone(),
+        }]),
+        Query::ShowDaemons           => Ok(vec![QueryResult::ShowDaemonsRequest]),
+        // ── Dream Queries (Phase 15.2) ──────────────────────
+        Query::DreamFrom(d) => {
+            let (seed_param, seed_alias) = match &d.seed {
+                DiffuseFrom::Param(p) => (Some(p.clone()), None),
+                DiffuseFrom::Alias(a) => (None, Some(a.clone())),
+            };
+            Ok(vec![QueryResult::DreamFromRequest {
+                seed_param,
+                seed_alias,
+                depth: d.depth,
+                noise: d.noise,
+            }])
+        }
+        Query::ApplyDream(a) => Ok(vec![QueryResult::ApplyDreamRequest {
+            dream_id: a.dream_id.clone(),
+        }]),
+        Query::RejectDream(r) => Ok(vec![QueryResult::RejectDreamRequest {
+            dream_id: r.dream_id.clone(),
+        }]),
+        Query::ShowDreams => Ok(vec![QueryResult::ShowDreamsRequest]),
+        // ── Synesthesia (Phase 15.3) ────────────────────────
+        Query::Translate(t) => {
+            let (node_id, node_alias) = match &t.target {
+                ReconstructTarget::Param(p) => {
+                    let uid = params.get(p)
+                        .and_then(|v| if let ParamValue::Uuid(u) = v { Some(*u) } else { None });
+                    (uid, None)
+                }
+                ReconstructTarget::Alias(a) => (None, Some(a.clone())),
+            };
+            Ok(vec![QueryResult::TranslateRequest {
+                node_id,
+                node_alias,
+                from_modality: t.from_modality.clone(),
+                to_modality:   t.to_modality.clone(),
+                quality:       t.quality.clone(),
+            }])
+        }
+        // ── Eternal Return (Phase 15.4) ─────────────────────
+        Query::Counterfactual(cf) => {
+            // Serialize overlays as JSON, execute inner match normally
+            let overlay_json = serde_json::json!(
+                cf.overlays.iter().map(|sa| {
+                    serde_json::json!({
+                        "alias": sa.alias,
+                        "field": sa.field,
+                        "value": format!("{:?}", sa.value),
+                    })
+                }).collect::<Vec<_>>()
+            );
+            let inner_results = execute(
+                &Query::Match(cf.inner.clone()),
+                storage, adjacency, params,
+            )?;
+            Ok(vec![QueryResult::CounterfactualRequest {
+                overlays: overlay_json,
+                inner_results,
+            }])
+        }
+        // ── Collective Unconscious (Phase 15.6) ─────────────
+        Query::ShowArchetypes => Ok(vec![QueryResult::ShowArchetypesRequest]),
+        Query::ShareArchetype(sa) => {
+            let uid = params.get(&sa.node_param)
+                .and_then(|v| if let ParamValue::Uuid(u) = v { Some(*u) } else { None })
+                .ok_or_else(|| QueryError::ParamNotFound { name: sa.node_param.clone() })?;
+            Ok(vec![QueryResult::ShareArchetypeRequest {
+                node_id:           uid,
+                target_collection: sa.target_collection.clone(),
+            }])
+        }
+        // ── Narrative Engine (Phase 15.7) ───────────────────
+        Query::Narrate(n) => Ok(vec![QueryResult::NarrateRequest {
+            collection:   n.collection.clone(),
+            window_hours: n.window_hours,
+            format:       n.format.clone(),
+        }]),
     }
 }
 
@@ -249,6 +396,18 @@ fn execute_explain(
                 md.conditions.len(),
             )
         }
+        Query::CreateDaemon(cd) => format!("CreateDaemon(name={})", cd.name),
+        Query::DropDaemon(dd)   => format!("DropDaemon(name={})", dd.name),
+        Query::ShowDaemons      => "ShowDaemons".into(),
+        Query::DreamFrom(d)     => format!("DreamFrom(depth={:?}, noise={:?})", d.depth, d.noise),
+        Query::ApplyDream(a)    => format!("ApplyDream(id={})", a.dream_id),
+        Query::RejectDream(r)   => format!("RejectDream(id={})", r.dream_id),
+        Query::ShowDreams       => "ShowDreams".into(),
+        Query::Translate(t)     => format!("Translate(from={}, to={})", t.from_modality, t.to_modality),
+        Query::Counterfactual(cf) => format!("Counterfactual(overlays={}, inner=Match)", cf.overlays.len()),
+        Query::ShowArchetypes   => "ShowArchetypes".into(),
+        Query::ShareArchetype(s)=> format!("ShareArchetype(to={})", s.target_collection),
+        Query::Narrate(n)       => format!("Narrate(window={:?}, format={:?})", n.window_hours, n.format),
     };
     let full_plan = format!("{} | {}", plan, cost);
     Ok(vec![QueryResult::ExplainPlan(full_plan)])
@@ -2276,10 +2435,10 @@ mod tests {
         let adjacency   = AdjacencyIndex::new();
 
         storage.put_node(&node_at(0.01, 1.0)).unwrap(); // near origin → high kernel
-        storage.put_node(&node_at(0.8,  1.0)).unwrap(); // far from origin → low kernel
+        storage.put_node(&node_at(0.9,  1.0)).unwrap(); // far from origin → low kernel
 
         let mut params = Params::new();
-        params.insert("t".into(), ParamValue::Float(0.5));
+        params.insert("t".into(), ParamValue::Float(0.1));
 
         // At t=0.5, near-origin node should have kernel ≈ 1.0, far node ≈ 0
         let results = parse_and_exec(

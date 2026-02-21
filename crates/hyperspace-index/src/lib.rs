@@ -882,15 +882,15 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let bytes = self.storage.get(node_id);
         match self.mode {
             QuantizationMode::ScalarI8 => {
-                let q = QuantizedHyperVector::<N>::from_bytes(bytes);
+                let q = QuantizedHyperVector::<N>::from_bytes(&bytes);
                 M::distance_quantized(q, query)
             }
             QuantizationMode::Binary => {
-                let b = BinaryHyperVector::<N>::from_bytes(bytes);
+                let b = BinaryHyperVector::<N>::from_bytes(&bytes);
                 M::distance_binary(b, query)
             }
             QuantizationMode::None => {
-                let v = HyperVector::<N>::from_bytes(bytes);
+                let v = HyperVector::<N>::from_bytes(&bytes);
                 M::distance(&v.coords, &query.coords)
             }
         }
@@ -1159,7 +1159,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let bytes = self.storage.get(id);
         match self.mode {
             QuantizationMode::ScalarI8 => {
-                let q = QuantizedHyperVector::<N>::from_bytes(bytes);
+                let q = QuantizedHyperVector::<N>::from_bytes(&bytes);
                 let mut coords = [0.0; N];
                 if M::name() == "lorentz" {
                     // Lorentz: alpha stores the dynamic-range scale factor
@@ -1181,15 +1181,15 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             }
             QuantizationMode::None => {
                 if self.storage_f32 {
-                    let v = HyperVectorF32::<N>::from_bytes(bytes);
+                    let v = HyperVectorF32::<N>::from_bytes(&bytes);
                     v.to_float64()
                 } else {
-                    let v = HyperVector::<N>::from_bytes(bytes);
+                    let v = HyperVector::<N>::from_bytes(&bytes);
                     v.clone()
                 }
             }
             QuantizationMode::Binary => {
-                let b = BinaryHyperVector::<N>::from_bytes(bytes);
+                let b = BinaryHyperVector::<N>::from_bytes(&bytes);
                 let mut coords = [0.0; N];
                 let val = 1.0 / (N as f64).sqrt() * 0.99;
                 for (i, coord) in coords.iter_mut().enumerate() {

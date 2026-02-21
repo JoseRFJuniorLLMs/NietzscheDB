@@ -1,0 +1,17 @@
+[package]
+name = "nietzsche-kafka"
+version = "0.1.0"
+edition = "2021"
+description = "Kafka sink connector for NietzscheDB — streams graph mutations from Kafka topics"
+
+[dependencies]
+nietzsche-graph = { workspace = true }
+serde = { workspace = true }
+serde_json = "1.0"
+uuid = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
