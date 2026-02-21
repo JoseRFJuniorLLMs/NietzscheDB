@@ -64,9 +64,10 @@ impl CollectionConfig {
     /// Map the string metric name to the typed [`VectorMetric`].
     pub fn vector_metric(&self) -> VectorMetric {
         match self.metric.to_lowercase().as_str() {
-            "euclidean" | "l2"        => VectorMetric::Euclidean,
-            "poincare"  | "hyperbolic" => VectorMetric::PoincareBall,
-            _                          => VectorMetric::Cosine,
+            "euclidean" | "l2"                       => VectorMetric::Euclidean,
+            "poincare"  | "hyperbolic"               => VectorMetric::PoincareBall,
+            "dotproduct" | "dot" | "inner_product"   => VectorMetric::DotProduct,
+            _                                        => VectorMetric::Cosine,
         }
     }
 }

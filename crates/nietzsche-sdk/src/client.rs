@@ -276,7 +276,7 @@ impl NietzscheClient {
         coords: Vec<f64>,
         k:      u32,
     ) -> Result<KnnResponse, tonic::Status> {
-        let req = KnnRequest { query_coords: coords, k, collection: String::new() };
+        let req = KnnRequest { query_coords: coords, k, collection: String::new(), filters: vec![] };
         self.inner.knn_search(req).await.map(|r| r.into_inner())
     }
 

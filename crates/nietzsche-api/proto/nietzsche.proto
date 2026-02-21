@@ -39,6 +39,9 @@ service NietzscheDB {
   rpc MergeNode (MergeNodeRequest) returns (MergeNodeResponse);
   rpc MergeEdge (MergeEdgeRequest) returns (MergeEdgeResponse);
 
+  // ── Edge metadata increment (atomic counter) ───────────────────────────────
+  rpc IncrementEdgeMeta (IncrementEdgeMetaRequest) returns (IncrementEdgeMetaResponse);
+
   // ── NQL query (Nietzsche Query Language) ─────────────────────────────
   rpc Query (QueryRequest) returns (QueryResponse);
 
@@ -109,6 +112,11 @@ service NietzscheDB {
   rpc SetSchema   (SetSchemaRequest)   returns (StatusResponse);
   rpc GetSchema   (GetSchemaRequest)   returns (GetSchemaResponse);
   rpc ListSchemas (Empty)              returns (ListSchemasResponse);
+
+  // ── Secondary Indexes (Phase E) ──────────────────────────────────
+  rpc CreateIndex  (CreateIndexRequest)  returns (StatusResponse);
+  rpc DropIndex    (DropIndexRequest)    returns (StatusResponse);
+  rpc ListIndexes  (ListIndexesRequest)  returns (ListIndexesResponse);
 }
 
 // ── Common primitives ──────────────────────────────────────────────────────
@@ -261,6 +269,19 @@ message MergeEdgeResponse {
   string edge_id = 2;
 }
 
+// ── Edge metadata increment (FASE D.2 — atomic counter) ───────────────────
+
+message IncrementEdgeMetaRequest {
+  string collection = 1;  // empty → "default"
+  string edge_id    = 2;  // UUID of the edge
+  string field      = 3;  // metadata field name (e.g. "count")
+  double delta      = 4;  // increment value (can be negative for decrement)
+}
+
+message IncrementEdgeMetaResponse {
+  double new_value = 1;   // value after increment
+}
+
 // ── Batch messages ──────────────────────────────────────────────────────────
 
 message BatchInsertNodesRequest {
@@ -343,10 +364,29 @@ message NodePair {
 
 // ── KNN messages ──────────────────────────────────────────────────────────
 
+message KnnFilter {
+  oneof condition {
+    KnnFilterMatch  match_filter = 1;
+    KnnFilterRange  range_filter = 2;
+  }
+}
+
+message KnnFilterMatch {
+  string field = 1;
+  string value = 2;
+}
+
+message KnnFilterRange {
+  string field = 1;
+  optional double gte = 2;
+  optional double lte = 3;
+}
+
 message KnnRequest {
-  repeated double query_coords = 1;
-  uint32          k            = 2;
-  string          collection   = 3;  // empty → "default"
+  repeated double    query_coords = 1;
+  uint32             k            = 2;
+  string             collection   = 3;  // empty → "default"
+  repeated KnnFilter filters      = 4;  // pushed-down metadata filters (AND semantics)
 }
 
 message KnnResult {
@@ -761,4 +801,24 @@ message GetSchemaResponse {
 
 message ListSchemasResponse {
   repeated GetSchemaResponse schemas = 1;
+}
+
+// ── Secondary Indexes (Phase E) ───────────────────────────────────────────
+
+message CreateIndexRequest {
+  string collection = 1;  // empty → "default"
+  string field      = 2;  // metadata field name to index
+}
+
+message DropIndexRequest {
+  string collection = 1;  // empty → "default"
+  string field      = 2;  // metadata field name to drop index for
+}
+
+message ListIndexesRequest {
+  string collection = 1;  // empty → "default"
+}
+
+message ListIndexesResponse {
+  repeated string fields = 1;  // currently indexed field names
 }

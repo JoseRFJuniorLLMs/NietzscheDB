@@ -44,6 +44,10 @@ pub enum GraphWalEntry {
     TxCommitted(Uuid),
     /// A transaction was rolled back.
     TxRolledBack(Uuid),
+    /// An edge's metadata was updated (MERGE ON MATCH / increment).
+    UpdateEdgeMeta(Edge),
+    /// A node's content was updated (MERGE ON MATCH SET).
+    UpdateNodeContent { node_id: Uuid, content: serde_json::Value },
 }
 
 impl GraphWalEntry {
@@ -63,6 +67,8 @@ impl GraphWalEntry {
             Self::TxBegin(_)          => "TX_BEGIN",
             Self::TxCommitted(_)      => "TX_COMMITTED",
             Self::TxRolledBack(_)     => "TX_ROLLED_BACK",
+            Self::UpdateEdgeMeta(_)  => "UPDATE_EDGE_META",
+            Self::UpdateNodeContent {..} => "UPDATE_NODE_CONTENT",
         }
     }
 }

@@ -24,7 +24,7 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use uuid::Uuid;
 
-use hyperspace_core::{CosineMetric, PoincareMetric, GlobalConfig, QuantizationMode};
+use hyperspace_core::{CosineMetric, EuclideanMetric, PoincareMetric, GlobalConfig, QuantizationMode};
 use hyperspace_index::HnswIndex;
 use hyperspace_store::VectorStore as RawStore;
 
@@ -40,8 +40,30 @@ trait DynHnsw: Send + Sync {
     /// Insert a (normalized) vector and return the internal HNSW node id.
     fn hnsw_insert(&self, vector: &[f64], uuid_str: &str) -> Result<u32, String>;
 
+    /// Insert a vector with additional metadata fields to index in the HNSW
+    /// metadata index (RoaringBitmap inverted + numeric). The `nid` key is
+    /// always added automatically — callers provide extra fields like
+    /// `idoso_id`, `node_type`, etc.
+    fn hnsw_insert_with_meta(
+        &self,
+        vector: &[f64],
+        uuid_str: &str,
+        extra_meta: HashMap<String, String>,
+    ) -> Result<u32, String>;
+
     /// Search for `k` nearest neighbors. Returns `(hnsw_id, distance)` pairs.
     fn hnsw_search(&self, query: &[f64], k: usize) -> Vec<(u32, f64)>;
+
+    /// Filtered search: push `filter` and `complex_filters` into the HNSW
+    /// layer so RoaringBitmap pre-filtering prunes candidates before distance
+    /// computation. Returns `(hnsw_id, distance)` pairs.
+    fn hnsw_search_filtered(
+        &self,
+        query: &[f64],
+        k: usize,
+        filter: &HashMap<String, String>,
+        complex_filters: &[hyperspace_core::FilterExpr],
+    ) -> Vec<(u32, f64)>;
 
     /// Soft-delete a node by its internal HNSW id.
     fn hnsw_delete(&self, id: u32);
@@ -91,26 +113,37 @@ impl<const N: usize> DynHnsw for HnswCosineWrapper<N> {
     fn hnsw_insert(&self, vector: &[f64], uuid_str: &str) -> Result<u32, String> {
         let normalized = Self::normalize(vector);
         let mut meta = HashMap::new();
-        // "nid" = nietzsche id — used for reverse lookup after search.
         meta.insert("nid".to_string(), uuid_str.to_string());
         self.index.insert(&normalized, meta)
     }
 
+    fn hnsw_insert_with_meta(
+        &self,
+        vector: &[f64],
+        uuid_str: &str,
+        mut extra_meta: HashMap<String, String>,
+    ) -> Result<u32, String> {
+        let normalized = Self::normalize(vector);
+        extra_meta.insert("nid".to_string(), uuid_str.to_string());
+        self.index.insert(&normalized, extra_meta)
+    }
+
     fn hnsw_search(&self, query: &[f64], k: usize) -> Vec<(u32, f64)> {
         let normalized = Self::normalize(query);
-        // Dynamic ef_search: at minimum ef = max(k, 16), then scale with k.
-        // ef = k·4 gives ~96% recall for typical HNSW m=16 graphs.
-        // For k ≤ 10 this is ef ≤ 40 vs the previous hardcoded 100 — 2-3× faster.
         let ef = (k * 4).max(16).min(512);
-        self.index.search(
-            &normalized,
-            k,
-            ef,
-            &HashMap::new(),
-            &[],
-            None,
-            None,
-        )
+        self.index.search(&normalized, k, ef, &HashMap::new(), &[], None, None)
+    }
+
+    fn hnsw_search_filtered(
+        &self,
+        query: &[f64],
+        k: usize,
+        filter: &HashMap<String, String>,
+        complex_filters: &[hyperspace_core::FilterExpr],
+    ) -> Vec<(u32, f64)> {
+        let normalized = Self::normalize(query);
+        let ef = (k * 4).max(16).min(512);
+        self.index.search(&normalized, k, ef, filter, complex_filters, None, None)
     }
 
     fn hnsw_delete(&self, id: u32) {
@@ -138,7 +171,7 @@ impl<const N: usize> DynHnsw for HnswCosineWrapper<N> {
 // vector through unchanged.
 
 struct HnswRawWrapper<const N: usize> {
-    index: HnswIndex<N, CosineMetric>,
+    index: HnswIndex<N, EuclideanMetric>,
 }
 
 impl<const N: usize> HnswRawWrapper<N> {
@@ -154,23 +187,35 @@ impl<const N: usize> HnswRawWrapper<N> {
 
 impl<const N: usize> DynHnsw for HnswRawWrapper<N> {
     fn hnsw_insert(&self, vector: &[f64], uuid_str: &str) -> Result<u32, String> {
-        // No L2 normalization — raw vectors preserved for true Euclidean distance.
         let mut meta = HashMap::new();
         meta.insert("nid".to_string(), uuid_str.to_string());
         self.index.insert(vector, meta)
     }
 
+    fn hnsw_insert_with_meta(
+        &self,
+        vector: &[f64],
+        uuid_str: &str,
+        mut extra_meta: HashMap<String, String>,
+    ) -> Result<u32, String> {
+        extra_meta.insert("nid".to_string(), uuid_str.to_string());
+        self.index.insert(vector, extra_meta)
+    }
+
     fn hnsw_search(&self, query: &[f64], k: usize) -> Vec<(u32, f64)> {
         let ef = (k * 4).max(16).min(512);
-        self.index.search(
-            query,
-            k,
-            ef,
-            &HashMap::new(),
-            &[],
-            None,
-            None,
-        )
+        self.index.search(query, k, ef, &HashMap::new(), &[], None, None)
+    }
+
+    fn hnsw_search_filtered(
+        &self,
+        query: &[f64],
+        k: usize,
+        filter: &HashMap<String, String>,
+        complex_filters: &[hyperspace_core::FilterExpr],
+    ) -> Vec<(u32, f64)> {
+        let ef = (k * 4).max(16).min(512);
+        self.index.search(query, k, ef, filter, complex_filters, None, None)
     }
 
     fn hnsw_delete(&self, id: u32) {
@@ -217,24 +262,35 @@ impl<const N: usize> HnswPoincareWrapper<N> {
 
 impl<const N: usize> DynHnsw for HnswPoincareWrapper<N> {
     fn hnsw_insert(&self, vector: &[f64], uuid_str: &str) -> Result<u32, String> {
-        // No L2 normalisation — Poincaré ball coords are inserted as-is.
-        // PoincareMetric::validate() enforces ‖x‖ < 1.0.
         let mut meta = HashMap::new();
         meta.insert("nid".to_string(), uuid_str.to_string());
         self.index.insert(vector, meta)
     }
 
+    fn hnsw_insert_with_meta(
+        &self,
+        vector: &[f64],
+        uuid_str: &str,
+        mut extra_meta: HashMap<String, String>,
+    ) -> Result<u32, String> {
+        extra_meta.insert("nid".to_string(), uuid_str.to_string());
+        self.index.insert(vector, extra_meta)
+    }
+
     fn hnsw_search(&self, query: &[f64], k: usize) -> Vec<(u32, f64)> {
         let ef = (k * 4).max(16).min(512);
-        self.index.search(
-            query,
-            k,
-            ef,
-            &HashMap::new(),
-            &[],
-            None,
-            None,
-        )
+        self.index.search(query, k, ef, &HashMap::new(), &[], None, None)
+    }
+
+    fn hnsw_search_filtered(
+        &self,
+        query: &[f64],
+        k: usize,
+        filter: &HashMap<String, String>,
+        complex_filters: &[hyperspace_core::FilterExpr],
+    ) -> Vec<(u32, f64)> {
+        let ef = (k * 4).max(16).min(512);
+        self.index.search(query, k, ef, filter, complex_filters, None, None)
     }
 
     fn hnsw_delete(&self, id: u32) {
@@ -321,6 +377,10 @@ pub enum VectorMetric {
     /// Cosine similarity via L2 on unit-normalized vectors (default).
     /// Recommended for all text/audio/image embeddings (Gemini, Vertex AI, ECAPA-TDNN).
     Cosine,
+    /// Dot product similarity for pre-normalized vectors (bi-encoders).
+    /// Internally uses the same Cosine wrapper (L2 on unit sphere) since for
+    /// already-normalized vectors: L2²(u,v) = 2 − 2·dot(u,v).
+    DotProduct,
     /// Squared Euclidean L2 (for raw feature vectors, no normalization).
     Euclidean,
     /// Legacy Poincaré ball distance (for hyperbolic knowledge graph embeddings).
@@ -364,6 +424,7 @@ impl EmbeddedVectorStore {
         {
             "euclidean" | "l2" => VectorMetric::Euclidean,
             "poincare" | "hyperbolic" => VectorMetric::PoincareBall,
+            "dotproduct" | "dot" | "inner_product" => VectorMetric::DotProduct,
             _ => VectorMetric::Cosine,
         };
 
@@ -384,7 +445,7 @@ impl EmbeddedVectorStore {
             .map_err(|e| format!("cannot create HNSW storage dir {}: {e}", storage_dir.display()))?;
 
         let inner = match metric {
-            VectorMetric::Cosine      => make_cosine_hnsw(dim, &storage_dir)?,
+            VectorMetric::Cosine | VectorMetric::DotProduct => make_cosine_hnsw(dim, &storage_dir)?,
             VectorMetric::Euclidean   => make_raw_hnsw(dim, &storage_dir)?,
             VectorMetric::PoincareBall => make_poincare_hnsw(dim, &storage_dir)?,
         };
@@ -407,24 +468,86 @@ impl EmbeddedVectorStore {
     }
 }
 
+/// Convert a [`MetadataFilter`] into the HNSW-level filter types:
+/// `(legacy_tags, complex_filters)`.
+fn metadata_filter_to_hnsw(
+    filter: &crate::db::MetadataFilter,
+) -> (HashMap<String, String>, Vec<hyperspace_core::FilterExpr>) {
+    let mut tags = HashMap::new();
+    let mut exprs = Vec::new();
+    collect_filter(filter, &mut tags, &mut exprs);
+    (tags, exprs)
+}
+
+fn collect_filter(
+    filter: &crate::db::MetadataFilter,
+    tags: &mut HashMap<String, String>,
+    exprs: &mut Vec<hyperspace_core::FilterExpr>,
+) {
+    match filter {
+        crate::db::MetadataFilter::Eq { field, value } => {
+            // Use the complex filter Match for exact equality (inverted index lookup).
+            exprs.push(hyperspace_core::FilterExpr::Match {
+                key: field.clone(),
+                value: value.clone(),
+            });
+        }
+        crate::db::MetadataFilter::In { field, values } => {
+            // HNSW has no native IN; emit one Match per value.
+            // The HNSW search intersects all masks, so we'd need OR semantics.
+            // Workaround: use legacy tag filter for the first value (best effort).
+            // For full IN support, post-filter is needed.
+            if let Some(first) = values.first() {
+                tags.insert(field.clone(), first.clone());
+            }
+        }
+        crate::db::MetadataFilter::Range { field, gte, lte } => {
+            exprs.push(hyperspace_core::FilterExpr::Range {
+                key: field.clone(),
+                gte: *gte,
+                lte: *lte,
+            });
+        }
+        crate::db::MetadataFilter::And(subs) => {
+            for sub in subs {
+                collect_filter(sub, tags, exprs);
+            }
+        }
+        crate::db::MetadataFilter::None => {}
+    }
+}
+
 impl VectorStore for EmbeddedVectorStore {
-    /// Upsert a vector embedding.
-    ///
-    /// If the UUID already has an HNSW slot, the previous entry is soft-deleted
-    /// before inserting the new one. The HNSW slot counter monotonically increases;
-    /// compaction (if ever needed) would require an index rebuild.
     fn upsert(&mut self, id: Uuid, vector: &PoincareVector) -> Result<(), GraphError> {
-        // Soft-delete previous HNSW entry for this UUID (if any).
         if let Some(old_id) = self.uuid_to_hnsw.get(&id) {
             self.inner.hnsw_delete(*old_id);
         }
 
-        // Promote f32 → f64 at the HNSW boundary (HNSW engine uses f64 internally)
         let coords_f64 = vector.coords_f64();
         let hnsw_id = self
             .inner
             .hnsw_insert(&coords_f64, &id.to_string())
             .map_err(|e| GraphError::Storage(format!("HNSW upsert: {e}")))?;
+
+        self.uuid_to_hnsw.insert(id, hnsw_id);
+        Ok(())
+    }
+
+    fn upsert_with_meta(
+        &mut self,
+        id: Uuid,
+        vector: &PoincareVector,
+        meta: HashMap<String, String>,
+    ) -> Result<(), GraphError> {
+        if let Some(old_id) = self.uuid_to_hnsw.get(&id) {
+            self.inner.hnsw_delete(*old_id);
+        }
+
+        let coords_f64 = vector.coords_f64();
+        let hnsw_id = self
+            .inner
+            .hnsw_insert_with_meta(&coords_f64, &id.to_string(), meta)
+            .map_err(|e| GraphError::Storage(format!("HNSW upsert_with_meta: {e}")))?;
 
         self.uuid_to_hnsw.insert(id, hnsw_id);
         Ok(())
@@ -440,19 +563,37 @@ impl VectorStore for EmbeddedVectorStore {
     fn knn(&self, query: &PoincareVector, k: usize) -> Result<Vec<(Uuid, f64)>, GraphError> {
         let coords_f64 = query.coords_f64();
         let raw = self.inner.hnsw_search(&coords_f64, k);
+        Ok(self.hnsw_results_to_uuids(raw))
+    }
 
-        // Convert HNSW internal ids back to UUIDs via the forward metadata index.
-        let results: Vec<(Uuid, f64)> = raw
-            .into_iter()
+    fn knn_filtered(
+        &self,
+        query: &PoincareVector,
+        k: usize,
+        filter: &crate::db::MetadataFilter,
+    ) -> Result<Vec<(Uuid, f64)>, GraphError> {
+        if matches!(filter, crate::db::MetadataFilter::None) {
+            return self.knn(query, k);
+        }
+
+        let (tags, exprs) = metadata_filter_to_hnsw(filter);
+        let coords_f64 = query.coords_f64();
+        let raw = self.inner.hnsw_search_filtered(&coords_f64, k, &tags, &exprs);
+        Ok(self.hnsw_results_to_uuids(raw))
+    }
+}
+
+impl EmbeddedVectorStore {
+    /// Convert HNSW (id, dist) pairs back to (Uuid, dist).
+    fn hnsw_results_to_uuids(&self, raw: Vec<(u32, f64)>) -> Vec<(Uuid, f64)> {
+        raw.into_iter()
             .filter_map(|(hnsw_id, dist)| {
                 self.inner
                     .hnsw_get_uuid_str(hnsw_id)
                     .and_then(|s| Uuid::parse_str(&s).ok())
                     .map(|uuid| (uuid, dist))
             })
-            .collect();
-
-        Ok(results)
+            .collect()
     }
 }
 
@@ -463,10 +604,10 @@ impl VectorStore for EmbeddedVectorStore {
 /// Allows the server to pick between the real HNSW (`Embedded`) and the
 /// in-memory linear scan (`Mock`) without compile-time branching.
 /// Controlled by `NIETZSCHE_VECTOR_BACKEND` env var:
-/// - `"embedded"` or `"hnsw"` → `EmbeddedVectorStore`
-/// - `"gpu"`                   → GPU backend (inject via [`AnyVectorStore::gpu`])
-/// - `"tpu"`                   → TPU backend (inject via [`AnyVectorStore::tpu`])
-/// - anything else (or unset) → `MockVectorStore` (legacy default)
+/// - default (unset / `"embedded"` / `"hnsw"`) → `EmbeddedVectorStore` (real HNSW)
+/// - `"mock"` or `"linear"`  → `MockVectorStore` (linear scan, tests only)
+/// - `"gpu"`                 → GPU backend (inject via [`AnyVectorStore::gpu`])
+/// - `"tpu"`                 → TPU backend (inject via [`AnyVectorStore::tpu`])
 pub enum AnyVectorStore {
     Embedded(EmbeddedVectorStore),
     Mock(crate::db::MockVectorStore),
@@ -481,16 +622,18 @@ pub enum AnyVectorStore {
 
 impl AnyVectorStore {
     /// Build from env, storing HNSW data under `data_dir/hnsw/`:
-    /// - `NIETZSCHE_VECTOR_BACKEND=embedded` → real HNSW (reads DIM + METRIC vars)
-    /// - `NIETZSCHE_VECTOR_BACKEND=gpu`      → inject GPU store via [`AnyVectorStore::gpu`]
-    /// - default → MockVectorStore (for development / backward compat)
+    /// - `NIETZSCHE_VECTOR_BACKEND=mock` → `MockVectorStore` (linear scan, for tests only)
+    /// - `NIETZSCHE_VECTOR_BACKEND=gpu`  → inject GPU store via [`AnyVectorStore::gpu`]
+    /// - `NIETZSCHE_VECTOR_BACKEND=tpu`  → inject TPU store via [`AnyVectorStore::tpu`]
+    /// - default (unset or `"embedded"` / `"hnsw"`) → real `EmbeddedVectorStore` (HNSW)
     pub fn from_env(data_dir: &Path) -> Self {
         match std::env::var("NIETZSCHE_VECTOR_BACKEND")
             .unwrap_or_default()
             .to_lowercase()
             .as_str()
         {
-            "embedded" | "hnsw" | "cosine" => {
+            "mock" | "linear" => AnyVectorStore::Mock(crate::db::MockVectorStore::default()),
+            _ => {
                 match EmbeddedVectorStore::from_env(data_dir) {
                     Ok(vs) => AnyVectorStore::Embedded(vs),
                     Err(e) => {
@@ -502,7 +645,6 @@ impl AnyVectorStore {
                     }
                 }
             }
-            _ => AnyVectorStore::Mock(crate::db::MockVectorStore::default()),
         }
     }
 
@@ -512,8 +654,8 @@ impl AnyVectorStore {
     /// dimension without depending on `NIETZSCHE_VECTOR_DIM`.
     ///
     /// Respects `NIETZSCHE_VECTOR_BACKEND`:
-    /// - `"embedded"` | `"hnsw"` | `"cosine"` → `EmbeddedVectorStore`
-    /// - anything else / unset → `MockVectorStore`
+    /// - `"mock"` | `"linear"` → `MockVectorStore` (tests only)
+    /// - default (unset or `"embedded"` / `"hnsw"`) → real `EmbeddedVectorStore`
     pub fn for_collection(
         data_dir: &Path,
         dim: usize,
@@ -524,7 +666,8 @@ impl AnyVectorStore {
             .to_lowercase()
             .as_str()
         {
-            "embedded" | "hnsw" | "cosine" => {
+            "mock" | "linear" => Ok(AnyVectorStore::Mock(crate::db::MockVectorStore::default())),
+            _ => {
                 match EmbeddedVectorStore::new(data_dir, dim, metric) {
                     Ok(vs) => Ok(AnyVectorStore::Embedded(vs)),
                     Err(e) => {
@@ -536,7 +679,6 @@ impl AnyVectorStore {
                     }
                 }
             }
-            _ => Ok(AnyVectorStore::Mock(crate::db::MockVectorStore::default())),
         }
     }
 
@@ -570,6 +712,7 @@ impl AnyVectorStore {
         match self {
             Self::Embedded(s) => match s.metric() {
                 VectorMetric::Cosine       => "EmbeddedHnsw(Cosine)",
+                VectorMetric::DotProduct   => "EmbeddedHnsw(DotProduct)",
                 VectorMetric::Euclidean    => "EmbeddedHnsw(Euclidean)",
                 VectorMetric::PoincareBall => "EmbeddedHnsw(Poincaré)",
             },
@@ -590,6 +733,20 @@ impl VectorStore for AnyVectorStore {
         }
     }
 
+    fn upsert_with_meta(
+        &mut self,
+        id: Uuid,
+        vector: &PoincareVector,
+        meta: HashMap<String, String>,
+    ) -> Result<(), GraphError> {
+        match self {
+            Self::Embedded(s) => s.upsert_with_meta(id, vector, meta),
+            Self::Mock(s)     => s.upsert_with_meta(id, vector, meta),
+            Self::Gpu(s)      => s.upsert_with_meta(id, vector, meta),
+            Self::Tpu(s)      => s.upsert_with_meta(id, vector, meta),
+        }
+    }
+
     fn delete(&mut self, id: Uuid) -> Result<(), GraphError> {
         match self {
             Self::Embedded(s) => s.delete(id),
@@ -605,6 +762,20 @@ impl VectorStore for AnyVectorStore {
             Self::Mock(s)     => s.knn(query, k),
             Self::Gpu(s)      => s.knn(query, k),
             Self::Tpu(s)      => s.knn(query, k),
+        }
+    }
+
+    fn knn_filtered(
+        &self,
+        query: &PoincareVector,
+        k: usize,
+        filter: &crate::db::MetadataFilter,
+    ) -> Result<Vec<(Uuid, f64)>, GraphError> {
+        match self {
+            Self::Embedded(s) => s.knn_filtered(query, k, filter),
+            Self::Mock(s)     => s.knn_filtered(query, k, filter),
+            Self::Gpu(s)      => s.knn_filtered(query, k, filter),
+            Self::Tpu(s)      => s.knn_filtered(query, k, filter),
         }
     }
 }

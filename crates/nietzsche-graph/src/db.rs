@@ -47,6 +47,29 @@ impl BackpressureSignal {
 }
 
 // ─────────────────────────────────────────────
+// MetadataFilter (pushed-down KNN filter)
+// ─────────────────────────────────────────────
+
+/// Filter for KNN metadata pre-filtering (pushed down to the HNSW index).
+///
+/// Converts to `hyperspace_core::FilterExpr` at the HNSW boundary.
+/// Supports the filter patterns used by EVA-Mind's Qdrant calls
+/// (e.g. `SearchWithScore(ctx, col, emb, k, 0.7, userID)`).
+#[derive(Debug, Clone)]
+pub enum MetadataFilter {
+    /// Exact string match: `field = value`.
+    Eq { field: String, value: String },
+    /// Field value is one of the allowed values.
+    In { field: String, values: Vec<String> },
+    /// Numeric range: `gte <= field <= lte` (either bound may be absent).
+    Range { field: String, gte: Option<f64>, lte: Option<f64> },
+    /// All sub-filters must match (intersection).
+    And(Vec<MetadataFilter>),
+    /// No filtering — return all K results.
+    None,
+}
+
+// ─────────────────────────────────────────────
 // VectorStore trait
 // ─────────────────────────────────────────────
 
@@ -58,6 +81,20 @@ pub trait VectorStore: Send + Sync {
     /// Upsert a vector embedding for `id`.
     fn upsert(&mut self, id: Uuid, vector: &PoincareVector) -> Result<(), GraphError>;
 
+    /// Upsert a vector embedding with additional metadata fields to index.
+    ///
+    /// The `meta` map is stored in the HNSW metadata index so that
+    /// [`knn_filtered`](VectorStore::knn_filtered) can use it for
+    /// pushed-down pre-filtering during search.
+    fn upsert_with_meta(
+        &mut self,
+        id: Uuid,
+        vector: &PoincareVector,
+        _meta: HashMap<String, String>,
+    ) -> Result<(), GraphError> {
+        self.upsert(id, vector)
+    }
+
     /// Remove the embedding for `id` (no-op if not found).
     fn delete(&mut self, id: Uuid) -> Result<(), GraphError>;
 
@@ -68,6 +105,20 @@ pub trait VectorStore: Send + Sync {
         query: &PoincareVector,
         k: usize,
     ) -> Result<Vec<(Uuid, f64)>, GraphError>;
+
+    /// Filtered KNN: search for the `k` nearest neighbours that match `filter`.
+    ///
+    /// The filter is pushed down to the HNSW index (RoaringBitmap pre-filter)
+    /// for sub-linear candidate pruning. Falls back to [`knn`](VectorStore::knn)
+    /// when `filter` is [`MetadataFilter::None`].
+    fn knn_filtered(
+        &self,
+        query: &PoincareVector,
+        k: usize,
+        _filter: &MetadataFilter,
+    ) -> Result<Vec<(Uuid, f64)>, GraphError> {
+        self.knn(query, k)
+    }
 }
 
 // ─────────────────────────────────────────────
@@ -173,12 +224,17 @@ impl<V: VectorStore> NietzscheDB<V> {
         // Load persisted schema constraints if any exist
         let schema_validator = SchemaValidator::load_all(&storage).ok();
 
-        Ok(Self {
+        let mut db = Self {
             storage, wal, adjacency, vector_store,
             hot_tier: Arc::new(DashMap::new()),
             indexed_fields: HashSet::new(),
             schema_validator,
-        })
+        };
+
+        // Load persisted secondary indexes from CF_META
+        let _ = db.load_persisted_indexes();
+
+        Ok(db)
     }
 
     /// Replace the vector store backend at runtime.
@@ -194,6 +250,112 @@ impl<V: VectorStore> NietzscheDB<V> {
     /// Call this before inserting nodes to enable automatic index maintenance.
     pub fn set_indexed_fields(&mut self, fields: HashSet<String>) {
         self.indexed_fields = fields;
+    }
+
+    // ── Secondary index management (Phase E) ──────────
+
+    /// Create a persistent secondary index on a metadata field.
+    ///
+    /// The field is added to `indexed_fields` and persisted to RocksDB
+    /// (key `"index:{field}"` in CF_META). If nodes already exist, their
+    /// metadata is backfilled into `CF_META_IDX`.
+    pub fn create_index(&mut self, field: &str) -> Result<(), GraphError> {
+        if self.indexed_fields.contains(field) {
+            return Ok(()); // already indexed
+        }
+
+        // 1. Persist to registry
+        self.storage.put_meta(&format!("index:{field}"), &[])?;
+
+        // 2. Add to in-memory set
+        self.indexed_fields.insert(field.to_string());
+
+        // 3. Backfill: scan all nodes and write index entries for this field
+        let field_set: HashSet<String> = [field.to_string()].into_iter().collect();
+        for result in self.storage.iter_nodes_meta() {
+            if let Ok(meta) = result {
+                if meta.metadata.contains_key(field) {
+                    self.storage.put_meta_index(&meta.id, &meta.metadata, &field_set)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Drop a secondary index on a metadata field.
+    ///
+    /// Removes the field from `indexed_fields`, deletes the registry entry,
+    /// and purges all index entries for this field from `CF_META_IDX`.
+    pub fn drop_index(&mut self, field: &str) -> Result<(), GraphError> {
+        if !self.indexed_fields.remove(field) {
+            return Ok(()); // wasn't indexed
+        }
+
+        // 1. Remove from registry
+        self.storage.delete_meta(&format!("index:{field}"))?;
+
+        // 2. Purge index entries: scan all nodes and delete their index entries
+        let field_set: HashSet<String> = [field.to_string()].into_iter().collect();
+        for result in self.storage.iter_nodes_meta() {
+            if let Ok(meta) = result {
+                if meta.metadata.contains_key(field) {
+                    self.storage.delete_meta_index(&meta.id, &meta.metadata, &field_set)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// List all active secondary indexes.
+    pub fn list_indexes(&self) -> Vec<String> {
+        self.indexed_fields.iter().cloned().collect()
+    }
+
+    /// Check if a field has a secondary index.
+    pub fn has_index(&self, field: &str) -> bool {
+        self.indexed_fields.contains(field)
+    }
+
+    /// Load persisted indexes from CF_META on startup.
+    ///
+    /// Scans for keys with prefix `"index:"` and populates `indexed_fields`.
+    fn load_persisted_indexes(&mut self) -> Result<(), GraphError> {
+        let entries = self.storage.scan_meta_prefix(b"index:")?;
+        for (key_bytes, _) in entries {
+            if let Ok(key_str) = String::from_utf8(key_bytes) {
+                if let Some(field) = key_str.strip_prefix("index:") {
+                    self.indexed_fields.insert(field.to_string());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Scan the metadata index for a field with exact match.
+    ///
+    /// Returns node IDs where `metadata[field] == value`.
+    /// O(log N + k) via `CF_META_IDX`.
+    pub fn index_scan_eq(
+        &self,
+        field: &str,
+        value: &serde_json::Value,
+    ) -> Result<Vec<Uuid>, GraphError> {
+        self.storage.scan_meta_index_eq(field, value)
+    }
+
+    /// Scan the metadata index for a field with range.
+    ///
+    /// Returns node IDs where `min <= metadata[field] <= max`.
+    /// O(log N + k) via `CF_META_IDX`.
+    pub fn index_scan_range(
+        &self,
+        field: &str,
+        min_val: &serde_json::Value,
+        max_val: &serde_json::Value,
+    ) -> Result<Vec<Uuid>, GraphError> {
+        self.storage.scan_meta_index_range(field, min_val, max_val)
     }
 
     /// Get a reference to the schema validator (if any).
@@ -252,8 +414,13 @@ impl<V: VectorStore> NietzscheDB<V> {
             self.storage.put_meta_index(&node.id, &node.meta.metadata, &self.indexed_fields)?;
         }
 
-        // 4. Vector store (best-effort)
-        self.vector_store.upsert(node.id, &node.embedding)?;
+        // 4. Vector store — pass indexed metadata for pushed-down KNN filtering
+        if self.indexed_fields.is_empty() {
+            self.vector_store.upsert(node.id, &node.embedding)?;
+        } else {
+            let hnsw_meta = Self::extract_hnsw_meta(&node, &self.indexed_fields);
+            self.vector_store.upsert_with_meta(node.id, &node.embedding, hnsw_meta)?;
+        }
 
         Ok(())
     }
@@ -285,9 +452,15 @@ impl<V: VectorStore> NietzscheDB<V> {
             }
         }
 
-        // 4. Vector store — sequential upserts (HNSW insert is not batchable yet).
+        // 4. Vector store — pass indexed metadata for pushed-down KNN filtering
+        let has_indexed = !self.indexed_fields.is_empty();
         for node in &nodes {
-            self.vector_store.upsert(node.id, &node.embedding)?;
+            if has_indexed {
+                let hnsw_meta = Self::extract_hnsw_meta(node, &self.indexed_fields);
+                self.vector_store.upsert_with_meta(node.id, &node.embedding, hnsw_meta)?;
+            } else {
+                self.vector_store.upsert(node.id, &node.embedding)?;
+            }
         }
 
         Ok(())
@@ -581,6 +754,57 @@ impl<V: VectorStore> NietzscheDB<V> {
         Ok(())
     }
 
+    // ── Edge metadata updates (FASE D) ──────────────────────────
+
+    /// Update an edge's metadata fields (merge new keys into existing).
+    ///
+    /// Used by MERGE ON MATCH SET for edges. Adjacency lists are unchanged.
+    pub fn update_edge_metadata(
+        &mut self,
+        edge_id: Uuid,
+        updates: &serde_json::Value,
+    ) -> Result<(), GraphError> {
+        let mut edge = self.storage.get_edge(&edge_id)?
+            .ok_or_else(|| GraphError::EdgeNotFound(edge_id))?;
+
+        if let Some(obj) = updates.as_object() {
+            for (k, v) in obj {
+                edge.metadata.insert(k.clone(), v.clone());
+            }
+        }
+
+        self.wal.append(&GraphWalEntry::UpdateEdgeMeta(edge.clone()))?;
+        self.storage.update_edge_only(&edge)?;
+        Ok(())
+    }
+
+    /// Atomically increment a numeric field in an edge's metadata.
+    ///
+    /// If the field doesn't exist, it's created with `delta` as its value.
+    /// Returns the new value after increment.
+    ///
+    /// Use case: `MERGE (p)-[r:MENTIONED]->(t) ON MATCH SET r.count = r.count + 1`
+    pub fn increment_edge_metadata(
+        &mut self,
+        edge_id: Uuid,
+        field: &str,
+        delta: f64,
+    ) -> Result<f64, GraphError> {
+        let mut edge = self.storage.get_edge(&edge_id)?
+            .ok_or_else(|| GraphError::EdgeNotFound(edge_id))?;
+
+        let current = edge.metadata
+            .get(field)
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let new_val = current + delta;
+        edge.metadata.insert(field.to_string(), serde_json::json!(new_val));
+
+        self.wal.append(&GraphWalEntry::UpdateEdgeMeta(edge.clone()))?;
+        self.storage.update_edge_only(&edge)?;
+        Ok(new_val)
+    }
+
     // ── MERGE helpers (FASE D — Neo4j MERGE replacement) ─────────
 
     /// Find a node by `node_type` and content key match.
@@ -645,6 +869,12 @@ impl<V: VectorStore> NietzscheDB<V> {
                     content_obj.insert(k.clone(), v.clone());
                 }
             }
+
+            // WAL
+            self.wal.append(&GraphWalEntry::UpdateNodeContent {
+                node_id: id,
+                content: meta.content.clone(),
+            })?;
 
             // Re-persist meta (energy unchanged)
             let old_energy = meta.energy;
@@ -754,6 +984,19 @@ impl<V: VectorStore> NietzscheDB<V> {
         self.vector_store.knn(query, k)
     }
 
+    /// Filtered KNN: search for the `k` nearest neighbours that match `filter`.
+    ///
+    /// The filter is pushed down to the HNSW RoaringBitmap index for sub-linear
+    /// candidate pruning. Equivalent to Qdrant's `SearchWithScore(..., filter)`.
+    pub fn knn_filtered(
+        &self,
+        query: &PoincareVector,
+        k: usize,
+        filter: &MetadataFilter,
+    ) -> Result<Vec<(Uuid, f64)>, GraphError> {
+        self.vector_store.knn_filtered(query, k, filter)
+    }
+
     /// **Filtered KNN** — return the `k` nearest neighbours that satisfy
     /// `node.energy >= min_energy`, using `energy_idx` as a pre-filter.
     ///
@@ -859,6 +1102,31 @@ impl<V: VectorStore> NietzscheDB<V> {
         results.truncate(k);
 
         Ok(results)
+    }
+
+    // ── HNSW metadata helpers ──────────────────────────
+
+    /// Extract a flat `HashMap<String, String>` from a node's metadata for
+    /// indexing in the HNSW forward/inverted index. Only extracts fields
+    /// listed in `indexed_fields`. Also adds `node_type` and `energy`
+    /// (as string) for common filter patterns.
+    fn extract_hnsw_meta(node: &Node, indexed_fields: &HashSet<String>) -> HashMap<String, String> {
+        let mut meta = HashMap::new();
+        // Always include node_type and energy — universally useful for filtering.
+        meta.insert("node_type".to_string(), format!("{:?}", node.meta.node_type));
+        meta.insert("energy".to_string(), format!("{}", node.meta.energy));
+
+        // Extract declared indexed fields from the node metadata HashMap.
+        for field in indexed_fields {
+            if let Some(val) = node.meta.metadata.get(field) {
+                let s = match val {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                meta.insert(field.clone(), s);
+            }
+        }
+        meta
     }
 
     // ── Stats ──────────────────────────────────────────
