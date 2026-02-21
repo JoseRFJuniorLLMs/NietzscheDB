@@ -638,7 +638,7 @@ P2.7  Encryption at-rest (AES-256-CTR)     ✅ COMPLETE
 P2.8  Multi-hop Path NQL (BoundedBFS)      ✅ COMPLETE
 P2.9  ListStore (RPUSH/LRANGE/LLEN)        ✅ COMPLETE
 P3.10 Query Cost Estimator (EXPLAIN)       ✅ COMPLETE
-P3.11 Hybrid BM25+ANN (RRF fusion)        ✅ COMPLETE
+P3.11 Hybrid BM25+ANN (RRF fusion)         ✅ COMPLETE
 P3.12 Schema Validation (per-NodeType)     ✅ COMPLETE
 
 ── Consolidation Sprint (2026-02-21) ──────────────────────
