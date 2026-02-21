@@ -1,11 +1,32 @@
 import { useQuery } from "@tanstack/react-query"
-import { api, fetchStatus } from "@/lib/api"
+import { useMemo } from "react"
+import { api, fetchStatus, getMetrics } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Database, HardDrive, Server, Zap, FolderOpen } from "lucide-react"
+import { Database, Server, Zap, GitBranch, Clock } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useState } from "react"
+
+function parsePrometheusValue(raw: string, metricName: string): number | null {
+    if (!raw) return null
+    const lines = raw.split("\n")
+    for (const line of lines) {
+        if (line.startsWith(metricName + " ")) {
+            return parseFloat(line.split(" ")[1])
+        }
+    }
+    return null
+}
+
+function formatUptime(seconds: number): string {
+    const d = Math.floor(seconds / 86400)
+    const h = Math.floor((seconds % 86400) / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    if (d > 0) return `${d}d ${h}h ${m}m`
+    if (h > 0) return `${h}h ${m}m`
+    return `${m}m`
+}
 
 export function OverviewPage() {
     const { data: status, isLoading: sLoading } = useQuery({
@@ -16,24 +37,32 @@ export function OverviewPage() {
     const { data: rawStats } = useQuery({
         queryKey: ['metrics'],
         queryFn: () => api.get("/stats").then(r => r.data),
-        refetchInterval: 2000
+        refetchInterval: 5000
     })
-    const metrics = rawStats ? {
-        total_vectors: rawStats.node_count ?? 0,
-        total_collections: rawStats.collections ?? 0,
-        ram_usage_mb: rawStats.ram_usage_mb ?? 0,
-        disk_usage_mb: rawStats.disk_usage_mb ?? 0,
-        cpu_usage_percent: rawStats.cpu_usage_percent ?? 0,
-    } : undefined
+    const { data: rawProm } = useQuery({
+        queryKey: ['prometheus'],
+        queryFn: getMetrics,
+        refetchInterval: 10000
+    })
+
+    const promMetrics = useMemo(() => {
+        if (!rawProm || typeof rawProm !== "string") return null
+        return {
+            uptime: parsePrometheusValue(rawProm, "nietzsche_uptime_seconds"),
+            insertNodeTotal: parsePrometheusValue(rawProm, "nietzsche_insert_node_total"),
+            queryTotal: parsePrometheusValue(rawProm, "nietzsche_query_total"),
+            knnTotal: parsePrometheusValue(rawProm, "nietzsche_knn_total"),
+            sleepTotal: parsePrometheusValue(rawProm, "nietzsche_sleep_total"),
+            zaratustraTotal: parsePrometheusValue(rawProm, "nietzsche_zaratustra_total"),
+            errorTotal: parsePrometheusValue(rawProm, "nietzsche_error_total"),
+        }
+    }, [rawProm])
+
+    const nodeCount = rawStats?.node_count ?? 0
+    const edgeCount = rawStats?.edge_count ?? 0
+    const collectionCount = rawStats?.collections ?? 0
 
     if (sLoading && !status) return <OverviewSkeleton />
-
-    const formatDiskSize = (mb: number) => {
-        if (mb >= 1024) {
-            return `${(mb / 1024).toFixed(2)} GB`
-        }
-        return `${mb} MB`
-    }
 
     return (
         <div className="space-y-6 fade-in">
@@ -46,11 +75,11 @@ export function OverviewPage() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-                <StatCard title="Total Vectors" value={metrics?.total_vectors?.toLocaleString() || "0"} icon={Database} desc="Across all collections" />
-                <StatCard title="RAM Usage" value={`${metrics?.ram_usage_mb || 0} MB`} icon={HardDrive} desc="Resident Set Size" />
-                <StatCard title="Disk Usage" value={formatDiskSize(metrics?.disk_usage_mb || 0)} icon={FolderOpen} desc="Data directory size" />
-                <StatCard title="Collections" value={metrics?.total_collections || 0} icon={Server} desc="Active indices" />
-                <StatCard title="CPU Load" value={`${metrics?.cpu_usage_percent || 0}%`} icon={Zap} desc="System Load (Est.)" />
+                <StatCard title="Total Nodes" value={nodeCount.toLocaleString()} icon={Database} desc="Across all collections" />
+                <StatCard title="Total Edges" value={edgeCount.toLocaleString()} icon={GitBranch} desc="Graph relationships" />
+                <StatCard title="Collections" value={collectionCount} icon={Server} desc="Active indices" />
+                <StatCard title="Uptime" value={promMetrics?.uptime ? formatUptime(promMetrics.uptime) : "—"} icon={Clock} desc="Server uptime" />
+                <StatCard title="GPU" value="NVIDIA L4" icon={Zap} desc="24 GB VRAM · CUDA" highlight />
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -79,7 +108,7 @@ export function OverviewPage() {
                     </CardContent>
                 </Card>
 
-                <IngestionStatusCard metrics={metrics} />
+                <IngestionStatusCard promMetrics={promMetrics} />
 
                 <Card>
                     <CardHeader>
@@ -117,7 +146,7 @@ function ConfigRow({ label, value }: any) {
     )
 }
 
-function IngestionStatusCard({ metrics }: any) {
+function IngestionStatusCard({ promMetrics }: { promMetrics: any }) {
     const [refreshInterval, setRefreshInterval] = useState("10")
 
     const { data: liveRaw } = useQuery({
@@ -125,21 +154,13 @@ function IngestionStatusCard({ metrics }: any) {
         queryFn: () => api.get("/stats").then(r => r.data),
         refetchInterval: parseInt(refreshInterval) * 1000
     })
-    const liveMetrics = liveRaw ? {
-        total_vectors: liveRaw.node_count ?? 0,
-        total_collections: liveRaw.collections ?? 0,
-        ram_usage_mb: liveRaw.ram_usage_mb ?? 0,
-        disk_usage_mb: liveRaw.disk_usage_mb ?? 0,
-    } : undefined
-
-    const currentMetrics = liveMetrics || metrics
 
     return (
         <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <div>
-                    <CardTitle>Ingestion Status</CardTitle>
-                    <CardDescription>Auto-refresh monitoring</CardDescription>
+                    <CardTitle>Operations</CardTitle>
+                    <CardDescription>Prometheus counters (live)</CardDescription>
                 </div>
                 <Select value={refreshInterval} onValueChange={setRefreshInterval}>
                     <SelectTrigger className="w-[110px]">
@@ -156,23 +177,29 @@ function IngestionStatusCard({ metrics }: any) {
             <CardContent>
                 <div className="space-y-4">
                     <div className="flex items-center justify-between py-2 border-b">
-                        <span className="text-sm text-muted-foreground">Total Vectors</span>
-                        <span className="font-mono font-bold text-lg">{currentMetrics?.total_vectors?.toLocaleString() || "0"}</span>
+                        <span className="text-sm text-muted-foreground">Total Nodes</span>
+                        <span className="font-mono font-bold text-lg">{(liveRaw?.node_count ?? 0).toLocaleString()}</span>
                     </div>
                     <div className="flex items-center justify-between py-2 border-b">
-                        <span className="text-sm text-muted-foreground">Active Collections</span>
-                        <span className="font-mono font-bold text-lg">{currentMetrics?.total_collections || 0}</span>
+                        <span className="text-sm text-muted-foreground">Inserts</span>
+                        <span className="font-mono font-bold text-lg">{promMetrics?.insertNodeTotal?.toLocaleString() ?? "—"}</span>
                     </div>
                     <div className="flex items-center justify-between py-2 border-b">
-                        <span className="text-sm text-muted-foreground">RAM Usage</span>
-                        <span className="font-mono font-bold text-lg">{currentMetrics?.ram_usage_mb || 0} MB</span>
+                        <span className="text-sm text-muted-foreground">Queries</span>
+                        <span className="font-mono font-bold text-lg">{promMetrics?.queryTotal?.toLocaleString() ?? "—"}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-sm text-muted-foreground">KNN Searches</span>
+                        <span className="font-mono font-bold text-lg">{promMetrics?.knnTotal?.toLocaleString() ?? "—"}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-sm text-muted-foreground">Sleep Cycles</span>
+                        <span className="font-mono font-bold text-lg">{promMetrics?.sleepTotal?.toLocaleString() ?? "—"}</span>
                     </div>
                     <div className="flex items-center justify-between py-2">
-                        <span className="text-sm text-muted-foreground">Disk Usage</span>
-                        <span className="font-mono font-bold text-lg">
-                            {currentMetrics?.disk_usage_mb >= 1024
-                                ? `${(currentMetrics.disk_usage_mb / 1024).toFixed(2)} GB`
-                                : `${currentMetrics?.disk_usage_mb || 0} MB`}
+                        <span className="text-sm text-muted-foreground">Errors</span>
+                        <span className={`font-mono font-bold text-lg ${(promMetrics?.errorTotal ?? 0) > 0 ? 'text-red-500' : ''}`}>
+                            {promMetrics?.errorTotal?.toLocaleString() ?? "0"}
                         </span>
                     </div>
                 </div>
