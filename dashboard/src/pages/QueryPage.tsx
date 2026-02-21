@@ -138,10 +138,11 @@ export default function QueryPage() {
             }))
             const response = await generateNqlFromPrompt(chatInput, history)
             setChatMessages((prev) => [...prev, { role: "assistant", content: response }])
-        } catch {
+        } catch (err: unknown) {
+            const errMsg = err instanceof Error ? err.message : "Unknown error"
             setChatMessages((prev) => [
                 ...prev,
-                { role: "assistant", content: "Error calling AI. Check your API configuration." },
+                { role: "assistant", content: `Error calling AI: ${errMsg}` },
             ])
         } finally {
             setChatLoading(false)
