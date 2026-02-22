@@ -16,7 +16,7 @@
   <a href="https://github.com/JoseRFJuniorLLMs/NietzscheDB/blob/main/LICENSE_AGPLv3.md"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/built%20with-Rust%20nightly-orange.svg" alt="Rust"></a>
   <img src="https://img.shields.io/badge/crates-38%20workspace-informational.svg" alt="Crates">
-  <img src="https://img.shields.io/badge/gRPC-55%2B%20RPCs-blueviolet.svg" alt="RPCs">
+  <img src="https://img.shields.io/badge/gRPC-60%2B%20RPCs-blueviolet.svg" alt="RPCs">
   <img src="https://img.shields.io/badge/geometry-Poincar%C3%A9%20Ball-purple.svg" alt="Hyperbolic">
   <img src="https://img.shields.io/badge/category-Temporal%20Hyperbolic%20Graph%20DB-red.svg" alt="Category">
   <img src="https://img.shields.io/badge/GPU-cuVS%20CAGRA-76b900.svg" alt="GPU">
@@ -60,8 +60,10 @@ The name for what NietzscheDB actually is:
 │   · GPU/TPU-accelerated vector search                   │
 │   · 11 built-in graph algorithms (PageRank, Louvain,...) │
 │   · Hybrid BM25+ANN search with RRF fusion              │
-│   · Filtered KNN with Roaring Bitmaps                    │
+│   · Filtered KNN with Roaring Bitmaps + metadata push    │
 │   · Product Quantization (magnitude-preserving)          │
+│   · MERGE upsert with edge metadata + atomic counters    │
+│   · Persistent secondary indexes with query planner      │
 │   · RBAC + AES-256-CTR encryption at-rest                │
 │   · Schema validation + metadata secondary indexes       │
 │   · Multi-vector per node (Named Vectors)                │
@@ -77,7 +79,7 @@ The name for what NietzscheDB actually is:
 
 **In plain language:**
 - *For users:* "A memory database that thinks in hierarchies, grows like a plant, and sleeps to consolidate what it learned."
-- *For engineers:* "A hyperbolic graph with native L-System growth, heat kernel diffusion as a search primitive, GPU/TPU vector backends, 55+ gRPC RPCs, MCP server for AI assistants, Prometheus metrics, filtered KNN, Product Quantization, and periodic Riemannian reconsolidation."
+- *For engineers:* "A hyperbolic graph with native L-System growth, heat kernel diffusion as a search primitive, GPU/TPU vector backends, 60+ gRPC RPCs, MCP server for AI assistants, Prometheus metrics, filtered KNN with metadata push-down, Product Quantization, MERGE upsert semantics, persistent secondary indexes, and periodic Riemannian reconsolidation."
 - *For the market:* The category does not exist yet. This is it.
 
 ---
@@ -109,7 +111,7 @@ It is a fork of **[YARlabs/hyperspace-db](https://github.com/YARlabs/hyperspace-
 | Knowledge growth | Static inserts | L-System: graph grows by production rules |
 | Memory pruning | Manual deletion | Hausdorff dimension: self-pruning fractal |
 | Memory consolidation | No concept | Sleep cycle: Riemannian perturbation + rollback |
-| Query language | k-NN only | NQL — graph, vector, diffusion, CREATE/SET/DELETE, EXPLAIN |
+| Query language | k-NN only | NQL — graph, vector, diffusion, CREATE/SET/DELETE/MERGE, EXPLAIN |
 | Search | Vector OR text | Hybrid BM25+KNN with RRF fusion |
 | Graph analytics | External tool needed | 11 built-in algorithms (PageRank, Louvain, A*, ...) |
 | Hardware acceleration | CPU only or proprietary | GPU (cuVS CAGRA) + TPU (PJRT) at runtime |
@@ -185,7 +187,12 @@ Twenty-nine new crates built on top of the foundation:
 - Own WAL for graph operations, separate from the vector WAL
 - `NietzscheDB` dual-write: every insert goes to both RocksDB (graph) and HyperspaceDB (embedding)
 - **Traversal engine** (`traversal.rs`): energy-gated BFS (reads only NodeMeta — ~100 bytes per hop), Poincare-distance Dijkstra, shortest-path reconstruction, energy-biased `DiffusionWalk` with seeded RNG
-- **EmbeddedVectorStore** abstraction: CPU (HnswIndex) / GPU (GpuVectorStore) / TPU (TpuVectorStore) / Mock — selected at runtime via `NIETZSCHE_VECTOR_BACKEND`
+- **EmbeddedVectorStore** abstraction: CPU (HnswIndex) / GPU (GpuVectorStore) / TPU (TpuVectorStore) / Mock — selected at runtime via `NIETZSCHE_VECTOR_BACKEND`. Default is Embedded (real HNSW); Mock requires explicit opt-in
+- **Multi-Metric HNSW**: Cosine, Euclidean, Poincare, and DotProduct distance metrics per collection. Factory routing ensures correct metric type at the HNSW graph topology level
+- **KNN metadata filter push-down**: `MetadataFilter` (Eq, In, Range, And) pushed through VectorStore → DynHnsw → HnswIndex with RoaringBitmap pre-filtering for efficient filtered vector search
+- **MERGE upsert semantics**: `merge_node` (find-or-create by content), `merge_edge` (find-or-create by from/to/type) with ON CREATE SET / ON MATCH SET
+- **Atomic edge metadata increment**: `increment_edge_metadata(edge_id, field, delta)` for counter patterns (e.g. `r.count = r.count + 1`)
+- **Persistent secondary indexes**: `create_index(field)` / `drop_index(field)` / `list_indexes()` with automatic backfill and startup recovery from CF_META registry. NQL executor auto-detects indexed fields for O(log N) scans instead of full table scans
 - **Encryption at-rest** (`encryption.rs`): AES-256-CTR with HKDF-SHA256 per-CF key derivation from master key (`NIETZSCHE_ENCRYPTION_KEY`)
 - **Schema validation** (`schema.rs`): per-NodeType constraints (required fields, field types), persisted in CF_META, enforced on `insert_node`
 - **Metadata secondary indexes** (`CF_META_IDX`): arbitrary field indexing with FNV-1a + sortable value encoding for range scans
@@ -544,7 +551,7 @@ Backend-agnostic media storage for files associated with graph nodes:
 - 8 unit tests
 
 #### `nietzsche-api` — Unified gRPC API
-Single endpoint for all NietzscheDB capabilities — **55+ RPCs** over a single `NietzscheDB` service. Every data-plane RPC accepts a `collection` field; empty -> `"default"`.
+Single endpoint for all NietzscheDB capabilities — **60+ RPCs** over a single `NietzscheDB` service. Every data-plane RPC accepts a `collection` field; empty -> `"default"`.
 
 ```protobuf
 service NietzscheDB {
@@ -562,6 +569,7 @@ service NietzscheDB {
   rpc DeleteEdge(EdgeIdRequest)         returns (StatusResponse);
   rpc MergeNode(MergeNodeRequest)       returns (MergeNodeResponse);
   rpc MergeEdge(MergeEdgeRequest)       returns (MergeEdgeResponse);
+  rpc IncrementEdgeMeta(IncrementEdgeMetaRequest) returns (IncrementEdgeMetaResponse);
 
   // ── Batch Operations ──────────────────────────────────────────
   rpc BatchInsertNodes(BatchInsertNodesRequest)   returns (BatchInsertNodesResponse);
@@ -569,7 +577,7 @@ service NietzscheDB {
 
   // ── Query & Search ────────────────────────────────────────────
   rpc Query(QueryRequest)               returns (QueryResponse);
-  rpc KnnSearch(KnnRequest)             returns (KnnResponse);
+  rpc KnnSearch(KnnRequest)             returns (KnnResponse);   // supports metadata filters
   rpc FullTextSearch(FullTextSearchRequest) returns (FullTextSearchResponse);
   rpc HybridSearch(HybridSearchRequest) returns (KnnResponse);
 
@@ -621,6 +629,11 @@ service NietzscheDB {
   rpc SetSchema(SetSchemaRequest)         returns (StatusResponse);
   rpc GetSchema(GetSchemaRequest)         returns (GetSchemaResponse);
   rpc ListSchemas(Empty)                  returns (ListSchemasResponse);
+
+  // ── Secondary Indexes ──────────────────────────────────────
+  rpc CreateIndex(CreateIndexRequest)     returns (StatusResponse);
+  rpc DropIndex(DropIndexRequest)         returns (StatusResponse);
+  rpc ListIndexes(ListIndexesRequest)     returns (ListIndexesResponse);
 
   // ── Admin ─────────────────────────────────────────────────────
   rpc GetStats(Empty)                     returns (StatsResponse);
@@ -774,7 +787,7 @@ sleep, _ := client.TriggerSleep(ctx, nietzsche.SleepOpts{Noise: 0.02})
 fmt.Printf("deltaH=%.3f committed=%v\n", sleep.HausdorffDelta, sleep.Committed)
 ```
 
-Go SDK covers all 55+ RPCs: collections, nodes, edges, batch operations, query, search, traversal, algorithms, backup, CDC, merge, sensory, lifecycle.
+Go SDK covers all 60+ RPCs: collections, nodes, edges, batch operations, query, search, traversal, algorithms, backup, CDC, merge, sensory, indexes, lifecycle.
 
 ### TypeScript & C++
 Located in `sdks/ts/` and `sdks/cpp/`.
@@ -840,6 +853,16 @@ E0.7  Kafka Connect Sink (CDC)             ✅ COMPLETE  (6 mutation types, 9 te
 E0.8  Table Store (SQLite)                 ✅ COMPLETE  (7 column types, 15 tests)
 E0.9  Media/Blob Store (OpenDAL)           ✅ COMPLETE  (5 media types, 8 tests)
 E1.0  Go SDK batch RPCs                    ✅ COMPLETE  (42/42 RPCs)
+
+── EVA-Mind Compatibility Sprint (2026-02-21) ──────────
+A.1   Multi-Metric HNSW fix + DotProduct   ✅ COMPLETE  (Euclidean bug fixed, DotProduct added)
+A.2   EmbeddedVectorStore as default       ✅ COMPLETE  (Mock → Embedded, real HNSW by default)
+B.2   KNN metadata filter push-down        ✅ COMPLETE  (MetadataFilter → RoaringBitmap pre-filter)
+D.1   MergeEdge ON MATCH + edge metadata   ✅ COMPLETE  (update_edge_metadata + WAL entries)
+D.2   IncrementEdgeMeta RPC               ✅ COMPLETE  (atomic counter increment on edges)
+E.1   Persistent secondary index registry  ✅ COMPLETE  (create/drop/list + backfill + startup load)
+E.2   NQL executor index integration       ✅ COMPLETE  (auto O(log N) scan for indexed WHERE)
+E.3   Index management gRPC RPCs           ✅ COMPLETE  (CreateIndex/DropIndex/ListIndexes)
 ```
 
 ---
@@ -1306,5 +1329,5 @@ Commercial licensing available — see [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENS
 </p>
 
 <p align="center">
-  Built for <strong>EVA-Mind</strong> · Powered by <strong>Rust nightly</strong> · <strong>38 crates</strong> · <strong>55+ gRPC RPCs</strong> · <strong>MCP + Prometheus</strong> · <strong>GPU/TPU</strong> · <strong>RBAC + Encryption</strong>
+  Built for <strong>EVA-Mind</strong> · Powered by <strong>Rust nightly</strong> · <strong>38 crates</strong> · <strong>60+ gRPC RPCs</strong> · <strong>MCP + Prometheus</strong> · <strong>GPU/TPU</strong> · <strong>RBAC + Encryption</strong>
 </p>

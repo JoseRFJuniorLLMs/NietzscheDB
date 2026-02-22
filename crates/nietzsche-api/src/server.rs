@@ -779,8 +779,22 @@ impl NietzscheDb for NietzscheServer {
                     let nt_str = node_type.as_deref().unwrap_or("Semantic");
                     let nt = parse_node_type(nt_str);
                     let embedding = PoincareVector::new(vec![0.0_f32; 3072]);
-                    let mut node = Node::new(Uuid::new_v4(), embedding, properties);
+
+                    // Extract TTL from properties → set expires_at
+                    let mut props_clone = properties.clone();
+                    let ttl_secs = props_clone.as_object_mut()
+                        .and_then(|m| m.remove("ttl"))
+                        .and_then(|v| v.as_f64());
+
+                    let mut node = Node::new(Uuid::new_v4(), embedding, props_clone);
                     node.node_type = nt;
+                    if let Some(ttl) = ttl_secs {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                        node.expires_at = Some((now + ttl as u64) as i64);
+                    }
                     db_w.insert_node(node.clone()).map_err(graph_err)?;
                     nodes.push(node_to_proto(node));
                     drop(db_w);
@@ -2316,5 +2330,106 @@ impl NietzscheDb for NietzscheServer {
         let fields = db.list_indexes();
 
         Ok(Response::new(nietzsche::ListIndexesResponse { fields }))
+    }
+
+    // ── Cache (Phase C — Redis replacement) ──────────────────────────────
+
+    #[instrument(skip(self, req))]
+    async fn cache_set(
+        &self,
+        req: Request<nietzsche::CacheSetRequest>,
+    ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        let r = req.into_inner();
+        let col_name = col(&r.collection).to_string();
+        let shared = get_col!(self.cm, &col_name);
+        let db = shared.read().await;
+        // Store value in CF_META with "cache:" prefix
+        let cache_key = format!("cache:{}", r.key);
+        // If TTL > 0, prepend expiry timestamp to value
+        let stored_value = if r.ttl_secs > 0 {
+            let expires_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() + r.ttl_secs;
+            let mut buf = expires_at.to_be_bytes().to_vec();
+            buf.extend_from_slice(&r.value);
+            buf
+        } else {
+            let mut buf = 0u64.to_be_bytes().to_vec(); // 0 = no expiry
+            buf.extend_from_slice(&r.value);
+            buf
+        };
+        db.storage().put_meta(&cache_key, &stored_value).map_err(graph_err)?;
+        info!(key = %r.key, collection = %col_name, "CacheSet");
+        Ok(Response::new(ok_status()))
+    }
+
+    #[instrument(skip(self, req))]
+    async fn cache_get(
+        &self,
+        req: Request<nietzsche::CacheGetRequest>,
+    ) -> Result<Response<nietzsche::CacheGetResponse>, Status> {
+        let r = req.into_inner();
+        let col_name = col(&r.collection).to_string();
+        let shared = get_col!(self.cm, &col_name);
+        let db = shared.read().await;
+        let cache_key = format!("cache:{}", r.key);
+        match db.storage().get_meta(&cache_key).map_err(graph_err)? {
+            Some(stored) if stored.len() >= 8 => {
+                let expires_at = u64::from_be_bytes(stored[..8].try_into().unwrap());
+                if expires_at > 0 {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    if now > expires_at {
+                        // Expired — lazy delete
+                        let _ = db.storage().delete_meta(&cache_key);
+                        return Ok(Response::new(nietzsche::CacheGetResponse {
+                            found: false,
+                            value: vec![],
+                        }));
+                    }
+                }
+                Ok(Response::new(nietzsche::CacheGetResponse {
+                    found: true,
+                    value: stored[8..].to_vec(),
+                }))
+            }
+            _ => Ok(Response::new(nietzsche::CacheGetResponse {
+                found: false,
+                value: vec![],
+            })),
+        }
+    }
+
+    #[instrument(skip(self, req))]
+    async fn cache_del(
+        &self,
+        req: Request<nietzsche::CacheDelRequest>,
+    ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        let r = req.into_inner();
+        let col_name = col(&r.collection).to_string();
+        let shared = get_col!(self.cm, &col_name);
+        let db = shared.read().await;
+        let cache_key = format!("cache:{}", r.key);
+        db.storage().delete_meta(&cache_key).map_err(graph_err)?;
+        Ok(Response::new(ok_status()))
+    }
+
+    #[instrument(skip(self, req))]
+    async fn reap_expired(
+        &self,
+        req: Request<nietzsche::ReapExpiredRequest>,
+    ) -> Result<Response<nietzsche::ReapExpiredResponse>, Status> {
+        let r = req.into_inner();
+        let col_name = col(&r.collection).to_string();
+        let shared = get_col!(self.cm, &col_name);
+        let mut db = shared.write().await;
+        let reaped = db.reap_expired().map_err(graph_err)?;
+        info!(reaped = reaped, collection = %col_name, "ReapExpired");
+        Ok(Response::new(nietzsche::ReapExpiredResponse {
+            reaped_count: reaped as u64,
+        }))
     }
 }
