@@ -6,11 +6,12 @@ description = "Swartz SQL Layer — embedded relational engine for NietzscheDB (
 
 [dependencies]
 nietzsche-graph = { workspace = true }
-gluesql = { version = "0.16", default-features = false }
+gluesql = { version = "0.19", default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace = true }
 async-trait = "0.1"
+futures = "0.3"
 tracing = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
