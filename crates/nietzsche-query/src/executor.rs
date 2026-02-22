@@ -1332,6 +1332,21 @@ fn eval_expr(
         Expr::MathFunc { func, args } => {
             eval_math_func(func, args, binding, params, storage, adjacency)
         }
+
+        Expr::BinOp { left, op, right } => {
+            let lv = eval_expr(left, binding, params, storage, adjacency)?;
+            let rv = eval_expr(right, binding, params, storage, adjacency)?;
+            let (l, r) = match (&lv, &rv) {
+                (Value::Float(a), Value::Float(b)) => (*a, *b),
+                _ => return Err(QueryError::Execution(
+                    format!("arithmetic requires numeric operands, got {:?} and {:?}", lv, rv),
+                )),
+            };
+            Ok(Value::Float(match op {
+                ArithOp::Add => l + r,
+                ArithOp::Sub => l - r,
+            }))
+        }
     }
 }
 
