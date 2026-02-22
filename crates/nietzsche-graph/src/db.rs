@@ -185,7 +185,7 @@ impl VectorStore for MockVectorStore {
 /// On restart, call [`NietzscheDB::open`] which replays the WAL against
 /// RocksDB and rebuilds the in-memory adjacency index from stored edges.
 pub struct NietzscheDB<V: VectorStore> {
-    storage:      GraphStorage,
+    storage:      Arc<GraphStorage>,
     wal:          GraphWal,
     adjacency:    AdjacencyIndex,
     vector_store: V,
@@ -217,7 +217,7 @@ impl<V: VectorStore> NietzscheDB<V> {
             .to_str()
             .ok_or_else(|| GraphError::Storage("invalid RocksDB path".into()))?;
 
-        let storage   = GraphStorage::open(rocksdb_str)?;
+        let storage   = Arc::new(GraphStorage::open(rocksdb_str)?);
         let wal       = GraphWal::open(data_dir)?;
         let adjacency = storage.rebuild_adjacency()?;
 
@@ -924,6 +924,8 @@ impl<V: VectorStore> NietzscheDB<V> {
     // ── Accessors for traversal engine ─────────────────
 
     pub fn storage(&self) -> &GraphStorage { &self.storage }
+    /// Get a shared Arc reference to the GraphStorage for Swartz SQL engine.
+    pub fn storage_arc(&self) -> Arc<GraphStorage> { Arc::clone(&self.storage) }
     pub fn adjacency(&self) -> &AdjacencyIndex { &self.adjacency }
 
     // ── Hot-Tier RAM cache ─────────────────────────────

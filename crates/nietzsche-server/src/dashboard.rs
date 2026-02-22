@@ -44,9 +44,12 @@ use nietzsche_cluster::ClusterRegistry;
 use nietzsche_graph::{
     CollectionManager,
     Edge, EdgeType, Node, NodeMeta, NodeType, PoincareVector,
+    SchemaValidator, SchemaConstraint, FieldType,
 };
 use nietzsche_query::{parse as nql_parse, execute as nql_execute, Params, QueryResult};
 use nietzsche_sleep::{SleepConfig, SleepCycle};
+use nietzsche_hyp_ops::{riemann, klein, minkowski, manifold};
+use ordered_float::OrderedFloat;
 
 use crate::html::DASHBOARD_HTML;
 use crate::metrics::OperationMetrics;
@@ -114,6 +117,16 @@ pub async fn serve(
         .route("/api/agency/narrative", get(agency_narrative))
         .route("/api/agency/quantum/map", post(agency_quantum_map))
         .route("/api/agency/quantum/fidelity", post(agency_quantum_fidelity))
+        // Schema management
+        .route("/api/schemas", get(list_schemas))
+        .route("/api/schemas", post(set_schema))
+        .route("/api/schemas/:node_type", delete(delete_schema))
+        // Reasoning (Multi-Manifold)
+        .route("/api/reasoning/synthesis", post(reasoning_synthesis))
+        .route("/api/reasoning/synthesis-multi", post(reasoning_synthesis_multi))
+        .route("/api/reasoning/causal-neighbors", post(reasoning_causal_neighbors))
+        .route("/api/reasoning/causal-chain", post(reasoning_causal_chain))
+        .route("/api/reasoning/klein-path", post(reasoning_klein_path))
         // Cluster
         .route("/api/cluster/status", get(cluster_status))
         .route("/api/cluster/ring", get(cluster_ring))
@@ -454,6 +467,7 @@ async fn trigger_sleep(
         adam_steps:          req.adam_steps.unwrap_or(10),
         adam_lr:             5e-3,
         hausdorff_threshold: req.hausdorff_threshold.unwrap_or(0.15),
+        ..Default::default()
     };
     let shared   = resolve_col!(cm, req.collection);
     let mut db   = shared.write().await;
@@ -461,11 +475,13 @@ async fn trigger_sleep(
     let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(seed);
     match SleepCycle::run(&cfg, &mut *db, &mut rng) {
         Ok(r) => Json(serde_json::json!({
-            "hausdorff_before":  r.hausdorff_before,
-            "hausdorff_after":   r.hausdorff_after,
-            "hausdorff_delta":   r.hausdorff_delta,
-            "committed":         r.committed,
-            "nodes_perturbed":   r.nodes_perturbed,
+            "hausdorff_before":    r.hausdorff_before,
+            "hausdorff_after":     r.hausdorff_after,
+            "hausdorff_delta":     r.hausdorff_delta,
+            "semantic_drift_avg":  r.semantic_drift_avg,
+            "semantic_drift_max":  r.semantic_drift_max,
+            "committed":           r.committed,
+            "nodes_perturbed":     r.nodes_perturbed,
         })).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
     }
@@ -940,6 +956,470 @@ async fn export_edges(
             buf,
         ).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// ── Schema endpoints ─────────────────────────────────────────────────────────
+
+// GET /api/schemas?collection=
+async fn list_schemas(
+    State((cm, _ops)): State<AppState>,
+    Query(cq): Query<CollectionQuery>,
+) -> impl IntoResponse {
+    let shared = resolve_col!(cm, cq.collection);
+    let db = shared.read().await;
+    match SchemaValidator::load_all(db.storage()) {
+        Ok(validator) => {
+            let schemas: Vec<serde_json::Value> = validator.list_constraints().iter().map(|c| {
+                serde_json::json!({
+                    "node_type": c.node_type,
+                    "required_fields": c.required_fields,
+                    "field_types": c.field_types.iter().map(|(k, v)| {
+                        serde_json::json!({"field_name": k, "field_type": format!("{:?}", v)})
+                    }).collect::<Vec<_>>(),
+                })
+            }).collect();
+            Json(serde_json::json!({"schemas": schemas})).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// POST /api/schemas
+#[derive(Deserialize)]
+struct SetSchemaRequest {
+    node_type:       String,
+    required_fields: Vec<String>,
+    field_types:     Vec<SchemaFieldJson>,
+    collection:      Option<String>,
+}
+
+#[derive(Deserialize)]
+struct SchemaFieldJson {
+    field_name: String,
+    field_type: String,
+}
+
+async fn set_schema(
+    State((cm, _ops)): State<AppState>,
+    Json(req): Json<SetSchemaRequest>,
+) -> impl IntoResponse {
+    let mut ft = std::collections::HashMap::new();
+    for f in &req.field_types {
+        let ftype = match f.field_type.to_lowercase().as_str() {
+            "string" | "str"     => FieldType::String,
+            "number" | "float" | "int" => FieldType::Number,
+            "bool" | "boolean"   => FieldType::Bool,
+            "array" | "list"     => FieldType::Array,
+            "object" | "map"     => FieldType::Object,
+            _ => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                "error": format!("unknown field type '{}' — use string|number|bool|array|object", f.field_type)
+            }))).into_response(),
+        };
+        ft.insert(f.field_name.clone(), ftype);
+    }
+    let constraint = SchemaConstraint {
+        node_type: req.node_type.clone(),
+        required_fields: req.required_fields,
+        field_types: ft,
+    };
+
+    let shared = resolve_col!(cm, req.collection);
+    let db = shared.read().await;
+    let validator = SchemaValidator::new();
+    match validator.save_constraint(db.storage(), &constraint) {
+        Ok(_)  => Json(serde_json::json!({"status": "ok", "node_type": req.node_type})).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// DELETE /api/schemas/:node_type?collection=
+async fn delete_schema(
+    State((cm, _ops)): State<AppState>,
+    Path(node_type): Path<String>,
+    Query(cq): Query<CollectionQuery>,
+) -> impl IntoResponse {
+    let shared = resolve_col!(cm, cq.collection);
+    let db = shared.read().await;
+    let validator = SchemaValidator::new();
+    match validator.delete_constraint(db.storage(), &node_type) {
+        Ok(_)  => Json(serde_json::json!({"status": "ok", "deleted": node_type})).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// ── Reasoning endpoints (Multi-Manifold) ────────────────────────────────────
+
+// POST /api/reasoning/synthesis
+#[derive(Deserialize)]
+struct SynthesisRequest {
+    node_id_a:  String,
+    node_id_b:  String,
+    collection: Option<String>,
+}
+
+async fn reasoning_synthesis(
+    State((cm, _ops)): State<AppState>,
+    Json(req): Json<SynthesisRequest>,
+) -> impl IntoResponse {
+    let id_a = match req.node_id_a.parse::<Uuid>() {
+        Ok(u) => u, Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid node_id_a"}))).into_response(),
+    };
+    let id_b = match req.node_id_b.parse::<Uuid>() {
+        Ok(u) => u, Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid node_id_b"}))).into_response(),
+    };
+
+    let shared = resolve_col!(cm, req.collection);
+    let db = shared.read().await;
+
+    let emb_a = match db.storage().get_embedding(&id_a) {
+        Ok(Some(e)) => e, Ok(None) => return (StatusCode::NOT_FOUND, Json(serde_json::json!({"error":"node_id_a embedding not found"}))).into_response(),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    };
+    let emb_b = match db.storage().get_embedding(&id_b) {
+        Ok(Some(e)) => e, Ok(None) => return (StatusCode::NOT_FOUND, Json(serde_json::json!({"error":"node_id_b embedding not found"}))).into_response(),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    };
+
+    let coords_a = emb_a.coords_f64();
+    let coords_b = emb_b.coords_f64();
+
+    let synthesis_raw = match riemann::synthesis(&coords_a, &coords_b) {
+        Ok(s) => s,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("synthesis failed: {:?}", e)}))).into_response(),
+    };
+    let synthesis_coords = manifold::sanitize_poincare_f64(&synthesis_raw);
+
+    // find nearest existing node
+    let synthesis_pv = PoincareVector::from_f64(synthesis_coords.clone());
+    let (nearest_id, nearest_dist) = match db.knn(&synthesis_pv, 1) {
+        Ok(results) if !results.is_empty() => (results[0].0.to_string(), results[0].1),
+        Ok(_) => ("none".to_string(), f64::INFINITY),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    };
+
+    Json(serde_json::json!({
+        "synthesis_coords": synthesis_coords,
+        "nearest_node_id": nearest_id,
+        "nearest_distance": nearest_dist,
+    })).into_response()
+}
+
+// POST /api/reasoning/synthesis-multi
+#[derive(Deserialize)]
+struct SynthesisMultiRequest {
+    node_ids:   Vec<String>,
+    collection: Option<String>,
+}
+
+async fn reasoning_synthesis_multi(
+    State((cm, _ops)): State<AppState>,
+    Json(req): Json<SynthesisMultiRequest>,
+) -> impl IntoResponse {
+    if req.node_ids.len() < 2 {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"need at least 2 node_ids"}))).into_response();
+    }
+    let ids: Vec<Uuid> = match req.node_ids.iter().map(|s| s.parse::<Uuid>()).collect::<Result<Vec<_>, _>>() {
+        Ok(v) => v, Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid uuid in node_ids"}))).into_response(),
+    };
+
+    let shared = resolve_col!(cm, req.collection);
+    let db = shared.read().await;
+
+    let mut all_coords: Vec<Vec<f64>> = Vec::with_capacity(ids.len());
+    for id in &ids {
+        match db.storage().get_embedding(id) {
+            Ok(Some(e)) => all_coords.push(e.coords_f64()),
+            Ok(None) => return (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": format!("embedding not found for {}", id)}))).into_response(),
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+        }
+    }
+
+    let refs: Vec<&[f64]> = all_coords.iter().map(|v| v.as_slice()).collect();
+    let synthesis_raw = match riemann::synthesis_multi(&refs) {
+        Ok(s) => s,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("synthesis_multi failed: {:?}", e)}))).into_response(),
+    };
+    let synthesis_coords = manifold::sanitize_poincare_f64(&synthesis_raw);
+
+    let synthesis_pv = PoincareVector::from_f64(synthesis_coords.clone());
+    let (nearest_id, nearest_dist) = match db.knn(&synthesis_pv, 1) {
+        Ok(results) if !results.is_empty() => (results[0].0.to_string(), results[0].1),
+        Ok(_) => ("none".to_string(), f64::INFINITY),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    };
+
+    Json(serde_json::json!({
+        "synthesis_coords": synthesis_coords,
+        "nearest_node_id": nearest_id,
+        "nearest_distance": nearest_dist,
+    })).into_response()
+}
+
+// POST /api/reasoning/causal-neighbors
+#[derive(Deserialize)]
+struct CausalNeighborsRequest {
+    node_id:    String,
+    direction:  Option<String>, // "future" | "past" | "both"
+    collection: Option<String>,
+}
+
+async fn reasoning_causal_neighbors(
+    State((cm, _ops)): State<AppState>,
+    Json(req): Json<CausalNeighborsRequest>,
+) -> impl IntoResponse {
+    let node_id = match req.node_id.parse::<Uuid>() {
+        Ok(u) => u, Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid node_id"}))).into_response(),
+    };
+    let direction = req.direction.as_deref().unwrap_or("both");
+
+    let shared = resolve_col!(cm, req.collection);
+    let db = shared.read().await;
+
+    // get origin meta + embedding
+    let origin_meta = match db.storage().get_node_meta(&node_id) {
+        Ok(Some(m)) => m, Ok(None) => return (StatusCode::NOT_FOUND, Json(serde_json::json!({"error":"node not found"}))).into_response(),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    };
+    let origin_emb = match db.storage().get_embedding(&node_id) {
+        Ok(Some(e)) => e, Ok(None) => return (StatusCode::NOT_FOUND, Json(serde_json::json!({"error":"origin embedding not found"}))).into_response(),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    };
+
+    let mut edges_out = Vec::new();
+
+    // collect neighbors from adjacency
+    let mut adj_entries = Vec::new();
+    if direction != "future" {
+        for entry in db.adjacency().entries_in(&node_id) {
+            adj_entries.push((entry.edge_id, entry.neighbor_id, entry.edge_type, false));
+        }
+    }
+    if direction != "past" {
+        for entry in db.adjacency().entries_out(&node_id) {
+            adj_entries.push((entry.edge_id, entry.neighbor_id, entry.edge_type, true));
+        }
+    }
+
+    for (edge_id, neighbor_id, edge_type, is_outgoing) in adj_entries {
+        let neighbor_meta = match db.storage().get_node_meta(&neighbor_id) {
+            Ok(Some(m)) => m, _ => continue,
+        };
+        let neighbor_emb = match db.storage().get_embedding(&neighbor_id) {
+            Ok(Some(e)) => e, _ => continue,
+        };
+
+        let (interval, causal_type) = minkowski::compute_edge_causality(
+            &origin_emb.coords, &neighbor_emb.coords,
+            origin_meta.created_at, neighbor_meta.created_at,
+            minkowski::DEFAULT_CAUSAL_SPEED, 1e-6,
+        );
+
+        let (from_id, to_id) = if is_outgoing {
+            (node_id, neighbor_id)
+        } else {
+            (neighbor_id, node_id)
+        };
+
+        edges_out.push(serde_json::json!({
+            "edge_id": edge_id.to_string(),
+            "from_node_id": from_id.to_string(),
+            "to_node_id": to_id.to_string(),
+            "minkowski_interval": interval,
+            "causal_type": format!("{:?}", causal_type),
+            "edge_type": format!("{:?}", edge_type),
+        }));
+    }
+
+    Json(serde_json::json!({"edges": edges_out})).into_response()
+}
+
+// POST /api/reasoning/causal-chain
+#[derive(Deserialize)]
+struct CausalChainRequest {
+    node_id:    String,
+    max_depth:  Option<u32>,
+    direction:  Option<String>, // "future" | "past"
+    collection: Option<String>,
+}
+
+async fn reasoning_causal_chain(
+    State((cm, _ops)): State<AppState>,
+    Json(req): Json<CausalChainRequest>,
+) -> impl IntoResponse {
+    let start_id = match req.node_id.parse::<Uuid>() {
+        Ok(u) => u, Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid node_id"}))).into_response(),
+    };
+    let max_depth = req.max_depth.unwrap_or(10).min(50) as usize;
+    let is_past = req.direction.as_deref().unwrap_or("past") != "future";
+
+    let shared = resolve_col!(cm, req.collection);
+    let db = shared.read().await;
+
+    let mut chain_ids: Vec<String> = vec![start_id.to_string()];
+    let mut chain_edges: Vec<serde_json::Value> = Vec::new();
+    let mut visited = std::collections::HashSet::new();
+    visited.insert(start_id);
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back((start_id, 0usize));
+
+    while let Some((current_id, depth)) = queue.pop_front() {
+        if depth >= max_depth { continue; }
+
+        let current_meta = match db.storage().get_node_meta(&current_id) {
+            Ok(Some(m)) => m, _ => continue,
+        };
+        let current_emb = match db.storage().get_embedding(&current_id) {
+            Ok(Some(e)) => e, _ => continue,
+        };
+
+        let entries = if is_past {
+            db.adjacency().entries_in(&current_id)
+        } else {
+            db.adjacency().entries_out(&current_id)
+        };
+
+        for entry in entries {
+            if visited.contains(&entry.neighbor_id) { continue; }
+
+            let neighbor_meta = match db.storage().get_node_meta(&entry.neighbor_id) {
+                Ok(Some(m)) => m, _ => continue,
+            };
+            let neighbor_emb = match db.storage().get_embedding(&entry.neighbor_id) {
+                Ok(Some(e)) => e, _ => continue,
+            };
+
+            let (interval, causal_type) = minkowski::compute_edge_causality(
+                &current_emb.coords, &neighbor_emb.coords,
+                current_meta.created_at, neighbor_meta.created_at,
+                minkowski::DEFAULT_CAUSAL_SPEED, 1e-6,
+            );
+
+            // only follow timelike edges in the causal chain
+            if matches!(causal_type, minkowski::CausalType::Timelike) {
+                visited.insert(entry.neighbor_id);
+                chain_ids.push(entry.neighbor_id.to_string());
+
+                let (from_id, to_id) = if is_past {
+                    (entry.neighbor_id, current_id)
+                } else {
+                    (current_id, entry.neighbor_id)
+                };
+
+                chain_edges.push(serde_json::json!({
+                    "edge_id": entry.edge_id.to_string(),
+                    "from_node_id": from_id.to_string(),
+                    "to_node_id": to_id.to_string(),
+                    "minkowski_interval": interval,
+                    "causal_type": format!("{:?}", causal_type),
+                    "edge_type": format!("{:?}", entry.edge_type),
+                }));
+
+                queue.push_back((entry.neighbor_id, depth + 1));
+            }
+        }
+    }
+
+    Json(serde_json::json!({
+        "chain_ids": chain_ids,
+        "edges": chain_edges,
+    })).into_response()
+}
+
+// POST /api/reasoning/klein-path
+#[derive(Deserialize)]
+struct KleinPathRequest {
+    start_node_id: String,
+    goal_node_id:  String,
+    collection:    Option<String>,
+}
+
+async fn reasoning_klein_path(
+    State((cm, _ops)): State<AppState>,
+    Json(req): Json<KleinPathRequest>,
+) -> impl IntoResponse {
+    let start_id = match req.start_node_id.parse::<Uuid>() {
+        Ok(u) => u, Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid start_node_id"}))).into_response(),
+    };
+    let goal_id = match req.goal_node_id.parse::<Uuid>() {
+        Ok(u) => u, Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid goal_node_id"}))).into_response(),
+    };
+
+    let shared = resolve_col!(cm, req.collection);
+    let db = shared.read().await;
+
+    // Dijkstra in Klein space
+    let mut dist: std::collections::HashMap<Uuid, f64> = std::collections::HashMap::new();
+    let mut prev: std::collections::HashMap<Uuid, Uuid> = std::collections::HashMap::new();
+    let mut heap = std::collections::BinaryHeap::new();
+    let max_explored = 2000usize;
+
+    dist.insert(start_id, 0.0);
+    heap.push(std::cmp::Reverse((OrderedFloat(0.0f64), start_id)));
+
+    let mut found = false;
+    let mut explored = 0usize;
+
+    while let Some(std::cmp::Reverse((OrderedFloat(cost), current))) = heap.pop() {
+        if current == goal_id { found = true; break; }
+        explored += 1;
+        if explored > max_explored { break; }
+        if cost > *dist.get(&current).unwrap_or(&f64::INFINITY) { continue; }
+
+        let current_emb = match db.storage().get_embedding(&current) {
+            Ok(Some(e)) => e, _ => continue,
+        };
+        let current_klein = match klein::to_klein(&current_emb.coords_f64()) {
+            Ok(k) => k, Err(_) => continue,
+        };
+
+        for entry in db.adjacency().entries_out(&current) {
+            let neighbor_emb = match db.storage().get_embedding(&entry.neighbor_id) {
+                Ok(Some(e)) => e, _ => continue,
+            };
+            let neighbor_klein = match klein::to_klein(&neighbor_emb.coords_f64()) {
+                Ok(k) => k, Err(_) => continue,
+            };
+
+            let edge_cost = klein::klein_distance(&current_klein, &neighbor_klein);
+            let new_dist = cost + edge_cost;
+
+            if new_dist < *dist.get(&entry.neighbor_id).unwrap_or(&f64::INFINITY) {
+                dist.insert(entry.neighbor_id, new_dist);
+                prev.insert(entry.neighbor_id, current);
+                heap.push(std::cmp::Reverse((OrderedFloat(new_dist), entry.neighbor_id)));
+            }
+        }
+    }
+
+    if found {
+        // reconstruct path
+        let mut path = Vec::new();
+        let mut cur = goal_id;
+        while cur != start_id {
+            path.push(cur.to_string());
+            cur = match prev.get(&cur) {
+                Some(&p) => p,
+                None => break,
+            };
+        }
+        path.push(start_id.to_string());
+        path.reverse();
+
+        let total_cost = dist.get(&goal_id).copied().unwrap_or(0.0);
+        Json(serde_json::json!({
+            "found": true,
+            "path": path,
+            "cost": total_cost,
+            "hops": path.len() - 1,
+        })).into_response()
+    } else {
+        Json(serde_json::json!({
+            "found": false,
+            "path": [],
+            "cost": 0.0,
+            "hops": 0,
+        })).into_response()
     }
 }
 

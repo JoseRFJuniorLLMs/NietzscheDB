@@ -1253,6 +1253,7 @@ impl NietzscheDb for NietzscheServer {
             } else {
                 0.15
             },
+            ..Default::default()
         };
         warn!(
             noise      = config.noise,
@@ -1272,12 +1273,14 @@ impl NietzscheDb for NietzscheServer {
         self.cdc.publish(CdcEventType::SleepCycle, Uuid::nil(), &col_name);
 
         Ok(Response::new(nietzsche::SleepResponse {
-            hausdorff_before: report.hausdorff_before,
-            hausdorff_after:  report.hausdorff_after,
-            hausdorff_delta:  report.hausdorff_delta,
-            committed:        report.committed,
-            nodes_perturbed:  report.nodes_perturbed as u32,
-            snapshot_nodes:   report.snapshot_nodes  as u32,
+            hausdorff_before:   report.hausdorff_before,
+            hausdorff_after:    report.hausdorff_after,
+            hausdorff_delta:    report.hausdorff_delta,
+            committed:          report.committed,
+            nodes_perturbed:    report.nodes_perturbed as u32,
+            snapshot_nodes:     report.snapshot_nodes  as u32,
+            semantic_drift_avg: report.semantic_drift_avg,
+            semantic_drift_max: report.semantic_drift_max,
         }))
     }
 
@@ -2920,6 +2923,129 @@ impl NietzscheDb for NietzscheServer {
         Ok(Response::new(nietzsche::ShortestPathCheckResponse {
             on_path,
             distance,
+        }))
+    }
+
+    // ── Swartz SQL Layer ──────────────────────────────────────────────────
+
+    /// Execute a SQL SELECT query and return rows.
+    #[instrument(skip(self, req))]
+    async fn sql_query(
+        &self,
+        req: Request<nietzsche::SqlRequest>,
+    ) -> Result<Response<nietzsche::SqlResultSet>, Status> {
+        let r = req.into_inner();
+        if r.sql.is_empty() {
+            return Err(Status::invalid_argument("sql must not be empty"));
+        }
+
+        let col_name = col(&r.collection).to_string();
+        let shared = get_col!(self.cm, &col_name);
+        let db = shared.read().await;
+
+        let mut engine = nietzsche_swartz::SwartzEngine::new(db.storage_arc());
+
+        // query() returns Vec<serde_json::Value> — each is a JSON object with column names as keys
+        let json_rows = engine
+            .query(&r.sql)
+            .await
+            .map_err(|e| Status::internal(format!("Swartz SQL error: {e}")))?;
+
+        // Build column definitions from the first row's keys
+        let mut columns = Vec::new();
+        if let Some(first) = json_rows.first() {
+            if let Some(obj) = first.as_object() {
+                columns = obj
+                    .keys()
+                    .map(|k| nietzsche::SqlColumn {
+                        name: k.clone(),
+                        r#type: "TEXT".to_string(),
+                    })
+                    .collect();
+            }
+        }
+
+        // Convert JSON rows to proto SqlRow (each value JSON-encoded as bytes)
+        let rows: Vec<nietzsche::SqlRow> = json_rows
+            .iter()
+            .map(|row| {
+                let values = if let Some(obj) = row.as_object() {
+                    // Maintain column order
+                    columns
+                        .iter()
+                        .map(|c| {
+                            let v = obj.get(&c.name).unwrap_or(&serde_json::Value::Null);
+                            serde_json::to_vec(v).unwrap_or_default()
+                        })
+                        .collect()
+                } else {
+                    vec![serde_json::to_vec(row).unwrap_or_default()]
+                };
+                nietzsche::SqlRow { values }
+            })
+            .collect();
+
+        debug!(
+            sql = %r.sql, collection = %col_name,
+            result_rows = rows.len(),
+            "[Swartz] SqlQuery"
+        );
+
+        Ok(Response::new(nietzsche::SqlResultSet {
+            columns,
+            rows,
+            affected_rows: 0,
+        }))
+    }
+
+    /// Execute a SQL DDL/DML statement (CREATE TABLE, INSERT, UPDATE, DELETE, DROP TABLE).
+    #[instrument(skip(self, req))]
+    async fn sql_exec(
+        &self,
+        req: Request<nietzsche::SqlRequest>,
+    ) -> Result<Response<nietzsche::SqlExecResult>, Status> {
+        let r = req.into_inner();
+        if r.sql.is_empty() {
+            return Err(Status::invalid_argument("sql must not be empty"));
+        }
+
+        let col_name = col(&r.collection).to_string();
+        let shared = get_col!(self.cm, &col_name);
+        let db = shared.read().await;
+
+        let mut engine = nietzsche_swartz::SwartzEngine::new(db.storage_arc());
+
+        let affected = engine
+            .exec_count(&r.sql)
+            .await
+            .map_err(|e| Status::internal(format!("Swartz SQL error: {e}")))?;
+
+        // CDC publish for SQL writes (entity_id = nil UUID for SQL ops)
+        let sql_upper = r.sql.trim().to_uppercase();
+        if sql_upper.starts_with("INSERT")
+            || sql_upper.starts_with("UPDATE")
+            || sql_upper.starts_with("DELETE")
+            || sql_upper.starts_with("CREATE")
+            || sql_upper.starts_with("DROP")
+            || sql_upper.starts_with("ALTER")
+        {
+            self.cdc.publish(
+                CdcEventType::SqlExec,
+                Uuid::nil(),
+                &col_name,
+            );
+        }
+
+        info!(
+            sql = %r.sql, collection = %col_name,
+            affected_rows = affected,
+            "[Swartz] SqlExec"
+        );
+
+        Ok(Response::new(nietzsche::SqlExecResult {
+            affected_rows: affected,
+            success: true,
+            message: String::new(),
         }))
     }
 }

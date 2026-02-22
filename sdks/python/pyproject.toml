@@ -3,29 +3,32 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hyperspacedb"
-version = "2.0.0"
-description = "Fastest Hyperbolic Vector DB Client"
+name = "nietzschedb"
+version = "0.1.0"
+description = "NietzscheDB Python SDK — multi-manifold graph database client"
 readme = "README.md"
 authors = [
+    {name = "Jose R F Junior"},
     {name = "YARlabs"}
 ]
 dependencies = [
     "grpcio>=1.50.0",
     "protobuf>=4.21.0",
-    "numpy>=1.20.0"
 ]
-requires-python = ">=3.8"
-keywords = ["vector-database", "ann", "grpc", "embeddings", "hyperspace"]
+requires-python = ">=3.9"
+keywords = [
+    "graph-database", "hyperbolic", "poincare", "vector-database",
+    "grpc", "knowledge-graph", "nietzschedb"
+]
 
 [project.optional-dependencies]
+# Legacy HyperspaceDB client (for backward compatibility)
+hyperspace = ["numpy>=1.20.0"]
+# Embedder integrations
 openai = ["openai>=1.0.0"]
-cohere = ["cohere>=4.0.0"]
-voyage = ["voyageai>=0.1.0"]
-google = ["google-generativeai>=0.3.0"]
-sentence-transformers = ["sentence-transformers>=2.2.0"]
-all = ["openai>=1.0.0", "cohere>=4.0.0", "voyageai>=0.1.0", "google-generativeai>=0.3.0", "sentence-transformers>=2.2.0"]
+langchain = ["langchain-core>=0.1.0"]
+dev = ["grpcio-tools>=1.50.0", "pytest>=7.0.0"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["hyperspace*"]
+include = ["nietzschedb*", "hyperspace*"]

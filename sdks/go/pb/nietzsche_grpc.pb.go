@@ -83,6 +83,8 @@ const (
 	NietzscheDB_CacheGet_FullMethodName             = "/nietzsche.NietzscheDB/CacheGet"
 	NietzscheDB_CacheDel_FullMethodName             = "/nietzsche.NietzscheDB/CacheDel"
 	NietzscheDB_ReapExpired_FullMethodName          = "/nietzsche.NietzscheDB/ReapExpired"
+	NietzscheDB_SqlQuery_FullMethodName             = "/nietzsche.NietzscheDB/SqlQuery"
+	NietzscheDB_SqlExec_FullMethodName              = "/nietzsche.NietzscheDB/SqlExec"
 )
 
 // NietzscheDBClient is the client API for NietzscheDB service.
@@ -177,6 +179,9 @@ type NietzscheDBClient interface {
 	CacheGet(ctx context.Context, in *CacheGetRequest, opts ...grpc.CallOption) (*CacheGetResponse, error)
 	CacheDel(ctx context.Context, in *CacheDelRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	ReapExpired(ctx context.Context, in *ReapExpiredRequest, opts ...grpc.CallOption) (*ReapExpiredResponse, error)
+	// ── Swartz SQL Layer (Phase S — embedded relational engine) ───
+	SqlQuery(ctx context.Context, in *SqlRequest, opts ...grpc.CallOption) (*SqlResultSet, error)
+	SqlExec(ctx context.Context, in *SqlRequest, opts ...grpc.CallOption) (*SqlExecResult, error)
 }
 
 type nietzscheDBClient struct {
@@ -836,6 +841,26 @@ func (c *nietzscheDBClient) ReapExpired(ctx context.Context, in *ReapExpiredRequ
 	return out, nil
 }
 
+func (c *nietzscheDBClient) SqlQuery(ctx context.Context, in *SqlRequest, opts ...grpc.CallOption) (*SqlResultSet, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SqlResultSet)
+	err := c.cc.Invoke(ctx, NietzscheDB_SqlQuery_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) SqlExec(ctx context.Context, in *SqlRequest, opts ...grpc.CallOption) (*SqlExecResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SqlExecResult)
+	err := c.cc.Invoke(ctx, NietzscheDB_SqlExec_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NietzscheDBServer is the server API for NietzscheDB service.
 // All implementations must embed UnimplementedNietzscheDBServer
 // for forward compatibility.
@@ -928,6 +953,9 @@ type NietzscheDBServer interface {
 	CacheGet(context.Context, *CacheGetRequest) (*CacheGetResponse, error)
 	CacheDel(context.Context, *CacheDelRequest) (*StatusResponse, error)
 	ReapExpired(context.Context, *ReapExpiredRequest) (*ReapExpiredResponse, error)
+	// ── Swartz SQL Layer (Phase S — embedded relational engine) ───
+	SqlQuery(context.Context, *SqlRequest) (*SqlResultSet, error)
+	SqlExec(context.Context, *SqlRequest) (*SqlExecResult, error)
 	mustEmbedUnimplementedNietzscheDBServer()
 }
 
@@ -1129,6 +1157,12 @@ func (UnimplementedNietzscheDBServer) CacheDel(context.Context, *CacheDelRequest
 }
 func (UnimplementedNietzscheDBServer) ReapExpired(context.Context, *ReapExpiredRequest) (*ReapExpiredResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReapExpired not implemented")
+}
+func (UnimplementedNietzscheDBServer) SqlQuery(context.Context, *SqlRequest) (*SqlResultSet, error) {
+	return nil, status.Error(codes.Unimplemented, "method SqlQuery not implemented")
+}
+func (UnimplementedNietzscheDBServer) SqlExec(context.Context, *SqlRequest) (*SqlExecResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method SqlExec not implemented")
 }
 func (UnimplementedNietzscheDBServer) mustEmbedUnimplementedNietzscheDBServer() {}
 func (UnimplementedNietzscheDBServer) testEmbeddedByValue()                     {}
@@ -2296,6 +2330,42 @@ func _NietzscheDB_ReapExpired_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NietzscheDB_SqlQuery_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SqlRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).SqlQuery(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_SqlQuery_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).SqlQuery(ctx, req.(*SqlRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_SqlExec_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SqlRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).SqlExec(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_SqlExec_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).SqlExec(ctx, req.(*SqlRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NietzscheDB_ServiceDesc is the grpc.ServiceDesc for NietzscheDB service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -2554,6 +2624,14 @@ var NietzscheDB_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReapExpired",
 			Handler:    _NietzscheDB_ReapExpired_Handler,
+		},
+		{
+			MethodName: "SqlQuery",
+			Handler:    _NietzscheDB_SqlQuery_Handler,
+		},
+		{
+			MethodName: "SqlExec",
+			Handler:    _NietzscheDB_SqlExec_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
