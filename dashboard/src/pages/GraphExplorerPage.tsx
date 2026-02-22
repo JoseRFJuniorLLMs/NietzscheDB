@@ -1,10 +1,10 @@
 import { useState, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import { ChevronLeft, ChevronRight, RefreshCw, AlertCircle, Search, X } from "lucide-react"
+import { ChevronRight, RefreshCw, AlertCircle, Search, X } from "lucide-react"
 import { PerspektiveView } from "@/components/PerspektiveView"
 import type { ViewNodeData, ViewEdgeData, ManifoldType } from "@/components/PerspektiveView"
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts"
+import { BarChart, Bar, ResponsiveContainer } from "recharts"
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -16,6 +16,8 @@ interface NodeRecord {
     hausdorff:  number
     created_at: number
     content:    Record<string, unknown>
+    causal_chain?: string
+    is_archived?: boolean
     [key: string]: unknown
 }
 
@@ -88,19 +90,13 @@ function extractLabel(n: NodeRecord): string {
 // ─── GraphExplorerPage ─────────────────────────────────────────────────────────
 
 export function GraphExplorerPage() {
-    const [collection, setCollection]   = useState(DEFAULT_COLLECTION)
+    const collection = DEFAULT_COLLECTION
     const [limit, setLimit]             = useState(1000)
     const [panelOpen, setPanelOpen]     = useState(true)
     const [panelTab, setPanelTab]       = useState<"POINTS" | "LINKS">("POINTS")
     const [manifold, setManifold]       = useState<ManifoldType>("POINCARE")
     const [searchTerm, setSearchTerm]   = useState("")
     const [activeFilter, setActiveFilter] = useState<string | null>(null)
-
-    // ── Collections list ──────────────────────────────────────────────────────
-    const { data: collections } = useQuery({
-        queryKey: ["collections"],
-        queryFn: () => api.get("/collections").then(r => r.data as { name: string; node_count: number }[]),
-    })
 
     // ── Graph data fetch ──────────────────────────────────────────────────────
     const { data: graphData, isLoading, error, refetch } = useQuery<GraphResponse>({
@@ -118,6 +114,9 @@ export function GraphExplorerPage() {
             energy: n.energy,
             depth: n.depth,
             label: extractLabel(n),
+            hausdorff: n.hausdorff ?? 0,
+            causal_chain: n.causal_chain,
+            is_archived: n.is_archived,
             ...projectNode(n, manifold),
         }))
     }, [graphData, manifold])
@@ -129,17 +128,6 @@ export function GraphExplorerPage() {
             target: e.to,
             weight: e.weight ?? 0.5,
         }))
-    }, [graphData])
-
-    // ── Chart data ────────────────────────────────────────────────────────────
-    const nodeTypeChartData = useMemo(() => {
-        if (!graphData?.nodes) return []
-        const counts = new Map<string, number>()
-        for (const n of graphData.nodes) {
-            counts.set(n.node_type, (counts.get(n.node_type) ?? 0) + 1)
-        }
-        return Array.from(counts, ([name, count]) => ({ name, count }))
-            .sort((a, b) => b.count - a.count)
     }, [graphData])
 
     const energyHistData = useMemo(() => {
@@ -185,267 +173,197 @@ export function GraphExplorerPage() {
         setActiveFilter(null)
     }
 
-    // ── Handle bar chart click → toggle node_type filter ──────────────────────
-    const handleTypeBarClick = (data: { name: string }) => {
-        setActiveFilter(prev => prev === data.name ? null : data.name)
-    }
-
     // ─── Render ───────────────────────────────────────────────────────────────
     return (
-        <div className="flex flex-col h-[calc(100vh-64px)] relative bg-[#0b0f1e] overflow-hidden rounded-lg border border-border/20">
+        <div className="flex flex-col h-screen relative bg-[#020617] overflow-hidden">
+            
+            {/* ── Cockpit HUD Overlay (Top Left) ────────────────────────────────── */}
+            <div className="absolute top-6 left-6 z-30 pointer-events-none">
+                <div className="flex flex-col gap-1">
+                    <h2 className="text-[#00f0ff] text-xl font-mono font-bold tracking-tighter" style={{ textShadow: "0 0 10px rgba(0, 240, 255, 0.5)" }}>
+                        NIETZSCHEDB // PERSPEKTIVE
+                    </h2>
+                    <div className="flex items-center gap-3 pointer-events-auto mt-2">
+                        <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                            <input
+                                type="text"
+                                placeholder="BUSCAR MENTE DA EVA..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="h-9 w-72 bg-black/60 border border-[#00f0ff]/30 rounded-md pl-9 pr-8 text-xs font-mono text-white placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all backdrop-blur-md"
+                                style={{ boxShadow: searchTerm ? "0 0 15px rgba(0, 240, 255, 0.2)" : "none" }}
+                            />
+                            {searchTerm && (
+                                <button
+                                    onClick={() => setSearchTerm("")}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 rounded hover:bg-white/10 flex items-center justify-center text-muted-foreground transition-colors"
+                                >
+                                    <X className="h-3 w-3" />
+                                </button>
+                            )}
+                        </div>
 
-            {/* ── Top toolbar ──────────────────────────────────────────────── */}
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-border/30 bg-card/60 backdrop-blur z-20 flex-shrink-0">
-                {/* Collection selector */}
-                <select
-                    value={collection}
-                    onChange={e => setCollection(e.target.value)}
-                    className="h-7 text-xs rounded bg-muted border border-border/40 px-2 text-foreground"
-                >
-                    {(collections ?? [{ name: DEFAULT_COLLECTION, node_count: 0 }])
-                        .filter((c: { name: string; node_count: number }) => c.node_count > 0 || c.name === collection)
-                        .map((c: { name: string; node_count: number }) => (
-                            <option key={c.name} value={c.name}>
-                                {c.name} ({c.node_count ?? 0})
-                            </option>
-                        ))}
-                </select>
+                        {/* Reload & Config Buttons */}
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => refetch()}
+                                disabled={isLoading}
+                                className="h-9 w-9 flex items-center justify-center bg-black/60 border border-border/20 rounded-md text-muted-foreground hover:text-[#00f0ff] hover:border-[#00f0ff]/50 transition-all backdrop-blur-md"
+                                title="Refetch Graph"
+                            >
+                                <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+                            </button>
+                            <button
+                                onClick={() => setPanelOpen(v => !v)}
+                                className={`h-9 w-9 flex items-center justify-center bg-black/60 border rounded-md transition-all backdrop-blur-md ${panelOpen ? "border-[#ff00ff]/50 text-[#ff00ff]" : "border-border/20 text-muted-foreground hover:text-foreground"}`}
+                                title="Toggle Analysis Panel"
+                            >
+                                <ChevronRight className={`h-4 w-4 transition-transform ${panelOpen ? "rotate-180" : ""}`} />
+                            </button>
+                        </div>
+                    </div>
 
-                {/* Limit selector */}
-                <select
-                    value={limit}
-                    onChange={e => setLimit(Number(e.target.value))}
-                    className="h-7 text-xs rounded bg-muted border border-border/40 px-2 text-foreground"
-                >
-                    {[200, 500, 1000, 2000, 5000].map(n => (
-                        <option key={n} value={n}>{n} nodes</option>
-                    ))}
-                </select>
-
-                {/* Reload */}
-                <button
-                    onClick={() => refetch()}
-                    disabled={isLoading}
-                    className="h-7 px-2 rounded bg-muted hover:bg-muted/80 border border-border/40 text-xs text-muted-foreground flex items-center gap-1"
-                >
-                    <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
-                    Reload
-                </button>
-
-                {/* Search input */}
-                <div className="relative flex-1 max-w-xs">
-                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                    <input
-                        type="text"
-                        placeholder="Search nodes..."
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                        className="h-7 w-full text-xs rounded bg-muted border border-border/40 pl-7 pr-7 text-foreground placeholder:text-muted-foreground/60 font-mono focus:outline-none focus:border-[#00f0ff] transition-colors"
-                    />
-                    {searchTerm && (
-                        <button
-                            onClick={() => setSearchTerm("")}
-                            className="absolute right-1.5 top-1/2 -translate-y-1/2 h-4 w-4 rounded-sm hover:bg-muted-foreground/20 flex items-center justify-center text-muted-foreground"
-                        >
-                            <X className="h-3 w-3" />
-                        </button>
-                    )}
+                    <div className="flex items-center gap-2 mt-2 font-mono text-[10px] text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#00ff66] animate-pulse" />
+                            SSE STREAMING
+                        </span>
+                        <span>|</span>
+                        <span>VISÍVEIS: <span className="text-white font-bold">{viewNodes.length}</span> / {graphData?.nodes.length ?? 0}</span>
+                        {hasActiveFilters && (
+                            <>
+                                <span>|</span>
+                                <button onClick={resetFilters} className="text-[#f87171] hover:underline uppercase tracking-widest">
+                                    [ RESETAR LENTES ]
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
+            </div>
 
-                <div className="flex-1" />
-
-                {/* Stats */}
-                <span className="text-xs text-muted-foreground font-mono">
-                    {viewNodes.length.toLocaleString()} nodes · {viewEdges.length.toLocaleString()} links
-                </span>
-
-                {/* Reset filters */}
-                {hasActiveFilters && (
-                    <button
-                        onClick={resetFilters}
-                        className="h-7 px-2 rounded bg-destructive/20 hover:bg-destructive/30 border border-destructive/30 text-xs text-destructive flex items-center gap-1 transition-colors"
-                    >
-                        <X className="h-3 w-3" />
-                        Reset
-                    </button>
-                )}
-
-                {/* Active filter badge */}
-                {activeFilter && (
-                    <span className="h-6 px-2 rounded-full text-[10px] font-mono font-bold flex items-center gap-1"
-                        style={{
-                            background: NODE_TYPE_COLORS[activeFilter] ?? "#64748b",
-                            color: "#000",
-                        }}
-                    >
-                        {activeFilter}
-                    </span>
-                )}
-
-                {/* Panel toggle */}
-                <button
-                    onClick={() => setPanelOpen(v => !v)}
-                    className="h-7 w-7 rounded bg-muted hover:bg-muted/80 border border-border/40 flex items-center justify-center"
-                >
-                    {panelOpen ? <ChevronLeft className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                </button>
+            {/* ── Subtitle / Collection Info (Top Right) ────────────────────────── */}
+            <div className="absolute top-6 right-6 z-20 text-right pointer-events-none">
+                <div className="text-[10px] font-mono tracking-widest text-[#94a3b8] uppercase">
+                    Córtex: <span className="text-[#00f0ff]">{collection}</span>
+                </div>
+                <div className="text-[9px] font-mono text-muted-foreground/60 mt-1">
+                    MODO: {manifold}
+                </div>
             </div>
 
             {/* ── Main area ────────────────────────────────────────────────── */}
             <div className="flex flex-1 overflow-hidden relative">
 
-                {/* ── Left filter panel ─────────────────────────────────── */}
+                {/* ── Left analysis panel (Now floating and translucent) ────── */}
                 {panelOpen && (
-                    <div className="w-72 flex-shrink-0 border-r border-border/30 bg-card/80 backdrop-blur overflow-y-auto z-10 flex flex-col">
-
+                    <div className="absolute top-24 left-6 bottom-24 w-80 flex flex-col z-20 bg-black/70 border border-border/20 rounded-lg backdrop-blur-xl overflow-hidden shadow-2xl">
                         {/* Tab switcher */}
-                        <div className="flex border-b border-border/30 px-3">
+                        <div className="flex border-b border-border/20 px-3 shrink-0 bg-white/5">
                             {(["POINTS", "LINKS"] as const).map(tab => (
                                 <button
                                     key={tab}
                                     onClick={() => setPanelTab(tab)}
-                                    className={`px-3 py-1.5 text-[11px] font-semibold tracking-wider transition-colors ${panelTab === tab ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                                    className={`px-3 py-2 text-[10px] font-bold tracking-widest transition-colors ${panelTab === tab ? "border-b border-[#00f0ff] text-[#00f0ff]" : "text-muted-foreground hover:text-foreground"}`}
                                 >
                                     {tab}
                                 </button>
                             ))}
-                            <div className="flex-1" />
-                            {hasActiveFilters && (
-                                <button
-                                    onClick={resetFilters}
-                                    className="text-[10px] text-destructive hover:text-destructive/80 transition-colors py-1.5 px-1"
-                                >
-                                    reset
-                                </button>
-                            )}
                         </div>
 
-                        {panelTab === "POINTS" && (
-                            <div className="p-3 space-y-4">
-                                {/* Node type distribution — CLICKABLE for filtering */}
-                                <FilterSection label="node_type" hint="click to filter">
-                                    <ResponsiveContainer width="100%" height={Math.max(nodeTypeChartData.length * 18, 60)}>
-                                        <BarChart data={nodeTypeChartData} layout="vertical">
-                                            <XAxis type="number" hide />
-                                            <YAxis type="category" dataKey="name" width={70} tick={{ fontSize: 10, fill: "#94a3b8" }} />
-                                            <Tooltip
-                                                contentStyle={{ background: "#0b0f1e", border: "1px solid #334155", fontSize: 11 }}
-                                                labelStyle={{ color: "#00f0ff" }}
-                                            />
-                                            <Bar
-                                                dataKey="count"
-                                                radius={[0, 2, 2, 0]}
-                                                cursor="pointer"
-                                                onClick={(_data: unknown, index: number) => {
-                                                    const entry = nodeTypeChartData[index]
-                                                    if (entry) handleTypeBarClick(entry)
-                                                }}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
+                            {panelTab === "POINTS" && (
+                                <>
+                                    <FilterSection label="distribuição de tipos">
+                                        <div className="space-y-1.5 mt-2">
+                                            {Object.entries(NODE_TYPE_COLORS).map(([type, color]) => (
+                                                <button
+                                                    key={type}
+                                                    onClick={() => setActiveFilter(prev => prev === type ? null : type)}
+                                                    className={`flex items-center gap-2 text-[10px] w-full px-2 py-1.5 rounded transition-all ${
+                                                        activeFilter === type
+                                                            ? "bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/20"
+                                                            : "text-muted-foreground hover:bg-white/5"
+                                                    }`}
+                                                >
+                                                    <div className="w-2 h-2 rounded-full" style={{ background: color, opacity: activeFilter === null || activeFilter === type ? 1 : 0.3 }} />
+                                                    <span className="font-mono">{type.toUpperCase()}</span>
+                                                    {activeFilter === type && <span className="ml-auto text-[8px] opacity-70">ACTIVE</span>}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </FilterSection>
+
+                                    <FilterSection label="energia (ubermensch)">
+                                        <ResponsiveContainer width="100%" height={60}>
+                                            <BarChart data={energyHistData}>
+                                                <Bar dataKey="count" fill="#ff00ff" radius={[2, 2, 0, 0]} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </FilterSection>
+
+                                    <FilterSection label="profundidade (poincaré)">
+                                        <ResponsiveContainer width="100%" height={60}>
+                                            <BarChart data={depthHistData}>
+                                                <Bar dataKey="count" fill="#00f0ff" radius={[2, 2, 0, 0]} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </FilterSection>
+
+                                    <div className="pt-4 border-t border-border/20">
+                                        <div className="text-[9px] font-mono text-muted-foreground mb-2 uppercase">Configuração de Carga</div>
+                                        <div className="flex gap-2">
+                                            <select
+                                                value={limit}
+                                                onChange={e => setLimit(Number(e.target.value))}
+                                                className="flex-1 bg-black/40 border border-border/20 rounded px-2 py-1 text-[10px] font-mono text-foreground focus:outline-none focus:border-[#00f0ff]"
                                             >
-                                                {nodeTypeChartData.map(entry => (
-                                                    <Cell
-                                                        key={entry.name}
-                                                        fill={NODE_TYPE_COLORS[entry.name] ?? "#64748b"}
-                                                        opacity={activeFilter === null || activeFilter === entry.name ? 1 : 0.2}
+                                                {[500, 1000, 2000, 5000].map(n => <option key={n} value={n}>{n} NODES</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+
+                            {panelTab === "LINKS" && (
+                                <FilterSection label="tipos de conexões">
+                                    <div className="space-y-1.5 mt-2">
+                                        {edgeTypeChartData.map(edge => (
+                                            <div key={edge.name} className="flex flex-col gap-1">
+                                                <div className="flex justify-between text-[9px] font-mono">
+                                                    <span className="text-muted-foreground">{edge.name}</span>
+                                                    <span className="text-[#00d8ff]">{edge.count}</span>
+                                                </div>
+                                                <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                                                    <div 
+                                                        className="h-full bg-[#00d8ff]/50" 
+                                                        style={{ width: `${(edge.count / Math.max(...edgeTypeChartData.map(e => e.count))) * 100}%` }} 
                                                     />
-                                                ))}
-                                            </Bar>
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </FilterSection>
-
-                                {/* Energy histogram */}
-                                <FilterSection label="energy">
-                                    <ResponsiveContainer width="100%" height={60}>
-                                        <BarChart data={energyHistData}>
-                                            <XAxis dataKey="range" tick={{ fontSize: 9, fill: "#64748b" }} />
-                                            <YAxis hide />
-                                            <Tooltip
-                                                contentStyle={{ background: "#0b0f1e", border: "1px solid #334155", fontSize: 11 }}
-                                                labelStyle={{ color: "#00f0ff" }}
-                                            />
-                                            <Bar dataKey="count" fill="#ff00ff" radius={[2, 2, 0, 0]} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </FilterSection>
-
-                                {/* Depth histogram */}
-                                <FilterSection label="depth (poincaré radius)">
-                                    <ResponsiveContainer width="100%" height={60}>
-                                        <BarChart data={depthHistData}>
-                                            <XAxis dataKey="range" tick={{ fontSize: 9, fill: "#64748b" }} />
-                                            <YAxis hide />
-                                            <Tooltip
-                                                contentStyle={{ background: "#0b0f1e", border: "1px solid #334155", fontSize: 11 }}
-                                                labelStyle={{ color: "#00f0ff" }}
-                                            />
-                                            <Bar dataKey="count" fill="#00f0ff" radius={[2, 2, 0, 0]} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </FilterSection>
-
-                                {/* Color legend — clickable */}
-                                <FilterSection label="color legend" hint="click to filter">
-                                    <div className="space-y-1">
-                                        {Object.entries(NODE_TYPE_COLORS).map(([type, color]) => (
-                                            <button
-                                                key={type}
-                                                onClick={() => setActiveFilter(prev => prev === type ? null : type)}
-                                                className={`flex items-center gap-2 text-[10px] w-full px-1 py-0.5 rounded transition-colors ${
-                                                    activeFilter === type
-                                                        ? "bg-muted text-foreground"
-                                                        : "text-muted-foreground hover:text-foreground"
-                                                }`}
-                                            >
-                                                <div
-                                                    className="w-3 h-3 rounded-sm flex-shrink-0"
-                                                    style={{
-                                                        background: color,
-                                                        opacity: activeFilter === null || activeFilter === type ? 1 : 0.2,
-                                                    }}
-                                                />
-                                                {type}
-                                                {activeFilter === type && <span className="ml-auto text-[8px] text-primary">ACTIVE</span>}
-                                            </button>
+                                                </div>
+                                            </div>
                                         ))}
                                     </div>
                                 </FilterSection>
-                            </div>
-                        )}
-
-                        {panelTab === "LINKS" && (
-                            <div className="p-3 space-y-4">
-                                <FilterSection label="edge_type">
-                                    <ResponsiveContainer width="100%" height={Math.max(edgeTypeChartData.length * 18, 60)}>
-                                        <BarChart data={edgeTypeChartData} layout="vertical">
-                                            <XAxis type="number" hide />
-                                            <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 10, fill: "#94a3b8" }} />
-                                            <Tooltip
-                                                contentStyle={{ background: "#0b0f1e", border: "1px solid #334155", fontSize: 11 }}
-                                                labelStyle={{ color: "#00f0ff" }}
-                                            />
-                                            <Bar dataKey="count" fill="#00d8ff" radius={[0, 2, 2, 0]} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </FilterSection>
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </div>
                 )}
 
                 {/* ── Graph canvas ──────────────────────────────────────── */}
-                <div className="flex-1 relative overflow-hidden">
+                <div className="flex-1 relative overflow-hidden bg-[#000]">
                     {error && (
-                        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-destructive/20 text-destructive border border-destructive/30 rounded-lg px-4 py-2 text-sm">
-                            <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                            Failed to load graph data
+                        <div className="absolute top-32 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 bg-destructive/20 text-destructive border border-destructive/30 rounded-lg px-4 py-2 text-sm backdrop-blur-md">
+                            <AlertCircle className="h-4 w-4" />
+                            Connection Lost: NietzscheDB Unreachable
                         </div>
                     )}
 
                     {isLoading && (
-                        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/40">
-                            <div className="flex flex-col items-center gap-3 text-muted-foreground">
-                                <RefreshCw className="h-8 w-8 animate-spin text-primary" />
-                                <span className="text-sm">Loading graph…</span>
+                        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/20 backdrop-blur-[2px]">
+                            <div className="flex flex-col items-center gap-4">
+                                <RefreshCw className="h-10 w-10 animate-spin text-[#00f0ff]" />
+                                <span className="text-[10px] font-mono tracking-[0.3em] text-[#00f0ff] animate-pulse">RECONSTRUCTING NEURAL GRAPH...</span>
                             </div>
                         </div>
                     )}
