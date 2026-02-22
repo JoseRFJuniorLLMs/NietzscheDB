@@ -87,6 +87,7 @@ kw_narrate        = _{ ^"NARRATE"        }
 kw_window         = _{ ^"WINDOW"         }
 kw_format         = _{ ^"FORMAT"         }
 kw_psychoanalyze  = _{ ^"PSYCHOANALYZE"  }
+kw_detach         = _{ ^"DETACH"         }
 
 // ── Terminals ────────────────────────────────────────────
 
@@ -191,10 +192,12 @@ where_clause = { kw_where ~ conditions }
 node_pattern = { "(" ~ ident ~ (":" ~ ident)? ~ ")" }
 
 // Edge direction — typed or anonymous; optional hop range for variable-length paths
+// Optional edge alias: -[r:TYPE]->  or  -[:TYPE]->
 edge_label = @{ ident }
+edge_alias = { ident }
 hop_range  = { "*" ~ integer ~ (".." ~ integer)? }
-edge_out   = { "-[:" ~ edge_label ~ hop_range? ~ "]->" | "-->" }
-edge_in    = { "<-[:" ~ edge_label ~ hop_range? ~ "]-" | "<--" }
+edge_out   = { "-[" ~ edge_alias? ~ ":" ~ edge_label ~ hop_range? ~ "]->" | "-->" }
+edge_in    = { "<-[" ~ edge_alias? ~ ":" ~ edge_label ~ hop_range? ~ "]-" | "<--" }
 edge_dir   = { edge_out | edge_in }
 
 // (a)-[:TYPE]->(b) or (a)-->(b)
@@ -254,8 +257,11 @@ merge_node_pattern = { "(" ~ ident ~ (":" ~ ident)? ~ prop_map? ~ ")" }
 merge_edge_pattern = { merge_node_pattern ~ edge_dir ~ merge_node_pattern }
 merge_pattern      = { merge_edge_pattern | merge_node_pattern }
 
-set_assignment   = { prop ~ "=" ~ atom }
-set_clause       = { kw_set ~ set_assignment ~ ("," ~ set_assignment)* }
+// SET value: supports arithmetic like n.count + 1
+set_arith_op   = { "+" | "-" }
+set_expr       = { atom ~ (set_arith_op ~ atom)? }
+set_assignment = { prop ~ "=" ~ set_expr }
+set_clause     = { kw_set ~ set_assignment ~ ("," ~ set_assignment)* }
 on_create_clause = { kw_on ~ kw_create ~ set_clause }
 on_match_clause  = { kw_on ~ kw_match ~ set_clause }
 
@@ -277,7 +283,7 @@ match_query = {
     match_clause
     ~ where_clause?
     ~ as_of_cycle_clause?
-    ~ (set_clause ~ return_clause? | delete_clause | return_clause)
+    ~ (set_clause ~ return_clause? | detach_delete_clause | delete_clause | return_clause)
 }
 
 // ── RECONSTRUCT query (Phase 11) ────────────────────────
@@ -331,8 +337,9 @@ create_query        = { kw_create ~ create_node_pattern ~ return_clause? }
 
 // ── MATCH … DELETE clause ─────────────────────────────────
 
-delete_target  = { ident }
-delete_clause  = { kw_delete ~ delete_target ~ ("," ~ delete_target)* }
+delete_target        = { ident }
+delete_clause        = { kw_delete ~ delete_target ~ ("," ~ delete_target)* }
+detach_delete_clause = { kw_detach ~ kw_delete ~ delete_target ~ ("," ~ delete_target)* }
 
 // ── DAEMON queries ──────────────────────────────────────
 //

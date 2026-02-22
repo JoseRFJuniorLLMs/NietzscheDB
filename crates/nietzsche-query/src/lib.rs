@@ -46,7 +46,7 @@ pub use ast::{
     ShareArchetypeQuery, NarrateQuery,
     Pattern, NodePattern, PathPattern, Direction,
     Condition, CompOp, StringCompOp,
-    Expr, HDistArg, MathFunc, MathFuncArg,
+    Expr, HDistArg, MathFunc, MathFuncArg, ArithOp,
     SetAssignment,
     ReturnClause, ReturnItem, ReturnExpr,
     AggFunc, AggArg, GroupByItem,

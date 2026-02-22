@@ -787,22 +787,23 @@ impl NietzscheDb for NietzscheServer {
                     db = shared.read().await;
                 }
                 // NQL MATCH…SET: update matched nodes
-                QueryResult::SetRequest { matched_ids, assignments } => {
+                QueryResult::SetRequest { updates } => {
                     drop(db);
                     let mut db_w = shared.write().await;
-                    for nid in &matched_ids {
-                        db_w.update_node_content(*nid, &assignments)
+                    for (nid, assignments) in &updates {
+                        db_w.update_node_content(*nid, assignments)
                             .map_err(graph_err)?;
                     }
-                    path_ids.push(format!("set:updated:{}", matched_ids.len()));
+                    path_ids.push(format!("set:updated:{}", updates.len()));
                     drop(db_w);
                     db = shared.read().await;
                 }
-                // NQL MATCH…DELETE: delete matched nodes
-                QueryResult::DeleteRequest { matched_ids } => {
+                // NQL MATCH…DELETE: delete matched nodes (+ edges if detach)
+                QueryResult::DeleteRequest { matched_ids, detach: _ } => {
                     drop(db);
                     let mut db_w = shared.write().await;
                     for nid in &matched_ids {
+                        // delete_node already removes incident edges
                         db_w.delete_node(*nid).map_err(graph_err)?;
                     }
                     path_ids.push(format!("delete:removed:{}", matched_ids.len()));

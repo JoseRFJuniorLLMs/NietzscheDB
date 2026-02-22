@@ -96,12 +96,14 @@ pub struct MatchSetQuery {
     pub ret:         Option<ReturnClause>,
 }
 
-/// `MATCH (n) [WHERE …] DELETE n, …`
+/// `MATCH (n) [WHERE …] DELETE n, …` or `MATCH (n) [WHERE …] DETACH DELETE n`
 #[derive(Debug, Clone)]
 pub struct MatchDeleteQuery {
     pub pattern:    Pattern,
     pub conditions: Vec<Condition>,
     pub targets:    Vec<String>,
+    /// `true` for `DETACH DELETE` — removes node + all incident edges.
+    pub detach:     bool,
 }
 
 // ── DAEMON Agents ────────────────────────────────────────
@@ -283,6 +285,7 @@ pub struct HopRange {
 pub struct PathPattern {
     pub from:       NodePattern,
     pub edge_label: Option<String>,
+    pub edge_alias: Option<String>,
     pub direction:  Direction,
     pub to:         NodePattern,
     pub hop_range:  Option<HopRange>,
@@ -355,6 +358,19 @@ pub enum Expr {
         func: MathFunc,
         args: Vec<MathFuncArg>,
     },
+    /// Binary arithmetic: `n.count + 1`, `n.energy - 0.1`
+    BinOp {
+        left:  Box<Expr>,
+        op:    ArithOp,
+        right: Box<Expr>,
+    },
+}
+
+/// Arithmetic operators for SET expressions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ArithOp {
+    Add,
+    Sub,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

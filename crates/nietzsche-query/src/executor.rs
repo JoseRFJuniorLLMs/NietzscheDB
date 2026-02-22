@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use uuid::Uuid;
 use rayon::prelude::*;
 use nietzsche_graph::{
-    AdjacencyIndex, AdjEntry, GraphStorage, Node, PoincareVector,
+    AdjacencyIndex, AdjEntry, Edge, GraphStorage, Node, PoincareVector,
     traversal::{diffusion_walk, DiffusionConfig},
 };
 
@@ -99,13 +99,15 @@ pub enum QueryResult {
         properties: serde_json::Value,
     },
     /// Result of `MATCH … SET …` — the caller updates matched nodes.
+    /// Each entry in `updates` is `(node_id, computed_assignments_json)`.
     SetRequest {
-        matched_ids: Vec<Uuid>,
-        assignments: serde_json::Value,
+        updates: Vec<(Uuid, serde_json::Value)>,
     },
-    /// Result of `MATCH … DELETE …` — the caller deletes matched nodes.
+    /// Result of `MATCH … DELETE …` or `MATCH … DETACH DELETE …`.
     DeleteRequest {
         matched_ids: Vec<Uuid>,
+        /// When `true`, also remove all incident edges (DETACH DELETE).
+        detach: bool,
     },
     /// Result of `CREATE DAEMON …` — the caller persists the daemon definition.
     CreateDaemonRequest {
@@ -663,8 +665,10 @@ fn execute_path_match(
 
     let from_alias = &pp.from.alias;
     let to_alias   = &pp.to.alias;
+    let edge_alias = pp.edge_alias.as_deref();
 
-    let mut pairs: Vec<(Node, Node)> = Vec::new();
+    // Collect (from_node, edge, to_node) triples
+    let mut triples: Vec<(Node, Edge, Node)> = Vec::new();
     let edges = storage.scan_edges()?;
 
     for edge in edges {
@@ -682,33 +686,49 @@ fn execute_path_match(
             }
         }
 
+        // Label filters on from/to nodes
         let from_node = match storage.get_node(&from_id)? {
             Some(n) => n,
             None    => continue,
         };
+        if let Some(label) = &pp.from.label {
+            if format!("{:?}", from_node.node_type).to_lowercase() != label.to_lowercase() {
+                continue;
+            }
+        }
         let to_node = match storage.get_node(&to_id)? {
             Some(n) => n,
             None    => continue,
         };
+        if let Some(label) = &pp.to.label {
+            if format!("{:?}", to_node.node_type).to_lowercase() != label.to_lowercase() {
+                continue;
+            }
+        }
 
-        // Evaluate WHERE conditions with both aliases bound
-        let binding = vec![
+        // Evaluate WHERE conditions with node + edge bindings
+        let node_binding = vec![
             (from_alias.as_str(), &from_node),
             (to_alias.as_str(),   &to_node),
         ];
-        if eval_conditions(&query.conditions, &binding, params, storage, adjacency)? {
-            pairs.push((from_node, to_node));
+        let edge_binding: Vec<(&str, &Edge)> = if let Some(ea) = edge_alias {
+            vec![(ea, &edge)]
+        } else {
+            vec![]
+        };
+        if eval_conditions_with_edges(&query.conditions, &node_binding, &edge_binding, params, storage, adjacency)? {
+            triples.push((from_node, edge, to_node));
         }
     }
 
-    // ORDER BY — sort by the "to" node's sort key (the primary RETURN alias)
+    // ORDER BY — supports both node and edge properties
     if let Some(order) = &query.ret.order_by {
-        let mut keyed: Vec<(f64, (Node, Node))> = pairs
+        let mut keyed: Vec<(f64, (Node, Edge, Node))> = triples
             .drain(..)
-            .map(|(f, t)| {
-                let key = compute_order_key(&order.expr, to_alias, &t, params, storage, adjacency)
+            .map(|(f, e, t)| {
+                let key = compute_order_key_with_edge(&order.expr, from_alias, to_alias, edge_alias, &f, &t, &e, params, storage, adjacency)
                     .unwrap_or(f64::MAX);
-                (key, (f, t))
+                (key, (f, e, t))
             })
             .collect();
         if order.dir == OrderDir::Asc {
@@ -716,32 +736,32 @@ fn execute_path_match(
         } else {
             keyed.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
         }
-        pairs.extend(keyed.into_iter().map(|(_, p)| p));
+        triples.extend(keyed.into_iter().map(|(_, t)| t));
     }
 
     // DISTINCT — deduplicate by (from_id, to_id) pair
     if query.ret.distinct {
         let mut seen = HashSet::new();
-        pairs.retain(|(f, t)| seen.insert((f.id, t.id)));
+        triples.retain(|(f, _, t)| seen.insert((f.id, t.id)));
     }
 
     // SKIP
     if let Some(skip) = query.ret.skip {
-        if skip < pairs.len() {
-            pairs = pairs.split_off(skip);
+        if skip < triples.len() {
+            triples = triples.split_off(skip);
         } else {
-            pairs.clear();
+            triples.clear();
         }
     }
 
     // LIMIT
     if let Some(limit) = query.ret.limit {
-        pairs.truncate(limit);
+        triples.truncate(limit);
     }
 
-    Ok(pairs
+    Ok(triples
         .into_iter()
-        .map(|(from, to)| QueryResult::NodePair { from, to })
+        .map(|(from, _edge, to)| QueryResult::NodePair { from, to })
         .collect())
 }
 
@@ -1033,10 +1053,71 @@ fn execute_match_set(
     adjacency: &AdjacencyIndex,
     params:    &Params,
 ) -> Result<Vec<QueryResult>, QueryError> {
-    // Resolve matched node IDs using the same logic as MATCH
-    let matched_ids = resolve_match_ids(&query.pattern, &query.conditions, storage, adjacency, params)?;
-    let assignments = sets_to_json(&query.assignments, params)?;
-    Ok(vec![QueryResult::SetRequest { matched_ids, assignments }])
+    // Resolve matched nodes (need full nodes for per-node arithmetic)
+    let matched = resolve_match_nodes(&query.pattern, &query.conditions, storage, adjacency, params)?;
+
+    // Evaluate SET assignments per node (supports n.count = n.count + 1)
+    let mut updates = Vec::with_capacity(matched.len());
+    for node in &matched {
+        let alias = match &query.pattern {
+            Pattern::Node(np) => &np.alias,
+            Pattern::Path(pp) => &pp.from.alias,
+        };
+        let binding = vec![(alias.as_str(), node)];
+        let mut map = serde_json::Map::new();
+        for sa in &query.assignments {
+            let val = eval_expr(&sa.value, &binding, params, storage, adjacency)?;
+            map.insert(sa.field.clone(), value_to_json(&val));
+        }
+        updates.push((node.id, serde_json::Value::Object(map)));
+    }
+    Ok(vec![QueryResult::SetRequest { updates }])
+}
+
+/// Resolve matched nodes (full Node objects) from a MATCH pattern + WHERE.
+fn resolve_match_nodes(
+    pattern:    &Pattern,
+    conditions: &[Condition],
+    storage:    &GraphStorage,
+    adjacency:  &AdjacencyIndex,
+    params:     &Params,
+) -> Result<Vec<Node>, QueryError> {
+    match pattern {
+        Pattern::Node(np) => {
+            let nodes = storage.scan_nodes()?;
+            let alias = &np.alias;
+
+            let typed: Vec<Node> = if let Some(label) = &np.label {
+                let label_lc = label.to_lowercase();
+                nodes.into_iter()
+                    .filter(|n| format!("{:?}", n.node_type).to_lowercase() == label_lc)
+                    .collect()
+            } else {
+                nodes
+            };
+
+            let mut out = Vec::new();
+            for node in typed {
+                let binding = vec![(alias.as_str(), &node)];
+                if eval_conditions(conditions, &binding, params, storage, adjacency)? {
+                    out.push(node);
+                }
+            }
+            Ok(out)
+        }
+        Pattern::Path(_) => {
+            Err(QueryError::Execution("SET on path patterns not yet supported".into()))
+        }
+    }
+}
+
+/// Convert an executor Value to serde_json::Value.
+fn value_to_json(val: &Value) -> serde_json::Value {
+    match val {
+        Value::Float(f) => serde_json::json!(*f),
+        Value::Str(s)   => serde_json::json!(s),
+        Value::Bool(b)  => serde_json::json!(*b),
+    }
 }
 
 // ─────────────────────────────────────────────
@@ -1050,7 +1131,7 @@ fn execute_match_delete(
     params:    &Params,
 ) -> Result<Vec<QueryResult>, QueryError> {
     let matched_ids = resolve_match_ids(&query.pattern, &query.conditions, storage, adjacency, params)?;
-    Ok(vec![QueryResult::DeleteRequest { matched_ids }])
+    Ok(vec![QueryResult::DeleteRequest { matched_ids, detach: query.detach }])
 }
 
 /// Resolve matched node IDs from a MATCH pattern + WHERE conditions.
@@ -1168,8 +1249,20 @@ fn eval_conditions(
     storage:    &GraphStorage,
     adjacency:  &AdjacencyIndex,
 ) -> Result<bool, QueryError> {
+    eval_conditions_with_edges(conditions, binding, &[], params, storage, adjacency)
+}
+
+/// Evaluate conditions with optional edge bindings for `r.field` access.
+fn eval_conditions_with_edges(
+    conditions:    &[Condition],
+    binding:       &[(&str, &Node)],
+    edge_bindings: &[(&str, &Edge)],
+    params:        &Params,
+    storage:       &GraphStorage,
+    adjacency:     &AdjacencyIndex,
+) -> Result<bool, QueryError> {
     for cond in conditions {
-        if !eval_condition(cond, binding, params, storage, adjacency)? {
+        if !eval_condition_with_edges(cond, binding, edge_bindings, params, storage, adjacency)? {
             return Ok(false);
         }
     }
@@ -1183,26 +1276,37 @@ fn eval_condition(
     storage:   &GraphStorage,
     adjacency: &AdjacencyIndex,
 ) -> Result<bool, QueryError> {
+    eval_condition_with_edges(cond, binding, &[], params, storage, adjacency)
+}
+
+fn eval_condition_with_edges(
+    cond:          &Condition,
+    binding:       &[(&str, &Node)],
+    edge_bindings: &[(&str, &Edge)],
+    params:        &Params,
+    storage:       &GraphStorage,
+    adjacency:     &AdjacencyIndex,
+) -> Result<bool, QueryError> {
     match cond {
         Condition::Compare { left, op, right } => {
-            let l = eval_expr(left, binding, params, storage, adjacency)?;
-            let r = eval_expr(right, binding, params, storage, adjacency)?;
+            let l = eval_expr_with_edges(left, binding, edge_bindings, params, storage, adjacency)?;
+            let r = eval_expr_with_edges(right, binding, edge_bindings, params, storage, adjacency)?;
             compare_values(&l, op, &r)
         }
         Condition::And(a, b) => {
-            Ok(eval_condition(a, binding, params, storage, adjacency)?
-               && eval_condition(b, binding, params, storage, adjacency)?)
+            Ok(eval_condition_with_edges(a, binding, edge_bindings, params, storage, adjacency)?
+               && eval_condition_with_edges(b, binding, edge_bindings, params, storage, adjacency)?)
         }
         Condition::Or(a, b) => {
-            Ok(eval_condition(a, binding, params, storage, adjacency)?
-               || eval_condition(b, binding, params, storage, adjacency)?)
+            Ok(eval_condition_with_edges(a, binding, edge_bindings, params, storage, adjacency)?
+               || eval_condition_with_edges(b, binding, edge_bindings, params, storage, adjacency)?)
         }
-        Condition::Not(c) => Ok(!eval_condition(c, binding, params, storage, adjacency)?),
+        Condition::Not(c) => Ok(!eval_condition_with_edges(c, binding, edge_bindings, params, storage, adjacency)?),
 
         Condition::In { expr, values } => {
-            let needle = eval_expr(expr, binding, params, storage, adjacency)?;
+            let needle = eval_expr_with_edges(expr, binding, edge_bindings, params, storage, adjacency)?;
             for v in values {
-                let candidate = eval_expr(v, binding, params, storage, adjacency)?;
+                let candidate = eval_expr_with_edges(v, binding, edge_bindings, params, storage, adjacency)?;
                 if values_equal(&needle, &candidate) {
                     return Ok(true);
                 }
@@ -1211,9 +1315,9 @@ fn eval_condition(
         }
 
         Condition::Between { expr, low, high } => {
-            let val = eval_expr(expr, binding, params, storage, adjacency)?;
-            let lo  = eval_expr(low, binding, params, storage, adjacency)?;
-            let hi  = eval_expr(high, binding, params, storage, adjacency)?;
+            let val = eval_expr_with_edges(expr, binding, edge_bindings, params, storage, adjacency)?;
+            let lo  = eval_expr_with_edges(low, binding, edge_bindings, params, storage, adjacency)?;
+            let hi  = eval_expr_with_edges(high, binding, edge_bindings, params, storage, adjacency)?;
             match (&val, &lo, &hi) {
                 (Value::Float(v), Value::Float(l), Value::Float(h)) => Ok(*v >= *l && *v <= *h),
                 _ => Err(QueryError::TypeMismatch {
@@ -1225,8 +1329,8 @@ fn eval_condition(
         }
 
         Condition::StringOp { left, op, right } => {
-            let l = eval_expr(left, binding, params, storage, adjacency)?;
-            let r = eval_expr(right, binding, params, storage, adjacency)?;
+            let l = eval_expr_with_edges(left, binding, edge_bindings, params, storage, adjacency)?;
+            let r = eval_expr_with_edges(right, binding, edge_bindings, params, storage, adjacency)?;
             match (&l, &r) {
                 (Value::Str(ls), Value::Str(rs)) => Ok(match op {
                     StringCompOp::Contains   => ls.contains(rs.as_str()),
@@ -1279,6 +1383,17 @@ fn eval_expr(
     storage:   &GraphStorage,
     adjacency: &AdjacencyIndex,
 ) -> Result<Value, QueryError> {
+    eval_expr_with_edges(expr, binding, &[], params, storage, adjacency)
+}
+
+fn eval_expr_with_edges(
+    expr:          &Expr,
+    binding:       &[(&str, &Node)],
+    edge_bindings: &[(&str, &Edge)],
+    params:        &Params,
+    storage:       &GraphStorage,
+    adjacency:     &AdjacencyIndex,
+) -> Result<Value, QueryError> {
     match expr {
         Expr::Float(f) => Ok(Value::Float(*f)),
         Expr::Int(i)   => Ok(Value::Float(*i as f64)),
@@ -1299,8 +1414,15 @@ fn eval_expr(
         },
 
         Expr::Property { alias, field } => {
-            let node = find_node(alias, binding)?;
-            eval_field(node, field)
+            // Try node bindings first
+            if let Ok(node) = find_node(alias, binding) {
+                return eval_field(node, field);
+            }
+            // Fall back to edge bindings (NQL-6: r.field for edge alias)
+            if let Some((_, edge)) = edge_bindings.iter().find(|(a, _)| *a == alias) {
+                return eval_edge_field(edge, field);
+            }
+            Err(QueryError::UnknownAlias { alias: alias.to_string() })
         }
 
         Expr::HyperbolicDist { alias, field, arg } => {
@@ -1334,8 +1456,8 @@ fn eval_expr(
         }
 
         Expr::BinOp { left, op, right } => {
-            let lv = eval_expr(left, binding, params, storage, adjacency)?;
-            let rv = eval_expr(right, binding, params, storage, adjacency)?;
+            let lv = eval_expr_with_edges(left, binding, edge_bindings, params, storage, adjacency)?;
+            let rv = eval_expr_with_edges(right, binding, edge_bindings, params, storage, adjacency)?;
             let (l, r) = match (&lv, &rv) {
                 (Value::Float(a), Value::Float(b)) => (*a, *b),
                 _ => return Err(QueryError::Execution(
@@ -1378,7 +1500,48 @@ fn eval_field(node: &Node, field: &str) -> Result<Value, QueryError> {
         "id"                => Ok(Value::Str(node.id.to_string())),
         "created_at"        => Ok(Value::Float(node.created_at as f64)),
         "node_type"         => Ok(Value::Str(format!("{:?}", node.node_type))),
-        _ => Err(QueryError::UnknownField { field: field.to_string() }),
+        "expires_at"        => Ok(Value::Float(node.expires_at.unwrap_or(0) as f64)),
+        _ => {
+            // Fall back to content JSON (arbitrary fields stored on the node)
+            if let Some(val) = node.content.get(field) {
+                return json_to_value(val);
+            }
+            // Fall back to metadata HashMap
+            if let Some(val) = node.metadata.get(field) {
+                return json_to_value(val);
+            }
+            Err(QueryError::UnknownField { field: field.to_string() })
+        }
+    }
+}
+
+/// Evaluate an edge field: `r.weight`, `r.edge_type`, `r.created_at`, or metadata.
+fn eval_edge_field(edge: &Edge, field: &str) -> Result<Value, QueryError> {
+    match field {
+        "id"          => Ok(Value::Str(edge.id.to_string())),
+        "from"        => Ok(Value::Str(edge.from.to_string())),
+        "to"          => Ok(Value::Str(edge.to.to_string())),
+        "weight"      => Ok(Value::Float(edge.weight as f64)),
+        "edge_type"   => Ok(Value::Str(format!("{:?}", edge.edge_type))),
+        "created_at"  => Ok(Value::Float(edge.created_at as f64)),
+        _ => {
+            // Fall back to edge metadata
+            if let Some(val) = edge.metadata.get(field) {
+                return json_to_value(val);
+            }
+            Err(QueryError::UnknownField { field: field.to_string() })
+        }
+    }
+}
+
+/// Convert a `serde_json::Value` to an executor `Value`.
+fn json_to_value(val: &serde_json::Value) -> Result<Value, QueryError> {
+    match val {
+        serde_json::Value::Number(n) => Ok(Value::Float(n.as_f64().unwrap_or(0.0))),
+        serde_json::Value::String(s) => Ok(Value::Str(s.clone())),
+        serde_json::Value::Bool(b)   => Ok(Value::Bool(*b)),
+        serde_json::Value::Null      => Ok(Value::Float(0.0)),
+        _ => Err(QueryError::Execution(format!("field value is not a scalar: {val}"))),
     }
 }
 
