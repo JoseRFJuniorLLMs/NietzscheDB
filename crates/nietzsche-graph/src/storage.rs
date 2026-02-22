@@ -1,13 +1,102 @@
+use std::collections::HashMap;
+
 use rocksdb::{
     BlockBasedOptions, Cache, ColumnFamilyDescriptor, DB, DBCompressionType, Options,
     ReadOptions, SliceTransform,
 };
+use serde::{Deserialize, Serialize};
 use tracing::warn;
 use uuid::Uuid;
 
 use crate::adjacency::AdjacencyIndex;
 use crate::error::GraphError;
-use crate::model::{Edge, Node, NodeMeta, PoincareVector};
+use crate::model::{Edge, Node, NodeMeta, NodeType, PoincareVector};
+
+// ─────────────────────────────────────────────
+// Legacy NodeMeta (v1) — migration support
+// ─────────────────────────────────────────────
+//
+// Before Phase C/TTL, NodeMeta did NOT have `expires_at` or `is_phantom`.
+// The old layout was: id, depth, content, node_type, energy, lsystem_generation,
+// hausdorff_local, created_at, metadata.
+//
+// When we read from RocksDB, we try the current format first.  If that fails,
+// we try this legacy layout and convert to the current format in-place.
+
+mod as_json_string_legacy {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<T, S>(value: &T, ser: S) -> Result<S::Ok, S::Error>
+    where T: Serialize, S: Serializer {
+        let s = serde_json::to_string(value).map_err(serde::ser::Error::custom)?;
+        s.serialize(ser)
+    }
+
+    pub fn deserialize<'de, T, D>(de: D) -> Result<T, D::Error>
+    where T: for<'a> Deserialize<'a>, D: Deserializer<'de> {
+        let s = String::deserialize(de)?;
+        serde_json::from_str(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct NodeMetaV1 {
+    pub id: Uuid,
+    pub depth: f32,
+    #[serde(with = "as_json_string_legacy")]
+    pub content: serde_json::Value,
+    pub node_type: NodeType,
+    pub energy: f32,
+    pub lsystem_generation: u32,
+    pub hausdorff_local: f32,
+    pub created_at: i64,
+    #[serde(with = "as_json_string_legacy")]
+    pub metadata: HashMap<String, serde_json::Value>,
+}
+
+impl From<NodeMetaV1> for NodeMeta {
+    fn from(v1: NodeMetaV1) -> Self {
+        NodeMeta {
+            id: v1.id,
+            depth: v1.depth,
+            content: v1.content,
+            node_type: v1.node_type,
+            energy: v1.energy,
+            lsystem_generation: v1.lsystem_generation,
+            hausdorff_local: v1.hausdorff_local,
+            created_at: v1.created_at,
+            expires_at: None,
+            metadata: v1.metadata,
+            is_phantom: false,
+        }
+    }
+}
+
+/// Try deserializing as current NodeMeta; if that fails, try legacy V1 format.
+/// If V1 succeeds, re-serialize in the current format and write back to RocksDB.
+fn deserialize_node_meta_migrating(
+    key: &[u8],
+    value: &[u8],
+    db: &DB,
+    cf_nodes: &rocksdb::ColumnFamily,
+) -> Result<NodeMeta, Box<bincode::ErrorKind>> {
+    // Try current format first (fast path)
+    match bincode::deserialize::<NodeMeta>(value) {
+        Ok(meta) => return Ok(meta),
+        Err(_current_err) => {}
+    }
+
+    // Try legacy V1 format (migration path)
+    let v1: NodeMetaV1 = bincode::deserialize(value)?;
+    let meta: NodeMeta = v1.into();
+
+    // Re-serialize in current format and write back (lazy migration)
+    if let Ok(new_bytes) = bincode::serialize(&meta) {
+        let _ = db.put_cf(cf_nodes, key, &new_bytes);
+    }
+
+    Ok(meta)
+}
 
 // ─────────────────────────────────────────────
 // Column Family names
@@ -298,7 +387,12 @@ impl GraphStorage {
         match self.db.get_cf(&self.cf_nodes(), id.as_bytes())
             .map_err(|e| GraphError::Storage(e.to_string()))?
         {
-            Some(bytes) => Ok(Some(bincode::deserialize(&bytes)?)),
+            Some(bytes) => {
+                let meta = deserialize_node_meta_migrating(
+                    id.as_bytes(), &bytes, &self.db, &self.cf_nodes(),
+                )?;
+                Ok(Some(meta))
+            }
             None => Ok(None),
         }
     }
@@ -369,6 +463,7 @@ impl GraphStorage {
     /// Iterator over node metadata only — yields `Result<NodeMeta>`.
     pub fn iter_nodes_meta(&self) -> NodeMetaIterator<'_> {
         NodeMetaIterator {
+            storage: self,
             inner: self.db.iterator_cf(&self.cf_nodes(), rocksdb::IteratorMode::Start),
         }
     }
@@ -1075,6 +1170,7 @@ fn num_cpus() -> i32 {
 
 /// Lazy iterator over node metadata in RocksDB (no embedding — ~100 bytes per item).
 pub struct NodeMetaIterator<'a> {
+    storage: &'a GraphStorage,
     inner: rocksdb::DBIteratorWithThreadMode<'a, DB>,
 }
 
@@ -1088,7 +1184,9 @@ impl<'a> Iterator for NodeMetaIterator<'a> {
                 Ok(kv) => kv,
                 Err(e) => return Some(Err(GraphError::Storage(e.to_string()))),
             };
-            match bincode::deserialize::<NodeMeta>(&value) {
+            match deserialize_node_meta_migrating(
+                &key, &value, &self.storage.db, &self.storage.cf_nodes(),
+            ) {
                 Ok(meta) => return Some(Ok(meta)),
                 Err(e) => {
                     let id_hex = if key.len() >= 16 {
@@ -1120,7 +1218,9 @@ impl<'a> Iterator for NodeIterator<'a> {
                 Ok(kv) => kv,
                 Err(e) => return Some(Err(GraphError::Storage(e.to_string()))),
             };
-            let meta: NodeMeta = match bincode::deserialize(&meta_bytes) {
+            let meta: NodeMeta = match deserialize_node_meta_migrating(
+                &key, &meta_bytes, &self.storage.db, &self.storage.cf_nodes(),
+            ) {
                 Ok(m) => m,
                 Err(e) => {
                     let id_hex = if key.len() >= 16 {
