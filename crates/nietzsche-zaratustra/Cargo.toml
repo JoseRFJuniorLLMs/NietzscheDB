@@ -10,13 +10,14 @@ description = "Zaratustra — the autonomous evolution engine for NietzscheDB"
 #   Übermensch      — self-optimising tier promotion
 
 [dependencies]
-nietzsche-graph = { workspace = true }
-serde            = { workspace = true }
-serde_json       = { workspace = true }
-tracing          = { workspace = true }
-thiserror        = { workspace = true }
-uuid             = { workspace = true }
-rand             = { workspace = true }
+nietzsche-graph   = { workspace = true }
+nietzsche-lsystem = { workspace = true }
+serde             = { workspace = true }
+serde_json        = { workspace = true }
+tracing           = { workspace = true }
+thiserror         = { workspace = true }
+uuid              = { workspace = true }
+rand              = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

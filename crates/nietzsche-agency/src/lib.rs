@@ -33,10 +33,12 @@
 //!                               (sleep, lsystem, gap signals)
 //! ```
 
+pub mod code_as_data;
 pub mod config;
 pub mod counterfactual;
 pub mod daemons;
 pub mod desire;
+pub mod dialectic;
 pub mod engine;
 pub mod error;
 pub mod event_bus;
@@ -59,4 +61,6 @@ pub use identity::ObserverIdentity;
 pub use observer::{HealthReport, EnergyPercentiles, MetaObserver};
 pub use quantum::{BlochState, QuantumGate, poincare_to_bloch, bloch_to_poincare, batch_poincare_to_bloch, entanglement_proxy};
 pub use reactor::{AgencyIntent, AgencyReactor};
+pub use code_as_data::{ActionNode, ActionScanReport, create_action_node, scan_activatable_actions, record_firing, tick_cooldowns};
+pub use dialectic::{DialecticConfig, DialecticReport, Contradiction, Synthesis, run_dialectic_cycle};
 pub use store::{put_health_report, list_health_reports, get_latest_health_report, prune_health_reports};

@@ -23,9 +23,11 @@ pub mod registry;
 pub mod router;
 pub mod error;
 pub mod archetype;
+pub mod crdt;
 
 pub use node::{ClusterNode, NodeRole, NodeHealth};
 pub use registry::ClusterRegistry;
 pub use router::ClusterRouter;
 pub use error::ClusterError;
 pub use archetype::{Archetype, ArchetypeRegistry};
+pub use crdt::{CrdtNodeState, CrdtEdgeState, GraphDelta, merge_node, merge_edges, apply_delta};

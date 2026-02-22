@@ -360,12 +360,18 @@ pub fn diffusion_walk(
             break;
         }
 
-        // Build (candidate, weight) pairs — uses NodeMeta only (no embedding)
+        // Build (candidate, weight) pairs — uses NodeMeta only (no embedding).
+        // Arousal amplifies energy_bias: heat travels faster through
+        // emotionally charged memories than neutral facts.
         let mut candidates: Vec<(Uuid, f64)> = Vec::with_capacity(entries.len());
         for entry in &entries {
             if let Some(meta) = storage.get_node_meta(&entry.neighbor_id)? {
+                let effective_bias = crate::valence::arousal_modulated_bias(
+                    config.energy_bias,
+                    meta.arousal,
+                );
                 let w = (entry.weight as f64)
-                    * ((meta.energy as f64 * config.energy_bias as f64).exp());
+                    * ((meta.energy as f64 * effective_bias as f64).exp());
                 if w > 0.0 {
                     candidates.push((entry.neighbor_id, w));
                 }

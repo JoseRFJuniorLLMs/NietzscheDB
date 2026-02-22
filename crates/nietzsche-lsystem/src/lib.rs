@@ -24,10 +24,18 @@
 //! println!("spawned={} pruned={} D={:.3}", report.nodes_spawned, report.nodes_pruned, report.global_hausdorff);
 //! ```
 
+pub mod circuit_breaker;
 pub mod engine;
 pub mod hausdorff;
 pub mod mobius;
 pub mod rules;
+
+// ── Circuit Breaker ──────────────────────────────────────────────────────────
+pub use circuit_breaker::{
+    CircuitBreakerConfig, TumorCluster, TumorReport,
+    apply_depth_caps, apply_rate_limiting, depth_aware_cap, detect_tumors,
+    scan_and_dampen,
+};
 
 // ── Engine ────────────────────────────────────────────────────────────────────
 pub use engine::{

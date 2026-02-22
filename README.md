@@ -78,13 +78,19 @@ The name for what NietzscheDB actually is:
 │   · Prometheus/OpenTelemetry metrics export              │
 │   · Kafka Connect sink for CDC streaming                 │
 │   · Autonomous evolution (Zaratustra cycle)             │
+│   · Hegelian Dialectic Engine (thesis→antithesis→synthesis)│
+│   · Code-as-Data: NQL queries as activatable graph nodes │
+│   · Semantic CRDTs for conflict-free cluster merge       │
+│   · Schrödinger Edges (probabilistic, context-collapsed) │
+│   · Valence/Arousal emotional vectors in heat diffusion  │
+│   · Energy Circuit Breaker (anti-tumor protection)       │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
 ```
 
 **In plain language:**
-- *For users:* "A memory database that thinks in hierarchies, grows like a plant, and sleeps to consolidate what it learned."
-- *For engineers:* "A hyperbolic graph with native L-System growth, heat kernel diffusion as a search primitive, GPU/TPU vector backends, 65+ gRPC RPCs, MCP server for AI assistants, Prometheus metrics, filtered KNN with metadata push-down, Product Quantization, MERGE upsert semantics, persistent secondary indexes, per-collection RwLock concurrency, Redis-compatible cache layer, and periodic Riemannian reconsolidation."
+- *For users:* "A memory database that thinks in hierarchies, grows like a plant, feels emotions, resolves contradictions, and sleeps to consolidate what it learned."
+- *For engineers:* "A hyperbolic graph with native L-System growth, heat kernel diffusion as a search primitive, GPU/TPU vector backends, 65+ gRPC RPCs, MCP server for AI assistants, Prometheus metrics, filtered KNN with metadata push-down, Product Quantization, MERGE upsert semantics, persistent secondary indexes, per-collection RwLock concurrency, Redis-compatible cache layer, Hegelian dialectic synthesis, probabilistic Schrödinger edges, emotional valence/arousal vectors, Semantic CRDTs, Code-as-Data reactive rules, anti-tumor circuit breakers, and periodic Riemannian reconsolidation."
 - *For the market:* The category does not exist yet. This is it.
 
 ---
@@ -185,7 +191,7 @@ The storage and indexing foundation, inheriting all of HyperspaceDB v2.0:
 Twenty-nine new crates built on top of the foundation:
 
 #### `nietzsche-graph` — Hyperbolic Graph Engine
-- `Node` = `NodeMeta` (~100 bytes: id, depth, energy, node_type, hausdorff_local, content) + `PoincareVector` (embedding, stored separately for 10-25x traversal speedup)
+- `Node` = `NodeMeta` (~108 bytes: id, depth, energy, node_type, hausdorff_local, valence, arousal, content) + `PoincareVector` (embedding, stored separately for 10-25x traversal speedup)
 - `PoincareVector` with `Vec<f32>` coords (distance kernel promotes to f64 internally for numerical stability near the Poincare boundary)
 - `SparseVector` for SPLADE/sparse embeddings: sorted indices + values with O(nnz) dot product, cosine similarity, and L2 norm
 - `Edge` typed as `Association`, `LSystemGenerated`, `Hierarchical`, or `Pruned`
@@ -208,6 +214,8 @@ Twenty-nine new crates built on top of the foundation:
 - **Redis-compatible cache layer**: `CacheSet`/`CacheGet`/`CacheDel` RPCs using CF_META with "cache:" prefix, TTL as 8-byte expiry timestamp, lazy-delete on expired reads
 - **Per-collection `tokio::sync::RwLock` concurrency**: `CollectionManager` with `DashMap` + `Arc<RwLock<NietzscheDB>>` per collection. Reads proceed concurrently; writes block only the affected collection
 - **Full-text search + hybrid** (`fulltext.rs`): inverted index with BM25 scoring, plus RRF fusion with KNN vector search
+- **Schrödinger Edges** (`schrodinger.rs`): probabilistic edges with Markov transition probabilities — edges are "superpositions" that collapse at MATCH time. Context-dependent probability boost, per-tick decay, reinforcement learning. Batch collapse/decay operations
+- **Valence/Arousal** (`valence.rs`): emotional dimensions on NodeMeta — valence ∈ [-1, 1] (pleasure/displeasure) and arousal ∈ [0, 1] (intensity). Arousal amplifies `energy_bias` in `diffusion_walk()` (heat travels faster through emotional memories). Valence modulates Laplacian edge weights in spectral diffusion (matching-polarity edges boost heat conductivity). Includes `emotional_gravity()`, `decay_arousal()`, `reinforce_emotion()`
 
 #### `nietzsche-hyp-ops` — Poincare Ball Math
 Core hyperbolic geometry primitives: Mobius addition, exponential/logarithmic maps, geodesic distance, parallel transport. Used by all other crates that need Poincare ball operations. Includes criterion benchmarks.
@@ -373,7 +381,8 @@ The knowledge graph is not static — it grows by **L-System production rules**:
 - **Hausdorff dimension** computed via box-counting on hyperbolic coordinates at scales `[4, 8, 16, 32, 64]`
 - Nodes with D < 0.5 or D > 1.9 are pruned automatically; target fractal regime: **1.2 < D < 1.8**
 - `LSystemEngine::tick` protocol: Scan -> Hausdorff update -> Rule matching -> Apply mutations -> Report
-- 29 unit tests across all four modules
+- **EnergyCircuitBreaker**: cross-system anti-tumor protection — depth-aware energy caps, BFS tumor detection, energy dampening, rate limiting. Prevents runaway energy cascades from creating pathological node clusters
+- 41+ unit tests across all modules
 
 #### `nietzsche-pregel` — Hyperbolic Heat Kernel Diffusion
 Multi-scale activation propagation across the hyperbolic graph:
@@ -381,6 +390,7 @@ Multi-scale activation propagation across the hyperbolic graph:
 - **Hyperbolic graph Laplacian** — edge weights derived from Poincare distances
 - **Modified Bessel functions** `I_k(t)` for computing Chebyshev coefficients analytically
 - Multiple diffusion scales: `t=0.1` activates direct neighbors (focused recall), `t=10.0` activates structurally connected but semantically distant nodes (free association)
+- **Valence-modulated Laplacian**: edge weights incorporate emotional valence — edges between nodes of matching emotional polarity (both positive or both negative) propagate heat faster (emotional clustering effect)
 - `HyperbolicLaplacian` + `apply_heat_kernel` + `chebyshev_coefficients` as stable public API
 
 #### `nietzsche-wiederkehr` — DAEMON Agents
@@ -434,7 +444,9 @@ Graph-level autonomous intelligence with counterfactual reasoning:
 - **MetaObserver**: produces HealthReports with energy percentiles, fractal status, wake-up triggers
 - **CounterfactualEngine**: what-if simulations via ShadowGraph (remove/add nodes without mutating real graph)
 - **AgencyEventBus**: tokio broadcast channel for cross-system event propagation
-- 20+ unit tests (event_bus, engine, observer, daemons, shadow, simulator)
+- **Hegelian Dialectic Engine** (`dialectic.rs`): AGI-2 module — detects contradictions between nodes with opposing polarity, creates Tension nodes at embedding midpoints, synthesizes resolutions during sleep by pulling toward center and creating Semantic synthesis nodes. Full detect → tension → synthesize pipeline
+- **Code-as-Data** (`code_as_data.rs`): AGI-4 module — NQL queries stored as activatable graph nodes. When a node's energy exceeds its `activation_threshold` (via heat diffusion / Will-to-Power), the stored query is extracted and can be executed. Includes cooldown, max firings, and exhaustion tracking. Transforms the database into a Turing-complete reactive rule engine
+- 30+ unit tests (event_bus, engine, observer, daemons, shadow, simulator, dialectic, code_as_data)
 
 #### `nietzsche-sleep` — Reconsolidation Sleep Cycle
 EVA-Mind sleeps. During sleep:
@@ -489,6 +501,7 @@ Gossip-based cluster discovery and shard routing:
 - `ClusterRegistry` — gossip-updated peer view
 - `ClusterRouter` — shard selection
 - Eventual consistency via gossip (no Raft in current phase)
+- **Semantic CRDTs** (`crdt.rs`): conflict-free replicated data types for graph merge — add-wins node/edge sets, max-energy wins for concurrent updates, phantom-add-wins (irreversible), Lamport timestamp ordering. `GraphDelta` struct for gossip transmission with `apply_delta()` merge
 - Configurable via `NIETZSCHE_CLUSTER_ENABLED`, `NIETZSCHE_CLUSTER_ROLE`, `NIETZSCHE_CLUSTER_SEEDS`
 
 #### `nietzsche-hnsw-gpu` — GPU Vector Backend
@@ -908,6 +921,14 @@ NQL-7 ORDER BY on edge properties           ✅ COMPLETE  (r.weight, r.created_a
 Ph.C  Redis-compatible cache RPCs           ✅ COMPLETE  (CacheSet/Get/Del + ReapExpired)
 Ph.F  Sensory RPCs (fully connected)        ✅ COMPLETE  (insert/get/reconstruct/degrade)
 Ph.G  Per-collection RwLock concurrency     ✅ COMPLETE  (DashMap + tokio::sync::RwLock)
+
+── AGI & Advanced Features Sprint (2026-02-22) ──────────
+AGI-1 EnergyCircuitBreaker (anti-tumor)    ✅ COMPLETE  (depth caps, BFS tumor detection, dampening)
+AGI-2 Hegelian Dialectic Engine            ✅ COMPLETE  (contradiction→tension→synthesis pipeline)
+AGI-3 Semantic CRDTs (cluster merge)       ✅ COMPLETE  (add-wins, max-energy, phantom-add-wins)
+AGI-4 Code-as-Data (NQL-as-node)           ✅ COMPLETE  (activatable queries, cooldown, exhaustion)
+AGI-5 Schrödinger Edges                    ✅ COMPLETE  (probabilistic collapse, decay, reinforce)
+AGI-6 Valence/Arousal (emotional vectors)  ✅ COMPLETE  (diffusion modulation, Laplacian weighting)
 ```
 
 ---
@@ -1335,6 +1356,9 @@ NietzscheDB closes gaps that no existing database fills:
 - **No graph database has magnitude-preserving Product Quantization.** PQ compresses vectors while preserving `‖x‖` — critical for hyperbolic depth semantics. Binary Quantization is explicitly rejected (destroys hierarchy).
 - **No graph database ships with a built-in MCP server.** NietzscheDB exposes 19 tools via the Model Context Protocol for direct AI assistant integration.
 - **No graph database bridges graph + relational + blob storage in one engine.** SQLite table store with NodeRef foreign keys + OpenDAL media store (S3/GCS/local) — unified under one API.
+- **No database has emotional dimensions on graph nodes.** NietzscheDB's valence/arousal fields model reward/punishment axes that alter heat diffusion propagation — heat travels faster through emotionally charged memories, mirroring how biological memory is inseparable from emotion.
+- **No database has probabilistic edges with context-dependent collapse.** Schrödinger Edges exist in superposition and collapse at query time based on context — modeling the brain's context-dependent associations.
+- **No database has a built-in Hegelian dialectic engine.** NietzscheDB detects contradictions, creates tension nodes, and synthesizes resolutions — the graph reasons through opposites.
 
 Key references:
 - Krioukov et al., "Hyperbolic Geometry of Complex Networks" (2010)

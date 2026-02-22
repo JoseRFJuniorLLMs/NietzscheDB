@@ -24,6 +24,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use nietzsche_graph::{AdjacencyIndex, GraphStorage};
+use nietzsche_lsystem::CircuitBreakerConfig;
 
 use crate::config::ZaratustraConfig;
 use crate::error::ZaratustraError;
@@ -122,6 +123,123 @@ pub fn run_will_to_power(
         mean_energy_after:  mean_after,
         total_energy_delta: total_delta,
     })
+}
+
+/// Enhanced Will-to-Power with circuit breaker integration.
+///
+/// Same as [`run_will_to_power`] but additionally:
+/// - Applies **depth-aware energy caps** (boundary nodes get lower caps)
+/// - Applies **rate limiting** (max energy delta per node per cycle)
+///
+/// Returns `(WillToPowerReport, nodes_depth_capped, nodes_rate_limited)`.
+pub fn run_will_to_power_guarded(
+    storage:   &GraphStorage,
+    adjacency: &AdjacencyIndex,
+    config:    &ZaratustraConfig,
+    cb_config: &CircuitBreakerConfig,
+) -> Result<(WillToPowerReport, usize, usize), ZaratustraError> {
+    let nodes = storage.scan_nodes()
+        .map_err(|e| ZaratustraError::Graph(e.to_string()))?;
+
+    if nodes.is_empty() {
+        return Ok((WillToPowerReport::default(), 0, 0));
+    }
+
+    // Snapshot: old energies + depths
+    let old_energies: HashMap<Uuid, f32> = nodes
+        .iter()
+        .map(|n| (n.id, n.energy))
+        .collect();
+    let depths: HashMap<Uuid, f32> = nodes
+        .iter()
+        .map(|n| (n.id, n.depth))
+        .collect();
+
+    let mean_before: f32 = {
+        let sum: f32 = old_energies.values().copied().sum();
+        sum / old_energies.len() as f32
+    };
+
+    // Standard propagation
+    let mut energy_map: HashMap<Uuid, f32> = old_energies.clone();
+
+    for _step in 0..config.propagation_steps {
+        let snapshot: HashMap<Uuid, f32> = energy_map.clone();
+
+        for (&node_id, cur_energy) in energy_map.iter_mut() {
+            let neighbours = adjacency.neighbors_out(&node_id);
+            let neighbour_mean: f32 = if neighbours.is_empty() {
+                0.0
+            } else {
+                let sum: f32 = neighbours
+                    .iter()
+                    .filter_map(|nid| snapshot.get(nid).copied())
+                    .sum();
+                sum / neighbours.len() as f32
+            };
+
+            *cur_energy = (*cur_energy * (1.0 - config.decay)
+                + config.alpha * neighbour_mean)
+                .clamp(0.0, config.energy_cap);
+        }
+    }
+
+    // Apply depth-aware caps
+    let mut nodes_depth_capped = 0usize;
+    for (&id, energy) in energy_map.iter_mut() {
+        let depth = depths.get(&id).copied().unwrap_or(0.0);
+        let cap = nietzsche_lsystem::depth_aware_cap(depth, cb_config);
+        if *energy > cap {
+            *energy = cap;
+            nodes_depth_capped += 1;
+        }
+    }
+
+    // Apply rate limiting
+    let mut nodes_rate_limited = 0usize;
+    if cb_config.max_energy_delta > 0.0 {
+        for (&id, energy) in energy_map.iter_mut() {
+            let old_e = old_energies.get(&id).copied().unwrap_or(0.0);
+            let delta = *energy - old_e;
+            if delta > cb_config.max_energy_delta {
+                *energy = old_e + cb_config.max_energy_delta;
+                nodes_rate_limited += 1;
+            }
+        }
+    }
+
+    // Persist updates
+    let mut nodes_updated = 0u64;
+    let mut total_delta = 0.0f32;
+
+    for mut node in nodes {
+        let new_energy = energy_map[&node.id];
+        let delta = (new_energy - node.energy).abs();
+
+        if delta > f32::EPSILON {
+            node.energy = new_energy;
+            storage.put_node(&node)
+                .map_err(|e| ZaratustraError::Graph(e.to_string()))?;
+            nodes_updated += 1;
+            total_delta += delta;
+        }
+    }
+
+    let mean_after: f32 = {
+        let sum: f32 = energy_map.values().copied().sum();
+        sum / energy_map.len() as f32
+    };
+
+    Ok((
+        WillToPowerReport {
+            nodes_updated,
+            mean_energy_before: mean_before,
+            mean_energy_after: mean_after,
+            total_energy_delta: total_delta,
+        },
+        nodes_depth_capped,
+        nodes_rate_limited,
+    ))
 }
 
 #[cfg(test)]
@@ -372,6 +490,89 @@ mod tests {
             "3-step energy {} should exceed 1-step energy {}",
             a_3,
             a_1,
+        );
+    }
+
+    // ── Guarded (circuit-breaker-integrated) tests ──────────────────────────
+
+    #[test]
+    fn guarded_depth_cap_limits_boundary_node() {
+        let (storage, _dir) = open_temp_db();
+        let adjacency = AdjacencyIndex::new();
+
+        // Deep node (depth ≈ 0.89) at high energy
+        let deep = make_node(0.8, 0.4, 0.95); // ‖[0.8, 0.4]‖ ≈ 0.894
+        let deep_id = deep.id;
+        storage.put_node(&deep).unwrap();
+
+        let cfg = ZaratustraConfig {
+            alpha: 0.0,
+            decay: 0.0,
+            propagation_steps: 1,
+            ..default_config()
+        };
+        let cb = CircuitBreakerConfig {
+            depth_cap_gradient: 0.5,
+            base_cap: 1.0,
+            max_energy_delta: 0.0, // disabled
+            ..CircuitBreakerConfig::default()
+        };
+
+        let (report, depth_capped, _rate_limited) =
+            run_will_to_power_guarded(&storage, &adjacency, &cfg, &cb).unwrap();
+
+        assert!(depth_capped >= 1, "deep node should be depth-capped");
+
+        let nodes = storage.scan_nodes().unwrap();
+        let n = nodes.iter().find(|n| n.id == deep_id).unwrap();
+        // cap = 1.0 - 0.5 * 0.894 ≈ 0.553
+        assert!(
+            n.energy < 0.6,
+            "deep node energy {} should be capped below 0.6",
+            n.energy,
+        );
+    }
+
+    #[test]
+    fn guarded_rate_limiting_clamps_large_increase() {
+        let (storage, _dir) = open_temp_db();
+        let adjacency = AdjacencyIndex::new();
+
+        // a -> b, a starts low, b starts very high
+        let a = make_node(0.1, 0.0, 0.2);
+        let b = make_node(0.0, 0.1, 1.0);
+        let a_id = a.id;
+
+        let edge = Edge::new(a.id, b.id, EdgeType::Association, 1.0);
+        storage.put_node(&a).unwrap();
+        storage.put_node(&b).unwrap();
+        adjacency.add_edge(&edge);
+
+        let cfg = ZaratustraConfig {
+            alpha: 0.8,        // aggressive propagation
+            decay: 0.0,
+            propagation_steps: 1,
+            ..default_config()
+        };
+        let cb = CircuitBreakerConfig {
+            max_energy_delta: 0.15,
+            depth_cap_gradient: 0.0, // disabled
+            ..CircuitBreakerConfig::default()
+        };
+
+        let (_report, _depth_capped, rate_limited) =
+            run_will_to_power_guarded(&storage, &adjacency, &cfg, &cb).unwrap();
+
+        assert!(rate_limited >= 1, "node a should be rate-limited");
+
+        let nodes = storage.scan_nodes().unwrap();
+        let a_after = nodes.iter().find(|n| n.id == a_id).unwrap();
+        // Without rate limiting: 0.2 + 0.8 * 1.0 = 1.0 (delta 0.8)
+        // With rate limiting:    0.2 + 0.15 = 0.35
+        assert!(
+            a_after.energy <= 0.36,
+            "rate-limited energy {} should be ≤ 0.36",
+            a_after.energy,
         );
     }
 }

@@ -405,6 +405,19 @@ pub struct NodeMeta {
     #[serde(with = "as_json_string")]
     pub metadata: HashMap<String, serde_json::Value>,
 
+    /// Emotional valence ∈ [-1.0, 1.0].
+    /// Negative = punishing/traumatic, Positive = rewarding/pleasant,
+    /// Zero = neutral. Affects how heat propagation (DIFFUSE) weights edges.
+    #[serde(default)]
+    pub valence: f32,
+
+    /// Emotional arousal ∈ [0.0, 1.0].
+    /// High = emotionally intense, Low = calm/neutral.
+    /// Amplifies energy_bias in diffusion_walk: heat travels faster
+    /// through emotionally charged memories than neutral facts.
+    #[serde(default)]
+    pub arousal: f32,
+
     /// Phantom node flag: structural "scar" left after pruning/TTL expiry.
     ///
     /// Phantom nodes retain their topological connections (edges, adjacency)
@@ -499,6 +512,8 @@ impl Node {
                 created_at: now_unix(),
                 expires_at: None,
                 metadata: HashMap::new(),
+                valence: 0.0,
+                arousal: 0.0,
                 is_phantom: false,
             },
             embedding,

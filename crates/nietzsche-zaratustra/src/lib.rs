@@ -62,4 +62,4 @@ pub use engine::{ZaratustraEngine, ZaratustraReport};
 pub use error::ZaratustraError;
 pub use eternal_recurrence::EternalRecurrenceReport;
 pub use ubermensch::UbermenschReport;
-pub use will_to_power::WillToPowerReport;
+pub use will_to_power::{WillToPowerReport, run_will_to_power_guarded};

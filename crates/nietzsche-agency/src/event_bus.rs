@@ -16,6 +16,13 @@ pub enum WakeUpReason {
     MeanEnergyBelow(f32),
     HausdorffOutOfRange(f32),
     GapCountExceeded(usize),
+    /// Circuit breaker detected semantic tumors (connected overheated clusters).
+    TumorDetected {
+        /// Number of tumor clusters found.
+        cluster_count: usize,
+        /// Total nodes across all tumors.
+        total_nodes: usize,
+    },
 }
 
 /// Events produced by agency daemons and the observer.
@@ -54,6 +61,16 @@ pub enum AgencyEvent {
         archetype_id: Uuid,
         /// Nodes to be phantomized (all except archetype).
         redundant_ids: Vec<Uuid>,
+    },
+
+    /// Circuit breaker detected and dampened semantic tumors.
+    TumorDetected {
+        /// Number of tumor clusters found.
+        cluster_count: usize,
+        /// Total nodes dampened.
+        nodes_dampened: usize,
+        /// Total nodes depth-capped.
+        nodes_depth_capped: usize,
     },
 
     /// Observer triggered a daemon wake-up due to critical thresholds.

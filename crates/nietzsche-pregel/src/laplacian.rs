@@ -105,7 +105,13 @@ impl HyperbolicLaplacian {
 
                 let Some(neighbour) = storage.get_node(&neighbor_id)? else { continue };
                 let d = node.embedding.distance(&neighbour.embedding);
-                let w = 1.0 / (1.0 + d);
+                // Valence modulation: edges between nodes of matching emotional
+                // polarity propagate heat faster (emotional clustering).
+                let valence_mod = nietzsche_graph::valence_edge_modifier(
+                    node.meta.valence,
+                    neighbour.meta.valence,
+                );
+                let w = valence_mod / (1.0 + d);
 
                 // Undirected: add both directions
                 adj[i].push((j, w));

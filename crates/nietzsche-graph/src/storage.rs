@@ -67,6 +67,8 @@ impl From<NodeMetaV1> for NodeMeta {
             created_at: v1.created_at,
             expires_at: None,
             metadata: v1.metadata,
+            valence: 0.0,
+            arousal: 0.0,
             is_phantom: false,
         }
     }

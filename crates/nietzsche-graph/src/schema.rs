@@ -211,6 +211,8 @@ mod tests {
             created_at: 0,
             expires_at: None,
             metadata,
+            valence: 0.0,
+            arousal: 0.0,
             is_phantom: false,
         }
     }
