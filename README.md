@@ -16,7 +16,7 @@
   <a href="https://github.com/JoseRFJuniorLLMs/NietzscheDB/blob/main/LICENSE_AGPLv3.md"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/built%20with-Rust%20nightly-orange.svg" alt="Rust"></a>
   <img src="https://img.shields.io/badge/crates-38%20workspace-informational.svg" alt="Crates">
-  <img src="https://img.shields.io/badge/gRPC-60%2B%20RPCs-blueviolet.svg" alt="RPCs">
+  <img src="https://img.shields.io/badge/gRPC-65%2B%20RPCs-blueviolet.svg" alt="RPCs">
   <img src="https://img.shields.io/badge/geometry-Poincar%C3%A9%20Ball-purple.svg" alt="Hyperbolic">
   <img src="https://img.shields.io/badge/category-Temporal%20Hyperbolic%20Graph%20DB-red.svg" alt="Category">
   <img src="https://img.shields.io/badge/GPU-cuVS%20CAGRA-76b900.svg" alt="GPU">
@@ -63,6 +63,11 @@ The name for what NietzscheDB actually is:
 │   · Filtered KNN with Roaring Bitmaps + metadata push    │
 │   · Product Quantization (magnitude-preserving)          │
 │   · MERGE upsert with edge metadata + atomic counters    │
+│   · SET with arithmetic (n.count = n.count + 1)          │
+│   · CREATE with TTL + DETACH DELETE                      │
+│   · Edge alias property access (r.weight, r.count)       │
+│   · Redis-compatible cache (CacheSet/Get/Del + TTL)      │
+│   · Per-collection RwLock concurrency                    │
 │   · Persistent secondary indexes with query planner      │
 │   · RBAC + AES-256-CTR encryption at-rest                │
 │   · Schema validation + metadata secondary indexes       │
@@ -79,7 +84,7 @@ The name for what NietzscheDB actually is:
 
 **In plain language:**
 - *For users:* "A memory database that thinks in hierarchies, grows like a plant, and sleeps to consolidate what it learned."
-- *For engineers:* "A hyperbolic graph with native L-System growth, heat kernel diffusion as a search primitive, GPU/TPU vector backends, 60+ gRPC RPCs, MCP server for AI assistants, Prometheus metrics, filtered KNN with metadata push-down, Product Quantization, MERGE upsert semantics, persistent secondary indexes, and periodic Riemannian reconsolidation."
+- *For engineers:* "A hyperbolic graph with native L-System growth, heat kernel diffusion as a search primitive, GPU/TPU vector backends, 65+ gRPC RPCs, MCP server for AI assistants, Prometheus metrics, filtered KNN with metadata push-down, Product Quantization, MERGE upsert semantics, persistent secondary indexes, per-collection RwLock concurrency, Redis-compatible cache layer, and periodic Riemannian reconsolidation."
 - *For the market:* The category does not exist yet. This is it.
 
 ---
@@ -111,12 +116,14 @@ It is a fork of **[YARlabs/hyperspace-db](https://github.com/YARlabs/hyperspace-
 | Knowledge growth | Static inserts | L-System: graph grows by production rules |
 | Memory pruning | Manual deletion | Hausdorff dimension: self-pruning fractal |
 | Memory consolidation | No concept | Sleep cycle: Riemannian perturbation + rollback |
-| Query language | k-NN only | NQL — graph, vector, diffusion, CREATE/SET/DELETE/MERGE, EXPLAIN |
+| Query language | k-NN only | NQL — graph, vector, diffusion, CREATE/SET/DELETE/DETACH DELETE/MERGE, EXPLAIN |
 | Search | Vector OR text | Hybrid BM25+KNN with RRF fusion |
 | Graph analytics | External tool needed | 11 built-in algorithms (PageRank, Louvain, A*, ...) |
 | Hardware acceleration | CPU only or proprietary | GPU (cuVS CAGRA) + TPU (PJRT) at runtime |
 | Security | API key at best | RBAC (Admin/Writer/Reader) + AES-256-CTR encryption at-rest |
 | Data integrity | No schema enforcement | Per-NodeType schema validation (required fields + types) |
+| Cache layer | External Redis | Built-in CacheSet/Get/Del with TTL + lazy expiry |
+| Concurrency | Global lock or external | Per-collection RwLock — concurrent reads, write-isolated |
 | Consistency | Single-store | ACID saga pattern across graph + vector store |
 | Vector compression | Scalar/binary quant | Product Quantization (magnitude-preserving — depth safe) |
 | Multi-vector | Single embedding only | Named Vectors: multiple embeddings per node with different metrics |
@@ -197,14 +204,16 @@ Twenty-nine new crates built on top of the foundation:
 - **Schema validation** (`schema.rs`): per-NodeType constraints (required fields, field types), persisted in CF_META, enforced on `insert_node`
 - **Metadata secondary indexes** (`CF_META_IDX`): arbitrary field indexing with FNV-1a + sortable value encoding for range scans
 - **ListStore** (`CF_LISTS`): per-node ordered lists with RPUSH/LRANGE/LLEN semantics, atomic sequence counters
-- **TTL / expires_at** enforcement: background reaper scans expired nodes and deletes them automatically
+- **TTL / expires_at** enforcement: background reaper scans expired nodes and phantomizes them (topology-preserving). CREATE with `ttl` property auto-computes `expires_at`
+- **Redis-compatible cache layer**: `CacheSet`/`CacheGet`/`CacheDel` RPCs using CF_META with "cache:" prefix, TTL as 8-byte expiry timestamp, lazy-delete on expired reads
+- **Per-collection `tokio::sync::RwLock` concurrency**: `CollectionManager` with `DashMap` + `Arc<RwLock<NietzscheDB>>` per collection. Reads proceed concurrently; writes block only the affected collection
 - **Full-text search + hybrid** (`fulltext.rs`): inverted index with BM25 scoring, plus RRF fusion with KNN vector search
 
 #### `nietzsche-hyp-ops` — Poincare Ball Math
 Core hyperbolic geometry primitives: Mobius addition, exponential/logarithmic maps, geodesic distance, parallel transport. Used by all other crates that need Poincare ball operations. Includes criterion benchmarks.
 
 #### `nietzsche-query` — NQL Query Language
-Nietzsche Query Language — a declarative query language with first-class hyperbolic primitives. Parser built with `pest` (PEG grammar). 19 unit + integration tests.
+Nietzsche Query Language — a declarative query language with first-class hyperbolic primitives. Parser built with `pest` (PEG grammar). Supports arithmetic SET expressions (`n.count = n.count + 1`), edge alias property access (`-[r:TYPE]->` with `r.weight` in WHERE/ORDER BY), CREATE with TTL, DETACH DELETE, and eval_field fallback to `node.content`/`node.metadata` for dynamic properties. 113+ unit + integration tests.
 
 **[Full NQL Reference: docs/NQL.md](docs/NQL.md)**
 
@@ -213,9 +222,10 @@ Query types:
 | Type | Description |
 |---|---|
 | `MATCH` | Pattern matching on nodes/paths with hyperbolic conditions |
-| `CREATE` | Insert new nodes with labels and properties |
-| `MATCH … SET` | Update matched nodes' properties |
+| `CREATE` | Insert new nodes with labels, properties, and optional TTL |
+| `MATCH … SET` | Update matched nodes' properties (supports arithmetic: `n.count = n.count + 1`) |
 | `MATCH … DELETE` | Delete matched nodes |
+| `MATCH … DETACH DELETE` | Delete matched nodes and all incident edges |
 | `MERGE` | Upsert nodes/edges (ON CREATE SET / ON MATCH SET) |
 | `DIFFUSE` | Multi-scale heat-kernel activation propagation |
 | `RECONSTRUCT` | Decode sensory data from latent vector |
@@ -274,8 +284,25 @@ RETURN a, b LIMIT 50
 CREATE (n:Episodic {title: "first meeting", source: "manual"})
 RETURN n
 
+-- Create with TTL (auto-expires after 3600 seconds)
+CREATE (n:EvaSession {id: "sess_1", turn_count: 0, ttl: 3600})
+RETURN n
+
+-- Arithmetic SET (per-node evaluation)
+MATCH (n:EvaSession {id: "sess_1"})
+SET n.turn_count = n.turn_count + 1, n.status = "active"
+RETURN n
+
+-- Edge alias: access edge properties in WHERE/ORDER BY
+MATCH (a:Person)-[r:MENTIONED]->(b:Topic)
+WHERE r.weight > 0.5
+RETURN a, b ORDER BY r.weight DESC LIMIT 10
+
 -- Update matched nodes
 MATCH (n:Semantic) WHERE n.energy < 0.1 SET n.energy = 0.5 RETURN n
+
+-- DETACH DELETE (node + all incident edges)
+MATCH (n:EvaSession) WHERE n.status = "expired" DETACH DELETE n
 
 -- Delete expired nodes
 MATCH (n) WHERE n.energy = 0.0 DELETE n
@@ -551,7 +578,7 @@ Backend-agnostic media storage for files associated with graph nodes:
 - 8 unit tests
 
 #### `nietzsche-api` — Unified gRPC API
-Single endpoint for all NietzscheDB capabilities — **60+ RPCs** over a single `NietzscheDB` service. Every data-plane RPC accepts a `collection` field; empty -> `"default"`.
+Single endpoint for all NietzscheDB capabilities — **65+ RPCs** over a single `NietzscheDB` service. Every data-plane RPC accepts a `collection` field; empty -> `"default"`.
 
 ```protobuf
 service NietzscheDB {
@@ -618,6 +645,12 @@ service NietzscheDB {
   rpc ListRPush(ListPushRequest)          returns (ListPushResponse);
   rpc ListLRange(ListRangeRequest)        returns (ListRangeResponse);
   rpc ListLen(ListLenRequest)             returns (ListLenResponse);
+
+  // ── Cache (Redis-compatible) ────────────────────────────────
+  rpc CacheSet(CacheSetRequest)           returns (StatusResponse);
+  rpc CacheGet(CacheGetRequest)           returns (CacheGetResponse);
+  rpc CacheDel(CacheDelRequest)           returns (StatusResponse);
+  rpc ReapExpired(ReapExpiredRequest)      returns (ReapExpiredResponse);
 
   // ── Change Data Capture ───────────────────────────────────────
   rpc SubscribeCDC(CdcRequest)            returns (stream CdcEvent);
@@ -787,7 +820,7 @@ sleep, _ := client.TriggerSleep(ctx, nietzsche.SleepOpts{Noise: 0.02})
 fmt.Printf("deltaH=%.3f committed=%v\n", sleep.HausdorffDelta, sleep.Committed)
 ```
 
-Go SDK covers all 60+ RPCs: collections, nodes, edges, batch operations, query, search, traversal, algorithms, backup, CDC, merge, sensory, indexes, lifecycle.
+Go SDK covers all 65+ RPCs: collections, nodes, edges, batch operations, query, search, traversal, algorithms, backup, CDC, merge, sensory, indexes, lifecycle.
 
 ### TypeScript & C++
 Located in `sdks/ts/` and `sdks/cpp/`.
@@ -810,7 +843,7 @@ PHASE 9   Public API + SDKs                 ✅ COMPLETE
 PHASE 10  Benchmarks, hardening, production ✅ COMPLETE
 PHASE 11  Sensory compression layer         ✅ COMPLETE
 PHASE Z   Zaratustra evolution engine       ✅ COMPLETE
-PHASE A+B Unified gRPC API (55+ RPCs)       ✅ COMPLETE
+PHASE A+B Unified gRPC API (65+ RPCs)       ✅ COMPLETE
 PHASE D   Merge semantics (upsert)          ✅ COMPLETE
 PHASE G   Cluster foundation (gossip)       ✅ COMPLETE
 PHASE GPU GPU acceleration (cuVS CAGRA)     ✅ COMPLETE
@@ -863,6 +896,18 @@ D.2   IncrementEdgeMeta RPC               ✅ COMPLETE  (atomic counter incremen
 E.1   Persistent secondary index registry  ✅ COMPLETE  (create/drop/list + backfill + startup load)
 E.2   NQL executor index integration       ✅ COMPLETE  (auto O(log N) scan for indexed WHERE)
 E.3   Index management gRPC RPCs           ✅ COMPLETE  (CreateIndex/DropIndex/ListIndexes)
+
+── NQL & EVA-Mind Compatibility (2026-02-21) ──────────
+NQL-1 MERGE statement (ON CREATE/ON MATCH)  ✅ COMPLETE  (node + edge MERGE with upsert)
+NQL-2 Multi-hop typed path (*1..4)          ✅ COMPLETE  (BFS with depth + label filter)
+NQL-3 SET with arithmetic expressions       ✅ COMPLETE  (n.count = n.count + 1, per-node eval)
+NQL-4 CREATE with TTL support               ✅ COMPLETE  (ttl property → expires_at auto-compute)
+NQL-5 DETACH DELETE                         ✅ COMPLETE  (node + all incident edges)
+NQL-6 Edge property access in WHERE/RETURN  ✅ COMPLETE  (edge alias -[r:TYPE]-> with r.field)
+NQL-7 ORDER BY on edge properties           ✅ COMPLETE  (r.weight, r.created_at, etc.)
+Ph.C  Redis-compatible cache RPCs           ✅ COMPLETE  (CacheSet/Get/Del + ReapExpired)
+Ph.F  Sensory RPCs (fully connected)        ✅ COMPLETE  (insert/get/reconstruct/degrade)
+Ph.G  Per-collection RwLock concurrency     ✅ COMPLETE  (DashMap + tokio::sync::RwLock)
 ```
 
 ---
@@ -1227,7 +1272,7 @@ NietzscheDB/
 │   ├── nietzsche-kafka/      ← Kafka Connect sink (CDC streaming)
 │   ├── nietzsche-table/      ← relational table store (SQLite)
 │   ├── nietzsche-media/      ← media/blob store (OpenDAL: S3, GCS, local)
-│   ├── nietzsche-api/        ← unified gRPC API (55+ RPCs)
+│   ├── nietzsche-api/        ← unified gRPC API (65+ RPCs)
 │   ├── nietzsche-sdk/        ← Rust client SDK
 │   ├── nietzsche-server/     ← production binary + dashboard
 │   ├── nietzsche-hnsw-gpu/   ← GPU vector search (cuVS CAGRA)
@@ -1237,7 +1282,7 @@ NietzscheDB/
 │   ├── src/pages/            ← Overview, Collections, Nodes, Graph, Data, Settings
 │   └── dist/                 ← single-file HTML (embedded in binary)
 ├── sdks/
-│   ├── go/                   ← sdk-papa-caolho (55+ RPCs, full coverage)
+│   ├── go/                   ← sdk-papa-caolho (65+ RPCs, full coverage)
 │   ├── python/               ← gRPC client + proto generation
 │   ├── ts/                   ← TypeScript SDK
 │   └── cpp/                  ← C++ SDK
@@ -1329,5 +1374,5 @@ Commercial licensing available — see [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENS
 </p>
 
 <p align="center">
-  Built for <strong>EVA-Mind</strong> · Powered by <strong>Rust nightly</strong> · <strong>38 crates</strong> · <strong>60+ gRPC RPCs</strong> · <strong>MCP + Prometheus</strong> · <strong>GPU/TPU</strong> · <strong>RBAC + Encryption</strong>
+  Built for <strong>EVA-Mind</strong> · Powered by <strong>Rust nightly</strong> · <strong>38 crates</strong> · <strong>65+ gRPC RPCs</strong> · <strong>MCP + Prometheus</strong> · <strong>GPU/TPU</strong> · <strong>RBAC + Encryption</strong>
 </p>

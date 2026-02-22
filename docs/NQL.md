@@ -12,6 +12,7 @@ NQL is a declarative query language designed for temporal hyperbolic graph datab
 2. [Query Types](#query-types)
 3. [MATCH Query](#match-query)
    - [Patterns](#patterns)
+   - [Edge Alias & Properties](#edge-alias--properties)
    - [Node Properties](#node-properties)
    - [WHERE Conditions](#where-conditions)
    - [Built-in Functions](#built-in-functions)
@@ -20,7 +21,7 @@ NQL is a declarative query language designed for temporal hyperbolic graph datab
    - [RETURN Clause](#return-clause)
    - [Aggregates](#aggregates)
 4. [CREATE Query](#create-query)
-5. [MATCH SET / DELETE](#match-set--delete)
+5. [MATCH SET / DELETE / DETACH DELETE](#match-set--delete--detach-delete)
 6. [MERGE Query](#merge-query)
 7. [DIFFUSE Query](#diffuse-query)
 8. [RECONSTRUCT Query](#reconstruct-query)
@@ -74,9 +75,10 @@ EXPLAIN MATCH (n) WHERE n.energy > 0.5 RETURN n LIMIT 5
 | Type | Keyword | Purpose |
 |---|---|---|
 | Pattern match | `MATCH` | Filter nodes/edges by properties and geometry |
-| Create | `CREATE` | Insert new nodes with labels and properties |
-| Update | `MATCH ... SET` | Update matched nodes' properties |
+| Create | `CREATE` | Insert new nodes with labels, properties, and optional TTL |
+| Update | `MATCH ... SET` | Update matched nodes' properties (supports arithmetic) |
 | Delete | `MATCH ... DELETE` | Delete matched nodes |
+| Detach Delete | `MATCH ... DETACH DELETE` | Delete matched nodes and all incident edges |
 | Upsert | `MERGE` | Upsert nodes/edges (ON CREATE SET / ON MATCH SET) |
 | Diffusion | `DIFFUSE` | Multi-scale heat-kernel activation propagation |
 | Reconstruct | `RECONSTRUCT` | Decode sensory data from latent representation |
@@ -133,6 +135,11 @@ MATCH (a)<-[:Hierarchical]-(b)
 
 -- Any edge type (omit label)
 MATCH (a)-[]->(b)
+
+-- Multi-hop path (BFS 2..4 hops)
+MATCH (a)-[:Association*2..4]->(b)
+WHERE a.energy > 0.5
+RETURN a, b LIMIT 50
 ```
 
 **Edge types:**
@@ -143,6 +150,54 @@ MATCH (a)-[]->(b)
 | `Hierarchical` | Parent → child in hyperbolic hierarchy |
 | `LSystemGenerated` | Created by the L-System growth engine |
 | `Pruned` | Archived — low Hausdorff complexity region |
+
+---
+
+### Edge Alias & Properties
+
+Edge aliases allow accessing edge properties in WHERE and ORDER BY clauses.
+
+#### Syntax
+
+```sql
+-- Named edge alias: r
+MATCH (a)-[r:MENTIONED]->(b)
+
+-- Access edge properties
+WHERE r.weight > 0.5
+ORDER BY r.weight DESC
+```
+
+#### Edge Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `r.id` | UUID | Edge unique identifier |
+| `r.from` | UUID | Source node ID |
+| `r.to` | UUID | Target node ID |
+| `r.weight` | float | Edge weight |
+| `r.edge_type` | string | `"Association"` \| `"Hierarchical"` \| `"LSystemGenerated"` \| `"Pruned"` |
+| `r.created_at` | int | Creation timestamp (Unix µs) |
+| `r.<field>` | any | Custom field from `edge.metadata` |
+
+#### Examples
+
+```sql
+-- Filter by edge weight
+MATCH (a:Person)-[r:MENTIONED]->(b:Topic)
+WHERE r.weight > 0.5
+RETURN a, b ORDER BY r.weight DESC LIMIT 10
+
+-- Order by edge creation time
+MATCH (a)-[r:Association]->(b)
+WHERE a.energy > 0.3
+RETURN a, b ORDER BY r.created_at DESC LIMIT 20
+
+-- Access custom edge metadata
+MATCH (a)-[r:MENTIONED]->(b)
+WHERE r.count > 5
+RETURN a, b, r.count
+```
 
 ---
 
@@ -157,6 +212,8 @@ MATCH (a)-[]->(b)
 | `n.embedding` | vector | ‖x‖ < 1 | Poincaré ball vector (for distance functions) |
 | `n.content` | JSON | — | Arbitrary payload stored with the node |
 | `n.created_at` | int | Unix µs | Creation timestamp |
+| `n.expires_at` | float | Unix s | Expiration timestamp (0 if no TTL) |
+| `n.<field>` | any | — | Dynamic field: falls back to `node.content` then `node.metadata` |
 
 ---
 
@@ -376,7 +433,7 @@ ORDER BY avg_e DESC
 
 ## CREATE Query
 
-Insert new nodes into the graph.
+Insert new nodes into the graph. Supports optional **TTL** (time-to-live) for automatic expiration.
 
 ### Syntax
 
@@ -384,6 +441,10 @@ Insert new nodes into the graph.
 CREATE (<alias>:<Label> { <property>: <value>, ... })
 [RETURN <alias>]
 ```
+
+### TTL Support
+
+Include a `ttl` property (in seconds) to auto-compute `expires_at`. The `ttl` key is extracted from properties and not stored as content — it sets the node's expiration timestamp.
 
 ### Examples
 
@@ -396,6 +457,14 @@ RETURN n
 CREATE (c:Concept {title: "quantum mechanics", domain: "physics"})
 RETURN c
 
+-- Create with TTL (auto-expires after 1 hour)
+CREATE (n:EvaSession {id: "sess_1", turn_count: 0, ttl: 3600})
+RETURN n
+
+-- Create with TTL (30 minutes)
+CREATE (n:TempCache {query: "latest results", ttl: 1800})
+RETURN n
+
 -- Create with embedding (passed via params)
 CREATE (n:Semantic {title: "memory of the sea"})
 RETURN n
@@ -403,7 +472,7 @@ RETURN n
 
 ---
 
-## MATCH SET / DELETE
+## MATCH SET / DELETE / DETACH DELETE
 
 Update or delete matched nodes.
 
@@ -416,6 +485,8 @@ SET <alias>.<field> = <expr> [, <alias>.<field> = <expr>]*
 [RETURN <alias>]
 ```
 
+**Arithmetic expressions** are supported in SET values. Each matched node is evaluated independently, so `n.count = n.count + 1` reads the current value per node.
+
 ### DELETE Syntax
 
 ```
@@ -424,17 +495,43 @@ MATCH <pattern>
 DELETE <alias>
 ```
 
+### DETACH DELETE Syntax
+
+Deletes matched nodes **and all incident edges** (both incoming and outgoing).
+
+```
+MATCH <pattern>
+[WHERE <condition>]
+DETACH DELETE <alias>
+```
+
 ### Examples
 
 ```sql
 -- Update energy of low-energy semantic nodes
 MATCH (n:Semantic) WHERE n.energy < 0.1 SET n.energy = 0.5 RETURN n
 
+-- Arithmetic SET: increment counter per node
+MATCH (n:EvaSession {id: "sess_1"})
+SET n.turn_count = n.turn_count + 1, n.status = "active"
+RETURN n
+
+-- Arithmetic SET: decrement energy
+MATCH (n) WHERE n.energy > 0.8
+SET n.energy = n.energy - 0.1
+RETURN n
+
 -- Delete expired nodes
 MATCH (n) WHERE n.energy = 0.0 DELETE n
 
+-- DETACH DELETE: remove node and all edges
+MATCH (n:EvaSession) WHERE n.status = "expired" DETACH DELETE n
+
 -- Update multiple fields
 MATCH (n) WHERE n.id = $id SET n.energy = 0.9, n.title = "updated" RETURN n
+
+-- Dynamic property access (falls back to node.content / node.metadata)
+MATCH (n:EvaSession) WHERE n.turn_count > 10 RETURN n
 ```
 
 ---
@@ -1081,6 +1178,54 @@ ORDER BY n.energy DESC
 LIMIT 25
 ```
 
+### 13. Edge alias — filter and sort by edge properties
+
+```sql
+-- Find strongly connected topics by edge weight
+MATCH (a:Person)-[r:MENTIONED]->(b:Topic)
+WHERE r.weight > 0.5 AND a.energy > 0.3
+RETURN a, b
+ORDER BY r.weight DESC
+LIMIT 10
+```
+
+### 14. Arithmetic SET — session counters
+
+```sql
+-- Increment session turn counter (per-node evaluation)
+MATCH (n:EvaSession {id: "sess_42"})
+SET n.turn_count = n.turn_count + 1, n.last_active = "2026-02-22"
+RETURN n
+```
+
+### 15. CREATE with TTL — ephemeral cache nodes
+
+```sql
+-- Create a temporary node that auto-expires in 1 hour
+CREATE (n:TempResult {query: "weather São Paulo", result: "28°C", ttl: 3600})
+RETURN n
+```
+
+### 16. DETACH DELETE — clean removal
+
+```sql
+-- Remove expired sessions and all their edges
+MATCH (n:EvaSession)
+WHERE n.status = "expired"
+DETACH DELETE n
+```
+
+### 17. Dynamic property access — EVA-Mind fields
+
+```sql
+-- Access fields stored in node.content (automatic fallback)
+MATCH (n:EvaSession)
+WHERE n.turn_count > 10 AND n.status = "active"
+RETURN n.turn_count, n.status, n.energy
+ORDER BY n.turn_count DESC
+LIMIT 5
+```
+
 ---
 
 ## Error Reference
@@ -1115,8 +1260,8 @@ match_query   = { match_clause ~ as_of_clause? ~ where_clause? ~ return_clause }
 match_clause  = { "MATCH" ~ (path_pattern | node_pattern) }
 node_pattern  = { "(" ~ ident ~ (":" ~ ident)? ~ ")" }
 path_pattern  = { node_pattern ~ edge_pattern ~ node_pattern }
-edge_pattern  = { "-[:" ~ ident ~ ("*" ~ integer ~ ".." ~ integer)? ~ "]->"
-               | "<-[:" ~ ident ~ "]-" | "-[]->" }
+edge_pattern  = { "-[" ~ ident? ~ ":" ~ ident ~ ("*" ~ integer ~ ".." ~ integer)? ~ "]->"
+               | "<-[" ~ ident? ~ ":" ~ ident ~ "]-" | "-[]->" }
 
 -- CRUD
 create_query      = { "CREATE" ~ node_with_props ~ return_clause? }
@@ -1125,7 +1270,11 @@ merge_query       = { "MERGE" ~ (path_pattern | node_with_props)
                       ~ ("ON" ~ "MATCH" ~ "SET" ~ set_assignments)?
                       ~ return_clause? }
 match_set_query   = { match_clause ~ where_clause? ~ "SET" ~ set_assignments ~ return_clause? }
-match_delete_query = { match_clause ~ where_clause? ~ "DELETE" ~ ident }
+match_delete_query = { match_clause ~ where_clause? ~ "DETACH"? ~ "DELETE" ~ ident }
+
+-- SET expressions (supports arithmetic)
+set_assignment    = { property ~ "=" ~ set_expr }
+set_expr          = { atom ~ (("+" | "-") ~ atom)? }   -- n.count + 1, n.energy - 0.1
 
 -- Conditions & expressions
 where_clause  = { "WHERE" ~ condition }
