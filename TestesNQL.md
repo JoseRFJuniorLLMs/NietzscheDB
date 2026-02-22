@@ -18,7 +18,7 @@
 
 ## 1. Arquitetura da NQL
 
-A NQL é uma linguagem de consulta de grafos hiperbólicos, estruturada em três camadas:
+A NQL é uma linguagem de consulta de grafos multi-manifold, estruturada em três camadas:
 
 ```
 Texto NQL  →  Parser (PEG via pest)  →  AST  →  Executor  →  QueryResult

@@ -96,6 +96,14 @@ service NietzscheDB {
   // ── Change Data Capture ──────────────────────────────────────────────
   rpc SubscribeCDC (CdcRequest) returns (stream CdcEvent);
 
+  // ── Multi-Manifold Operations (Phase M — Klein · Riemann · Minkowski) ──
+  rpc Synthesis       (SynthesisRequest)       returns (SynthesisResponse);
+  rpc SynthesisMulti  (SynthesisMultiRequest)  returns (SynthesisResponse);
+  rpc CausalNeighbors (CausalNeighborsRequest) returns (CausalNeighborsResponse);
+  rpc CausalChain     (CausalChainRequest)     returns (CausalChainResponse);
+  rpc KleinPath       (KleinPathRequest)       returns (KleinPathResponse);
+  rpc IsOnShortestPath(ShortestPathCheckRequest) returns (ShortestPathCheckResponse);
+
   // ── Admin ─────────────────────────────────────────────────────────────
   rpc GetStats (Empty) returns (StatsResponse);
   rpc HealthCheck (Empty) returns (StatusResponse);
@@ -859,4 +867,84 @@ message ListIndexesRequest {
 
 message ListIndexesResponse {
   repeated string fields = 1;  // currently indexed field names
+}
+
+// ── Multi-Manifold messages (Phase M — Klein · Riemann · Minkowski) ───
+
+// -- Riemann Synthesis --
+
+message SynthesisRequest {
+  string node_id_a  = 1;  // UUID of first concept (Thesis)
+  string node_id_b  = 2;  // UUID of second concept (Antithesis)
+  string collection = 3;  // empty → "default"
+}
+
+message SynthesisMultiRequest {
+  repeated string node_ids = 1;  // UUIDs of concepts to synthesize
+  string          collection = 2;
+}
+
+message SynthesisResponse {
+  repeated double synthesis_coords = 1;  // Poincaré ball coordinates of synthesis point
+  string          nearest_node_id  = 2;  // UUID of the nearest existing node to the synthesis
+  double          nearest_distance = 3;  // hyperbolic distance to nearest node
+}
+
+// -- Minkowski Causal Filtering --
+
+message CausalNeighborsRequest {
+  string node_id    = 1;  // origin node UUID
+  string direction  = 2;  // "future" | "past" | "both"; empty → "both"
+  string collection = 3;
+}
+
+message CausalNeighborsResponse {
+  repeated CausalEdge edges = 1;
+}
+
+message CausalEdge {
+  string edge_id            = 1;
+  string from_node_id       = 2;
+  string to_node_id         = 3;
+  double minkowski_interval = 4;  // ds² value
+  string causal_type        = 5;  // "Timelike" | "Spacelike" | "Lightlike" | "Unknown"
+  string edge_type          = 6;
+}
+
+message CausalChainRequest {
+  string node_id    = 1;  // origin node UUID
+  uint32 max_depth  = 2;  // max recursive depth; 0 → default 10
+  string direction  = 3;  // "future" | "past"; empty → "past" (WHY query)
+  string collection = 4;
+}
+
+message CausalChainResponse {
+  repeated string     chain_ids = 1;  // ordered node UUIDs in causal chain
+  repeated CausalEdge edges     = 2;  // edges in the chain
+}
+
+// -- Klein Pathfinding --
+
+message KleinPathRequest {
+  string start_node_id = 1;
+  string goal_node_id  = 2;
+  string collection    = 3;
+}
+
+message KleinPathResponse {
+  bool            found = 1;
+  repeated string path  = 2;  // node UUIDs from start to goal (Klein geodesic)
+  double          cost  = 3;  // total hyperbolic distance
+}
+
+message ShortestPathCheckRequest {
+  string node_id_a  = 1;  // endpoint A
+  string node_id_b  = 2;  // endpoint B
+  string node_id_c  = 3;  // point to check
+  string collection = 4;
+}
+
+message ShortestPathCheckResponse {
+  bool   on_path  = 1;  // true if C lies on the geodesic between A and B
+  double distance = 2;  // Klein distance A→B
 }

@@ -5,7 +5,7 @@
 <h1 align="center">NietzscheDB</h1>
 
 <p align="center">
-  <strong>Temporal Hyperbolic Graph Database</strong>
+  <strong>Multi-Manifold Graph Database</strong>
 </p>
 
 <p align="center">
@@ -17,10 +17,18 @@
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/built%20with-Rust%20nightly-orange.svg" alt="Rust"></a>
   <img src="https://img.shields.io/badge/crates-38%20workspace-informational.svg" alt="Crates">
   <img src="https://img.shields.io/badge/gRPC-65%2B%20RPCs-blueviolet.svg" alt="RPCs">
-  <img src="https://img.shields.io/badge/geometry-Poincar%C3%A9%20Ball-purple.svg" alt="Hyperbolic">
-  <img src="https://img.shields.io/badge/category-Temporal%20Hyperbolic%20Graph%20DB-red.svg" alt="Category">
+  <img src="https://img.shields.io/badge/geometry-Poincar%C3%A9%20%C2%B7%20Klein%20%C2%B7%20Riemann%20%C2%B7%20Minkowski-purple.svg" alt="Multi-Manifold">
+  <img src="https://img.shields.io/badge/category-Multi--Manifold%20Graph%20DB-red.svg" alt="Category">
   <img src="https://img.shields.io/badge/GPU-cuVS%20CAGRA-76b900.svg" alt="GPU">
   <img src="https://img.shields.io/badge/TPU-PJRT%20v5e%2Fv6e%2Fv7-4285F4.svg" alt="TPU">
+</p>
+
+<p align="center">
+  <img src="img/arq1.png" alt="NietzscheDB Multi-Manifold Visualization" width="720"/>
+</p>
+
+<p align="center">
+  <img src="img/arq2.png" alt="NietzscheDB Architecture — gRPC + HTTP Layers" width="720"/>
 </p>
 
 ---
@@ -42,8 +50,8 @@ Document Store        MongoDB, ArangoDB
 Time-evolving Graph   no mainstream product
   → the graph rewrites itself autonomously              ✔ NietzscheDB has this (L-System)
 
-Hyperbolic Database   no mature product exists
-  → non-Euclidean geometry as a native primitive        ✔ NietzscheDB has this
+Multi-Manifold DB     no product exists
+  → 4 non-Euclidean geometries as native primitives     ✔ NietzscheDB has this
 ```
 
 The name for what NietzscheDB actually is:
@@ -51,9 +59,10 @@ The name for what NietzscheDB actually is:
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                                                         │
-│         TEMPORAL HYPERBOLIC GRAPH DATABASE              │
+│           MULTI-MANIFOLD GRAPH DATABASE                │
+│    Poincaré · Klein · Riemann · Minkowski              │
 │                                                         │
-│   · Non-Euclidean geometry as the storage primitive     │
+│   · 4 non-Euclidean geometries as native primitives    │
 │   · Autonomous fractal growth via L-System rules        │
 │   · Multi-scale search via hyperbolic heat diffusion    │
 │   · Active memory reconsolidation during idle cycles    │
@@ -89,36 +98,50 @@ The name for what NietzscheDB actually is:
 ```
 
 **In plain language:**
-- *For users:* "A memory database that thinks in hierarchies, grows like a plant, feels emotions, resolves contradictions, and sleeps to consolidate what it learned."
-- *For engineers:* "A hyperbolic graph with native L-System growth, heat kernel diffusion as a search primitive, GPU/TPU vector backends, 65+ gRPC RPCs, MCP server for AI assistants, Prometheus metrics, filtered KNN with metadata push-down, Product Quantization, MERGE upsert semantics, persistent secondary indexes, per-collection RwLock concurrency, Redis-compatible cache layer, Hegelian dialectic synthesis, probabilistic Schrödinger edges, emotional valence/arousal vectors, Semantic CRDTs, Code-as-Data reactive rules, anti-tumor circuit breakers, and periodic Riemannian reconsolidation."
+- *For users:* "A memory database that thinks in hierarchies, grows like a plant, feels emotions, resolves contradictions, reasons through causality, and sleeps to consolidate what it learned."
+- *For engineers:* "A multi-manifold graph (Poincaré storage · Klein pathfinding · Riemann synthesis · Minkowski causality) with native L-System growth, heat kernel diffusion as a search primitive, GPU/TPU vector backends, 71+ gRPC RPCs, MCP server for AI assistants, Prometheus metrics, filtered KNN with metadata push-down, Product Quantization, MERGE upsert semantics, persistent secondary indexes, per-collection RwLock concurrency, Redis-compatible cache layer, Hegelian dialectic synthesis, probabilistic Schrödinger edges, emotional valence/arousal vectors, Semantic CRDTs, Code-as-Data reactive rules, anti-tumor circuit breakers, and periodic Riemannian reconsolidation."
 - *For the market:* The category does not exist yet. This is it.
 
 ---
 
 ## What is NietzscheDB?
 
-NietzscheDB is a purpose-built database engine for **[EVA-Mind](https://github.com/JoseRFJuniorLLMs)** — an AI memory and reasoning system that requires more than flat vector search can offer.
+NietzscheDB is a purpose-built database engine for **[EVA](https://github.com/JoseRFJuniorLLMs)** — an AI memory and reasoning system that requires more than flat vector search can offer.
 
-Standard vector databases store memories in Euclidean space: every concept lives at the same "depth", every relationship is a number, and hierarchical structure collapses into cosine similarity. EVA-Mind needs to think differently.
+Standard vector databases store memories in Euclidean space: every concept lives at the same "depth", every relationship is a number, and hierarchical structure collapses into cosine similarity. EVA needs to think differently.
 
-NietzscheDB organizes knowledge in **hyperbolic space (Poincare ball model)**, where:
-- Abstract concepts naturally live near the center
+NietzscheDB is the world's first **multi-manifold graph database**, operating across **four non-Euclidean geometries** simultaneously:
+
+| Geometry | Curvature | Role | Operations |
+|---|---|---|---|
+| **Poincaré Ball** | K < 0 (hyperbolic) | Storage & HNSW index | Distance, KNN, diffusion, sleep |
+| **Klein Disk** | K < 0 (hyperbolic) | Pathfinding | Geodesics as straight lines, O(1) colinearity |
+| **Riemann Sphere** | K > 0 (spherical) | Synthesis & aggregation | Dialectical synthesis, Fréchet mean, GROUP BY centroid |
+| **Minkowski Spacetime** | Flat (Lorentzian) | Causality | Light cone filter, causal chains, WHY/WHAT-IF queries |
+
+**Architecture principle: 4 Geometries · 1 Storage (Poincaré) · 0 Duplication.** Klein, Riemann, and Minkowski are on-the-fly projections at query time — no data is duplicated.
+
+- Abstract concepts naturally live near the center of the Poincaré ball
 - Specific memories live near the boundary
 - Hierarchical distance is intrinsic — not encoded, but *geometric*
 - The knowledge graph grows and prunes itself like a fractal organism
 - The system "sleeps" and reconsolidates its own memory topology
 - An autonomous evolution cycle (Zaratustra) propagates energy, captures temporal echoes, and identifies elite nodes
+- Causal relationships are identified via Minkowski intervals (ds² < 0 = timelike = causal)
 
-It is a fork of **[YARlabs/hyperspace-db](https://github.com/YARlabs/hyperspace-db)** — the world's first native hyperbolic HNSW vector database — extended with a full graph engine, query language, L-System growth, hyperbolic diffusion, GPU/TPU acceleration, graph algorithms, cluster support, and an autonomous sleep/reconsolidation cycle.
+It is a fork of **[YARlabs/hyperspace-db](https://github.com/YARlabs/hyperspace-db)** — extended from a hyperbolic HNSW vector database into the world's first **multi-manifold graph database** with a full graph engine, query language, L-System growth, 4 non-Euclidean geometries, GPU/TPU acceleration, graph algorithms, cluster support, and an autonomous sleep/reconsolidation cycle.
 
 ---
 
-## Why EVA-Mind Needs This
+## Why EVA Needs This
 
 | Problem | Standard Vector DB | NietzscheDB |
 |---|---|---|
-| Hierarchy representation | Flat — same depth for all | Geometric — depth = abstraction level |
-| Semantic search | Cosine similarity | Hyperbolic HNSW + heat kernel diffusion |
+| Hierarchy representation | Flat — same depth for all | Geometric — depth = abstraction level (Poincaré) |
+| Semantic search | Cosine similarity | Multi-manifold HNSW + heat kernel diffusion |
+| Pathfinding | Euclidean graph | Klein model — geodesics are straight lines, O(1) |
+| Concept synthesis | None | Riemann sphere — dialectical midpoint at shallower depth |
+| Causal reasoning | None | Minkowski spacetime — light cone filter for WHY/WHAT-IF |
 | Knowledge growth | Static inserts | L-System: graph grows by production rules |
 | Memory pruning | Manual deletion | Hausdorff dimension: self-pruning fractal |
 | Memory consolidation | No concept | Sleep cycle: Riemannian perturbation + rollback |
@@ -175,7 +198,7 @@ NietzscheDB is built as a **Rust nightly workspace** with 38 crates in two layer
 
 The storage and indexing foundation, inheriting all of HyperspaceDB v2.0:
 
-- **Poincare Ball HNSW** — native hyperbolic nearest-neighbor index. Not re-ranking, not post-processing: the graph itself navigates in hyperbolic geometry.
+- **Poincare Ball HNSW** — native multi-manifold nearest-neighbor index. Not re-ranking, not post-processing: the graph itself navigates in non-Euclidean geometry (Poincaré ball with Klein/Riemann/Minkowski projections at query time).
 - **mmap Vector Store** — memory-mapped, append-only segments (`chunk_N.hyp`) with 1-bit to 8-bit quantization (up to 64x compression).
 - **Write-Ahead Log v3** — binary `[Magic][Len][CRC32][Op][Data]` format with configurable durability and automatic crash recovery.
 - **gRPC API** — async Command-Query Separation with background indexing. Client gets `OK` as soon as the WAL is written.
@@ -190,7 +213,7 @@ The storage and indexing foundation, inheriting all of HyperspaceDB v2.0:
 
 Twenty-nine new crates built on top of the foundation:
 
-#### `nietzsche-graph` — Hyperbolic Graph Engine
+#### `nietzsche-graph` — Multi-Manifold Graph Engine
 - `Node` = `NodeMeta` (~108 bytes: id, depth, energy, node_type, hausdorff_local, valence, arousal, content) + `PoincareVector` (embedding, stored separately for 10-25x traversal speedup)
 - `PoincareVector` with `Vec<f32>` coords (distance kernel promotes to f64 internally for numerical stability near the Poincare boundary)
 - `SparseVector` for SPLADE/sparse embeddings: sorted indices + values with O(nnz) dot product, cosine similarity, and L2 norm
@@ -217,11 +240,21 @@ Twenty-nine new crates built on top of the foundation:
 - **Schrödinger Edges** (`schrodinger.rs`): probabilistic edges with Markov transition probabilities — edges are "superpositions" that collapse at MATCH time. Context-dependent probability boost, per-tick decay, reinforcement learning. Batch collapse/decay operations
 - **Valence/Arousal** (`valence.rs`): emotional dimensions on NodeMeta — valence ∈ [-1, 1] (pleasure/displeasure) and arousal ∈ [0, 1] (intensity). Arousal amplifies `energy_bias` in `diffusion_walk()` (heat travels faster through emotional memories). Valence modulates Laplacian edge weights in spectral diffusion (matching-polarity edges boost heat conductivity). Includes `emotional_gravity()`, `decay_arousal()`, `reinforce_emotion()`
 
-#### `nietzsche-hyp-ops` — Poincare Ball Math
-Core hyperbolic geometry primitives: Mobius addition, exponential/logarithmic maps, geodesic distance, parallel transport. Used by all other crates that need Poincare ball operations. Includes criterion benchmarks.
+#### `nietzsche-hyp-ops` — Multi-Manifold Geometry Engine
+Four non-Euclidean geometry modules sharing a single Poincaré storage layer:
+
+| Module | Geometry | Key Operations |
+|---|---|---|
+| `poincare` (core) | Poincaré ball (K < 0) | Mobius addition, exp/log maps, geodesic distance, parallel transport |
+| `klein` | Klein disk (K < 0) | `to_klein`/`to_poincare`, colinearity check O(1), straight-line pathfinding |
+| `riemann` | Unit sphere (K > 0) | Spherical midpoint, Fréchet mean, dialectical `synthesis`/`synthesis_multi` |
+| `minkowski` | Minkowski spacetime | `ds² = -c²Δt² + ‖Δx‖²`, causal classification (Timelike/Spacelike/Lightlike), light cone filter |
+| `manifold` | Normalization layer | `normalize_poincare`/`klein`/`sphere`, health checks, safe roundtrip projections |
+
+Invariants enforced: Poincaré ‖x‖ < 1.0, Klein ‖x‖ < 1.0, Sphere ‖x‖ = 1.0. Cascaded roundtrip error < 1e-4 after 10 projections. Includes criterion benchmarks.
 
 #### `nietzsche-query` — NQL Query Language
-Nietzsche Query Language — a declarative query language with first-class hyperbolic primitives. Parser built with `pest` (PEG grammar). Supports arithmetic SET expressions (`n.count = n.count + 1`), edge alias property access (`-[r:TYPE]->` with `r.weight` in WHERE/ORDER BY), CREATE with TTL, DETACH DELETE, and eval_field fallback to `node.content`/`node.metadata` for dynamic properties. 113+ unit + integration tests.
+Nietzsche Query Language — a declarative query language with first-class multi-manifold primitives. Parser built with `pest` (PEG grammar). Supports arithmetic SET expressions (`n.count = n.count + 1`), edge alias property access (`-[r:TYPE]->` with `r.weight` in WHERE/ORDER BY), CREATE with TTL, DETACH DELETE, and eval_field fallback to `node.content`/`node.metadata` for dynamic properties. 113+ unit + integration tests.
 
 **[Full NQL Reference: docs/NQL.md](docs/NQL.md)**
 
@@ -229,7 +262,7 @@ Query types:
 
 | Type | Description |
 |---|---|
-| `MATCH` | Pattern matching on nodes/paths with hyperbolic conditions |
+| `MATCH` | Pattern matching on nodes/paths with geometric conditions |
 | `CREATE` | Insert new nodes with labels, properties, and optional TTL |
 | `MATCH … SET` | Update matched nodes' properties (supports arithmetic: `n.count = n.count + 1`) |
 | `MATCH … DELETE` | Delete matched nodes |
@@ -238,7 +271,7 @@ Query types:
 | `DIFFUSE` | Multi-scale heat-kernel activation propagation |
 | `RECONSTRUCT` | Decode sensory data from latent vector |
 | `EXPLAIN` | Return execution plan with cost estimates |
-| `DREAM FROM` | Speculative graph exploration via hyperbolic diffusion with noise |
+| `DREAM FROM` | Speculative graph exploration via heat-kernel diffusion with noise |
 | `APPLY/REJECT DREAM` | Accept or discard dream simulation results |
 | `TRANSLATE` | Cross-modal projection (Synesthesia) via Poincare ball log/exp map |
 | `MATCH ... AS OF CYCLE` | Time-travel query on named snapshots (Eternal Return) |
@@ -463,7 +496,7 @@ Graph-level autonomous intelligence with counterfactual reasoning:
 - 30+ unit tests (event_bus, engine, observer, daemons, shadow, simulator, dialectic, code_as_data)
 
 #### `nietzsche-sleep` — Reconsolidation Sleep Cycle
-EVA-Mind sleeps. During sleep:
+EVA sleeps. During sleep:
 1. Sample high-curvature subgraph via random walk
 2. Snapshot current embeddings (rollback point)
 3. Perturb embeddings in the tangent space (the "dream")
@@ -552,7 +585,7 @@ Pre-filtered nearest-neighbor search using Roaring Bitmaps:
 - **NodeFilter** enum: EnergyRange, NodeType, ContentField, ContentFieldExists, And, Or
 - Energy range filter leverages `CF_ENERGY_IDX` for efficient range scans
 - JSON dot-path navigation for content field filtering
-- Poincare distance computation for hyperbolic KNN
+- Poincare distance computation for multi-manifold KNN
 - 15 integration tests
 
 #### `nietzsche-named-vectors` — Multi-Vector per Node
@@ -605,7 +638,7 @@ Backend-agnostic media storage for files associated with graph nodes:
 - 8 unit tests
 
 #### `nietzsche-api` — Unified gRPC API
-Single endpoint for all NietzscheDB capabilities — **65+ RPCs** over a single `NietzscheDB` service. Every data-plane RPC accepts a `collection` field; empty -> `"default"`.
+Single endpoint for all NietzscheDB capabilities — **71+ RPCs** over a single `NietzscheDB` service, including 6 multi-manifold geometry RPCs (Synthesis, CausalNeighbors, CausalChain, KleinPath, IsOnShortestPath). Every data-plane RPC accepts a `collection` field; empty -> `"default"`.
 
 ```protobuf
 service NietzscheDB {
@@ -681,6 +714,14 @@ service NietzscheDB {
 
   // ── Change Data Capture ───────────────────────────────────────
   rpc SubscribeCDC(CdcRequest)            returns (stream CdcEvent);
+
+  // ── Multi-Manifold Geometry ─────────────────────────────────
+  rpc Synthesis(SynthesisRequest)                   returns (SynthesisResponse);
+  rpc SynthesisMulti(SynthesisMultiRequest)         returns (SynthesisResponse);
+  rpc CausalNeighbors(CausalNeighborsRequest)       returns (CausalNeighborsResponse);
+  rpc CausalChain(CausalChainRequest)               returns (CausalChainResponse);
+  rpc KleinPath(KleinPathRequest)                   returns (KleinPathResponse);
+  rpc IsOnShortestPath(ShortestPathCheckRequest)     returns (ShortestPathCheckResponse);
 
   // ── Cluster ─────────────────────────────────────────────────
   rpc ExchangeGossip(GossipRequest)       returns (GossipResponse);
@@ -847,7 +888,7 @@ sleep, _ := client.TriggerSleep(ctx, nietzsche.SleepOpts{Noise: 0.02})
 fmt.Printf("deltaH=%.3f committed=%v\n", sleep.HausdorffDelta, sleep.Committed)
 ```
 
-Go SDK covers all 65+ RPCs: collections, nodes, edges, batch operations, query, search, traversal, algorithms, backup, CDC, merge, sensory, indexes, lifecycle.
+Go SDK covers all 71+ RPCs: collections, nodes, edges, batch operations, query, search, traversal, algorithms, backup, CDC, merge, sensory, indexes, lifecycle, and multi-manifold operations (Synthesis, CausalNeighbors, CausalChain, KleinPath, IsOnShortestPath).
 
 ### TypeScript & C++
 Located in `sdks/ts/` and `sdks/cpp/`.
@@ -870,7 +911,7 @@ PHASE 9   Public API + SDKs                 ✅ COMPLETE
 PHASE 10  Benchmarks, hardening, production ✅ COMPLETE
 PHASE 11  Sensory compression layer         ✅ COMPLETE
 PHASE Z   Zaratustra evolution engine       ✅ COMPLETE
-PHASE A+B Unified gRPC API (65+ RPCs)       ✅ COMPLETE
+PHASE A+B Unified gRPC API (71+ RPCs)       ✅ COMPLETE
 PHASE D   Merge semantics (upsert)          ✅ COMPLETE
 PHASE G   Cluster foundation (gossip)       ✅ COMPLETE
 PHASE GPU GPU acceleration (cuVS CAGRA)     ✅ COMPLETE
@@ -914,7 +955,7 @@ E0.8  Table Store (SQLite)                 ✅ COMPLETE  (7 column types, 15 tes
 E0.9  Media/Blob Store (OpenDAL)           ✅ COMPLETE  (5 media types, 8 tests)
 E1.0  Go SDK batch RPCs                    ✅ COMPLETE  (42/42 RPCs)
 
-── EVA-Mind Compatibility Sprint (2026-02-21) ──────────
+── EVA Compatibility Sprint (2026-02-21) ──────────
 A.1   Multi-Metric HNSW fix + DotProduct   ✅ COMPLETE  (Euclidean bug fixed, DotProduct added)
 A.2   EmbeddedVectorStore as default       ✅ COMPLETE  (Mock → Embedded, real HNSW by default)
 B.2   KNN metadata filter push-down        ✅ COMPLETE  (MetadataFilter → RoaringBitmap pre-filter)
@@ -924,7 +965,7 @@ E.1   Persistent secondary index registry  ✅ COMPLETE  (create/drop/list + bac
 E.2   NQL executor index integration       ✅ COMPLETE  (auto O(log N) scan for indexed WHERE)
 E.3   Index management gRPC RPCs           ✅ COMPLETE  (CreateIndex/DropIndex/ListIndexes)
 
-── NQL & EVA-Mind Compatibility (2026-02-21) ──────────
+── NQL & EVA Compatibility (2026-02-21) ──────────
 NQL-1 MERGE statement (ON CREATE/ON MATCH)  ✅ COMPLETE  (node + edge MERGE with upsert)
 NQL-2 Multi-hop typed path (*1..4)          ✅ COMPLETE  (BFS with depth + label filter)
 NQL-3 SET with arithmetic expressions       ✅ COMPLETE  (n.count = n.count + 1, per-node eval)
@@ -943,6 +984,15 @@ AGI-3 Semantic CRDTs (cluster merge)       ✅ COMPLETE  (add-wins, max-energy, 
 AGI-4 Code-as-Data (NQL-as-node)           ✅ COMPLETE  (activatable queries, cooldown, exhaustion)
 AGI-5 Schrödinger Edges                    ✅ COMPLETE  (probabilistic collapse, decay, reinforce)
 AGI-6 Valence/Arousal (emotional vectors)  ✅ COMPLETE  (diffusion modulation, Laplacian weighting)
+
+── Multi-Manifold Sprint (2026-02-22) ──────────
+MM-1  Klein model (pathfinding)            ✅ COMPLETE  (to_klein, to_poincare, colinearity O(1), 10 tests)
+MM-2  Riemann sphere (synthesis)           ✅ COMPLETE  (synthesis, synthesis_multi, Fréchet mean, 10 tests)
+MM-3  Minkowski spacetime (causality)      ✅ COMPLETE  (ds², classify, light_cone_filter, 8 tests)
+MM-4  Manifold normalization layer         ✅ COMPLETE  (health checks, safe roundtrips, 10x error < 1e-4)
+MM-5  Edge causality metadata              ✅ COMPLETE  (CausalType enum, minkowski_interval on Edge)
+MM-6  6 new gRPC RPCs                      ✅ COMPLETE  (Synthesis, SynthesisMulti, CausalNeighbors, CausalChain, KleinPath, IsOnShortestPath)
+MM-7  Go SDK manifold methods              ✅ COMPLETE  (6 methods + types + proto sync)
 ```
 
 ---
@@ -1284,8 +1334,8 @@ NietzscheDB/
 │   ├── hyperspace-embed/     ← ONNX + remote embedding
 │   ├── hyperspace-wasm/      ← WASM / browser / IndexedDB
 │   ├── hyperspace-sdk/       ← HyperspaceDB Rust client
-│   ├── nietzsche-graph/      ← hyperbolic graph engine         [Phases 1-3]
-│   ├── nietzsche-hyp-ops/    ← Poincare ball math primitives
+│   ├── nietzsche-graph/      ← multi-manifold graph engine     [Phases 1-3]
+│   ├── nietzsche-hyp-ops/    ← multi-manifold geometry (Poincaré·Klein·Riemann·Minkowski)
 │   ├── nietzsche-query/      ← NQL parser + executor           [Phase 4]
 │   ├── nietzsche-lsystem/    ← L-System + Hausdorff pruning    [Phase 5]
 │   ├── nietzsche-pregel/     ← heat kernel diffusion           [Phase 6]
@@ -1307,7 +1357,7 @@ NietzscheDB/
 │   ├── nietzsche-kafka/      ← Kafka Connect sink (CDC streaming)
 │   ├── nietzsche-table/      ← relational table store (SQLite)
 │   ├── nietzsche-media/      ← media/blob store (OpenDAL: S3, GCS, local)
-│   ├── nietzsche-api/        ← unified gRPC API (65+ RPCs)
+│   ├── nietzsche-api/        ← unified gRPC API (71+ RPCs)
 │   ├── nietzsche-sdk/        ← Rust client SDK
 │   ├── nietzsche-server/     ← production binary + dashboard
 │   ├── nietzsche-hnsw-gpu/   ← GPU vector search (cuVS CAGRA)
@@ -1317,7 +1367,7 @@ NietzscheDB/
 │   ├── src/pages/            ← Overview, Collections, Nodes, Graph, Data, Settings
 │   └── dist/                 ← single-file HTML (embedded in binary)
 ├── sdks/
-│   ├── go/                   ← sdk-papa-caolho (65+ RPCs, full coverage)
+│   ├── go/                   ← sdk-papa-caolho (71+ RPCs, full coverage)
 │   ├── python/               ← gRPC client + proto generation
 │   ├── ts/                   ← TypeScript SDK
 │   └── cpp/                  ← C++ SDK
@@ -1360,12 +1410,13 @@ inherits = "release"
 
 NietzscheDB closes gaps that no existing database fills:
 
-- **No production HNSW is natively hyperbolic.** hnswlib, FAISS, Qdrant, Milvus, Weaviate — all use Euclidean geometry internally. NietzscheDB (native hyperbolic HNSW) is genuinely original work.
-- **No graph database has intrinsic hyperbolic geometry.** Neo4j, ArangoDB, TigerGraph — all flat.
+- **No database operates across 4 non-Euclidean geometries simultaneously.** NietzscheDB is the world's first multi-manifold graph database: Poincaré (storage), Klein (pathfinding), Riemann (synthesis), Minkowski (causality). All from a single Poincaré storage layer — zero data duplication.
+- **No production HNSW is natively multi-manifold.** hnswlib, FAISS, Qdrant, Milvus, Weaviate — all use Euclidean geometry internally. NietzscheDB (native Poincaré HNSW with Klein/Riemann/Minkowski projections) is genuinely original work.
+- **No graph database has intrinsic non-Euclidean geometry.** Neo4j, ArangoDB, TigerGraph — all flat.
 - **No AI memory system has a formal sleep/reconsolidation cycle.** NietzscheDB implements Riemannian optimization with Hausdorff identity verification and automatic rollback.
 - **No database has an autonomous fractal growth engine.** The L-System rewrites the graph topology every tick based on production rules and local Hausdorff dimension.
 - **No database ships 11 graph algorithms with both gRPC and REST interfaces.** PageRank, Louvain, A*, WCC, SCC, betweenness, closeness, degree, label propagation, triangle count, Jaccard — all built-in.
-- **No graph database has built-in hybrid BM25+ANN search.** NietzscheDB fuses full-text BM25 with hyperbolic KNN via Reciprocal Rank Fusion (RRF) in a single API call.
+- **No graph database has built-in hybrid BM25+ANN search.** NietzscheDB fuses full-text BM25 with multi-manifold KNN via Reciprocal Rank Fusion (RRF) in a single API call.
 - **No graph database has application-level encryption with per-CF key derivation.** AES-256-CTR with HKDF-SHA256 derives unique keys per column family from a single master key.
 - **No graph database has magnitude-preserving Product Quantization.** PQ compresses vectors while preserving `‖x‖` — critical for hyperbolic depth semantics. Binary Quantization is explicitly rejected (destroys hierarchy).
 - **No graph database ships with a built-in MCP server.** NietzscheDB exposes 19 tools via the Model Context Protocol for direct AI assistant integration.
@@ -1412,5 +1463,5 @@ Commercial licensing available — see [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENS
 </p>
 
 <p align="center">
-  Built for <strong>EVA-Mind</strong> · Powered by <strong>Rust nightly</strong> · <strong>38 crates</strong> · <strong>65+ gRPC RPCs</strong> · <strong>MCP + Prometheus</strong> · <strong>GPU/TPU</strong> · <strong>RBAC + Encryption</strong>
+  Built for <strong>EVA</strong> · Powered by <strong>Rust nightly</strong> · <strong>38 crates</strong> · <strong>71+ gRPC RPCs</strong> · <strong>4 Geometries</strong> · <strong>MCP + Prometheus</strong> · <strong>GPU/TPU</strong> · <strong>RBAC + Encryption</strong>
 </p>

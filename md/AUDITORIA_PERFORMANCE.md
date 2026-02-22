@@ -650,7 +650,7 @@ F. Binary Quantization (APENAS como pre-filter)
 
 ## PARTE 6 — CONCLUSÃO EXECUTIVA
 
-### Os 2 problemas mais críticos (específicos de ser banco hiperbólico)
+### Os 2 problemas mais críticos (específicos de ser banco multi-manifold)
 
 1. **Embedding duplicado em CF_NODES** — NÃO é um problema do Qdrant (que separa payload de vetores desde o início). É uma dívida técnica específica do NietzscheDB. Para `dim=3072`, cada `get_node()` processa 25KB sendo 24KB de embedding já disponível no HNSW mmap.
 

@@ -1,6 +1,6 @@
 # sdk-papa-caolho
 
-Go SDK for NietzscheDB — Temporal Hyperbolic Graph Database.
+Go SDK for NietzscheDB — Multi-Manifold Graph Database (Poincaré · Klein · Riemann · Minkowski).
 
 ## Install
 
@@ -81,7 +81,7 @@ func main() {
 
 ## API Coverage
 
-All 42/42 gRPC RPCs are covered:
+All 48/48 gRPC RPCs are covered (42 core + 6 multi-manifold):
 
 | Group | Methods |
 |-------|---------|
@@ -97,6 +97,7 @@ All 42/42 gRPC RPCs are covered:
 | Algorithms | `RunPageRank`, `RunLouvain`, `RunLabelProp`, `RunBetweenness`, `RunCloseness`, `RunDegreeCentrality`, `RunWCC`, `RunSCC`, `RunAStar`, `RunTriangleCount`, `RunJaccardSimilarity` |
 | Backup | `CreateBackup`, `ListBackups`, `RestoreBackup` |
 | CDC | `SubscribeCDC` (server-streaming) |
+| Multi-Manifold | `Synthesis`, `SynthesisMulti`, `CausalNeighbors`, `CausalChain`, `KleinPath`, `IsOnShortestPath` |
 | Admin | `GetStats`, `HealthCheck` |
 
 ## Proto Regeneration

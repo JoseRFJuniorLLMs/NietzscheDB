@@ -81,7 +81,7 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
 * **v2.0**: ✅ **Serverless Core**. Idle Unloading, Cold Start, Multi-tenancy, and Jemalloc tuning. *Completed.*
 * **v2.1**: **Storage Tiering (S3/Blob)**. Automatic backup of idle collections to object storage.
 * **v2.2**: **Distributed Consensus**. Raft implementation for horizontal scaling (Cluster Mode).
-* **v2.3**: **Hyperbolic Graph Traversal API**. Exposing the HNSW graph structure to allow queries like "Get parent concepts" or "Find semantic clusters" without embedding generation. *Beats GNNs in speed.*
+* **v2.3**: **Multi-Manifold Graph Traversal API**. Exposing the HNSW graph structure to allow queries like "Get parent concepts" or "Find semantic clusters" without embedding generation. *Beats GNNs in speed.*
 
 ### Phase 3: Collective Intelligence (v3.x)
 *The goal: Beyond storage. The "Digital Thalamus" realization.*
@@ -89,4 +89,4 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
 * **v3.0**: **Federated Swarm Protocol**. Connecting independent HyperspaceDB instances into a decentralized knowledge graph. Allows agents to "share memories" without centralized servers.
 * **v3.1**: **Generative Memory**. Optional integration with LLMs to perform "Retrieval-Augmented Generation" directly inside the database query pipeline.
 
-Join us in pushing the boundaries of hyperbolic vector search!
+Join us in pushing the boundaries of multi-manifold graph search!

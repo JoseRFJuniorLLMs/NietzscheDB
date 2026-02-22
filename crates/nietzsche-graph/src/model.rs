@@ -351,6 +351,51 @@ impl Default for EdgeType {
 }
 
 // ─────────────────────────────────────────────
+// CausalType — Minkowski spacetime classification
+// ─────────────────────────────────────────────
+
+/// Minkowski spacetime classification of an edge.
+///
+/// Computed from the Minkowski interval ds² = −c²·Δt² + ‖Δx‖²:
+/// - **Timelike** (ds² < 0): source event CAUSED the target event
+/// - **Spacelike** (ds² > 0): events are causally independent
+/// - **Lightlike** (ds² ≈ 0): events at the causal boundary
+///
+/// Used by `get_causal_neighbors()` and `get_causal_chain()` to filter
+/// the graph down to provably causal paths.
+///
+/// ## Multi-Manifold Architecture (2026-02-22)
+/// Part of the Minkowski integration. See `Docs/migracao.txt` Phase 5.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum CausalType {
+    /// ds² < 0: source caused target (within the light cone).
+    Timelike,
+    /// ds² > 0: events are causally independent (outside the light cone).
+    Spacelike,
+    /// ds² ≈ 0: events at the boundary of the light cone.
+    Lightlike,
+    /// Not yet computed (legacy edges without timestamps).
+    Unknown,
+}
+
+impl Default for CausalType {
+    fn default() -> Self {
+        Self::Unknown
+    }
+}
+
+impl std::fmt::Display for CausalType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CausalType::Timelike => write!(f, "Timelike"),
+            CausalType::Spacelike => write!(f, "Spacelike"),
+            CausalType::Lightlike => write!(f, "Lightlike"),
+            CausalType::Unknown => write!(f, "Unknown"),
+        }
+    }
+}
+
+// ─────────────────────────────────────────────
 // NodeMeta — lightweight metadata (no embedding)
 // ─────────────────────────────────────────────
 
@@ -535,7 +580,19 @@ impl Node {
 // Edge
 // ─────────────────────────────────────────────
 
-/// A directed edge between two nodes in the hyperbolic graph.
+/// A directed edge between two nodes in the multi-manifold graph.
+///
+/// ## Multi-Manifold Architecture (2026-02-22)
+///
+/// Every edge now carries Minkowski spacetime metadata:
+/// - `minkowski_interval`: ds² = −c²·Δt² + ‖Δx‖² (computed at insertion time)
+/// - `causal_type`: Timelike/Spacelike/Lightlike classification
+///
+/// These fields enable causal traversal: `get_causal_neighbors()` filters
+/// by `causal_type == Timelike` to return only provably causal paths.
+///
+/// Legacy edges (pre-manifold) have `causal_type = Unknown` and
+/// `minkowski_interval = 0.0` via `#[serde(default)]`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Edge {
     /// Unique identifier (UUIDv4).
@@ -562,6 +619,26 @@ pub struct Edge {
     /// Arbitrary key→value metadata.
     #[serde(with = "as_json_string")]
     pub metadata: HashMap<String, serde_json::Value>,
+
+    // ── Minkowski spacetime fields (Multi-Manifold Phase 5) ──
+
+    /// Minkowski spacetime interval ds² between source and target nodes.
+    ///
+    /// ds² = −c²·(t_target − t_source)² + ‖emb_source − emb_target‖²
+    ///
+    /// - Negative (< 0): Timelike — source caused target
+    /// - Positive (> 0): Spacelike — causally independent
+    /// - Zero (≈ 0): Lightlike — boundary of the light cone
+    ///
+    /// Computed automatically during edge insertion when both nodes have
+    /// timestamps and embeddings. Legacy value: 0.0.
+    #[serde(default)]
+    pub minkowski_interval: f32,
+
+    /// Causal classification derived from `minkowski_interval`.
+    /// Legacy edges: `Unknown`.
+    #[serde(default)]
+    pub causal_type: CausalType,
 }
 
 impl Edge {
@@ -575,6 +652,8 @@ impl Edge {
             lsystem_rule: None,
             created_at: now_unix(),
             metadata: HashMap::new(),
+            minkowski_interval: 0.0,
+            causal_type: CausalType::default(),
         }
     }
 
@@ -584,6 +663,35 @@ impl Edge {
 
     pub fn hierarchical(parent: Uuid, child: Uuid) -> Self {
         Self::new(parent, child, EdgeType::Hierarchical, 1.0)
+    }
+
+    /// Create an edge with pre-computed Minkowski causality.
+    pub fn with_causality(
+        from: Uuid,
+        to: Uuid,
+        edge_type: EdgeType,
+        weight: f32,
+        minkowski_interval: f32,
+        causal_type: CausalType,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            from,
+            to,
+            edge_type,
+            weight,
+            lsystem_rule: None,
+            created_at: now_unix(),
+            metadata: HashMap::new(),
+            minkowski_interval,
+            causal_type,
+        }
+    }
+
+    /// Returns true if this edge represents a causal relationship (ds² < 0).
+    #[inline]
+    pub fn is_causal(&self) -> bool {
+        matches!(self.causal_type, CausalType::Timelike)
     }
 }
 

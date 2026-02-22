@@ -1,11 +1,11 @@
 # CHECKPOINT - Nietzsche-Database
-**Data:** 2026-02-19
-**Status:** ~75% completo - engine core Rust substancialmente funcional, gaps criticos para substituir EVA-Mind stack
+**Data:** 2026-02-22
+**Status:** ~95% completo - engine core funcional, multi-manifold implementado, EVA em produção
 
 ---
 
 ## O QUE E O PROJETO
-Banco de dados grafico hiperbolico em Rust, fork do HyperspaceDB com graph engine nativo (NietzscheDB). Usa geometria do disco de Poincare para embeddings hiperbolicos, HNSW para busca vetorial, RocksDB para storage, NQL (Nietzsche Query Language) como linguagem propria. Objetivo: substituir Neo4j + Qdrant + Redis no EVA-Mind.
+Banco de dados grafico **multi-manifold** em Rust, fork do HyperspaceDB com graph engine nativo (NietzscheDB). Opera em 4 geometrias nao-euclidianas simultaneamente: **Poincare** (storage/HNSW), **Klein** (pathfinding), **Riemann** (sintese), **Minkowski** (causalidade). HNSW para busca vetorial, RocksDB para storage, NQL (Nietzsche Query Language) como linguagem propria. Substituiu Neo4j + Qdrant + Redis na EVA.
 
 **Tech Stack:** Rust nightly, Tokio, Tonic (gRPC), RocksDB, Axum (HTTP dashboard), Pest (PEG parser), DashMap, rayon, memmap2, React 19 (dashboard SPA), D3.js (dashboard embedded), Docker Compose
 
@@ -80,28 +80,36 @@ Banco de dados grafico hiperbolico em Rust, fork do HyperspaceDB com graph engin
 
 ---
 
-## O QUE FALTA (Critico para EVA-Mind)
+## O QUE FALTA
 ### Engine
-1. **KNN com metadata filters pushed-down** (Roaring Bitmap pre-filter)
-2. **TTL/expires_at em Node** + JanitorTask background
-3. **ListStore** (RPUSH/LRANGE/DEL/TTL) em RocksDB CF `lists` para audio PCM streaming
-4. **MergeNode/MergeEdge** gRPC RPCs (upsert by field)
-5. **Secondary indexes em metadata arbitrario** (so energy_idx existe)
+1. ~~KNN com metadata filters pushed-down~~ ✅ FEITO
+2. ~~TTL/expires_at em Node~~ ✅ FEITO
+3. ~~ListStore~~ ✅ FEITO
+4. ~~MergeNode/MergeEdge~~ ✅ FEITO
+5. ~~Secondary indexes~~ ✅ FEITO
 6. **Cluster nao wired** - nietzsche-cluster implementado mas nao conectado ao server
-7. **Table Store (SQLite)** - inteiramente ausente
-8. **Media Store (OpenDAL)** - inteiramente ausente
+7. ~~Table Store (SQLite)~~ ✅ FEITO
+8. ~~Media Store (OpenDAL)~~ ✅ FEITO
 
 ### NQL
-1. **MERGE statement** (ON CREATE SET / ON MATCH SET) - nao no grammar
-2. **Multi-hop paths** `(a)-[:T*min..max]->(b)` - so single-hop suportado
-3. **SET statement** (update node properties)
-4. **CREATE statement** (criacao explicita via NQL)
-5. **DELETE by pattern / DETACH DELETE**
-6. **WITH clause** (pipeline)
-7. **Time functions**: NOW(), INTERVAL, datetime()
+1. ~~MERGE statement~~ ✅ FEITO
+2. ~~Multi-hop paths~~ ✅ FEITO
+3. ~~SET statement~~ ✅ FEITO
+4. ~~CREATE statement~~ ✅ FEITO
+5. ~~DELETE / DETACH DELETE~~ ✅ FEITO
+6. **WITH clause** (pipeline) - pendente
+7. ~~Time functions~~ ✅ FEITO
 
 ### SDK
-- **Go SDK AUSENTE** - sdks/go/ so tem README. CRITICO pois EVA-Mind e Go
+- ~~Go SDK~~ ✅ FEITO (48 RPCs, inclui 6 multi-manifold)
+
+### Multi-Manifold (2026-02-22) ✅ COMPLETO
+- Klein model (pathfinding com geodesicas retas)
+- Riemann sphere (sintese dialetica, Frechet mean)
+- Minkowski spacetime (classificacao causal, light cone filter)
+- Manifold normalization (health checks, safe roundtrips)
+- Edge causality metadata (CausalType, minkowski_interval)
+- 6 novos gRPC RPCs + Go SDK methods
 
 ---
 
@@ -133,10 +141,9 @@ Rust nightly, protoc (vendored), libclang-dev, clang, cmake, libssl-dev
 - md/feito.md (lista features HyperspaceDB, nao NietzscheDB)
 - md/TODO_ADOPTION.md (todos items completos, HyperspaceDB only)
 - md/faze11.md / faze11x.md (superseded por fazer.md)
-- sdks/go/ (so README, sem implementacao)
+- ~~sdks/go/~~ → IMPLEMENTADO (48 RPCs + multi-manifold)
 - sdks/cpp/ (so README, sem implementacao)
 - nietzsche-cluster (implementado mas nao wired no server)
-- CHANGELOG.md (historico HyperspaceDB, nao NietzscheDB)
 
 ---
 

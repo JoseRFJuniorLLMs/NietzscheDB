@@ -12,7 +12,7 @@ license = {text = "Apache-2.0"}
 authors = [
     {name = "YARlabs", email = "hi@yar.ink"}
 ]
-keywords = ["langchain", "vector database", "embeddings", "AI", "RAG", "hyperbolic", "edge computing"]
+keywords = ["langchain", "vector database", "embeddings", "AI", "RAG", "multi-manifold", "edge computing"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",

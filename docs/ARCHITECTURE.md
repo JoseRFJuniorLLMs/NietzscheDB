@@ -1,6 +1,31 @@
 # NietzscheDB Architecture
 
-NietzscheDB is a **Temporal Hyperbolic Graph Database** built as a Rust nightly workspace with **38 crates** in two layers. It features autonomous AGI subsystems including a Hegelian dialectic engine, probabilistic Schrödinger edges, emotional valence/arousal vectors, Code-as-Data reactive rules, Semantic CRDTs, and anti-tumor energy circuit breakers.
+NietzscheDB is a **Multi-Manifold Graph Database** built as a Rust nightly workspace with **38 crates** in two layers. It operates across **4 non-Euclidean geometries** simultaneously (Poincaré · Klein · Riemann · Minkowski) and features autonomous AGI subsystems including a Hegelian dialectic engine, probabilistic Schrödinger edges, emotional valence/arousal vectors, Code-as-Data reactive rules, Semantic CRDTs, and anti-tumor energy circuit breakers.
+
+## Multi-Manifold Geometry (4 Geometries · 1 Storage · 0 Duplication)
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│                    nietzsche-hyp-ops                               │
+│                                                                   │
+│  Poincaré Ball (K<0)     Klein Disk (K<0)      Riemann Sphere(K>0)│
+│  ┌─────────────────┐     ┌──────────────┐      ┌──────────────┐  │
+│  │ HNSW storage    │────▶│ Pathfinding  │      │ Synthesis    │  │
+│  │ KNN, diffusion  │     │ geodesic=line│      │ Fréchet mean │  │
+│  │ sleep cycle     │◀────│ O(1) colinear│      │ GROUP BY     │  │
+│  └─────────────────┘     └──────────────┘      └──────────────┘  │
+│          │                                                        │
+│          │              Minkowski (flat Lorentzian)                │
+│          │              ┌──────────────────────┐                  │
+│          └─────────────▶│ ds²=-c²Δt²+‖Δx‖²    │                  │
+│                         │ Causal classification │                  │
+│                         │ Light cone filter     │                  │
+│                         └──────────────────────┘                  │
+│                                                                   │
+│  Invariants: Poincaré ‖x‖<1, Klein ‖x‖<1, Sphere ‖x‖=1         │
+│  Cascaded P→K→P roundtrip error < 1e-4 after 10 projections      │
+└───────────────────────────────────────────────────────────────────┘
+```
 
 ## NietzscheDB System Overview
 

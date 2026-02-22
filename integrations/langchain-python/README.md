@@ -3,7 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/langchain-hyperspace.svg)](https://badge.fury.io/py/langchain-hyperspace)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Official LangChain integration for [HyperspaceDB](https://github.com/yourusername/hyperspace-db) - a hyperbolic vector database with Edge-Cloud Federation.
+Official LangChain integration for [NietzscheDB](https://github.com/yourusername/hyperspace-db) - a multi-manifold graph database with Edge-Cloud Federation.
 
 ## Features
 
