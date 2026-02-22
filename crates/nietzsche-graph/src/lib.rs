@@ -46,7 +46,9 @@ pub mod model;
 pub mod schema;
 pub mod storage;
 pub mod transaction;
+pub mod schrodinger;
 pub mod traversal;
+pub mod valence;
 pub mod wal;
 
 pub use adjacency::{AdjacencyIndex, AdjEntry};
@@ -65,6 +67,11 @@ pub use backup::{BackupManager, BackupInfo};
 pub use encryption::EncryptionConfig;
 pub use fulltext::{FullTextIndex, FtsResult};
 pub use schema::{SchemaValidator, SchemaConstraint, FieldType};
+pub use schrodinger::{SchrodingerEdge, collapse_edges, decay_all_edges, create_probabilistic_edge};
+pub use valence::{
+    arousal_modulated_bias, clamp_arousal, clamp_valence, decay_arousal,
+    emotional_gravity, reinforce_emotion, set_emotion, valence_edge_modifier,
+};
 pub use import_export::{
     ImportResult, export_nodes_csv, export_edges_csv,
     export_nodes_jsonl, export_edges_jsonl,

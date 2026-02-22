@@ -144,6 +144,17 @@ impl AgencyReactor {
                     AgencyEvent::SemanticRedundancy { archetype_id, redundant_ids, .. } => {
                         redundancies.push((archetype_id, redundant_ids));
                     }
+                    AgencyEvent::TumorDetected { cluster_count, nodes_dampened, .. } => {
+                        // Tumors detected and dampened — log for diagnostics.
+                        // No additional intent needed; dampening was already applied.
+                        #[cfg(feature = "tracing")]
+                        tracing::warn!(
+                            "circuit breaker: {} tumors dampened ({} nodes)",
+                            cluster_count,
+                            nodes_dampened,
+                        );
+                        let _ = (cluster_count, nodes_dampened);
+                    }
                     AgencyEvent::DaemonWakeUp { reason } => {
                         wake_ups.push(reason);
                     }
@@ -226,6 +237,18 @@ impl AgencyReactor {
                             reason: format!("excessive gaps: {} sectors empty", count),
                         });
                         self.ticks_since_lsystem_intent = 0;
+                    }
+                }
+                WakeUpReason::TumorDetected { cluster_count, total_nodes } => {
+                    // Tumor wake-up: trigger a sleep cycle to reconsolidate.
+                    if self.ticks_since_sleep_intent >= cooldown {
+                        intents.push(AgencyIntent::TriggerSleepCycle {
+                            reason: format!(
+                                "tumor detected: {} clusters, {} overheated nodes",
+                                cluster_count, total_nodes
+                            ),
+                        });
+                        self.ticks_since_sleep_intent = 0;
                     }
                 }
             }

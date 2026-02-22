@@ -81,6 +81,8 @@ impl ObserverIdentity {
                 .as_millis() as i64,
             expires_at: None, // Never expires
             metadata,
+            valence: 0.0,
+            arousal: 0.0,
             is_phantom: false,
         };
 
