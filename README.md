@@ -247,6 +247,7 @@ Query types:
 | `SHOW ARCHETYPES` | List shared cross-collection archetypes |
 | `SHARE ARCHETYPE` | Publish elite node for cross-collection discovery |
 | `NARRATE` | Generate human-readable narrative from graph evolution |
+| `PSYCHOANALYZE` | Return evolutionary lineage of a node (creation, connections, energy) |
 
 ```sql
 -- Hyperbolic nearest-neighbor search with depth filter
@@ -348,6 +349,19 @@ RETURN n
 
 -- Narrative Engine
 NARRATE IN "memories" WINDOW 24 FORMAT json
+
+-- Evolutionary lineage of a node
+PSYCHOANALYZE $node_id
+
+-- Emotional memory search (high arousal, positive valence)
+MATCH (n:Episodic)
+WHERE n.arousal > 0.7 AND n.valence > 0.3
+RETURN n ORDER BY n.arousal DESC LIMIT 10
+
+-- Set emotional state on a memory
+MATCH (n) WHERE n.id = $id
+SET n.valence = 0.8, n.arousal = 0.9
+RETURN n
 ```
 
 **Built-in geometric functions:**
