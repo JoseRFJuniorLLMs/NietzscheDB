@@ -158,7 +158,7 @@ export default function AlgorithmsPage() {
                     <GitBranch className="h-6 w-6" /> Graph Algorithms
                 </h1>
                 <p className="text-sm text-muted-foreground mt-1">
-                    10 algorithms powered by nietzsche-algo
+                    11 algorithms powered by nietzsche-algo (10 REST + A* via gRPC)
                 </p>
             </div>
 
