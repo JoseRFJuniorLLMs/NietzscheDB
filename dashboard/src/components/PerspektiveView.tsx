@@ -34,6 +34,9 @@ export interface ViewNodeData extends Point2D {
     depth: number
     label: string
     z: number
+    hausdorff: number
+    causal_chain?: string
+    is_archived?: boolean
 }
 
 export interface ViewEdgeData {
@@ -275,12 +278,16 @@ const GraphNodes = ({ nodes, manifold, searchTerm, activeFilter }: {
 
             // Color
             if (!highlighted) {
-                color.setHex(0x0a0a1a) // Near-black (dimmed into the abyss)
+                color.setHex(0x020617) // Depth abyss (matching dashboard background)
+                color.multiplyScalar(0.2) // Deep dimming
+            } else if (node.is_archived) {
+                color.setHex(0xa5f3fc) // Ice Blue for Cold Path
+                color.multiplyScalar(0.7) // Slightly dimmed
             } else {
                 color.setHex(NODE_COLORS[node.node_type] ?? 0x00ff66)
                 if (node.energy > 0.8) {
-                    color.setHex(0xff00ff)
-                    color.multiplyScalar(4.0)
+                    color.setHex(0xffd700) // Übermensch Gold
+                    color.multiplyScalar(5.0)
                 } else if (node.energy > 0.5) {
                     color.multiplyScalar(2.0)
                 }
@@ -331,15 +338,15 @@ const GraphNodes = ({ nodes, manifold, searchTerm, activeFilter }: {
                 <Text
                     key={`lbl-${node.id}`}
                     position={[node.x, node.y - 0.025, node.z + 0.01]}
-                    fontSize={0.015}
-                    color="#ffffff"
+                    fontSize={0.018}
+                    color="#00f0ff" // Cyberpunk Cyan
                     anchorX="center"
                     anchorY="top"
-                    outlineWidth={0.002}
+                    outlineWidth={0.003}
                     outlineColor="#000000"
-                    maxWidth={0.15}
+                    font="https://fonts.gstatic.com/s/roboto/v18/KFOmCnqEu92Fr1Mu4mxK.woff" // Optional: specify font if needed, or stick to default
                 >
-                    {node.label}
+                    {node.label.toUpperCase()}
                 </Text>
             ))}
 
@@ -372,6 +379,19 @@ const GraphNodes = ({ nodes, manifold, searchTerm, activeFilter }: {
                         <div style={{ fontSize: 11, color: "#00ff66" }}>
                             Depth: {hoveredNode.depth.toFixed(3)}
                         </div>
+                        <div style={{ fontSize: 11, color: "#fca5a5" }}>
+                            Drift (Hausdorff): {hoveredNode.hausdorff.toFixed(4)}
+                        </div>
+                        {hoveredNode.is_archived && (
+                            <div style={{ fontSize: 11, color: "#a5f3fc", fontWeight: "bold", marginTop: 4 }}>
+                                ❄️ COLD PATH (ARCHIVED)
+                            </div>
+                        )}
+                        {hoveredNode.causal_chain && (
+                            <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 6, borderTop: "1px solid #334155", paddingTop: 4 }}>
+                                ⛓️ {hoveredNode.causal_chain}
+                            </div>
+                        )}
                     </div>
                 </Html>
             )}

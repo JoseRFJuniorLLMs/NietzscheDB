@@ -185,17 +185,20 @@ export default function QueryBuilderPage() {
 
             {/* Query Type Selector */}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-                {QUERY_TYPES.map(qt => (
-                    <Card key={qt.id}
-                        className={`cursor-pointer transition-all hover:border-primary/50 ${selectedType === qt.id ? "border-primary ring-1 ring-primary/30" : ""}`}
-                        onClick={() => setSelectedType(qt.id)}>
-                        <CardContent className="p-3 text-center">
-                            <qt.icon className="h-5 w-5 mx-auto mb-1" />
-                            <p className="text-sm font-bold">{qt.label}</p>
-                            <p className="text-[10px] text-muted-foreground">{qt.desc}</p>
-                        </CardContent>
-                    </Card>
-                ))}
+                {QUERY_TYPES.map(qt => {
+                    const Icon = qt.icon as any
+                    return (
+                        <Card key={qt.id}
+                            className={`cursor-pointer transition-all hover:border-primary/50 ${selectedType === qt.id ? "border-primary ring-1 ring-primary/30" : ""}`}
+                            onClick={() => setSelectedType(qt.id)}>
+                            <CardContent className="p-3 text-center">
+                                <Icon className="h-5 w-5 mx-auto mb-1" />
+                                <p className="text-sm font-bold">{qt.label}</p>
+                                <p className="text-[10px] text-muted-foreground">{qt.desc}</p>
+                            </CardContent>
+                        </Card>
+                    )
+                })}
             </div>
 
             {/* Builder + Code Panel */}

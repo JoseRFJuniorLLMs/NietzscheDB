@@ -1,0 +1,24 @@
+Sprint 1 esta 100% feita. Aqui o status geral do plano:
+
+✅ Sprint 1 (COMPLETA)
+✅ Semantic Drift validation (Feature 2)
+✅ Python SDK NietzscheDB (66 metodos)
+✅ EVA Go — 5 migracoes simples PG → NietzscheDB
+⬜ Sprint 2 (semanas 3-4)
+EVA Go — migracoes MEDIUM (JOINs, GROUP BY, UPSERT, Batch, Range queries)
+EVA-Back Python — migracoes simples (25 modelos SQLAlchemy)
+Poincare disk visualizer no dashboard (Feature 3 MVP)
+⬜ Sprint 3 (semanas 5-6)
+EVA Go — migracoes HARD (CDC, transactions)
+EVA-Back Python — migracoes complexas (19 modelos)
+DX integrations: LangChain VectorStore + DSPy retriever (Feature 5 parcial)
+⬜ Sprint 4 (semanas 7-8)
+PG Slim — validar que apenas 15-20 tabelas restam
+LangGraph + OGM Python (Feature 5)
+Testes end-to-end
+🔮 Futuro (pos-MVP)
+Raft consensus (Feature 1)
+HNSW distributed sharding (Feature 4)
+Quer que eu comece Sprint 2?
+
+projeto nietzschedb
