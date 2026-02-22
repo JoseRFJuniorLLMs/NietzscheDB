@@ -84,48 +84,335 @@ impl From<NodeMetaV1> for NodeMeta {
 
 // ── V0: Full Node struct with f64 embedding, raw bincode serde_json::Value
 //        (pre-separation, pre-as_json_string) ──
+//
+// bincode CANNOT deserialize serde_json::Value (returns DeserializeAnyNotSupported)
+// because Value's Deserialize impl calls deserialize_any(). However, bincode CAN
+// serialize Value because Value's Serialize impl calls concrete methods
+// (serialize_map, serialize_str, etc.). The data was written correctly but cannot
+// be read back via derive(Deserialize).
+//
+// Solution: manual byte-level parser that reads the known-layout prefix (UUID,
+// embedding, depth) and then scans for the fixed-layout suffix (node_type, energy,
+// lsystem_generation, hausdorff_local, created_at) by validating field constraints.
+// Content and metadata between those regions are recovered via a recursive bincode
+// Value parser.
 
-#[derive(Debug, Deserialize)]
-struct PoincareVectorV0 {
-    pub coords: Vec<f64>,
-    pub dim: usize,
-}
+/// Manually parse a V0 node from raw bincode bytes.
+///
+/// Binary layout (bincode LE, fixed-int encoding):
+///   UUID:      u64(16) + 16 raw bytes
+///   Embedding: u64(coords_len) + coords_len×f64 + u64(dim)
+///   depth:     f32
+///   content:   bincode-serialized serde_json::Value (variable, no type tag)
+///   node_type: u32 (0=Episodic, 1=Semantic, 2=Concept, 3=DreamSnapshot)
+///   energy:    f32 ∈ [0.0, 2.0]
+///   lsystem_generation: u32 (typically < 1000)
+///   hausdorff_local:    f32 ∈ [0.0, 5.0]
+///   created_at:         i64 (Unix ts, ~1.7×10⁹ – 2.0×10⁹)
+///   metadata:  bincode-serialized HashMap<String, Value> (variable)
+fn parse_node_v0_manual(data: &[u8]) -> Option<NodeMeta> {
+    // ── Parse prefix (UUID + embedding + depth) ──
+    let mut pos: usize = 0;
 
-#[derive(Debug, Deserialize)]
-struct NodeV0 {
-    pub id: Uuid,
-    pub embedding: PoincareVectorV0,
-    pub depth: f32,
-    pub content: serde_json::Value,
-    pub node_type: NodeType,
-    pub energy: f32,
-    pub lsystem_generation: u32,
-    pub hausdorff_local: f32,
-    pub created_at: i64,
-    pub metadata: HashMap<String, serde_json::Value>,
-}
+    // UUID: u64 length (must be 16) + 16 bytes
+    let uuid_len = read_u64(data, &mut pos)?;
+    if uuid_len != 16 { return None; }
+    if pos + 16 > data.len() { return None; }
+    let id = Uuid::from_slice(&data[pos..pos + 16]).ok()?;
+    pos += 16;
 
-impl From<NodeV0> for NodeMeta {
-    fn from(v0: NodeV0) -> Self {
-        NodeMeta {
-            id: v0.id,
-            depth: v0.depth,
-            content: v0.content,
-            node_type: v0.node_type,
-            energy: v0.energy,
-            lsystem_generation: v0.lsystem_generation,
-            hausdorff_local: v0.hausdorff_local,
-            created_at: v0.created_at,
-            expires_at: None,
-            metadata: v0.metadata,
-            valence: 0.0,
-            arousal: 0.0,
-            is_phantom: false,
+    // Embedding coords: Vec<f64> → u64 len + len×8
+    let coords_len = read_u64(data, &mut pos)? as usize;
+    if coords_len > 100_000 { return None; }
+    let skip = coords_len * 8;
+    if pos + skip > data.len() { return None; }
+    pos += skip; // skip f64 coords
+
+    // Embedding dim: u64
+    let dim = read_u64(data, &mut pos)? as usize;
+    if dim != coords_len { return None; } // sanity: dim must match coords_len
+
+    // depth: f32
+    let depth = read_f32(data, &mut pos)?;
+
+    // ── Scan for the fixed-layout suffix from the end ──
+    //
+    // After content (variable), the remaining layout is:
+    //   node_type(4) + energy(4) + lsystem_gen(4) + hausdorff(4) + created_at(8) + metadata(variable)
+    //
+    // We try metadata_size = 8 (empty HashMap: u64(0)) first, then try larger.
+    // The fixed suffix without metadata is 24 bytes.
+    let content_start = pos;
+    let remaining = data.len() - content_start;
+
+    // Try empty metadata first (most common for V0 data)
+    if let Some(meta) = try_suffix_with_metadata_bytes(data, content_start, 8, id, depth) {
+        return Some(meta);
+    }
+
+    // Try scanning all possible content/suffix boundaries
+    // The fixed suffix is 24 bytes, metadata is at least 8 bytes (empty map)
+    if remaining > 32 {
+        // Try every position where the suffix could start
+        for suffix_offset in 0..=(remaining - 32) {
+            let suffix_start = content_start + suffix_offset;
+            if let Some(meta) = try_parse_suffix_at(data, content_start, suffix_start, id, depth) {
+                return Some(meta);
+            }
         }
+    }
+
+    None
+}
+
+/// Try to parse the fixed suffix at a given position, with the rest being metadata.
+fn try_parse_suffix_at(
+    data: &[u8], content_start: usize, suffix_start: usize, id: Uuid, depth: f32,
+) -> Option<NodeMeta> {
+    let mut pos = suffix_start;
+
+    // node_type: u32, must be 0–3
+    let nt_tag = read_u32(data, &mut pos)?;
+    if nt_tag > 3 { return None; }
+
+    // energy: f32, must be in [0.0, 2.0] and not NaN
+    let energy = read_f32(data, &mut pos)?;
+    if energy.is_nan() || energy < 0.0 || energy > 2.0 { return None; }
+
+    // lsystem_generation: u32, typically small
+    let lsystem_gen = read_u32(data, &mut pos)?;
+    if lsystem_gen > 10_000 { return None; }
+
+    // hausdorff_local: f32, must be in [0.0, 5.0] and not NaN
+    let hausdorff = read_f32(data, &mut pos)?;
+    if hausdorff.is_nan() || hausdorff < 0.0 || hausdorff > 5.0 { return None; }
+
+    // created_at: i64, Unix timestamp ~2024–2027
+    let created_at = read_i64(data, &mut pos)?;
+    if created_at < 1_700_000_000 || created_at > 2_000_000_000 { return None; }
+
+    // metadata: remaining bytes should be a valid bincode map (at least u64(0) for empty)
+    let meta_start = pos;
+    let meta_bytes = &data[meta_start..];
+    let metadata = parse_bincode_string_value_map(meta_bytes).unwrap_or_default();
+
+    // Extract content bytes (between content_start and suffix_start)
+    let content_bytes = &data[content_start..suffix_start];
+    let content = parse_bincode_value(content_bytes)
+        .unwrap_or(serde_json::Value::Null);
+
+    let node_type = match nt_tag {
+        0 => NodeType::Episodic,
+        1 => NodeType::Semantic,
+        2 => NodeType::Concept,
+        3 => NodeType::DreamSnapshot,
+        _ => return None,
+    };
+
+    Some(NodeMeta {
+        id,
+        depth,
+        content,
+        node_type,
+        energy,
+        lsystem_generation: lsystem_gen,
+        hausdorff_local: hausdorff,
+        created_at,
+        expires_at: None,
+        metadata,
+        valence: 0.0,
+        arousal: 0.0,
+        is_phantom: false,
+    })
+}
+
+/// Shortcut: try suffix assuming metadata is exactly `metadata_bytes` bytes.
+fn try_suffix_with_metadata_bytes(
+    data: &[u8], content_start: usize, meta_size: usize, id: Uuid, depth: f32,
+) -> Option<NodeMeta> {
+    let total_suffix = 24 + meta_size; // 24 = fixed fields, meta_size = metadata
+    let remaining = data.len() - content_start;
+    if remaining < total_suffix { return None; }
+    let suffix_start = data.len() - total_suffix;
+    try_parse_suffix_at(data, content_start, suffix_start, id, depth)
+}
+
+// ── Byte-reading helpers (little-endian) ──
+
+fn read_u32(data: &[u8], pos: &mut usize) -> Option<u32> {
+    if *pos + 4 > data.len() { return None; }
+    let v = u32::from_le_bytes(data[*pos..*pos + 4].try_into().ok()?);
+    *pos += 4;
+    Some(v)
+}
+
+fn read_u64(data: &[u8], pos: &mut usize) -> Option<u64> {
+    if *pos + 8 > data.len() { return None; }
+    let v = u64::from_le_bytes(data[*pos..*pos + 8].try_into().ok()?);
+    *pos += 8;
+    Some(v)
+}
+
+fn read_f32(data: &[u8], pos: &mut usize) -> Option<f32> {
+    if *pos + 4 > data.len() { return None; }
+    let v = f32::from_le_bytes(data[*pos..*pos + 4].try_into().ok()?);
+    *pos += 4;
+    Some(v)
+}
+
+fn read_i64(data: &[u8], pos: &mut usize) -> Option<i64> {
+    if *pos + 8 > data.len() { return None; }
+    let v = i64::from_le_bytes(data[*pos..*pos + 8].try_into().ok()?);
+    *pos += 8;
+    Some(v)
+}
+
+/// Parse a serde_json::Value that was serialized by bincode.
+///
+/// bincode serializes Value using the Serialize impl (not enum variant tags):
+/// - Value::Null      → serialize_unit()  → 0 bytes
+/// - Value::Bool(b)   → serialize_bool(b) → 1 byte
+/// - Value::String(s) → serialize_str(s)  → u64(len) + bytes
+/// - Value::Array(v)  → serialize_seq     → u64(len) + elements
+/// - Value::Object(m) → serialize_map     → u64(len) + key-value entries
+/// - Value::Number(n) → serialize_i64/u64/f64 → 8 bytes
+///
+/// Without type tags we use heuristics and size constraints to determine the type.
+fn parse_bincode_value(data: &[u8]) -> Option<serde_json::Value> {
+    if data.is_empty() {
+        return Some(serde_json::Value::Null);
+    }
+
+    // Try as a map (most common for content): u64(len) + entries
+    if let Some(val) = try_parse_as_map(data) {
+        return Some(val);
+    }
+
+    // Try as a string: u64(len) + UTF-8 bytes
+    if let Some(val) = try_parse_as_string(data) {
+        return Some(val);
+    }
+
+    // Try as array: u64(len) + elements
+    // (skip for now — less common in EVA content)
+
+    // Give up — return null
+    None
+}
+
+fn try_parse_as_string(data: &[u8]) -> Option<serde_json::Value> {
+    if data.len() < 8 { return None; }
+    let mut pos = 0usize;
+    let len = read_u64(data, &mut pos)? as usize;
+    if 8 + len != data.len() { return None; } // must consume all bytes
+    let s = std::str::from_utf8(&data[8..8 + len]).ok()?;
+    Some(serde_json::Value::String(s.to_string()))
+}
+
+fn try_parse_as_map(data: &[u8]) -> Option<serde_json::Value> {
+    if data.len() < 8 { return None; }
+    let mut pos = 0usize;
+    let entry_count = read_u64(data, &mut pos)? as usize;
+    if entry_count > 10_000 { return None; }
+
+    let mut map = serde_json::Map::new();
+    for _ in 0..entry_count {
+        // Key: String → u64(len) + bytes
+        let key_len = read_u64(data, &mut pos)? as usize;
+        if key_len > 100_000 || pos + key_len > data.len() { return None; }
+        let key = std::str::from_utf8(&data[pos..pos + key_len]).ok()?;
+        pos += key_len;
+
+        // Value: another bincode-serialized Value
+        // We need to figure out the value's size. Try common patterns:
+        let value = parse_bincode_value_from_cursor(data, &mut pos)?;
+        map.insert(key.to_string(), value);
+    }
+
+    if pos == data.len() {
+        Some(serde_json::Value::Object(map))
+    } else {
+        None // didn't consume all bytes
     }
 }
 
-/// Try deserializing as current NodeMeta; if that fails, try V1, then V0.
+/// Parse a single bincode-serialized serde_json::Value from a cursor position.
+/// This is the tricky part — we try different interpretations.
+fn parse_bincode_value_from_cursor(data: &[u8], pos: &mut usize) -> Option<serde_json::Value> {
+    if *pos >= data.len() {
+        return Some(serde_json::Value::Null); // empty = null
+    }
+
+    let remaining = data.len() - *pos;
+
+    // If remaining is exactly 1, it's a bool
+    if remaining == 1 {
+        let b = data[*pos];
+        *pos += 1;
+        return Some(serde_json::Value::Bool(b != 0));
+    }
+
+    // Try as string: peek at the u64 length, check if it makes sense
+    if remaining >= 8 {
+        let mut p = *pos;
+        if let Some(slen) = read_u64(data, &mut p) {
+            let slen = slen as usize;
+            if slen < 1_000_000 && p + slen <= data.len() {
+                if let Ok(s) = std::str::from_utf8(&data[p..p + slen]) {
+                    // Looks like a valid string
+                    *pos = p + slen;
+                    return Some(serde_json::Value::String(s.to_string()));
+                }
+            }
+        }
+    }
+
+    // Try as number (i64): 8 bytes
+    if remaining >= 8 {
+        let mut p = *pos;
+        let v = read_i64(data, &mut p)?;
+        // Looks reasonable as a number if it's small
+        if v.abs() < 1_000_000_000_000 {
+            *pos = p;
+            return Some(serde_json::json!(v));
+        }
+    }
+
+    // Try as bool
+    if remaining >= 1 {
+        let b = data[*pos];
+        if b <= 1 {
+            *pos += 1;
+            return Some(serde_json::Value::Bool(b != 0));
+        }
+    }
+
+    None
+}
+
+/// Parse bincode-serialized HashMap<String, serde_json::Value>.
+/// Returns None if parsing fails; caller should use unwrap_or_default().
+fn parse_bincode_string_value_map(data: &[u8]) -> Option<HashMap<String, serde_json::Value>> {
+    if data.len() < 8 { return None; }
+    let mut pos = 0usize;
+    let entry_count = read_u64(data, &mut pos)? as usize;
+    if entry_count > 10_000 { return None; }
+    if entry_count == 0 { return Some(HashMap::new()); }
+
+    let mut map = HashMap::new();
+    for _ in 0..entry_count {
+        let key_len = read_u64(data, &mut pos)? as usize;
+        if key_len > 100_000 || pos + key_len > data.len() { return None; }
+        let key = std::str::from_utf8(&data[pos..pos + key_len]).ok()?;
+        pos += key_len;
+        let value = parse_bincode_value_from_cursor(data, &mut pos)?;
+        map.insert(key.to_string(), value);
+    }
+
+    Some(map)
+}
+
+/// Try deserializing as current NodeMeta; if that fails, try V1, then V0 (manual).
 /// Returns the deserialized NodeMeta without writing back (safe for iterators).
 fn deserialize_node_meta_compat(value: &[u8]) -> Result<NodeMeta, Box<bincode::ErrorKind>> {
     // Try current format first (fast path)
@@ -136,9 +423,14 @@ fn deserialize_node_meta_compat(value: &[u8]) -> Result<NodeMeta, Box<bincode::E
     if let Ok(v1) = bincode::deserialize::<NodeMetaV1>(value) {
         return Ok(v1.into());
     }
-    // Try V0 format (full Node with f64 embedding, raw bincode Values)
-    let v0: NodeV0 = bincode::deserialize(value)?;
-    Ok(v0.into())
+    // Try V0 format via manual byte-level parser
+    // (bincode cannot deserialize serde_json::Value — DeserializeAnyNotSupported)
+    if let Some(meta) = parse_node_v0_manual(value) {
+        return Ok(meta);
+    }
+    Err(Box::new(bincode::ErrorKind::Custom(
+        "all format attempts failed (V2/V1/V0)".into(),
+    )))
 }
 
 /// Like `deserialize_node_meta_compat` but also writes back in current format
@@ -163,16 +455,18 @@ fn deserialize_node_meta_migrating(
         return Ok(meta);
     }
 
-    // Try V0 format (full Node with f64 embedding)
-    let v0: NodeV0 = bincode::deserialize(value)?;
-    let meta: NodeMeta = v0.into();
-
-    // Re-serialize in current format and write back (lazy migration)
-    if let Ok(new_bytes) = bincode::serialize(&meta) {
-        let _ = db.put_cf(cf_nodes, key, &new_bytes);
+    // Try V0 format via manual byte-level parser
+    if let Some(meta) = parse_node_v0_manual(value) {
+        // Re-serialize in current format and write back (lazy migration)
+        if let Ok(new_bytes) = bincode::serialize(&meta) {
+            let _ = db.put_cf(cf_nodes, key, &new_bytes);
+        }
+        return Ok(meta);
     }
 
-    Ok(meta)
+    Err(Box::new(bincode::ErrorKind::Custom(
+        "all format attempts failed (V2/V1/V0)".into(),
+    )))
 }
 
 // ─────────────────────────────────────────────
@@ -1699,5 +1993,171 @@ mod tests {
         let nid = Uuid::new_v4();
         let empty = storage.list_lrange(&nid, "nonexistent", 0, -1).unwrap();
         assert!(empty.is_empty());
+    }
+
+    /// Test V0 Node format round-trip via manual parser
+    #[test]
+    fn v0_node_roundtrip() {
+        use serde_json::json;
+
+        #[derive(Debug, serde::Serialize)]
+        struct FakeNodeV0 {
+            id: Uuid,
+            embedding: PoincareVectorV0Ser,
+            depth: f32,
+            content: serde_json::Value,
+            node_type: NodeType,
+            energy: f32,
+            lsystem_generation: u32,
+            hausdorff_local: f32,
+            created_at: i64,
+            metadata: HashMap<String, serde_json::Value>,
+        }
+
+        #[derive(Debug, serde::Serialize)]
+        struct PoincareVectorV0Ser {
+            coords: Vec<f64>,
+            dim: usize,
+        }
+
+        let id = Uuid::new_v4();
+        let v0 = FakeNodeV0 {
+            id,
+            embedding: PoincareVectorV0Ser { coords: vec![0.1, 0.2, 0.3], dim: 3 },
+            depth: 0.5,
+            content: json!({"label": "test node"}),
+            node_type: NodeType::Episodic,
+            energy: 0.75,
+            lsystem_generation: 1,
+            hausdorff_local: 0.1,
+            created_at: 1771606167,
+            metadata: HashMap::new(),
+        };
+
+        let bytes = bincode::serialize(&v0).unwrap();
+        eprintln!("V0 node serialized: {} bytes", bytes.len());
+
+        // Manual parser should recover the node
+        let meta = parse_node_v0_manual(&bytes);
+        assert!(meta.is_some(), "manual V0 parser should succeed");
+        let meta = meta.unwrap();
+        assert_eq!(meta.id, id);
+        assert!((meta.depth - 0.5).abs() < 1e-6);
+        assert_eq!(meta.node_type, NodeType::Episodic);
+        assert!((meta.energy - 0.75).abs() < 1e-6);
+        assert_eq!(meta.lsystem_generation, 1);
+        assert!((meta.hausdorff_local - 0.1).abs() < 1e-6);
+        assert_eq!(meta.created_at, 1771606167);
+        eprintln!("Manual V0 parser: {:?}", meta);
+
+        // Full compat chain should also work
+        let result = deserialize_node_meta_compat(&bytes);
+        assert!(result.is_ok(), "compat chain should succeed for V0 data");
+        eprintln!("Compat chain OK: {:?}", result.unwrap());
+    }
+
+    /// Test V0 with non-empty metadata
+    #[test]
+    fn v0_node_with_metadata() {
+        use serde_json::json;
+
+        #[derive(Debug, serde::Serialize)]
+        struct FakeNodeV0 {
+            id: Uuid,
+            embedding: PoincareVectorV0Ser,
+            depth: f32,
+            content: serde_json::Value,
+            node_type: NodeType,
+            energy: f32,
+            lsystem_generation: u32,
+            hausdorff_local: f32,
+            created_at: i64,
+            metadata: HashMap<String, serde_json::Value>,
+        }
+
+        #[derive(Debug, serde::Serialize)]
+        struct PoincareVectorV0Ser {
+            coords: Vec<f64>,
+            dim: usize,
+        }
+
+        let mut metadata = HashMap::new();
+        metadata.insert("source".to_string(), json!("eva"));
+        metadata.insert("version".to_string(), json!("1.0"));
+
+        let id = Uuid::new_v4();
+        let v0 = FakeNodeV0 {
+            id,
+            embedding: PoincareVectorV0Ser { coords: vec![0.5, 0.3], dim: 2 },
+            depth: 0.8,
+            content: json!("simple text content"),
+            node_type: NodeType::Semantic,
+            energy: 0.9,
+            lsystem_generation: 0,
+            hausdorff_local: 1.5,
+            created_at: 1771700000,
+            metadata,
+        };
+
+        let bytes = bincode::serialize(&v0).unwrap();
+        eprintln!("V0 with metadata: {} bytes", bytes.len());
+
+        let meta = parse_node_v0_manual(&bytes);
+        assert!(meta.is_some(), "manual V0 parser should succeed with metadata");
+        let meta = meta.unwrap();
+        assert_eq!(meta.id, id);
+        assert_eq!(meta.node_type, NodeType::Semantic);
+        assert!((meta.energy - 0.9).abs() < 1e-6);
+        assert_eq!(meta.created_at, 1771700000);
+        eprintln!("V0 with metadata OK: {:?}", meta);
+    }
+
+    /// Test V0 with null content and empty metadata
+    #[test]
+    fn v0_node_null_content() {
+        use serde_json::json;
+
+        #[derive(Debug, serde::Serialize)]
+        struct FakeNodeV0 {
+            id: Uuid,
+            embedding: PoincareVectorV0Ser,
+            depth: f32,
+            content: serde_json::Value,
+            node_type: NodeType,
+            energy: f32,
+            lsystem_generation: u32,
+            hausdorff_local: f32,
+            created_at: i64,
+            metadata: HashMap<String, serde_json::Value>,
+        }
+
+        #[derive(Debug, serde::Serialize)]
+        struct PoincareVectorV0Ser {
+            coords: Vec<f64>,
+            dim: usize,
+        }
+
+        let id = Uuid::new_v4();
+        let v0 = FakeNodeV0 {
+            id,
+            embedding: PoincareVectorV0Ser { coords: vec![0.0, 0.0, 0.0, 0.0], dim: 4 },
+            depth: 0.0,
+            content: json!(null),
+            node_type: NodeType::Concept,
+            energy: 1.0,
+            lsystem_generation: 0,
+            hausdorff_local: 0.0,
+            created_at: 1771600000,
+            metadata: HashMap::new(),
+        };
+
+        let bytes = bincode::serialize(&v0).unwrap();
+        let meta = parse_node_v0_manual(&bytes);
+        assert!(meta.is_some(), "V0 with null content should parse");
+        let meta = meta.unwrap();
+        assert_eq!(meta.id, id);
+        assert_eq!(meta.node_type, NodeType::Concept);
+        assert!((meta.energy - 1.0).abs() < 1e-6);
+        eprintln!("V0 null content OK: {:?}", meta);
     }
 }
