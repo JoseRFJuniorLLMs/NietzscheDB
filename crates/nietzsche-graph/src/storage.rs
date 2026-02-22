@@ -428,6 +428,21 @@ fn deserialize_node_meta_compat(value: &[u8]) -> Result<NodeMeta, Box<bincode::E
     if let Some(meta) = parse_node_v0_manual(value) {
         return Ok(meta);
     }
+
+    // Diagnostic: log first bytes of unrecognized data (limit to first 5 occurrences)
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static V0_FAIL_COUNT: AtomicUsize = AtomicUsize::new(0);
+    let count = V0_FAIL_COUNT.fetch_add(1, Ordering::Relaxed);
+    if count < 5 {
+        let preview_len = value.len().min(120);
+        let hex: String = value[..preview_len].iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
+        warn!(
+            total_len = value.len(),
+            hex_preview = %hex,
+            "V0 parser diagnostic: unrecognized data format"
+        );
+    }
+
     Err(Box::new(bincode::ErrorKind::Custom(
         "all format attempts failed (V2/V1/V0)".into(),
     )))
