@@ -82,6 +82,48 @@ impl From<NodeMetaV1> for NodeMeta {
     }
 }
 
+// ── V1.5: NodeMeta WITH expires_at but WITHOUT valence/arousal/is_phantom.
+//          Written during the intermediate period between TTL support (755036f)
+//          and the AGI sprint (b8c5e11). Also written by the buggy iterator
+//          write-back that converted some nodes before the valence fields existed.
+
+#[derive(Debug, Deserialize, Serialize)]
+struct NodeMetaV15 {
+    pub id: Uuid,
+    pub depth: f32,
+    #[serde(with = "as_json_string_legacy")]
+    pub content: serde_json::Value,
+    pub node_type: NodeType,
+    pub energy: f32,
+    pub lsystem_generation: u32,
+    pub hausdorff_local: f32,
+    pub created_at: i64,
+    #[serde(default)]
+    pub expires_at: Option<i64>,
+    #[serde(with = "as_json_string_legacy")]
+    pub metadata: HashMap<String, serde_json::Value>,
+}
+
+impl From<NodeMetaV15> for NodeMeta {
+    fn from(v: NodeMetaV15) -> Self {
+        NodeMeta {
+            id: v.id,
+            depth: v.depth,
+            content: v.content,
+            node_type: v.node_type,
+            energy: v.energy,
+            lsystem_generation: v.lsystem_generation,
+            hausdorff_local: v.hausdorff_local,
+            created_at: v.created_at,
+            expires_at: v.expires_at,
+            metadata: v.metadata,
+            valence: 0.0,
+            arousal: 0.0,
+            is_phantom: false,
+        }
+    }
+}
+
 // ── V0: Full Node struct with f64 embedding, raw bincode serde_json::Value
 //        (pre-separation, pre-as_json_string) ──
 //
@@ -412,14 +454,18 @@ fn parse_bincode_string_value_map(data: &[u8]) -> Option<HashMap<String, serde_j
     Some(map)
 }
 
-/// Try deserializing as current NodeMeta; if that fails, try V1, then V0 (manual).
+/// Try deserializing as current NodeMeta; if that fails, try V1.5, V1, then V0.
 /// Returns the deserialized NodeMeta without writing back (safe for iterators).
 fn deserialize_node_meta_compat(value: &[u8]) -> Result<NodeMeta, Box<bincode::ErrorKind>> {
-    // Try current format first (fast path)
+    // Try current format first (fast path — V2 with valence/arousal/is_phantom)
     if let Ok(meta) = bincode::deserialize::<NodeMeta>(value) {
         return Ok(meta);
     }
-    // Try V1 format (as_json_string, no expires_at/valence/arousal/is_phantom)
+    // Try V1.5 format (has expires_at, but no valence/arousal/is_phantom)
+    if let Ok(v15) = bincode::deserialize::<NodeMetaV15>(value) {
+        return Ok(v15.into());
+    }
+    // Try V1 format (no expires_at, no valence/arousal/is_phantom)
     if let Ok(v1) = bincode::deserialize::<NodeMetaV1>(value) {
         return Ok(v1.into());
     }
@@ -428,23 +474,8 @@ fn deserialize_node_meta_compat(value: &[u8]) -> Result<NodeMeta, Box<bincode::E
     if let Some(meta) = parse_node_v0_manual(value) {
         return Ok(meta);
     }
-
-    // Diagnostic: log first bytes of unrecognized data (limit to first 5 occurrences)
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    static V0_FAIL_COUNT: AtomicUsize = AtomicUsize::new(0);
-    let count = V0_FAIL_COUNT.fetch_add(1, Ordering::Relaxed);
-    if count < 5 {
-        let preview_len = value.len().min(120);
-        let hex: String = value[..preview_len].iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-        warn!(
-            total_len = value.len(),
-            hex_preview = %hex,
-            "V0 parser diagnostic: unrecognized data format"
-        );
-    }
-
     Err(Box::new(bincode::ErrorKind::Custom(
-        "all format attempts failed (V2/V1/V0)".into(),
+        "all format attempts failed (V2/V1.5/V1/V0)".into(),
     )))
 }
 
@@ -461,7 +492,16 @@ fn deserialize_node_meta_migrating(
         return Ok(meta);
     }
 
-    // Try V1 format
+    // Try V1.5 format (has expires_at, no valence/arousal/is_phantom)
+    if let Ok(v15) = bincode::deserialize::<NodeMetaV15>(value) {
+        let meta: NodeMeta = v15.into();
+        if let Ok(new_bytes) = bincode::serialize(&meta) {
+            let _ = db.put_cf(cf_nodes, key, &new_bytes);
+        }
+        return Ok(meta);
+    }
+
+    // Try V1 format (no expires_at)
     if let Ok(v1) = bincode::deserialize::<NodeMetaV1>(value) {
         let meta: NodeMeta = v1.into();
         if let Ok(new_bytes) = bincode::serialize(&meta) {
@@ -480,7 +520,7 @@ fn deserialize_node_meta_migrating(
     }
 
     Err(Box::new(bincode::ErrorKind::Custom(
-        "all format attempts failed (V2/V1/V0)".into(),
+        "all format attempts failed (V2/V1.5/V1/V0)".into(),
     )))
 }
 
