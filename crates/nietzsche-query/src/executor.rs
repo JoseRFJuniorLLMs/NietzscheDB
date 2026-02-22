@@ -1269,16 +1269,6 @@ fn eval_conditions_with_edges(
     Ok(true)
 }
 
-fn eval_condition(
-    cond:      &Condition,
-    binding:   &[(&str, &Node)],
-    params:    &Params,
-    storage:   &GraphStorage,
-    adjacency: &AdjacencyIndex,
-) -> Result<bool, QueryError> {
-    eval_condition_with_edges(cond, binding, &[], params, storage, adjacency)
-}
-
 fn eval_condition_with_edges(
     cond:          &Condition,
     binding:       &[(&str, &Node)],
@@ -1667,6 +1657,41 @@ fn compute_order_key(
         }
         OrderExpr::Alias(a) => {
             Err(QueryError::Execution(format!("ORDER BY alias '{a}' is not a sortable scalar")))
+        }
+    }
+}
+
+/// ORDER BY key computation with edge support for path queries.
+fn compute_order_key_with_edge(
+    expr:       &OrderExpr,
+    from_alias: &str,
+    to_alias:   &str,
+    edge_alias: Option<&str>,
+    from_node:  &Node,
+    to_node:    &Node,
+    edge:       &Edge,
+    params:     &Params,
+    storage:    &GraphStorage,
+    adjacency:  &AdjacencyIndex,
+) -> Result<f64, QueryError> {
+    match expr {
+        OrderExpr::Property(a, field) => {
+            // Check node aliases
+            if a == from_alias {
+                if let Value::Float(f) = eval_field(from_node, field)? { return Ok(f); }
+            }
+            if a == to_alias {
+                if let Value::Float(f) = eval_field(to_node, field)? { return Ok(f); }
+            }
+            // Check edge alias
+            if edge_alias.map_or(false, |ea| a == ea) {
+                if let Value::Float(f) = eval_edge_field(edge, field)? { return Ok(f); }
+            }
+            Err(QueryError::Execution(format!("ORDER BY: unknown alias '{a}'")))
+        }
+        _ => {
+            // Fall back to to_node for non-property expressions
+            compute_order_key(expr, to_alias, to_node, params, storage, adjacency)
         }
     }
 }
