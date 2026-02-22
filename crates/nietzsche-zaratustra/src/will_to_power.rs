@@ -397,8 +397,8 @@ mod tests {
         storage.put_node(&node).unwrap();
 
         let cfg = ZaratustraConfig {
-            alpha: 0.0,   // no neighbour influence
-            decay: 0.10,  // 10% decay per step
+            alpha: 0.0,  // no neighbour influence
+            decay: 0.10, // 10% decay per step
             propagation_steps: 3,
             ..default_config()
         };
@@ -549,7 +549,7 @@ mod tests {
         adjacency.add_edge(&edge);
 
         let cfg = ZaratustraConfig {
-            alpha: 0.8,        // aggressive propagation
+            alpha: 0.8, // aggressive propagation
             decay: 0.0,
             propagation_steps: 1,
             ..default_config()
