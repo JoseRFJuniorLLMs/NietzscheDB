@@ -13,15 +13,20 @@ use crate::error::GraphError;
 use crate::model::{Edge, Node, NodeMeta, NodeType, PoincareVector};
 
 // ─────────────────────────────────────────────
-// Legacy NodeMeta (v1) — migration support
+// Legacy data format migration support
 // ─────────────────────────────────────────────
 //
-// Before Phase C/TTL, NodeMeta did NOT have `expires_at` or `is_phantom`.
-// The old layout was: id, depth, content, node_type, energy, lsystem_generation,
-// hausdorff_local, created_at, metadata.
+// Three data formats exist in the wild:
 //
-// When we read from RocksDB, we try the current format first.  If that fails,
-// we try this legacy layout and convert to the current format in-place.
+// V0 (pre-570a6ba): Full Node struct stored in CF_NODES. content/metadata
+//     serialized by bincode directly (serde_json::Value, no as_json_string).
+//     Embedding (f64 coords) is embedded in the same blob.
+//
+// V1 (570a6ba → 755036f): NodeMeta only (no embedding). content/metadata
+//     wrapped with as_json_string. No expires_at, valence, arousal, is_phantom.
+//
+// V2 (current): NodeMeta with expires_at, valence, arousal, is_phantom.
+//     content/metadata with as_json_string. #[serde(default)] on new fields.
 
 mod as_json_string_legacy {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -38,6 +43,9 @@ mod as_json_string_legacy {
         serde_json::from_str(&s).map_err(serde::de::Error::custom)
     }
 }
+
+// ── V1: NodeMeta WITHOUT expires_at/valence/arousal/is_phantom,
+//        WITH as_json_string on content/metadata ──
 
 #[derive(Debug, Deserialize, Serialize)]
 struct NodeMetaV1 {
@@ -74,16 +82,63 @@ impl From<NodeMetaV1> for NodeMeta {
     }
 }
 
-/// Try deserializing as current NodeMeta; if that fails, try legacy V1 format.
+// ── V0: Full Node struct with f64 embedding, raw bincode serde_json::Value
+//        (pre-separation, pre-as_json_string) ──
+
+#[derive(Debug, Deserialize)]
+struct PoincareVectorV0 {
+    pub coords: Vec<f64>,
+    pub dim: usize,
+}
+
+#[derive(Debug, Deserialize)]
+struct NodeV0 {
+    pub id: Uuid,
+    pub embedding: PoincareVectorV0,
+    pub depth: f32,
+    pub content: serde_json::Value,
+    pub node_type: NodeType,
+    pub energy: f32,
+    pub lsystem_generation: u32,
+    pub hausdorff_local: f32,
+    pub created_at: i64,
+    pub metadata: HashMap<String, serde_json::Value>,
+}
+
+impl From<NodeV0> for NodeMeta {
+    fn from(v0: NodeV0) -> Self {
+        NodeMeta {
+            id: v0.id,
+            depth: v0.depth,
+            content: v0.content,
+            node_type: v0.node_type,
+            energy: v0.energy,
+            lsystem_generation: v0.lsystem_generation,
+            hausdorff_local: v0.hausdorff_local,
+            created_at: v0.created_at,
+            expires_at: None,
+            metadata: v0.metadata,
+            valence: 0.0,
+            arousal: 0.0,
+            is_phantom: false,
+        }
+    }
+}
+
+/// Try deserializing as current NodeMeta; if that fails, try V1, then V0.
 /// Returns the deserialized NodeMeta without writing back (safe for iterators).
 fn deserialize_node_meta_compat(value: &[u8]) -> Result<NodeMeta, Box<bincode::ErrorKind>> {
     // Try current format first (fast path)
     if let Ok(meta) = bincode::deserialize::<NodeMeta>(value) {
         return Ok(meta);
     }
-    // Try legacy V1 format (migration path)
-    let v1: NodeMetaV1 = bincode::deserialize(value)?;
-    Ok(v1.into())
+    // Try V1 format (as_json_string, no expires_at/valence/arousal/is_phantom)
+    if let Ok(v1) = bincode::deserialize::<NodeMetaV1>(value) {
+        return Ok(v1.into());
+    }
+    // Try V0 format (full Node with f64 embedding, raw bincode Values)
+    let v0: NodeV0 = bincode::deserialize(value)?;
+    Ok(v0.into())
 }
 
 /// Like `deserialize_node_meta_compat` but also writes back in current format
@@ -99,9 +154,18 @@ fn deserialize_node_meta_migrating(
         return Ok(meta);
     }
 
-    // Try legacy V1 format (migration path)
-    let v1: NodeMetaV1 = bincode::deserialize(value)?;
-    let meta: NodeMeta = v1.into();
+    // Try V1 format
+    if let Ok(v1) = bincode::deserialize::<NodeMetaV1>(value) {
+        let meta: NodeMeta = v1.into();
+        if let Ok(new_bytes) = bincode::serialize(&meta) {
+            let _ = db.put_cf(cf_nodes, key, &new_bytes);
+        }
+        return Ok(meta);
+    }
+
+    // Try V0 format (full Node with f64 embedding)
+    let v0: NodeV0 = bincode::deserialize(value)?;
+    let meta: NodeMeta = v0.into();
 
     // Re-serialize in current format and write back (lazy migration)
     if let Ok(new_bytes) = bincode::serialize(&meta) {
