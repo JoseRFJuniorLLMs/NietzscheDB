@@ -73,17 +73,28 @@ impl From<NodeMetaV1> for NodeMeta {
 }
 
 /// Try deserializing as current NodeMeta; if that fails, try legacy V1 format.
-/// If V1 succeeds, re-serialize in the current format and write back to RocksDB.
+/// Returns the deserialized NodeMeta without writing back (safe for iterators).
+fn deserialize_node_meta_compat(value: &[u8]) -> Result<NodeMeta, Box<bincode::ErrorKind>> {
+    // Try current format first (fast path)
+    if let Ok(meta) = bincode::deserialize::<NodeMeta>(value) {
+        return Ok(meta);
+    }
+    // Try legacy V1 format (migration path)
+    let v1: NodeMetaV1 = bincode::deserialize(value)?;
+    Ok(v1.into())
+}
+
+/// Like `deserialize_node_meta_compat` but also writes back in current format
+/// for point reads (get_node_meta). NOT safe to call during iteration.
 fn deserialize_node_meta_migrating(
     key: &[u8],
     value: &[u8],
     db: &DB,
     cf_nodes: &rocksdb::ColumnFamily,
 ) -> Result<NodeMeta, Box<bincode::ErrorKind>> {
-    // Try current format first (fast path)
-    match bincode::deserialize::<NodeMeta>(value) {
-        Ok(meta) => return Ok(meta),
-        Err(_current_err) => {}
+    // Try current format first (fast path — no write-back needed)
+    if let Ok(meta) = bincode::deserialize::<NodeMeta>(value) {
+        return Ok(meta);
     }
 
     // Try legacy V1 format (migration path)
@@ -463,7 +474,6 @@ impl GraphStorage {
     /// Iterator over node metadata only — yields `Result<NodeMeta>`.
     pub fn iter_nodes_meta(&self) -> NodeMetaIterator<'_> {
         NodeMetaIterator {
-            storage: self,
             inner: self.db.iterator_cf(&self.cf_nodes(), rocksdb::IteratorMode::Start),
         }
     }
@@ -1170,7 +1180,6 @@ fn num_cpus() -> i32 {
 
 /// Lazy iterator over node metadata in RocksDB (no embedding — ~100 bytes per item).
 pub struct NodeMetaIterator<'a> {
-    storage: &'a GraphStorage,
     inner: rocksdb::DBIteratorWithThreadMode<'a, DB>,
 }
 
@@ -1184,9 +1193,7 @@ impl<'a> Iterator for NodeMetaIterator<'a> {
                 Ok(kv) => kv,
                 Err(e) => return Some(Err(GraphError::Storage(e.to_string()))),
             };
-            match deserialize_node_meta_migrating(
-                &key, &value, &self.storage.db, &self.storage.cf_nodes(),
-            ) {
+            match deserialize_node_meta_compat(&value) {
                 Ok(meta) => return Some(Ok(meta)),
                 Err(e) => {
                     let id_hex = if key.len() >= 16 {
@@ -1218,9 +1225,7 @@ impl<'a> Iterator for NodeIterator<'a> {
                 Ok(kv) => kv,
                 Err(e) => return Some(Err(GraphError::Storage(e.to_string()))),
             };
-            let meta: NodeMeta = match deserialize_node_meta_migrating(
-                &key, &meta_bytes, &self.storage.db, &self.storage.cf_nodes(),
-            ) {
+            let meta: NodeMeta = match deserialize_node_meta_compat(&meta_bytes) {
                 Ok(m) => m,
                 Err(e) => {
                     let id_hex = if key.len() >= 16 {
