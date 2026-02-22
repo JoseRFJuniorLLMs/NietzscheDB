@@ -1,6 +1,6 @@
 # NietzscheDB Architecture
 
-NietzscheDB is a **Temporal Hyperbolic Graph Database** built as a Rust nightly workspace with **38 crates** in two layers.
+NietzscheDB is a **Temporal Hyperbolic Graph Database** built as a Rust nightly workspace with **38 crates** in two layers. It features autonomous AGI subsystems including a Hegelian dialectic engine, probabilistic Schrödinger edges, emotional valence/arousal vectors, Code-as-Data reactive rules, Semantic CRDTs, and anti-tumor energy circuit breakers.
 
 ## NietzscheDB System Overview
 
@@ -35,7 +35,7 @@ NietzscheDB is a **Temporal Hyperbolic Graph Database** built as a Rust nightly 
 ```
 Client Request
     │
-    ├── gRPC (55+ RPCs) ──────────────────────────────┐
+    ├── gRPC (65+ RPCs) ──────────────────────────────┐
     ├── HTTP REST (/api/*) ───────────────────────────┤
     └── MCP (stdin/stdout, 19 tools) ─────────────────┤
                                                        ▼
@@ -62,7 +62,7 @@ Client Request
 
 | Column Family | Key | Value | Purpose |
 |---|---|---|---|
-| `nodes` | UUID bytes | NodeMeta (bincode) | Node metadata (~100 bytes each) |
+| `nodes` | UUID bytes | NodeMeta (bincode) | Node metadata (~108 bytes each, includes valence/arousal) |
 | `embeddings` | UUID bytes | PoincareVector (bincode) | Separated for 10-25x traversal speedup |
 | `edges` | UUID bytes | Edge (bincode) | Edge data (type, weight, created_at) |
 | `adj_out` | Source UUID | Vec<(EdgeId, TargetId)> | Outgoing adjacency lists |
@@ -85,6 +85,125 @@ NietzscheDB runs several autonomous background tasks:
 | Agency Engine | `AGENCY_TICK_SECS` | Entropy/Gap/Coherence daemons + MetaObserver |
 | TTL Reaper | `NIETZSCHE_TTL_REAPER_INTERVAL_SECS` | Scan and delete expired nodes |
 | Backup | `NIETZSCHE_BACKUP_INTERVAL_SECS` | Scheduled backup with auto-pruning |
+
+## AGI Subsystems (Sprint 2026-02-22)
+
+NietzscheDB includes autonomous graph intelligence subsystems:
+
+### NodeMeta Emotional Dimensions
+
+```
+NodeMeta (~108 bytes):
+├── id: UUID                    ← unique identifier
+├── depth: f32                  ← ‖embedding‖ ∈ [0, 1) — hierarchy position
+├── energy: f32                 ← [0.0, 1.0] — activation, decays over time
+├── valence: f32                ← [-1.0, 1.0] — emotional pleasure/displeasure
+├── arousal: f32                ← [0.0, 1.0] — emotional intensity
+├── node_type: NodeType         ← Semantic | Episodic | Concept | DreamSnapshot
+├── hausdorff_local: f32        ← local fractal dimension
+├── lsystem_generation: u32     ← creation source
+├── content: JSON               ← arbitrary payload
+├── metadata: HashMap           ← key-value pairs
+├── is_phantom: bool            ← structural scar after pruning
+├── created_at: i64             ← Unix timestamp
+└── expires_at: Option<i64>     ← optional TTL
+```
+
+### Valence/Arousal — Emotional Diffusion
+
+```
+             Valence (pleasure axis)
+         -1.0 ◄───────0───────► +1.0
+          │        neutral        │
+    traumatic                rewarding
+
+    Arousal amplifies energy_bias in diffusion_walk():
+      effective_bias = energy_bias × (1 + arousal)
+
+    Valence modulates Laplacian edge weights:
+      w(u,v) = valence_mod / (1 + d_H(u,v))
+      valence_mod = 1 + |valence_u + valence_v| / 2
+```
+
+Heat travels faster through emotionally charged memories (high arousal) and between nodes of matching emotional polarity (both positive or both negative valence).
+
+### Schrödinger Edges — Probabilistic Collapse
+
+```
+Edge in superposition:
+  probability ∈ [0.0, 1.0]     ← base transition probability
+  decay_rate                    ← per-tick probability decay
+  context_boost                 ← optional context tag
+  boost_factor                  ← multiplier when context matches
+
+At MATCH time:
+  effective_p = probability × boost_factor (if context matches)
+  edge EXISTS for this query ⟺ random() < effective_p
+```
+
+### Hegelian Dialectic Engine (AGI-2)
+
+```
+detect_contradictions()
+  → scan for opposing-polarity nodes (polarity_gap > threshold)
+    → Thesis: polarity = +0.8
+    → Antithesis: polarity = -0.7
+
+create_tension_nodes()
+  → midpoint embedding between contradicting pairs
+  → Concept node with dialectic_role = "tension"
+
+synthesize_tensions()
+  → pull embedding toward center (× 0.8)
+  → create Semantic synthesis node
+  → phantomize tension node
+```
+
+### Code-as-Data (AGI-4) — Reactive Rule Engine
+
+```
+Action Node content:
+{
+  "action": {
+    "nql": "MATCH (n) WHERE n.energy < 0.1 SET n.energy = 0.0",
+    "activation_threshold": 0.8,
+    "cooldown_ticks": 5,
+    "max_firings": 100
+  }
+}
+
+When node.energy ≥ activation_threshold → extract NQL → execute
+After firing → increment firings counter, set cooldown
+```
+
+### EnergyCircuitBreaker — Anti-Tumor
+
+```
+depth_aware_cap(depth, energy)
+  → max energy decreases with depth: base_cap × (1 - depth × depth_penalty)
+
+detect_tumors(BFS)
+  → cluster detection: adjacent nodes all above tumor_threshold
+  → returns TumorCluster { center, members, avg_energy }
+
+scan_and_dampen()
+  → apply dampening_factor to tumor cluster members
+  → prevents runaway energy cascades
+```
+
+### Semantic CRDTs — Cluster Merge
+
+```
+merge_node(local, remote):
+  energy    → max(local, remote)        ← max-wins
+  phantom   → local OR remote           ← add-wins (irreversible)
+  embedding → energy-biased average     ← higher energy wins
+  timestamp → max(local, remote)        ← Lamport ordering
+
+merge_edges(local_set, remote_set):
+  → add-wins union
+  → higher weight wins for duplicates
+```
 
 ## Observability
 

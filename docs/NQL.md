@@ -33,12 +33,13 @@ NQL is a declarative query language designed for temporal hyperbolic graph datab
 14. [COUNTERFACTUAL](#counterfactual)
 15. [Archetypes](#archetypes)
 16. [NARRATE](#narrate)
-17. [Transactions](#transactions)
-18. [Parameters](#parameters)
-19. [Multi-Collection Routing](#multi-collection-routing)
-20. [Complete Examples](#complete-examples)
-21. [Error Reference](#error-reference)
-22. [Grammar Summary](#grammar-summary)
+17. [PSYCHOANALYZE](#psychoanalyze)
+18. [Transactions](#transactions)
+19. [Parameters](#parameters)
+20. [Multi-Collection Routing](#multi-collection-routing)
+21. [Complete Examples](#complete-examples)
+22. [Error Reference](#error-reference)
+23. [Grammar Summary](#grammar-summary)
 
 ---
 
@@ -96,6 +97,7 @@ EXPLAIN MATCH (n) WHERE n.energy > 0.5 RETURN n LIMIT 5
 | Show Archetypes | `SHOW ARCHETYPES` | List shared cross-collection archetypes |
 | Share Archetype | `SHARE ARCHETYPE` | Publish elite node for cross-collection discovery |
 | Narrate | `NARRATE` | Generate human-readable narrative from graph evolution |
+| Psychoanalyze | `PSYCHOANALYZE` | Return evolutionary lineage of a node |
 | Transaction | `BEGIN` / `COMMIT` / `ROLLBACK` | Transaction control |
 
 ---
@@ -211,6 +213,8 @@ RETURN a, b, r.count
 | `n.node_type` | string | — | `"Semantic"` \| `"Episodic"` \| `"Concept"` \| `"DreamSnapshot"` |
 | `n.embedding` | vector | ‖x‖ < 1 | Poincaré ball vector (for distance functions) |
 | `n.content` | JSON | — | Arbitrary payload stored with the node |
+| `n.valence` | float | [-1.0, 1.0] | Emotional valence: negative = punishing, positive = rewarding, 0 = neutral |
+| `n.arousal` | float | [0.0, 1.0] | Emotional intensity: high = emotionally charged, low = calm |
 | `n.created_at` | int | Unix µs | Creation timestamp |
 | `n.expires_at` | float | Unix s | Expiration timestamp (0 if no TTL) |
 | `n.<field>` | any | — | Dynamic field: falls back to `node.content` then `node.metadata` |
@@ -929,6 +933,66 @@ Returns narrative with energy statistics, elite emergence, decay events, and aut
 
 ---
 
+## PSYCHOANALYZE
+
+Returns the evolutionary lineage of a node — its creation source, L-System generation, energy trajectory, connections, and metadata history. Named after Freud's technique of uncovering hidden origins.
+
+### Syntax
+
+```sql
+PSYCHOANALYZE <$param | alias>
+```
+
+### Examples
+
+```sql
+-- Trace the evolutionary history of a concept node
+PSYCHOANALYZE $node_id
+
+-- Using an alias
+PSYCHOANALYZE mynode
+```
+
+### Output
+
+Returns a JSON lineage report including:
+
+| Field | Description |
+|---|---|
+| `node_id` | UUID of the analyzed node |
+| `node_type` | Semantic, Episodic, Concept, etc. |
+| `depth` | Hyperbolic depth (position in Poincaré ball) |
+| `energy` | Current activation energy |
+| `lsystem_generation` | Which L-System generation created this node (0 = manual) |
+| `hausdorff_local` | Local fractal dimension |
+| `is_phantom` | Whether the node is a structural scar |
+| `valence` | Emotional valence [-1, 1] |
+| `arousal` | Emotional intensity [0, 1] |
+| `connections.outgoing` | Number of outgoing edges |
+| `connections.incoming` | Number of incoming edges |
+| `connections.total` | Total edge count |
+| `edge_types` | Distribution of edge types (Association, Hierarchical, etc.) |
+| `content` | Node content payload |
+| `metadata` | Node metadata key-value pairs |
+
+### Use Cases
+
+```sql
+-- Understand why a concept emerged from L-System growth
+PSYCHOANALYZE $concept_id
+-- → Shows lsystem_generation=3, spawned by Hierarchical edge from parent
+
+-- Debug a phantom node's history
+PSYCHOANALYZE $phantom_id
+-- → Shows is_phantom=true, original connections preserved
+
+-- Audit emotional state of a memory
+PSYCHOANALYZE $memory_id
+-- → Shows valence=0.7 (rewarding), arousal=0.9 (intense)
+```
+
+---
+
 ## Transactions
 
 NQL supports explicit transaction control.
@@ -1226,6 +1290,37 @@ ORDER BY n.turn_count DESC
 LIMIT 5
 ```
 
+### 18. Emotional memory retrieval — Valence/Arousal
+
+```sql
+-- Find emotionally intense memories (high arousal)
+MATCH (n:Episodic)
+WHERE n.arousal > 0.7
+RETURN n ORDER BY n.arousal DESC LIMIT 20
+
+-- Find rewarding memories (positive valence)
+MATCH (n:Memory)
+WHERE n.valence > 0.5 AND n.energy > 0.3
+RETURN n ORDER BY n.valence DESC LIMIT 15
+
+-- Find traumatic memories (negative valence, high arousal)
+MATCH (n:Episodic)
+WHERE n.valence < -0.5 AND n.arousal > 0.8
+RETURN n LIMIT 10
+
+-- Update emotional state after retrieval
+MATCH (n) WHERE n.id = $id
+SET n.valence = 0.6, n.arousal = 0.8
+RETURN n
+```
+
+### 19. PSYCHOANALYZE — node lineage
+
+```sql
+-- Trace the evolutionary lineage of a concept
+PSYCHOANALYZE $node_id
+```
+
 ---
 
 ## Error Reference
@@ -1336,6 +1431,9 @@ share_archetype_query  = { "SHARE" ~ "ARCHETYPE" ~ (param | ident) ~ "TO" ~ stri
 
 -- Narrative
 narrate_query = { "NARRATE" ~ "IN" ~ string ~ "WINDOW" ~ integer ~ "FORMAT" ~ ident }
+
+-- Psychoanalyze (Lineage)
+psychoanalyze_query = { "PSYCHOANALYZE" ~ (param | ident) }
 
 -- Transactions
 begin_tx    = { "BEGIN" }
