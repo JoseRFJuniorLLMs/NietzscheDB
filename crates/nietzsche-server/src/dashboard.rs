@@ -43,7 +43,7 @@ use uuid::Uuid;
 use nietzsche_cluster::ClusterRegistry;
 use nietzsche_graph::{
     CollectionManager,
-    Edge, EdgeType, Node, NodeType, PoincareVector,
+    Edge, EdgeType, Node, NodeMeta, NodeType, PoincareVector,
 };
 use nietzsche_query::{parse as nql_parse, execute as nql_execute, Params, QueryResult};
 use nietzsche_sleep::{SleepConfig, SleepCycle};
@@ -248,7 +248,9 @@ async fn graph(
         ).into_response(),
     };
     let db = shared.read().await;
-    let nodes: Vec<NodeJson> = match db.storage().scan_nodes() {
+    // Use scan_nodes_meta (no embedding join) — faster and works for V0-migrated nodes
+    // that may not have separate embeddings in CF_EMBEDDINGS.
+    let nodes: Vec<NodeJson> = match db.storage().scan_nodes_meta() {
         Ok(ns) => ns.into_iter().take(max).map(NodeJson::from).collect(),
         Err(e) => {
             warn!(collection = col_name, error = %e, "scan_nodes failed");
@@ -957,6 +959,12 @@ struct NodeJson {
 impl From<Node> for NodeJson {
     fn from(n: Node) -> Self {
         let (meta, _embedding) = n.into_parts();
+        Self::from(meta)
+    }
+}
+
+impl From<NodeMeta> for NodeJson {
+    fn from(meta: NodeMeta) -> Self {
         Self {
             id:         meta.id.to_string(),
             node_type:  format!("{:?}", meta.node_type),
