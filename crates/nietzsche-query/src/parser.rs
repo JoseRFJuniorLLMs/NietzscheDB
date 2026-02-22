@@ -88,6 +88,7 @@ fn parse_match_or_mutate_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
     let mut targets      = Vec::new();
     let mut has_set      = false;
     let mut has_delete   = false;
+    let mut has_detach   = false;
     let mut as_of_cycle  = None;
 
     for inner in pair.into_inner() {
@@ -121,6 +122,18 @@ fn parse_match_or_mutate_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
                     }
                 }
             }
+            Rule::detach_delete_clause => {
+                has_delete = true;
+                has_detach = true;
+                for child in inner.into_inner() {
+                    if child.as_rule() == Rule::delete_target {
+                        let alias = child.into_inner().next()
+                            .ok_or_else(|| QueryError::Parse("DETACH DELETE target missing ident".into()))?
+                            .as_str().to_string();
+                        targets.push(alias);
+                    }
+                }
+            }
             r => return Err(QueryError::Parse(format!("unexpected in match_query: {r:?}"))),
         }
     }
@@ -142,6 +155,7 @@ fn parse_match_or_mutate_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
             pattern:    pat,
             conditions,
             targets,
+            detach:     has_detach,
         }))
     } else {
         Ok(Query::Match(MatchQuery {
@@ -192,16 +206,16 @@ fn parse_path_pattern(pair: Pair<Rule>) -> Result<PathPattern, QueryError> {
 
     let edge_dir_pair = inner.next()
         .ok_or_else(|| QueryError::Parse("missing edge direction".into()))?;
-    let (direction, edge_label, hop_range) = parse_edge_dir(edge_dir_pair)?;
+    let (direction, edge_label, hop_range, edge_alias) = parse_edge_dir(edge_dir_pair)?;
 
     let to = parse_node_pattern(
         inner.next().ok_or_else(|| QueryError::Parse("missing path 'to' node".into()))?
     )?;
 
-    Ok(PathPattern { from, edge_label, direction, to, hop_range })
+    Ok(PathPattern { from, edge_label, edge_alias, direction, to, hop_range })
 }
 
-fn parse_edge_dir(pair: Pair<Rule>) -> Result<(Direction, Option<String>, Option<HopRange>), QueryError> {
+fn parse_edge_dir(pair: Pair<Rule>) -> Result<(Direction, Option<String>, Option<HopRange>, Option<String>), QueryError> {
     let inner = pair.into_inner().next()
         .ok_or_else(|| QueryError::Parse("empty edge_dir".into()))?;
 
@@ -213,9 +227,13 @@ fn parse_edge_dir(pair: Pair<Rule>) -> Result<(Direction, Option<String>, Option
 
     let mut edge_label = None;
     let mut hop_range  = None;
+    let mut edge_alias = None;
 
     for child in inner.into_inner() {
         match child.as_rule() {
+            Rule::edge_alias => {
+                edge_alias = Some(child.as_str().to_string());
+            }
             Rule::edge_label => {
                 edge_label = Some(child.as_str().to_string());
             }
@@ -226,7 +244,7 @@ fn parse_edge_dir(pair: Pair<Rule>) -> Result<(Direction, Option<String>, Option
         }
     }
 
-    Ok((direction, edge_label, hop_range))
+    Ok((direction, edge_label, hop_range, edge_alias))
 }
 
 fn parse_hop_range(pair: Pair<Rule>) -> Result<HopRange, QueryError> {
@@ -347,7 +365,7 @@ fn parse_merge_edge_pattern(pair: Pair<Rule>) -> Result<MergeEdgePattern, QueryE
 
     let edge_dir_pair = inner.next()
         .ok_or_else(|| QueryError::Parse("merge edge missing direction".into()))?;
-    let (direction, edge_label, _hop_range) = parse_edge_dir(edge_dir_pair)?;
+    let (direction, edge_label, _hop_range, _edge_alias) = parse_edge_dir(edge_dir_pair)?;
 
     let to = parse_merge_node_pattern(
         inner.next().ok_or_else(|| QueryError::Parse("merge edge missing 'to' node".into()))?
@@ -394,8 +412,31 @@ fn parse_set_assignment(pair: Pair<Rule>) -> Result<SetAssignment, QueryError> {
     let (alias, field) = parse_prop(prop_pair)?;
     let val_pair = inner.next()
         .ok_or_else(|| QueryError::Parse("set_assignment missing value".into()))?;
-    let value = parse_atom(val_pair)?;
+    let value = parse_set_expr(val_pair)?;
     Ok(SetAssignment { alias, field, value })
+}
+
+/// Parse a `set_expr`: `atom` or `atom +/- atom` (arithmetic).
+fn parse_set_expr(pair: Pair<Rule>) -> Result<Expr, QueryError> {
+    let mut inner = pair.into_inner();
+    let first = inner.next()
+        .ok_or_else(|| QueryError::Parse("empty set_expr".into()))?;
+    let left = parse_atom(first)?;
+
+    // Check for optional arithmetic operator
+    if let Some(op_pair) = inner.next() {
+        let op = match op_pair.as_str() {
+            "+" => ArithOp::Add,
+            "-" => ArithOp::Sub,
+            s   => return Err(QueryError::Parse(format!("unknown arithmetic op: {s}"))),
+        };
+        let right_pair = inner.next()
+            .ok_or_else(|| QueryError::Parse("set_expr missing right operand".into()))?;
+        let right = parse_atom(right_pair)?;
+        Ok(Expr::BinOp { left: Box::new(left), op, right: Box::new(right) })
+    } else {
+        Ok(left)
+    }
 }
 
 // ── WHERE ─────────────────────────────────────────────────

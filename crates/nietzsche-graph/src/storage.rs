@@ -2,6 +2,7 @@ use rocksdb::{
     BlockBasedOptions, Cache, ColumnFamilyDescriptor, DB, DBCompressionType, Options,
     ReadOptions, SliceTransform,
 };
+use tracing::warn;
 use uuid::Uuid;
 
 use crate::adjacency::AdjacencyIndex;
@@ -1081,12 +1082,25 @@ impl<'a> Iterator for NodeMetaIterator<'a> {
     type Item = Result<NodeMeta, GraphError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let item = self.inner.next()?;
-        Some(item
-            .map_err(|e| GraphError::Storage(e.to_string()))
-            .and_then(|(_, value)| {
-                bincode::deserialize(&value).map_err(Into::into)
-            }))
+        loop {
+            let item = self.inner.next()?;
+            let (key, value) = match item {
+                Ok(kv) => kv,
+                Err(e) => return Some(Err(GraphError::Storage(e.to_string()))),
+            };
+            match bincode::deserialize::<NodeMeta>(&value) {
+                Ok(meta) => return Some(Ok(meta)),
+                Err(e) => {
+                    let id_hex = if key.len() >= 16 {
+                        Uuid::from_slice(&key).map(|u| u.to_string()).unwrap_or_else(|_| format!("{:?}", &key[..16]))
+                    } else {
+                        format!("{:?}", &*key)
+                    };
+                    warn!(node_id = %id_hex, error = %e, "skipping corrupt node (bincode deserialize failed)");
+                    continue;
+                }
+            }
+        }
     }
 }
 
@@ -1108,7 +1122,15 @@ impl<'a> Iterator for NodeIterator<'a> {
             };
             let meta: NodeMeta = match bincode::deserialize(&meta_bytes) {
                 Ok(m) => m,
-                Err(e) => return Some(Err(e.into())),
+                Err(e) => {
+                    let id_hex = if key.len() >= 16 {
+                        Uuid::from_slice(&key).map(|u| u.to_string()).unwrap_or_else(|_| format!("{:?}", &key[..16]))
+                    } else {
+                        format!("{:?}", &*key)
+                    };
+                    warn!(node_id = %id_hex, error = %e, "skipping corrupt node (bincode deserialize failed)");
+                    continue; // skip instead of failing the entire scan
+                }
             };
             // Join with embedding from CF_EMBEDDINGS
             let node_id = match Uuid::from_slice(&key) {
@@ -1133,12 +1155,25 @@ impl<'a> Iterator for EdgeIterator<'a> {
     type Item = Result<Edge, GraphError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let item = self.inner.next()?;
-        Some(item
-            .map_err(|e| GraphError::Storage(e.to_string()))
-            .and_then(|(_, value)| {
-                bincode::deserialize(&value).map_err(Into::into)
-            }))
+        loop {
+            let item = self.inner.next()?;
+            let (key, value) = match item {
+                Ok(kv) => kv,
+                Err(e) => return Some(Err(GraphError::Storage(e.to_string()))),
+            };
+            match bincode::deserialize::<Edge>(&value) {
+                Ok(edge) => return Some(Ok(edge)),
+                Err(e) => {
+                    let id_hex = if key.len() >= 16 {
+                        Uuid::from_slice(&key).map(|u| u.to_string()).unwrap_or_else(|_| format!("{:?}", &key[..16]))
+                    } else {
+                        format!("{:?}", &*key)
+                    };
+                    warn!(edge_id = %id_hex, error = %e, "skipping corrupt edge (bincode deserialize failed)");
+                    continue;
+                }
+            }
+        }
     }
 }
 
