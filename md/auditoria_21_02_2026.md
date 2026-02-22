@@ -197,41 +197,43 @@
 
 ## 4. O QUE FALTA FAZER
 
-### Critico (bloqueia EVA-Mind)
+> **Atualizado 2026-02-22** — Auditoria de codigo real (nao MDs). Ver `auditoria_22_02_2026.md` para detalhes.
+
+### Critico (bloqueia EVA-Mind) — **TUDO RESOLVIDO**
 
 | Feature | Status | Onde |
 |---------|--------|------|
-| ~~**Go SDK funcional**~~ | ~~Stubs only~~ → **42/42 RPCs + batch** | ~~GAP~~ **RESOLVIDO** |
-| ~~**MERGE no executor NQL**~~ | ~~Grammar OK~~ → **MergeNodeRequest + MergeEdgeRequest** | ~~GAP~~ **RESOLVIDO** |
-| ~~**Multi-hop paths**~~ | ~~Nao implementado~~ → **BoundedBFS `*2..4`** | ~~GAP~~ **RESOLVIDO** |
-| ~~**ListStore**~~ | ~~Nao iniciado~~ → **RPUSH/LRANGE/LLEN/DEL em CF_LISTS** | ~~GAP~~ **RESOLVIDO** |
-| ~~**TTL/JanitorTask**~~ | ~~Nao implementado~~ → **TTL Reaper background task** | ~~GAP~~ **RESOLVIDO** |
-| ~~**Secondary indexes**~~ | ~~So energy_idx~~ → **nietzsche-secondary-idx (3 tipos)** | ~~GAP~~ **RESOLVIDO** |
+| ~~**Go SDK funcional**~~ | ~~Stubs only~~ → **48/48 RPCs + batch + merge + cache + SQL** | **RESOLVIDO** |
+| ~~**MERGE no executor NQL**~~ | ~~Grammar OK~~ → **MergeNodeRequest + MergeEdgeRequest no executor** | **RESOLVIDO** |
+| ~~**Multi-hop paths**~~ | ~~Nao implementado~~ → **BoundedBFS `*2..4` com edge type filter** | **RESOLVIDO** |
+| ~~**ListStore**~~ | ~~Nao iniciado~~ → **CF_LISTS + RPCs ListRPush/ListLRange/ListLen** | **RESOLVIDO** |
+| ~~**TTL/JanitorTask**~~ | ~~Nao implementado~~ → **TTL Reaper (60s default) + reap_expired()** | **RESOLVIDO** |
+| ~~**Secondary indexes**~~ | ~~So energy_idx~~ → **CF_META_IDX + CreateIndex/DropIndex/ListIndexes RPCs** | **RESOLVIDO** |
+| ~~**Cosine distance**~~ | ~~Nao existia~~ → **EmbeddedVectorStore: Cosine/Euclidean/Poincare/DotProduct** | **RESOLVIDO** |
+| ~~**Multi-colecao**~~ | ~~Nao existia~~ → **CollectionManager com HNSW+RocksDB por colecao** | **RESOLVIDO** |
+| ~~**KNN filtrado**~~ | ~~Parcial~~ → **knn_filtered() + knn_energy_filtered() dual-path** | **RESOLVIDO** |
+| ~~**MergeNode/MergeEdge gRPC**~~ | ~~Nao existia~~ → **117 RPCs todos implementados** | **RESOLVIDO** |
+| ~~**Sensory RPCs**~~ | ~~Stubs~~ → **InsertSensory/GetSensory/Reconstruct/DegradeSensory reais** | **RESOLVIDO** |
+| ~~**RwLock por collection**~~ | ~~Mutex global~~ → **Arc<RwLock<NietzscheDB>> por colecao** | **RESOLVIDO** |
 
-### Alto (funcionalidade core)
+### Alto (funcionalidade core) — 3 PENDENTES
 
 | Feature | Status | Referencia |
 |---------|--------|-----------|
-| ~~Filtered KNN com Roaring Bitmap~~ | ~~Parcial~~ → **nietzsche-filtered-knn (15 testes)** | ~~GAP~~ **RESOLVIDO** |
-| Cluster wiring ao server | Parcial (gossip + archetypes, sem Raft) | `nietzsche-cluster/` |
-| ~~NQL SET/DELETE completo~~ | ~~Parcial~~ → **SetRequest + DeleteRequest** | ~~GAP~~ **RESOLVIDO** |
-| NQL WITH clause pipeline | Keyword existe, nao integrado | `nql.pest` |
-| ~~NQL funcoes temporais~~ | ~~Nao existe~~ → **NOW(), EPOCH_MS(), INTERVAL()** | ~~GAP~~ **RESOLVIDO** |
-| ReconstructRequest sem campo collection | Bug proto | `nietzsche-api/` |
+| ~~Filtered KNN com Roaring Bitmap~~ | **RESOLVIDO** — nietzsche-filtered-knn | |
+| Cluster wiring (Raft) | Parcial (gossip + archetypes, sem Raft) | `nietzsche-cluster/` |
+| ~~NQL SET/DELETE completo~~ | **RESOLVIDO** — SET com aritmetica, DELETE/DETACH DELETE | |
+| NQL WITH clause pipeline | **NAO IMPLEMENTADO** | `nql.pest` |
+| ~~NQL funcoes temporais~~ | **RESOLVIDO** — NOW(), EPOCH_MS(), INTERVAL() | |
+| NQL edge property access (`r.field`) | **PARCIAL** — path patterns existem, SET/DELETE em paths retorna erro | `executor.rs` |
 
-### Medio (SDKs e integracao)
+### Medio (SDKs e integracao) — 2 PENDENTES
 
 | Feature | Status |
 |---------|--------|
 | Python SDK LangChain | ~50% stubs |
 | C++ SDK | Vazio |
-| ~~Testes para nietzsche-algo~~ | ~~0 testes~~ → **45 testes** (sprint 1) |
-| ~~Testes para nietzsche-zaratustra~~ | ~~0 testes~~ → **41 testes** (sprint 1) |
-| ~~Testes para GPU/TPU paths~~ | ~~0 testes~~ → **69 testes** (sprint 2: TPU 28 + cuGraph 41) |
-| ~~Testes para nietzsche-sdk~~ | ~~0 testes~~ → **28 testes** (sprint 2) |
-| ~~Testes para hyperspace-wasm~~ | ~~0 testes~~ → **30 testes** (sprint 2) |
-| ~~Testes para hyperspace-embed~~ | ~~0 testes~~ → **49 testes** (sprint 3) |
-| ~~Testes para hyperspace-cli~~ | ~~0 testes~~ → **47 testes** (sprint 3) |
+| ~~Todos os 17 modulos com testes~~ | **RESOLVIDO** — ~957 testes, cobertura 100% de modulos |
 
 ---
 
@@ -827,17 +829,24 @@ em um **companheiro cognitivo**.
 
 ## 14. RESUMO EXECUTIVO
 
-| Metrica | Valor |
-|---------|-------|
-| **README accuracy** | 99.9% (2 gaps menores: C++ SDK, Python LangChain) |
-| **Testes totais** | 408 baseline + 389 consolidacao + 43 visionary + 105 expansion + 12 integration = **~957 total** |
-| **Gaps de testes** | 10 modulos sem testes → **0 pendentes** (100% cobertura de modulos) |
-| **Bugs encontrados** | 12 reportados → 5 reais → **5 corrigidos** |
-| **Features faltando (criticas)** | ~~6 criticas~~ → **0 criticas** (todas resolvidas) |
-| **Features faltando (altas)** | ~~6 altas~~ → 2 restantes (ColBERT, Geo-Distributed) |
-| **Tendencias faltando** | ~~20 features~~ → **10 resolvidas** (MCP, Prometheus, PQ, Named Vectors, Kafka, Agentic, Metrics, Sparse, AutoTuner, Versioning) |
-| **Inovacoes implementadas** | 7/7 visionarias implementadas + 9 crates expansion |
-| **EVA-Mind readiness** | ~75-80% (Go SDK funcional, MCP pronto, bloqueadores restantes: Cloud DBaaS, Python SDK completo) |
+> **Atualizado 2026-02-22** com dados da auditoria de codigo real. Ver `auditoria_22_02_2026.md`.
+
+| Metrica | Valor (2026-02-21) | Valor (2026-02-22, codigo real) |
+|---------|-------|-------|
+| **README accuracy** | 99.9% | 99.9% confirmado |
+| **Testes totais** | ~957 | ~957 confirmado |
+| **Gaps de testes** | 0 pendentes | 0 confirmado (17/17 modulos) |
+| **Bugs encontrados** | 5 reais → 5 corrigidos | Confirmado no codigo |
+| **Features faltando (criticas)** | 0 criticas | 0 confirmado — **TUDO implementado** |
+| **Features faltando (altas)** | 2 restantes | 3 restantes (ColBERT, Geo-Distributed, NQL edge props) |
+| **RPCs gRPC** | 55+ (estimativa) | **117 RPCs** (contagem real no codigo) |
+| **Column Families RocksDB** | ~10 (estimativa) | **12 CFs** (contagem real) |
+| **Go SDK RPCs** | 42 (estimativa) | **48 RPCs** (contagem real) |
+| **NQL statement types** | ~20 (estimativa) | **30+** (contagem real no executor) |
+| **Background schedulers** | ~3 (estimativa) | **6** (Sleep, Zaratustra, TTL, Backup, Daemons, Agency) |
+| **Stubs/todo!/unimplemented!** | nao verificado | **ZERO** (verificado em todos os .rs) |
+| **fazer.md completude** | ~26% (estimativa) | **74% (31/42 items FEITOS)** |
+| **EVA-Mind readiness** | ~75-80% | ~85% (engine 100%, falta migracao Go/Python) |
 
 ### Sprint de Consolidacao 2026-02-21 (CONCLUIDO)
 

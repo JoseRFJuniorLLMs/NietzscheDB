@@ -935,51 +935,72 @@ z, _ := client.InvokeZaratustra(ctx, nietzsche.ZaratustraOpts{Cycles: 1})
 
 ## Checklist Resumido
 
+> **Atualizado em 2026-02-22** com base em auditoria de codigo real (nao MDs).
+> Verificado: `db.rs`, `storage.rs`, `model.rs`, `server.rs`, `executor.rs`, `nql.pest`, todos os crates avancados.
+
 ### Engine (Rust)
-- [ ] **A.1** Cosine distance no HNSW
-- [ ] **A.2** HyperspaceVectorStore real (remover MockVectorStore do servidor)
-- [ ] **B.1** Collections namespace (HNSW + RocksDB por coleção)
-- [ ] **B.2** KNN com filtro de metadata pushed-down
-- [ ] **C.1** `expires_at` em Node + JanitorTask + Collection `cache` com índice
-- [ ] **C.2** `ListStore` RPUSH/LRANGE em RocksDB CF `lists` + gRPC
-- [ ] **C.3** RocksDB block cache configurável (512MB–2GB)
-- [ ] **C.X** Go SDK: `CacheGet`, `CacheSet`, `ListRPush`, `ListLRange`
-- [ ] **D.1** MergeNode + MergeEdge gRPC
-- [ ] **D.2** Incremento atômico em metadata de aresta
-- [ ] **E.1** Índices secundários por campo (RocksDB B-tree)
-- [ ] **F**   Sensory RPCs (InsertSensory, GetSensory, Reconstruct, DegradeSensory)
-- [ ] **G**   RwLock por collection (remover mutex global)
+- [x] **A.1** Cosine distance no HNSW — `EmbeddedVectorStore` suporta Cosine, Euclidean, Poincare, DotProduct via `VectorMetric` enum
+- [x] **A.2** HyperspaceVectorStore real — servidor usa `EmbeddedVectorStore` (CPU default, GPU/TPU feature-gated). MockVectorStore eliminado
+- [x] **B.1** Collections namespace — `CollectionManager` com HNSW + RocksDB independente por colecao. gRPC: CreateCollection/DropCollection/ListCollections
+- [x] **B.2** KNN com filtro de metadata pushed-down — `knn_filtered()` e `knn_energy_filtered()` em `db.rs`. Dual-path: scan <500, HNSW+oversample >=500
+- [x] **C.1** `expires_at` em Node + JanitorTask — TTL Reaper roda a cada `NIETZSCHE_TTL_REAPER_INTERVAL_SECS` (default 60s). `reap_expired()` phantomiza nos expirados
+- [x] **C.2** `ListStore` RPUSH/LRANGE em RocksDB CF `lists` + gRPC — CF_LISTS implementado. RPCs: ListRPush, ListLRange, ListLen
+- [x] **C.3** RocksDB block cache configuravel — configurado em `storage.rs` open()
+- [x] **C.X** Go SDK: `CacheGet`, `CacheSet`, `CacheDel`, `ListRPush`, `ListLRange`, `ListLen` — tudo em `cache.go`
+- [x] **D.1** MergeNode + MergeEdge gRPC — ambos RPCs implementados com semantica Neo4j MERGE (get-or-create + on_match_set + on_create_set)
+- [x] **D.2** Incremento atomico em metadata de aresta — `IncrementEdgeMeta` RPC + `increment_edge_metadata()` em db.rs
+- [x] **E.1** Indices secundarios por campo — CF_META_IDX com field_hash + sortable_value. RPCs: CreateIndex/DropIndex/ListIndexes. `index_scan_eq()` e `index_scan_range()` em db.rs
+- [x] **F**   Sensory RPCs — InsertSensory, GetSensory, Reconstruct, DegradeSensory todos implementados com logica real (quantization f32/f16/int8/PQ)
+- [x] **G**   RwLock por collection — `Arc<RwLock<NietzscheDB>>` por colecao via CollectionManager. Reads concorrentes, writes bloqueiam so a colecao afetada
 
 ### NQL
-- [ ] **NQL-1**  MERGE ... ON CREATE SET ... ON MATCH SET
-- [ ] **NQL-2**  Path pattern `(a:L)-[:T*min..max]->(b:L)`
-- [ ] **NQL-3**  SET alias.field = expr (com aritmética)
-- [ ] **NQL-4**  CREATE (n:Label {props}) e CREATE aresta
-- [ ] **NQL-5**  DELETE alias e DETACH DELETE alias
-- [ ] **NQL-6**  Acesso a propriedades de aresta `r.field` em WHERE/ORDER BY
-- [ ] **NQL-7**  `IN COLLECTION 'name'` + `MATCH KNN(n, $v, k=N)`
-- [ ] **NQL-8**  WITH clause (pipeline)
-- [ ] **NQL-9**  CREATE/DROP/SHOW INDEX
-- [ ] **NQL-10** Funções de tempo: NOW(), INTERVAL, datetime()
-- [ ] **NQL-11** FOREACH batch (baixa prioridade)
+- [x] **NQL-1**  MERGE ... ON CREATE SET ... ON MATCH SET — grammar + AST + executor. Node MERGE e Edge MERGE. Retorna MergeNodeRequest/MergeEdgeRequest ao gRPC handler
+- [x] **NQL-2**  Path pattern `(a:L)-[:T*min..max]->(b:L)` — BFS bounded implementado. Edge type filter, label filter, DISTINCT por padrao
+- [x] **NQL-3**  SET alias.field = expr (com aritmetica) — `n.count = n.count + 1` funciona. Operators: `+` e `-`
+- [x] **NQL-4**  CREATE (n:Label {props}) e CREATE aresta — parser + executor implementados. TTL via `ttl:` em props → converte para expires_at
+- [x] **NQL-5**  DELETE alias e DETACH DELETE alias — ambos implementados. DETACH remove no + arestas incidentes
+- [ ] **NQL-6**  Acesso a propriedades de aresta `r.field` em WHERE/ORDER BY — **PARCIAL**: path patterns existem, mas `SET/DELETE em path patterns` retorna erro "not yet supported"
+- [ ] **NQL-7**  `IN COLLECTION 'name'` + `MATCH KNN(n, $v, k=N)` — **PARCIAL**: colecoes roteadas via campo `collection` no gRPC, mas sintaxe `IN COLLECTION` no NQL nao confirmada
+- [ ] **NQL-8**  WITH clause (pipeline) — **NAO IMPLEMENTADO**
+- [ ] **NQL-9**  CREATE/DROP/SHOW INDEX — **PARCIAL**: RPCs gRPC existem (CreateIndex/DropIndex/ListIndexes), sintaxe NQL nao confirmada
+- [x] **NQL-10** Funcoes de tempo: NOW(), EPOCH_MS(), INTERVAL("1h"/"1d"/"1w") — implementadas no executor
+- [ ] **NQL-11** FOREACH batch — **NAO IMPLEMENTADO** (baixa prioridade)
+
+### NQL — Bonus (implementado alem do planejado)
+- [x] **NQL-B1** DIFFUSE FROM $node WITH t=[...] MAX_HOPS n — diffusion_walk completa
+- [x] **NQL-B2** RECONSTRUCT $node MODALITY audio QUALITY high — forwarded ao gRPC
+- [x] **NQL-B3** EXPLAIN <query> — plano de execucao com estimativa de custo O(N)
+- [x] **NQL-B4** BEGIN / COMMIT / ROLLBACK — controle transacional
+- [x] **NQL-B5** CREATE/DROP/SHOW DAEMON — agentes autonomos via NQL
+- [x] **NQL-B6** DREAM FROM / APPLY DREAM / REJECT DREAM / SHOW DREAMS — parsed, forwarded ao gRPC
+- [x] **NQL-B7** TRANSLATE $node FROM modality TO modality — synesthesia
+- [x] **NQL-B8** COUNTERFACTUAL SET ... MATCH ... RETURN — raciocinio causal
+- [x] **NQL-B9** NARRATE IN "col" WINDOW 24 FORMAT json — narrativa autonoma
+- [x] **NQL-B10** SHOW/SHARE ARCHETYPES — inconsciente coletivo
+- [x] **NQL-B11** PSYCHOANALYZE $node — lineage evolutiva completa
+- [x] **NQL-B12** INVOKE ZARATUSTRA IN "col" CYCLES n — evolucao autonoma
+- [x] **NQL-B13** 13 funcoes matematicas: POINCARE_DIST, KLEIN_DIST, RIEMANN_CURVATURE, GAUSS_KERNEL, CHEBYSHEV_COEFF, RAMANUJAN_EXPANSION, HAUSDORFF_DIM, EULER_CHAR, LAPLACIAN_SCORE, FOURIER_COEFF, DIRICHLET_ENERGY, MINKOWSKI_NORM, LOBACHEVSKY_ANGLE
+- [x] **NQL-B14** Agregacoes: COUNT, SUM, AVG, MIN, MAX + GROUP BY + ORDER BY + DISTINCT + SKIP/LIMIT
+- [x] **NQL-B15** WHERE: AND, OR, NOT, IN, BETWEEN, CONTAINS, STARTS_WITH, ENDS_WITH
 
 ### Table Store — Fase H
-- [ ] **H.1** `TableStore` com SQLite embutido via `rusqlite` (feature `bundled`) — CRUD + WAL + ACID grátis
-- [ ] **H.2** NQL: `CREATE TABLE`, `INSERT TABLE`, `MERGE TABLE`, `MATCH TABLE`, `DROP TABLE`, `SHOW TABLES`
-- [ ] **H.3** gRPC: 8 novos RPCs de Table Store
-- [ ] **H.4** Scripts de migração das 8 tabelas candidatas do EVA-Mind
-- [ ] **H.5** Hybrid JOIN `TABLE + NODE + VECTOR` na NQL
+- [x] **H.1** `TableStore` com SQLite embutido — crate `nietzsche-table` (15 testes). CF_SQL_SCHEMA + CF_SQL_DATA no RocksDB
+- [x] **H.2** SQL via RPCs — `SqlQuery` (SELECT) e `SqlExec` (CREATE TABLE, INSERT, UPDATE, DELETE, DROP TABLE, ALTER) via Swartz engine
+- [x] **H.3** gRPC RPCs — SqlQuery + SqlExec implementados no servidor
+- [ ] **H.4** Scripts de migracao das 8 tabelas candidatas do EVA-Mind — **NAO IMPLEMENTADO**
+- [ ] **H.5** Hybrid JOIN `TABLE + NODE + VECTOR` na NQL — **NAO IMPLEMENTADO**
 
 ### Media Store — Fase I
-- [ ] **I.1** `MediaStore` com OpenDAL — backend `fs` (dev) + `gcs`/`s3` (prod)
-- [ ] **I.1** `NIETZSCHE_MEDIA_BACKEND` env var (`fs` | `s3` | `gcs`)
-- [ ] **I.2** Fluxo PCM: `ListStore → ConsolidateAudio → MediaStore → Graph node`
-- [ ] **I.3** Coleção `speaker_embeddings` dim=192 Cosine + `patient_faces` dim=768
-- [ ] **I.4** gRPC: `MediaPut`, `MediaGet`, `MediaDelete`, `MediaList`, `ConsolidateAudio`
+- [x] **I.1** `MediaStore` com OpenDAL — crate `nietzsche-media` (8 testes). Backend fs/s3/gcs
+- [x] **I.1** `NIETZSCHE_MEDIA_BACKEND` env var (`fs` | `s3` | `gcs`)
+- [ ] **I.2** Fluxo PCM: `ListStore -> ConsolidateAudio -> MediaStore -> Graph node` — **NAO IMPLEMENTADO**
+- [ ] **I.3** Colecao `speaker_embeddings` dim=192 Cosine + `patient_faces` dim=768 — **NAO IMPLEMENTADO** (colecoes podem ser criadas, mas nao pre-configuradas)
+- [ ] **I.4** gRPC: `MediaPut`, `MediaGet`, `MediaDelete`, `MediaList`, `ConsolidateAudio` — **PARCIAL** (crate existe, RPCs no servidor nao confirmados)
 
 ### SDK
-- [x] **SDK-Go** Cliente Go idiomático gerado do proto + wrapper — `sdk-papa-caolho` (22 RPCs, 25 testes)
-- [ ] **SDK-Go** Adicionar métodos Table Store + Media Store (quando FASE H/I estiverem prontas no servidor)
+- [x] **SDK-Go** Cliente Go idiomatico — `sdk-papa-caolho` (48 RPCs, incluindo Merge, Cache, Lists, SQL, CDC, Backup, Algo, Manifold, Sensory)
+- [x] **SDK-Go** Table Store — SqlQuery/SqlExec em `sql.go`
+- [ ] **SDK-Go** Media Store methods — **NAO IMPLEMENTADO**
 
 ### Métricas de Sucesso Finais
 ```

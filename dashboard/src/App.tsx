@@ -12,6 +12,9 @@ import AgencyPage from "./pages/AgencyPage"
 import SleepPage from "./pages/SleepPage"
 import BackupPage from "./pages/BackupPage"
 import MonitoringPage from "./pages/MonitoringPage"
+import QueryBuilderPage from "./pages/QueryBuilderPage"
+import SchemaManagerPage from "./pages/SchemaManagerPage"
+import ReasoningPage from "./pages/ReasoningPage"
 
 function App() {
   return (
@@ -29,6 +32,9 @@ function App() {
         <Route path="/sleep" element={<SleepPage />} />
         <Route path="/backup" element={<BackupPage />} />
         <Route path="/monitoring" element={<MonitoringPage />} />
+        <Route path="/builder" element={<QueryBuilderPage />} />
+        <Route path="/schemas" element={<SchemaManagerPage />} />
+        <Route path="/reasoning" element={<ReasoningPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -10,9 +10,9 @@
 //! Step 4  Perturb each node by random_tangent + exp_map
 //! Step 5  RiemannianAdam: pull each node toward its neighbors
 //! Step 5b [Phase 11] Consolidate sensory (decoder fine-tune, latent replay)
-//! Step 6  Compute global Hausdorff dimension  (H_after)
-//! Step 7  |H_after − H_before| ≤ threshold  →  commit
-//!          else                               →  restore snapshot + sensory
+//! Step 6  Compute global Hausdorff dimension  (H_after) + semantic drift
+//! Step 7  Hausdorff Δ ≤ threshold AND drift ≤ threshold  →  commit
+//!          else                                           →  restore snapshot + sensory
 //! ```
 //!
 //! The coherence loss is the mean squared Euclidean distance from a node
@@ -59,6 +59,16 @@ pub struct SleepConfig {
     /// If the delta exceeds this threshold the snapshot is restored, undoing
     /// all embedding changes made during the cycle.
     pub hausdorff_threshold: f32,
+
+    /// Maximum allowed average Poincaré distance between pre- and post-cycle
+    /// embeddings (semantic drift).
+    ///
+    /// The Hausdorff check validates global fractal geometry, but a graph can
+    /// preserve its Hausdorff dimension while individual nodes silently change
+    /// meaning. This threshold catches that: after perturbation + optimisation,
+    /// the mean Poincaré distance from each node's new position to its snapshot
+    /// position must not exceed this value, or the cycle rolls back.
+    pub semantic_drift_threshold: f64,
 }
 
 impl Default for SleepConfig {
@@ -68,6 +78,7 @@ impl Default for SleepConfig {
             adam_steps: 10,
             adam_lr: 5e-3,
             hausdorff_threshold: 0.15,
+            semantic_drift_threshold: 0.5,
         }
     }
 }
@@ -87,6 +98,14 @@ pub struct SleepReport {
 
     /// |H_after − H_before|.
     pub hausdorff_delta: f32,
+
+    /// Mean Poincaré distance from each node's post-cycle embedding to its
+    /// pre-cycle (snapshot) position. A low value means the cycle preserved
+    /// semantic content; a high value means significant drift occurred.
+    pub semantic_drift_avg: f64,
+
+    /// Maximum Poincaré distance across all nodes (worst-case drift).
+    pub semantic_drift_max: f64,
 
     /// Whether the new embeddings were committed (`true`) or rolled back (`false`).
     pub committed: bool,
@@ -243,13 +262,37 @@ impl SleepCycle {
             sensory_consolidated = consolidator.consolidate_sensory(&node_ids)?;
         }
 
-        // ── Step 6: Hausdorff after ─────────────────────────────
+        // ── Step 6: Hausdorff after + semantic drift ─────────────
         let nodes_after  = db.storage().scan_nodes()?;
         let hausdorff_after = global_hausdorff(&nodes_after);
 
+        // Compute per-node semantic drift: Poincaré distance from
+        // each node's new embedding to its pre-cycle (snapshot) embedding.
+        let mut total_drift = 0.0f64;
+        let mut max_drift   = 0.0f64;
+        let mut drift_count = 0usize;
+
+        for node in &nodes_after {
+            if let Some(pre) = snapshot.get(&node.id) {
+                let d = pre.distance(&node.embedding);
+                total_drift += d;
+                if d > max_drift { max_drift = d; }
+                drift_count += 1;
+            }
+        }
+
+        let semantic_drift_avg = if drift_count > 0 {
+            total_drift / drift_count as f64
+        } else {
+            0.0
+        };
+        let semantic_drift_max = max_drift;
+
         // ── Step 7: commit or restore ───────────────────────────
         let hausdorff_delta = (hausdorff_after - hausdorff_before).abs();
-        let committed = hausdorff_delta <= config.hausdorff_threshold;
+        let hausdorff_ok    = hausdorff_delta <= config.hausdorff_threshold;
+        let drift_ok        = semantic_drift_avg <= config.semantic_drift_threshold;
+        let committed       = hausdorff_ok && drift_ok;
 
         if !committed {
             snapshot.restore(db)?;
@@ -263,6 +306,8 @@ impl SleepCycle {
             hausdorff_before,
             hausdorff_after,
             hausdorff_delta,
+            semantic_drift_avg,
+            semantic_drift_max,
             committed,
             nodes_perturbed,
             snapshot_nodes,
@@ -278,7 +323,7 @@ impl SleepCycle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nietzsche_graph::{Edge, EdgeType, MockVectorStore, NietzscheDB, Node, PoincareVector};
+    use nietzsche_graph::{CausalType, Edge, EdgeType, MockVectorStore, NietzscheDB, Node, PoincareVector};
     use rand::SeedableRng;
     use rand::rngs::StdRng;
     use uuid::Uuid;
@@ -296,14 +341,16 @@ mod tests {
 
     fn connect(db: &mut NietzscheDB<MockVectorStore>, from: Uuid, to: Uuid) {
         let edge = Edge {
-            id:           Uuid::new_v4(),
+            id:                 Uuid::new_v4(),
             from,
             to,
-            edge_type:    EdgeType::Association,
-            weight:       1.0,
-            lsystem_rule: None,
-            created_at:   0,
-            metadata:     Default::default(),
+            edge_type:          EdgeType::Association,
+            weight:             1.0,
+            lsystem_rule:       None,
+            created_at:         0,
+            metadata:           Default::default(),
+            minkowski_interval: 0.0,
+            causal_type:        CausalType::default(),
         };
         db.insert_edge(edge).expect("insert edge");
     }
@@ -453,6 +500,85 @@ mod tests {
             assert!(norm < 1.0, "‖x‖ = {norm} escapes ball");
         }
         assert_eq!(report.nodes_perturbed, 5);
+    }
+
+    // ── semantic drift ────────────────────────────────
+
+    #[test]
+    fn report_includes_semantic_drift_metrics() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db  = open_db(dir.path());
+        let mut rng = StdRng::seed_from_u64(77);
+
+        insert(&mut db, 0.1, 0.2);
+        insert(&mut db, 0.3, 0.1);
+
+        let cfg    = SleepConfig::default();
+        let report = SleepCycle::run(&cfg, &mut db, &mut rng).unwrap();
+
+        // With noise=0.02 + Adam, drift should be small but non-zero
+        assert!(report.semantic_drift_avg >= 0.0);
+        assert!(report.semantic_drift_max >= report.semantic_drift_avg);
+    }
+
+    #[test]
+    fn semantic_drift_triggers_rollback() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db  = open_db(dir.path());
+        let mut rng = StdRng::seed_from_u64(42);
+
+        // Insert nodes with connected edges so perturbation + Adam has real effect
+        let a = insert(&mut db, 0.1, 0.0);
+        let b = insert(&mut db, 0.0, 0.3);
+        let c = insert(&mut db, 0.4, 0.2);
+        connect(&mut db, a, b);
+        connect(&mut db, b, c);
+        connect(&mut db, c, a);
+
+        // Capture original embeddings
+        let orig_a = db.get_node(a).unwrap().unwrap().embedding.coords.clone();
+
+        // Set semantic_drift_threshold = 0 so ANY drift triggers rollback
+        let cfg = SleepConfig {
+            noise: 0.05,
+            semantic_drift_threshold: 0.0,
+            ..Default::default()
+        };
+        let report = SleepCycle::run(&cfg, &mut db, &mut rng).unwrap();
+
+        // With threshold=0 and noise=0.05, drift should exceed threshold
+        if !report.committed {
+            // Verify embeddings were restored
+            let after_a = db.get_node(a).unwrap().unwrap().embedding.coords;
+            for d in 0..2 {
+                assert!(
+                    (after_a[d] - orig_a[d]).abs() < 1e-9,
+                    "rollback failed: coord[{d}] expected {}, got {}", orig_a[d], after_a[d]
+                );
+            }
+        }
+        // drift_avg > 0 (there was actual perturbation)
+        assert!(report.semantic_drift_avg > 0.0);
+    }
+
+    #[test]
+    fn zero_noise_produces_zero_drift() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db  = open_db(dir.path());
+        let mut rng = StdRng::seed_from_u64(1);
+
+        insert(&mut db, 0.2, 0.1);
+        insert(&mut db, 0.1, 0.3);
+
+        // noise=0 means no perturbation, so drift should be ~0
+        let cfg = SleepConfig {
+            noise: 0.0,
+            ..Default::default()
+        };
+        let report = SleepCycle::run(&cfg, &mut db, &mut rng).unwrap();
+
+        assert!(report.semantic_drift_avg < 1e-10, "drift should be ~0 with no noise: {}", report.semantic_drift_avg);
+        assert!(report.committed, "should commit with zero drift");
     }
 
     // ── determinism ───────────────────────────────────

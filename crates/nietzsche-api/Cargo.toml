@@ -18,6 +18,7 @@ nietzsche-hyp-ops     = { workspace = true }
 nietzsche-wiederkehr  = { workspace = true }
 nietzsche-dream       = { workspace = true }
 nietzsche-narrative   = { workspace = true }
+nietzsche-swartz      = { workspace = true }
 tonic             = { workspace = true }
 prost             = { workspace = true }
 serde             = { workspace = true }

@@ -2,6 +2,7 @@ import { Outlet, NavLink } from "react-router-dom"
 import {
     LayoutDashboard, Database, Search, Settings, Network,
     Terminal, GitBranch, Brain, Moon, Archive, Activity,
+    Wand2, Lightbulb, FileJson,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -34,11 +35,21 @@ export function DashboardLayout() {
                     </div>
 
                     <NavItem to="/query" icon={Terminal} label="NQL Console" badge="AI" />
+                    <NavItem to="/builder" icon={Wand2} label="Query Builder" badge="New" />
                     <NavItem to="/algorithms" icon={GitBranch} label="Algorithms" />
                     <NavItem to="/agency" icon={Brain} label="Agency" />
+                    <NavItem to="/reasoning" icon={Lightbulb} label="Reasoning" badge="New" />
                     <NavItem to="/sleep" icon={Moon} label="Sleep & Dream" />
                     <NavItem to="/backup" icon={Archive} label="Backup & Export" />
                     <NavItem to="/monitoring" icon={Activity} label="Monitoring" />
+
+                    {/* Separator */}
+                    <div className="my-3 border-t border-border/30" />
+                    <div className="px-3 mb-1">
+                        <span className="text-[10px] uppercase tracking-widest text-muted-foreground/50 font-semibold">SDK & Data</span>
+                    </div>
+
+                    <NavItem to="/schemas" icon={FileJson} label="Schema Manager" />
                 </nav>
 
                 <div className="p-4 border-t border-border/50">

@@ -133,6 +133,10 @@ service NietzscheDB {
   rpc CacheGet     (CacheGetRequest)     returns (CacheGetResponse);
   rpc CacheDel     (CacheDelRequest)     returns (StatusResponse);
   rpc ReapExpired  (ReapExpiredRequest)   returns (ReapExpiredResponse);
+
+  // ── Swartz SQL Layer (Phase S — embedded relational engine) ───
+  rpc SqlQuery     (SqlRequest)          returns (SqlResultSet);
+  rpc SqlExec      (SqlRequest)          returns (SqlExecResult);
 }
 
 // ── Common primitives ──────────────────────────────────────────────────────
@@ -461,12 +465,14 @@ message SleepRequest {
 }
 
 message SleepResponse {
-  float  hausdorff_before = 1;
-  float  hausdorff_after  = 2;
-  float  hausdorff_delta  = 3;
-  bool   committed        = 4;
-  uint32 nodes_perturbed  = 5;
-  uint32 snapshot_nodes   = 6;
+  float  hausdorff_before    = 1;
+  float  hausdorff_after     = 2;
+  float  hausdorff_delta     = 3;
+  bool   committed           = 4;
+  uint32 nodes_perturbed     = 5;
+  uint32 snapshot_nodes      = 6;
+  double semantic_drift_avg  = 7;
+  double semantic_drift_max  = 8;
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────
@@ -949,4 +955,32 @@ message ShortestPathCheckRequest {
 message ShortestPathCheckResponse {
   bool   on_path  = 1;  // true if C lies on the geodesic between A and B
   double distance = 2;  // Klein distance A→B
+}
+
+// ── Swartz SQL Layer ─────────────────────────────────────────────────────
+
+message SqlRequest {
+  string sql        = 1;  // SQL statement (SELECT, INSERT, CREATE TABLE, etc.)
+  string collection = 2;  // collection scope (each collection has its own SQL tables)
+}
+
+message SqlColumn {
+  string name = 1;  // column name
+  string type = 2;  // "TEXT", "INTEGER", "FLOAT", "BOOLEAN", etc.
+}
+
+message SqlRow {
+  repeated bytes values = 1;  // JSON-encoded value per column
+}
+
+message SqlResultSet {
+  repeated SqlColumn columns       = 1;  // column definitions
+  repeated SqlRow    rows          = 2;  // result rows
+  uint64             affected_rows = 3;  // number of affected rows (for non-SELECT)
+}
+
+message SqlExecResult {
+  uint64 affected_rows = 1;  // number of rows affected
+  bool   success       = 2;  // true if statement succeeded
+  string message       = 3;  // optional message
 }

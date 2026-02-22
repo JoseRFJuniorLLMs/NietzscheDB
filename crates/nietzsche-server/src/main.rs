@@ -202,6 +202,7 @@ async fn main() -> anyhow::Result<()> {
             adam_steps:          config.sleep_adam_steps,
             adam_lr:             5e-3,
             hausdorff_threshold: config.hausdorff_threshold,
+            ..Default::default()
         };
         let cm_sleep = Arc::clone(&cm);
 
@@ -221,11 +222,13 @@ async fn main() -> anyhow::Result<()> {
 
                 match SleepCycle::run(&sleep_cfg, &mut *db, &mut rng) {
                     Ok(r) => info!(
-                        hausdorff_before = r.hausdorff_before,
-                        hausdorff_after  = r.hausdorff_after,
-                        hausdorff_delta  = r.hausdorff_delta,
-                        committed        = r.committed,
-                        nodes_perturbed  = r.nodes_perturbed,
+                        hausdorff_before    = r.hausdorff_before,
+                        hausdorff_after     = r.hausdorff_after,
+                        hausdorff_delta     = r.hausdorff_delta,
+                        semantic_drift_avg  = %format!("{:.6}", r.semantic_drift_avg),
+                        semantic_drift_max  = %format!("{:.6}", r.semantic_drift_max),
+                        committed           = r.committed,
+                        nodes_perturbed     = r.nodes_perturbed,
                         "sleep cycle complete"
                     ),
                     Err(e) => warn!(error = %e, "sleep cycle failed"),
@@ -560,9 +563,10 @@ async fn main() -> anyhow::Result<()> {
                                             let sleep_cfg = SleepConfig {
                                                 noise: 0.02, adam_steps: 10, adam_lr: 5e-3,
                                                 hausdorff_threshold: 0.15,
+                                                ..Default::default()
                                             };
                                             match SleepCycle::run(&sleep_cfg, &mut *db_w, &mut rng) {
-                                                Ok(r) => info!(hausdorff_delta = r.hausdorff_delta, committed = r.committed, "agency sleep cycle complete"),
+                                                Ok(r) => info!(hausdorff_delta = r.hausdorff_delta, semantic_drift_avg = %format!("{:.6}", r.semantic_drift_avg), committed = r.committed, "agency sleep cycle complete"),
                                                 Err(e) => warn!(error = %e, "agency sleep cycle failed"),
                                             }
                                             break;

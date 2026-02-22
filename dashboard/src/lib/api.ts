@@ -150,3 +150,45 @@ export const getClusterRing = () =>
 /* ── Metrics ──────────────────────────────────────────────── */
 export const getMetrics = () =>
     axios.get("/metrics").then((r) => r.data as string)
+
+/* ── Schema Management ───────────────────────────────────── */
+export interface SchemaField { field_name: string; field_type: string }
+export interface SchemaConstraint { node_type: string; required_fields: string[]; field_types: SchemaField[] }
+
+export const listSchemas = (collection?: string) =>
+    api.get("/schemas", { params: { collection: collection || DEFAULT_COLLECTION } })
+        .then((r) => r.data as { schemas: SchemaConstraint[] })
+
+export const setSchema = (schema: { node_type: string; required_fields: string[]; field_types: SchemaField[] }, collection?: string) =>
+    api.post("/schemas", { ...schema, collection: collection || DEFAULT_COLLECTION }).then((r) => r.data as { status: string; node_type: string })
+
+export const deleteSchema = (nodeType: string, collection?: string) =>
+    api.delete(`/schemas/${nodeType}`, { params: { collection: collection || DEFAULT_COLLECTION } }).then((r) => r.data as { status: string; deleted: string })
+
+/* ── Reasoning (Multi-Manifold) ──────────────────────────── */
+export interface CausalEdge {
+    edge_id: string; from_node_id: string; to_node_id: string
+    minkowski_interval: number; causal_type: string; edge_type: string
+}
+export interface SynthesisResult { synthesis_coords: number[]; nearest_node_id: string; nearest_distance: number }
+export interface KleinPathResult { found: boolean; path: string[]; cost: number; hops: number }
+
+export const synthesisTwo = (nodeIdA: string, nodeIdB: string, collection?: string) =>
+    api.post("/reasoning/synthesis", { node_id_a: nodeIdA, node_id_b: nodeIdB, collection: collection || DEFAULT_COLLECTION })
+        .then((r) => r.data as SynthesisResult)
+
+export const synthesisMulti = (nodeIds: string[], collection?: string) =>
+    api.post("/reasoning/synthesis-multi", { node_ids: nodeIds, collection: collection || DEFAULT_COLLECTION })
+        .then((r) => r.data as SynthesisResult)
+
+export const causalNeighbors = (nodeId: string, direction = "both", collection?: string) =>
+    api.post("/reasoning/causal-neighbors", { node_id: nodeId, direction, collection: collection || DEFAULT_COLLECTION })
+        .then((r) => r.data as { edges: CausalEdge[] })
+
+export const causalChain = (nodeId: string, maxDepth = 10, direction = "past", collection?: string) =>
+    api.post("/reasoning/causal-chain", { node_id: nodeId, max_depth: maxDepth, direction, collection: collection || DEFAULT_COLLECTION })
+        .then((r) => r.data as { chain_ids: string[]; edges: CausalEdge[] })
+
+export const kleinPath = (startId: string, goalId: string, collection?: string) =>
+    api.post("/reasoning/klein-path", { start_node_id: startId, goal_node_id: goalId, collection: collection || DEFAULT_COLLECTION })
+        .then((r) => r.data as KleinPathResult)

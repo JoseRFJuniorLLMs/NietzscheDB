@@ -37,6 +37,7 @@ pub enum CdcEventType {
     BatchInsertEdges { count: u32 },
     SleepCycle,
     Zaratustra,
+    SqlExec,
 }
 
 impl CdcEventType {
@@ -51,6 +52,7 @@ impl CdcEventType {
             Self::BatchInsertEdges { .. } => "BATCH_INSERT_EDGES",
             Self::SleepCycle => "SLEEP_CYCLE",
             Self::Zaratustra => "ZARATUSTRA",
+            Self::SqlExec => "SQL_EXEC",
         }
     }
 }

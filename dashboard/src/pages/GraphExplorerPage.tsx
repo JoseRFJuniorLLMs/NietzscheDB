@@ -1,22 +1,10 @@
-import { useEffect, useRef, useState, useCallback } from "react"
-import {
-    Cosmograph,
-    CosmographTimeline,
-    CosmographHistogram,
-    CosmographBars,
-    CosmographSearch,
-    CosmographTypeColorLegend,
-    CosmographButtonFitView,
-    CosmographButtonPlayPause,
-    CosmographButtonZoomInOut,
-    CosmographButtonRectangularSelection,
-    CosmographButtonPolygonalSelection,
-    CosmographPointSizeStrategy,
-    CosmographLinkWidthStrategy,
-} from "@cosmograph/cosmograph"
+import { useState, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import { ChevronLeft, ChevronRight, RefreshCw, AlertCircle, Filter } from "lucide-react"
+import { ChevronLeft, ChevronRight, RefreshCw, AlertCircle, Search, X } from "lucide-react"
+import { PerspektiveView } from "@/components/PerspektiveView"
+import type { ViewNodeData, ViewEdgeData, ManifoldType } from "@/components/PerspektiveView"
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts"
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -48,8 +36,8 @@ interface GraphResponse {
 // ─── Constants ──────────────────────────────────────────────────────────────────
 
 const NODE_TYPE_COLORS: Record<string, string> = {
-    Semantic:      "#6366f1",
-    Episodic:      "#06b6d4",
+    Semantic:      "#00ff66",
+    Episodic:      "#00f0ff",
     Concept:       "#f59e0b",
     DreamSnapshot: "#8b5cf6",
     Somatic:       "#22c55e",
@@ -59,257 +47,150 @@ const NODE_TYPE_COLORS: Record<string, string> = {
 
 const DEFAULT_COLLECTION = "eva_core"
 
+// ─── Data Projection ────────────────────────────────────────────────────────────
+
+function hashToAngle(id: string): number {
+    let hash = 0
+    for (let i = 0; i < id.length; i++) {
+        hash = ((hash << 5) - hash) + id.charCodeAt(i)
+        hash |= 0
+    }
+    return (hash / 2147483647) * Math.PI * 2
+}
+
+function projectNode(node: NodeRecord, manifold: ManifoldType): { x: number; y: number; z: number } {
+    const angle = hashToAngle(node.id)
+    const radius = Math.min(node.depth ?? 0.5, 0.99)
+
+    if (manifold === "POINCARE") {
+        return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, z: 0.01 }
+    }
+    if (manifold === "RIEMANN") {
+        const px = Math.cos(angle) * radius * 3
+        const py = Math.sin(angle) * radius * 3
+        const denom = 1 + px * px + py * py
+        return { x: (2 * px) / denom, y: (2 * py) / denom, z: (px * px + py * py - 1) / denom }
+    }
+    if (manifold === "MINKOWSKI") {
+        return { x: Math.cos(angle) * radius * 2, y: (node.energy * 5) - 2.5, z: Math.sin(angle) * radius * 2 }
+    }
+    return { x: (node.energy * 2) - 1, y: (node.depth * 2) - 1, z: 0.01 }
+}
+
+/** Extract a human label from a node's content, falling back to truncated ID */
+function extractLabel(n: NodeRecord): string {
+    if (typeof n.content?.label === "string") return n.content.label
+    if (typeof n.content?.title === "string") return n.content.title
+    if (typeof n.content?.name === "string") return n.content.name
+    return n.id.slice(0, 12)
+}
+
 // ─── GraphExplorerPage ─────────────────────────────────────────────────────────
 
 export function GraphExplorerPage() {
-    // ── Container refs ────────────────────────────────────────────────────────
-    const graphContainerRef   = useRef<HTMLDivElement>(null)
-    const timelineContainerRef = useRef<HTMLDivElement>(null)
-    const histEnergyRef       = useRef<HTMLDivElement>(null)
-    const histDepthRef        = useRef<HTMLDivElement>(null)
-    const histHausdorffRef    = useRef<HTMLDivElement>(null)
-    const barsTypeRef         = useRef<HTMLDivElement>(null)
-    const barsEdgeRef         = useRef<HTMLDivElement>(null)
-    const searchRef           = useRef<HTMLDivElement>(null)
-    const legendColorRef      = useRef<HTMLDivElement>(null)
-    const btnFitRef           = useRef<HTMLDivElement>(null)
-    const btnPlayRef          = useRef<HTMLDivElement>(null)
-    const btnZoomRef          = useRef<HTMLDivElement>(null)
-    const btnRectRef          = useRef<HTMLDivElement>(null)
-    const btnPolyRef          = useRef<HTMLDivElement>(null)
-
-    // ── Cosmograph instance refs ──────────────────────────────────────────────
-    const cosmoRef        = useRef<Cosmograph | null>(null)
-    const timelineRef     = useRef<CosmographTimeline | null>(null)
-    const histEnergyInst  = useRef<CosmographHistogram | null>(null)
-    const histDepthInst   = useRef<CosmographHistogram | null>(null)
-    const histHausInst    = useRef<CosmographHistogram | null>(null)
-    const barsTypeInst    = useRef<CosmographBars | null>(null)
-    const barsEdgeInst    = useRef<CosmographBars | null>(null)
-    const searchInst      = useRef<CosmographSearch | null>(null)
-    const legendColorInst = useRef<CosmographTypeColorLegend | null>(null)
-    const btnFitInst      = useRef<CosmographButtonFitView | null>(null)
-    const btnPlayInst     = useRef<CosmographButtonPlayPause | null>(null)
-    const btnZoomInst     = useRef<CosmographButtonZoomInOut | null>(null)
-    const btnRectInst     = useRef<CosmographButtonRectangularSelection | null>(null)
-    const btnPolyInst     = useRef<CosmographButtonPolygonalSelection | null>(null)
-
-    // ── State ─────────────────────────────────────────────────────────────────
     const [collection, setCollection]   = useState(DEFAULT_COLLECTION)
     const [limit, setLimit]             = useState(1000)
     const [panelOpen, setPanelOpen]     = useState(true)
     const [panelTab, setPanelTab]       = useState<"POINTS" | "LINKS">("POINTS")
-    const [selectedCount, setSelectedCount] = useState(0)
-    const [stats, setStats]             = useState<{ points: number; links: number } | null>(null)
-    const [initialized, setInitialized] = useState(false)
+    const [manifold, setManifold]       = useState<ManifoldType>("POINCARE")
+    const [searchTerm, setSearchTerm]   = useState("")
+    const [activeFilter, setActiveFilter] = useState<string | null>(null)
 
     // ── Collections list ──────────────────────────────────────────────────────
     const { data: collections } = useQuery({
-        queryKey: ['collections'],
+        queryKey: ["collections"],
         queryFn: () => api.get("/collections").then(r => r.data as { name: string; node_count: number }[]),
     })
 
     // ── Graph data fetch ──────────────────────────────────────────────────────
     const { data: graphData, isLoading, error, refetch } = useQuery<GraphResponse>({
-        queryKey: ['graph', collection, limit],
+        queryKey: ["graph", collection, limit],
         queryFn: () => api.get(`/graph?collection=${collection}&limit=${limit}`).then(r => r.data),
         staleTime: 30_000,
     })
 
-    // ── Build points / links arrays for Cosmograph ────────────────────────────
-    const points = graphData?.nodes?.map((n, i) => ({
-        _idx:       i,
-        id:         n.id,
-        node_type:  n.node_type,
-        energy:     n.energy,
-        depth:      n.depth,
-        hausdorff:  n.hausdorff,
-        created_at: n.created_at,
-        label:      typeof n.content?.label === "string"
-                        ? n.content.label
-                        : typeof n.content?.title === "string"
-                            ? n.content.title
-                            : n.id.slice(0, 12),
-        color: NODE_TYPE_COLORS[n.node_type] ?? "#64748b",
-    })) ?? []
+    // ── Map API data → PerspektiveView format ─────────────────────────────────
+    const viewNodes = useMemo<ViewNodeData[]>(() => {
+        if (!graphData?.nodes) return []
+        return graphData.nodes.map(n => ({
+            id: n.id,
+            node_type: n.node_type,
+            energy: n.energy,
+            depth: n.depth,
+            label: extractLabel(n),
+            ...projectNode(n, manifold),
+        }))
+    }, [graphData, manifold])
 
-    const links = graphData?.edges?.map(e => ({
-        source:    e.from,
-        target:    e.to,
-        edge_type: e.edge_type,
-        weight:    e.weight,
-    })) ?? []
+    const viewEdges = useMemo<ViewEdgeData[]>(() => {
+        if (!graphData?.edges) return []
+        return graphData.edges.map(e => ({
+            source: e.from,
+            target: e.to,
+            weight: e.weight ?? 0.5,
+        }))
+    }, [graphData])
 
-    // ── Initialize Cosmograph ─────────────────────────────────────────────────
-    useEffect(() => {
-        if (!graphContainerRef.current) return
-        if (cosmoRef.current) { cosmoRef.current.destroy(); cosmoRef.current = null }
-
-        const cosmo = new Cosmograph(graphContainerRef.current, {
-            // ── Data mapping ────────────────────────────────────────────────
-            pointIdBy:       "id",
-            pointIndexBy:    "_idx",
-            pointColorBy:    "color",
-            pointSizeBy:     "energy",
-            pointSizeRange:  [2, 14],
-            pointSizeStrategy: CosmographPointSizeStrategy.Auto,
-            pointLabelBy:    "label",
-            pointIncludeColumns: ["*"],
-
-            linkSourceBy:         "source",
-            linkSourceIndexBy:    "source",
-            linkTargetBy:         "target",
-            linkTargetIndexBy:    "target",
-            linkWidthBy:     "weight",
-            linkWidthRange:  [0.3, 3],
-            linkWidthStrategy: CosmographLinkWidthStrategy.Sum,
-            linkIncludeColumns: ["*"],
-
-            // ── Appearance ──────────────────────────────────────────────────
-            backgroundColor: "#0b0f1e",
-            enableSimulation: true,
-            simulationGravity:    0.25,
-            simulationRepulsion:  1.2,
-            simulationLinkSpring: 1.0,
-            simulationFriction:   0.85,
-            simulationDecay:      5000,
-
-            // ── Labels ──────────────────────────────────────────────────────
-            showLabels:           true,
-            showTopLabels:        true,
-            showTopLabelsLimit:   20,
-            showDynamicLabels:    true,
-            showDynamicLabelsLimit: 30,
-            showHoveredPointLabel: true,
-            showFocusedPointLabel: true,
-            pointLabelFontSize:   12,
-
-            // ── Interaction ──────────────────────────────────────────────────
-            selectPointOnClick:   true,
-            focusPointOnClick:    true,
-            resetSelectionOnEmptyCanvasClick: true,
-
-            // ── Callbacks ────────────────────────────────────────────────────
-            onGraphRebuilt: (s) => setStats({ points: s.pointsCount, links: s.linksCount }),
-            onPointsFiltered: (_fp, selPts) => setSelectedCount(selPts?.length ?? 0),
-        })
-
-        cosmoRef.current = cosmo
-        setInitialized(true)
-
-        return () => {
-            cosmo.destroy()
-            cosmoRef.current = null
-            setInitialized(false)
+    // ── Chart data ────────────────────────────────────────────────────────────
+    const nodeTypeChartData = useMemo(() => {
+        if (!graphData?.nodes) return []
+        const counts = new Map<string, number>()
+        for (const n of graphData.nodes) {
+            counts.set(n.node_type, (counts.get(n.node_type) ?? 0) + 1)
         }
-    }, [])
+        return Array.from(counts, ([name, count]) => ({ name, count }))
+            .sort((a, b) => b.count - a.count)
+    }, [graphData])
 
-    // ── Feed data into Cosmograph ─────────────────────────────────────────────
-    useEffect(() => {
-        if (!cosmoRef.current || !initialized) return
-        cosmoRef.current.setConfig({
-            pointIdBy:       "id",
-            pointIndexBy:    "_idx",
-            pointColorBy:    "color",
-            pointSizeBy:     "energy",
-            pointLabelBy:    "label",
-            linkSourceBy:         "source",
-            linkSourceIndexBy:    "source",
-            linkTargetBy:         "target",
-            linkTargetIndexBy:    "target",
-            linkWidthBy:     "weight",
-            points: points as any,
-            links: links as any,
-        })
-    }, [points, links, initialized])
+    const energyHistData = useMemo(() => {
+        if (!graphData?.nodes) return []
+        const buckets = Array.from({ length: 10 }, (_, i) => ({
+            range: `${(i / 10).toFixed(1)}`,
+            count: 0,
+        }))
+        for (const n of graphData.nodes) {
+            const idx = Math.min(Math.floor(n.energy * 10), 9)
+            buckets[idx].count++
+        }
+        return buckets
+    }, [graphData])
 
-    // ── Initialize Components after Cosmograph is ready ───────────────────────
-    useEffect(() => {
-        if (!cosmoRef.current || !initialized) return
-        const cosmo = cosmoRef.current
+    const depthHistData = useMemo(() => {
+        if (!graphData?.nodes) return []
+        const buckets = Array.from({ length: 10 }, (_, i) => ({
+            range: `${(i / 10).toFixed(1)}`,
+            count: 0,
+        }))
+        for (const n of graphData.nodes) {
+            const idx = Math.min(Math.floor((n.depth ?? 0) * 10), 9)
+            buckets[idx].count++
+        }
+        return buckets
+    }, [graphData])
 
-        // ── Timeline ────────────────────────────────────────────────────────
-        if (timelineContainerRef.current && !timelineRef.current) {
-            timelineRef.current = new CosmographTimeline(
-                cosmo,
-                timelineContainerRef.current,
-                { accessor: "created_at", useQuantiles: true, highlightSelectedData: true }
-            )
+    const edgeTypeChartData = useMemo(() => {
+        if (!graphData?.edges) return []
+        const counts = new Map<string, number>()
+        for (const e of graphData.edges) {
+            counts.set(e.edge_type, (counts.get(e.edge_type) ?? 0) + 1)
         }
+        return Array.from(counts, ([name, count]) => ({ name, count }))
+            .sort((a, b) => b.count - a.count)
+    }, [graphData])
 
-        // ── Histograms (Points) ──────────────────────────────────────────────
-        if (histEnergyRef.current && !histEnergyInst.current) {
-            histEnergyInst.current = new CosmographHistogram(
-                cosmo, histEnergyRef.current, { accessor: "energy", highlightSelectedData: true }
-            )
-        }
-        if (histDepthRef.current && !histDepthInst.current) {
-            histDepthInst.current = new CosmographHistogram(
-                cosmo, histDepthRef.current, { accessor: "depth", highlightSelectedData: true }
-            )
-        }
-        if (histHausdorffRef.current && !histHausInst.current) {
-            histHausInst.current = new CosmographHistogram(
-                cosmo, histHausdorffRef.current, { accessor: "hausdorff", highlightSelectedData: true }
-            )
-        }
+    const hasActiveFilters = searchTerm !== "" || activeFilter !== null
 
-        // ── Bars (categorical) ───────────────────────────────────────────────
-        if (barsTypeRef.current && !barsTypeInst.current) {
-            barsTypeInst.current = new CosmographBars(
-                cosmo, barsTypeRef.current, { accessor: "node_type", highlightSelectedData: true, selectOnClick: true }
-            )
-        }
-        if (barsEdgeRef.current && !barsEdgeInst.current) {
-            barsEdgeInst.current = new CosmographBars(
-                cosmo, barsEdgeRef.current, { accessor: "edge_type", useLinksData: true, selectOnClick: true }
-            )
-        }
+    const resetFilters = () => {
+        setSearchTerm("")
+        setActiveFilter(null)
+    }
 
-        // ── Search ───────────────────────────────────────────────────────────
-        if (searchRef.current && !searchInst.current) {
-            searchInst.current = new CosmographSearch(
-                cosmo, searchRef.current, { accessor: "label" }
-            )
-        }
+    // ── Handle bar chart click → toggle node_type filter ──────────────────────
+    const handleTypeBarClick = (data: { name: string }) => {
+        setActiveFilter(prev => prev === data.name ? null : data.name)
+    }
 
-        // ── Color Legend ─────────────────────────────────────────────────────
-        if (legendColorRef.current && !legendColorInst.current) {
-            legendColorInst.current = new CosmographTypeColorLegend(
-                cosmo, legendColorRef.current, {}
-            )
-        }
-
-        // ── Controls ─────────────────────────────────────────────────────────
-        if (btnFitRef.current && !btnFitInst.current) {
-            btnFitInst.current = new CosmographButtonFitView(cosmo, btnFitRef.current, { duration: 500 })
-        }
-        if (btnPlayRef.current && !btnPlayInst.current) {
-            btnPlayInst.current = new CosmographButtonPlayPause(cosmo, btnPlayRef.current)
-        }
-        if (btnZoomRef.current && !btnZoomInst.current) {
-            btnZoomInst.current = new CosmographButtonZoomInOut(cosmo, btnZoomRef.current, { zoomIncrement: 1.5 })
-        }
-        if (btnRectRef.current && !btnRectInst.current) {
-            btnRectInst.current = new CosmographButtonRectangularSelection(cosmo, btnRectRef.current)
-        }
-        if (btnPolyRef.current && !btnPolyInst.current) {
-            btnPolyInst.current = new CosmographButtonPolygonalSelection(cosmo, btnPolyRef.current)
-        }
-    }, [initialized])
-
-    // ── Reset all filters ──────────────────────────────────────────────────────
-    const resetFilters = useCallback(() => {
-        timelineRef.current?.setSelection(undefined)
-        histEnergyInst.current?.setSelection(undefined)
-        histDepthInst.current?.setSelection(undefined)
-        histHausInst.current?.setSelection(undefined)
-        barsTypeInst.current?.setSelectedItem(undefined)
-        barsEdgeInst.current?.setSelectedItem(undefined)
-        cosmoRef.current?.unselectAllPoints()
-    }, [])
-
-    // ─────────────────────────────────────────────────────────────────────────
+    // ─── Render ───────────────────────────────────────────────────────────────
     return (
         <div className="flex flex-col h-[calc(100vh-64px)] relative bg-[#0b0f1e] overflow-hidden rounded-lg border border-border/20">
 
@@ -322,8 +203,8 @@ export function GraphExplorerPage() {
                     className="h-7 text-xs rounded bg-muted border border-border/40 px-2 text-foreground"
                 >
                     {(collections ?? [{ name: DEFAULT_COLLECTION, node_count: 0 }])
-                        .filter((c: any) => c.node_count > 0 || c.name === collection)
-                        .map((c: any) => (
+                        .filter((c: { name: string; node_count: number }) => c.node_count > 0 || c.name === collection)
+                        .map((c: { name: string; node_count: number }) => (
                             <option key={c.name} value={c.name}>
                                 {c.name} ({c.node_count ?? 0})
                             </option>
@@ -351,24 +232,55 @@ export function GraphExplorerPage() {
                     Reload
                 </button>
 
+                {/* Search input */}
+                <div className="relative flex-1 max-w-xs">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                    <input
+                        type="text"
+                        placeholder="Search nodes..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="h-7 w-full text-xs rounded bg-muted border border-border/40 pl-7 pr-7 text-foreground placeholder:text-muted-foreground/60 font-mono focus:outline-none focus:border-[#00f0ff] transition-colors"
+                    />
+                    {searchTerm && (
+                        <button
+                            onClick={() => setSearchTerm("")}
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 h-4 w-4 rounded-sm hover:bg-muted-foreground/20 flex items-center justify-center text-muted-foreground"
+                        >
+                            <X className="h-3 w-3" />
+                        </button>
+                    )}
+                </div>
+
                 <div className="flex-1" />
 
                 {/* Stats */}
-                {stats && (
-                    <span className="text-xs text-muted-foreground font-mono">
-                        {stats.points.toLocaleString()} nodes · {stats.links.toLocaleString()} links
-                        {selectedCount > 0 && <span className="text-primary ml-1">· {selectedCount} selected</span>}
-                    </span>
+                <span className="text-xs text-muted-foreground font-mono">
+                    {viewNodes.length.toLocaleString()} nodes · {viewEdges.length.toLocaleString()} links
+                </span>
+
+                {/* Reset filters */}
+                {hasActiveFilters && (
+                    <button
+                        onClick={resetFilters}
+                        className="h-7 px-2 rounded bg-destructive/20 hover:bg-destructive/30 border border-destructive/30 text-xs text-destructive flex items-center gap-1 transition-colors"
+                    >
+                        <X className="h-3 w-3" />
+                        Reset
+                    </button>
                 )}
 
-                {/* Cosmograph controls */}
-                <div className="flex items-center gap-1 border-l border-border/30 pl-2">
-                    <div ref={btnFitRef} className="cosmo-btn" />
-                    <div ref={btnPlayRef} className="cosmo-btn" />
-                    <div ref={btnZoomRef} className="cosmo-btn" />
-                    <div ref={btnRectRef} className="cosmo-btn" />
-                    <div ref={btnPolyRef} className="cosmo-btn" />
-                </div>
+                {/* Active filter badge */}
+                {activeFilter && (
+                    <span className="h-6 px-2 rounded-full text-[10px] font-mono font-bold flex items-center gap-1"
+                        style={{
+                            background: NODE_TYPE_COLORS[activeFilter] ?? "#64748b",
+                            color: "#000",
+                        }}
+                    >
+                        {activeFilter}
+                    </span>
+                )}
 
                 {/* Panel toggle */}
                 <button
@@ -386,12 +298,6 @@ export function GraphExplorerPage() {
                 {panelOpen && (
                     <div className="w-72 flex-shrink-0 border-r border-border/30 bg-card/80 backdrop-blur overflow-y-auto z-10 flex flex-col">
 
-                        {/* Search */}
-                        <div className="px-3 pt-3 pb-2">
-                            <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Search</div>
-                            <div ref={searchRef} className="cosmo-search" />
-                        </div>
-
                         {/* Tab switcher */}
                         <div className="flex border-b border-border/30 px-3">
                             {(["POINTS", "LINKS"] as const).map(tab => (
@@ -404,48 +310,122 @@ export function GraphExplorerPage() {
                                 </button>
                             ))}
                             <div className="flex-1" />
-                            <button
-                                onClick={resetFilters}
-                                className="text-[10px] text-muted-foreground hover:text-primary transition-colors py-1.5 px-1"
-                            >
-                                reset
-                            </button>
+                            {hasActiveFilters && (
+                                <button
+                                    onClick={resetFilters}
+                                    className="text-[10px] text-destructive hover:text-destructive/80 transition-colors py-1.5 px-1"
+                                >
+                                    reset
+                                </button>
+                            )}
                         </div>
 
                         {panelTab === "POINTS" && (
                             <div className="p-3 space-y-4">
-                                {/* Node type bars */}
-                                <FilterSection label="node_type">
-                                    <div ref={barsTypeRef} className="cosmo-bars" />
+                                {/* Node type distribution — CLICKABLE for filtering */}
+                                <FilterSection label="node_type" hint="click to filter">
+                                    <ResponsiveContainer width="100%" height={Math.max(nodeTypeChartData.length * 18, 60)}>
+                                        <BarChart data={nodeTypeChartData} layout="vertical">
+                                            <XAxis type="number" hide />
+                                            <YAxis type="category" dataKey="name" width={70} tick={{ fontSize: 10, fill: "#94a3b8" }} />
+                                            <Tooltip
+                                                contentStyle={{ background: "#0b0f1e", border: "1px solid #334155", fontSize: 11 }}
+                                                labelStyle={{ color: "#00f0ff" }}
+                                            />
+                                            <Bar
+                                                dataKey="count"
+                                                radius={[0, 2, 2, 0]}
+                                                cursor="pointer"
+                                                onClick={(_data: unknown, index: number) => {
+                                                    const entry = nodeTypeChartData[index]
+                                                    if (entry) handleTypeBarClick(entry)
+                                                }}
+                                            >
+                                                {nodeTypeChartData.map(entry => (
+                                                    <Cell
+                                                        key={entry.name}
+                                                        fill={NODE_TYPE_COLORS[entry.name] ?? "#64748b"}
+                                                        opacity={activeFilter === null || activeFilter === entry.name ? 1 : 0.2}
+                                                    />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
                                 </FilterSection>
 
                                 {/* Energy histogram */}
                                 <FilterSection label="energy">
-                                    <div ref={histEnergyRef} className="cosmo-hist" />
+                                    <ResponsiveContainer width="100%" height={60}>
+                                        <BarChart data={energyHistData}>
+                                            <XAxis dataKey="range" tick={{ fontSize: 9, fill: "#64748b" }} />
+                                            <YAxis hide />
+                                            <Tooltip
+                                                contentStyle={{ background: "#0b0f1e", border: "1px solid #334155", fontSize: 11 }}
+                                                labelStyle={{ color: "#00f0ff" }}
+                                            />
+                                            <Bar dataKey="count" fill="#ff00ff" radius={[2, 2, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
                                 </FilterSection>
 
                                 {/* Depth histogram */}
-                                <FilterSection label="depth">
-                                    <div ref={histDepthRef} className="cosmo-hist" />
+                                <FilterSection label="depth (poincaré radius)">
+                                    <ResponsiveContainer width="100%" height={60}>
+                                        <BarChart data={depthHistData}>
+                                            <XAxis dataKey="range" tick={{ fontSize: 9, fill: "#64748b" }} />
+                                            <YAxis hide />
+                                            <Tooltip
+                                                contentStyle={{ background: "#0b0f1e", border: "1px solid #334155", fontSize: 11 }}
+                                                labelStyle={{ color: "#00f0ff" }}
+                                            />
+                                            <Bar dataKey="count" fill="#00f0ff" radius={[2, 2, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
                                 </FilterSection>
 
-                                {/* Hausdorff histogram */}
-                                <FilterSection label="hausdorff">
-                                    <div ref={histHausdorffRef} className="cosmo-hist" />
-                                </FilterSection>
-
-                                {/* Color legend */}
-                                <FilterSection label="color legend">
-                                    <div ref={legendColorRef} className="cosmo-legend" />
+                                {/* Color legend — clickable */}
+                                <FilterSection label="color legend" hint="click to filter">
+                                    <div className="space-y-1">
+                                        {Object.entries(NODE_TYPE_COLORS).map(([type, color]) => (
+                                            <button
+                                                key={type}
+                                                onClick={() => setActiveFilter(prev => prev === type ? null : type)}
+                                                className={`flex items-center gap-2 text-[10px] w-full px-1 py-0.5 rounded transition-colors ${
+                                                    activeFilter === type
+                                                        ? "bg-muted text-foreground"
+                                                        : "text-muted-foreground hover:text-foreground"
+                                                }`}
+                                            >
+                                                <div
+                                                    className="w-3 h-3 rounded-sm flex-shrink-0"
+                                                    style={{
+                                                        background: color,
+                                                        opacity: activeFilter === null || activeFilter === type ? 1 : 0.2,
+                                                    }}
+                                                />
+                                                {type}
+                                                {activeFilter === type && <span className="ml-auto text-[8px] text-primary">ACTIVE</span>}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </FilterSection>
                             </div>
                         )}
 
                         {panelTab === "LINKS" && (
                             <div className="p-3 space-y-4">
-                                {/* Edge type bars */}
                                 <FilterSection label="edge_type">
-                                    <div ref={barsEdgeRef} className="cosmo-bars" />
+                                    <ResponsiveContainer width="100%" height={Math.max(edgeTypeChartData.length * 18, 60)}>
+                                        <BarChart data={edgeTypeChartData} layout="vertical">
+                                            <XAxis type="number" hide />
+                                            <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 10, fill: "#94a3b8" }} />
+                                            <Tooltip
+                                                contentStyle={{ background: "#0b0f1e", border: "1px solid #334155", fontSize: 11 }}
+                                                labelStyle={{ color: "#00f0ff" }}
+                                            />
+                                            <Bar dataKey="count" fill="#00d8ff" radius={[0, 2, 2, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
                                 </FilterSection>
                             </div>
                         )}
@@ -454,7 +434,6 @@ export function GraphExplorerPage() {
 
                 {/* ── Graph canvas ──────────────────────────────────────── */}
                 <div className="flex-1 relative overflow-hidden">
-                    {/* Error */}
                     {error && (
                         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-destructive/20 text-destructive border border-destructive/30 rounded-lg px-4 py-2 text-sm">
                             <AlertCircle className="h-4 w-4 flex-shrink-0" />
@@ -462,7 +441,6 @@ export function GraphExplorerPage() {
                         </div>
                     )}
 
-                    {/* Loading overlay */}
                     {isLoading && (
                         <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/40">
                             <div className="flex flex-col items-center gap-3 text-muted-foreground">
@@ -472,18 +450,15 @@ export function GraphExplorerPage() {
                         </div>
                     )}
 
-                    {/* Cosmograph container */}
-                    <div ref={graphContainerRef} className="w-full h-full" />
+                    <PerspektiveView
+                        nodes={viewNodes}
+                        edges={viewEdges}
+                        manifold={manifold}
+                        onManifoldChange={setManifold}
+                        searchTerm={searchTerm}
+                        activeFilter={activeFilter}
+                    />
                 </div>
-            </div>
-
-            {/* ── Timeline (bottom) ─────────────────────────────────────────── */}
-            <div className="flex-shrink-0 border-t border-border/30 bg-card/60 backdrop-blur px-3 py-1 z-20">
-                <div className="text-[10px] text-muted-foreground mb-1 flex items-center gap-2">
-                    <Filter className="h-3 w-3" />
-                    <span>Timeline · created_at</span>
-                </div>
-                <div ref={timelineContainerRef} className="cosmo-timeline" />
             </div>
         </div>
     )
@@ -491,11 +466,18 @@ export function GraphExplorerPage() {
 
 // ─── FilterSection helper ──────────────────────────────────────────────────────
 
-function FilterSection({ label, children }: { label: string; children: React.ReactNode }) {
+function FilterSection({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
     return (
         <div>
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
-                {label}
+            <div className="flex items-center gap-2 mb-1.5">
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    {label}
+                </div>
+                {hint && (
+                    <div className="text-[8px] text-muted-foreground/50 italic">
+                        {hint}
+                    </div>
+                )}
             </div>
             {children}
         </div>

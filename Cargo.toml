@@ -52,6 +52,7 @@ nietzsche-kafka        = { path = "crates/nietzsche-kafka" }
 nietzsche-secondary-idx = { path = "crates/nietzsche-secondary-idx" }
 nietzsche-filtered-knn = { path = "crates/nietzsche-filtered-knn" }
 nietzsche-media        = { path = "crates/nietzsche-media" }
+nietzsche-swartz       = { path = "crates/nietzsche-swartz" }
 rusqlite = { version = "0.31", features = ["bundled"] }
 memmap2 = "0.9"
 parking_lot = "0.12"
