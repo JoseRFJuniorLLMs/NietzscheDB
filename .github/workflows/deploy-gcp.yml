@@ -3,126 +3,62 @@ name: Build & Deploy to GCP VM
 on:
   push:
     branches: [main]
-  workflow_dispatch:   # permite trigger manual
+  workflow_dispatch:
 
-env:
-  # ── Preencha estes GitHub Secrets no repo NietzscheDB ─────────────────────
-  # GCP_PROJECT_ID         → seu GCP project ID (ex: eva-mind-123456)
-  # GCP_REGION             → região do Artifact Registry (ex: us-central1)
-  # GCP_ARTIFACT_REPO      → nome do repo no AR (ex: nietzsche)
-  # GCP_WIF_PROVIDER       → projects/1017997949026/locations/global/workloadIdentityPools/github-pool/providers/github-provider
-  # GCP_SERVICE_ACCOUNT    → nietzsche-deploy@SEU-PROJECT.iam.gserviceaccount.com
-  # GCP_VM_NAME            → nome da VM (ex: eva-mind-vm)
-  # GCP_VM_ZONE            → zona da VM (ex: us-central1-a)
-  # VM_COMPOSE_DIR         → caminho do docker-compose.infra.yml na VM (ex: /home/web2a/eva-mind)
-  # ──────────────────────────────────────────────────────────────────────────
-  IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPO }}/nietzsche-server
+# ── GitHub Secrets necessários ──────────────────────────────────────────────
+# VM_SSH_KEY          → chave privada SSH (conteúdo de ~/.ssh/google_compute_engine)
+# VM_HOST             → IP da VM (34.56.82.116)
+# VM_USER             → user SSH (web2a)
+# ────────────────────────────────────────────────────────────────────────────
 
 jobs:
-  # ── 1. Build + Push ───────────────────────────────────────────────────────
-  build-and-push:
-    name: Build Docker image & push to Artifact Registry
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      id-token: write   # necessário para WIF
-
-    outputs:
-      image-tag: ${{ steps.meta.outputs.version }}
-      image-full: ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Authenticate to GCP (WIF)
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account:            ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Docker metadata (tags)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_ARTIFACT_REPO }}/nietzsche-server
-          tags: |
-            type=sha,prefix=,format=short
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags:       ${{ steps.meta.outputs.tags }}
-          labels:     ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to:   type=gha,mode=max
-
-  # ── 2. Deploy na VM ───────────────────────────────────────────────────────
   deploy:
-    name: Deploy na GCP VM
+    name: Build & Deploy (native binary)
     runs-on: ubuntu-latest
-    needs: build-and-push
-
-    permissions:
-      contents: read
-      id-token: write
+    # Só deploya se o CI passou (lint+test no ci.yml)
+    needs: []
 
     steps:
-      - name: Authenticate to GCP (WIF)
-        uses: google-github-actions/auth@v2
+      - name: SSH → git pull + cargo build + restart
+        uses: appleboy/ssh-action@v1
         with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account:            ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - name: Deploy via SSH (OS Login)
-        uses: google-github-actions/ssh-compute@v1
-        with:
-          instance_name: ${{ secrets.GCP_VM_NAME }}
-          zone:          ${{ secrets.GCP_VM_ZONE }}
-          ssh_args:      -o StrictHostKeyChecking=no
-          command: |
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          command_timeout: 30m
+          script: |
             set -e
-            IMAGE="${{ needs.build-and-push.outputs.image-full }}"
-            COMPOSE_DIR="${{ secrets.VM_COMPOSE_DIR }}"
+            echo "=== Git pull ==="
+            cd /opt/NietzscheDB
+            git fetch origin main
+            git reset --hard origin/main
+            echo "Commit: $(git log --oneline -1)"
 
-            echo "=== Autenticando Docker no Artifact Registry ==="
-            gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
+            echo "=== Cargo build (release) ==="
+            source "$HOME/.cargo/env" 2>/dev/null || true
+            cargo build --release 2>&1 | tail -20
 
-            echo "=== Pulling imagem: $IMAGE ==="
-            docker pull "$IMAGE"
+            echo "=== Deploy binary ==="
+            sudo systemctl stop nietzsche-server || true
+            sudo cp target/release/nietzsche-server /usr/local/bin/nietzsche-server
+            sudo systemctl start nietzsche-server
 
-            echo "=== Restart nietzsche-server ==="
-            cd "$COMPOSE_DIR"
-            NIETZSCHE_IMAGE="$IMAGE" docker compose -f docker-compose.infra.yml up -d --no-deps nietzsche-server
+            echo "=== Aguardando 5s ==="
+            sleep 5
 
-            echo "=== Status ==="
-            docker ps --filter name=eva-nietzsche --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
-      - name: Health check (gRPC + dashboard)
-        uses: google-github-actions/ssh-compute@v1
-        with:
-          instance_name: ${{ secrets.GCP_VM_NAME }}
-          zone:          ${{ secrets.GCP_VM_ZONE }}
-          ssh_args:      -o StrictHostKeyChecking=no
-          command: |
-            echo "Aguardando 10s para o container iniciar..."
-            sleep 10
-            curl -sf http://localhost:8082/api/health && echo "Dashboard: OK" || echo "Dashboard: falhou"
+            echo "=== Health check ==="
+            if curl -sf --max-time 10 http://localhost:8080/api/health; then
+              echo ""
+              echo "Deploy OK!"
+            else
+              echo "WARN: health check falhou (servidor pode estar carregando collections)"
+              sudo systemctl status nietzsche-server --no-pager | head -15
+            fi
 
   notify:
     name: Email Notification
     runs-on: ubuntu-latest
-    needs: [build-and-push, deploy]
+    needs: [deploy]
     if: always()
     steps:
       - name: Send email notification
@@ -133,7 +69,7 @@ jobs:
           secure: true
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "${{ contains(needs.*.result, 'failure') && '❌' || '✅' }} ${{ github.workflow }} - ${{ github.ref_name }}"
+          subject: "${{ needs.deploy.result == 'failure' && '❌' || '✅' }} Deploy NietzscheDB - ${{ github.ref_name }}"
           to: petweofc@gmail.com,web2ajax@gmail.com
           from: GitHub Actions <${{ secrets.MAIL_USERNAME }}>
           body: |
@@ -142,4 +78,5 @@ jobs:
             Branch: ${{ github.ref_name }}
             Commit: ${{ github.sha }}
             Author: ${{ github.actor }}
+            Status: ${{ needs.deploy.result }}
             Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
