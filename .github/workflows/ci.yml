@@ -90,3 +90,28 @@ jobs:
           tags: nietzschedb/server:ci
           cache-from: type=gha
           cache-to:   type=gha,mode=max
+
+  notify:
+    name: Email Notification
+    runs-on: ubuntu-latest
+    needs: [lint, test, bench-dry-run, docker]
+    if: always()
+    steps:
+      - name: Send email notification
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "${{ contains(needs.*.result, 'failure') && '❌' || '✅' }} ${{ github.workflow }} - ${{ github.ref_name }}"
+          to: petweofc@gmail.com,web2ajax@gmail.com
+          from: GitHub Actions <${{ secrets.MAIL_USERNAME }}>
+          body: |
+            Workflow: ${{ github.workflow }}
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
