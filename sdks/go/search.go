@@ -33,3 +33,24 @@ func (c *NietzscheClient) FullTextSearch(ctx context.Context, query, collection 
 	}
 	return results, nil
 }
+
+// HybridSearch combines full-text BM25 and vector KNN search with configurable weights.
+// textWeight + vectorWeight should sum to 1.0 for normalized scoring.
+func (c *NietzscheClient) HybridSearch(ctx context.Context, textQuery string, queryCoords []float64, k uint32, textWeight, vectorWeight float64, collection string) ([]KnnResult, error) {
+	resp, err := c.stub.HybridSearch(ctx, &pb.HybridSearchRequest{
+		TextQuery:    textQuery,
+		QueryCoords:  queryCoords,
+		K:            k,
+		TextWeight:   textWeight,
+		VectorWeight: vectorWeight,
+		Collection:   collection,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("nietzsche HybridSearch: %w", err)
+	}
+	results := make([]KnnResult, len(resp.Results))
+	for i, r := range resp.Results {
+		results[i] = KnnResult{ID: r.Id, Distance: r.Distance}
+	}
+	return results, nil
+}

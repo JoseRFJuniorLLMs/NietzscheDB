@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use rocksdb::{
     BlockBasedOptions, Cache, ColumnFamilyDescriptor, DB, DBCompressionType, Options,
@@ -544,10 +545,14 @@ const CF_META_IDX: &str = "meta_idx";
 /// List storage: key = [node_id(16B) | list_name_hash(8B) | seq_be(8B)] → value bytes.
 /// Supports RPUSH/LRANGE per-node ordered lists.
 const CF_LISTS: &str = "lists";
+/// Swartz SQL layer — table schemas: key = table_name (UTF-8) → serialized Schema + auto-inc counter.
+const CF_SQL_SCHEMA: &str = "sql_schema";
+/// Swartz SQL layer — row data: key = [table_name \x00 row_id_be(8B)] → serialized Row.
+const CF_SQL_DATA: &str = "sql_data";
 
 const ALL_CFS: &[&str] = &[
     CF_NODES, CF_EMBEDDINGS, CF_EDGES, CF_ADJ_OUT, CF_ADJ_IN, CF_META, CF_SENSORY, CF_ENERGY_IDX,
-    CF_META_IDX, CF_LISTS,
+    CF_META_IDX, CF_LISTS, CF_SQL_SCHEMA, CF_SQL_DATA,
 ];
 
 // ─────────────────────────────────────────────
@@ -645,7 +650,7 @@ fn cf_opts_meta_idx(cache: &Cache) -> Options {
 /// - 128 MiB write buffer per CF (fewer memtable flushes)
 /// - LZ4 + Zstd compression
 pub struct GraphStorage {
-    db:     DB,
+    db:     Arc<DB>,
     // Keep cache alive for the lifetime of the store
     _cache: Cache,
 }
@@ -683,12 +688,14 @@ impl GraphStorage {
             ColumnFamilyDescriptor::new(CF_ENERGY_IDX, cf_opts_energy_idx(&cache)),
             ColumnFamilyDescriptor::new(CF_META_IDX,   cf_opts_meta_idx(&cache)),
             ColumnFamilyDescriptor::new(CF_LISTS,      cf_opts_read_heavy(&cache)),
+            ColumnFamilyDescriptor::new(CF_SQL_SCHEMA, cf_opts_read_heavy(&cache)),
+            ColumnFamilyDescriptor::new(CF_SQL_DATA,   cf_opts_read_heavy(&cache)),
         ];
 
         let db = DB::open_cf_descriptors(&db_opts, path, cf_descs)
             .map_err(|e| GraphError::Storage(e.to_string()))?;
 
-        Ok(Self { db, _cache: cache })
+        Ok(Self { db: Arc::new(db), _cache: cache })
     }
 
     // ── Inline CF handle accessors ─────────────────────────────────────────────
@@ -704,6 +711,8 @@ impl GraphStorage {
     #[inline] fn cf_energy(&self)     -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_ENERGY_IDX).unwrap() }
     #[inline] fn cf_meta_idx(&self)  -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_META_IDX).unwrap() }
     #[inline] fn cf_lists(&self)    -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_LISTS).unwrap() }
+    #[inline] fn cf_sql_schema(&self) -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_SQL_SCHEMA).unwrap() }
+    #[inline] fn cf_sql_data(&self)   -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_SQL_DATA).unwrap() }
 
     // ── Node operations ────────────────────────────────
 
@@ -1432,6 +1441,12 @@ impl GraphStorage {
         &self.db
     }
 
+    /// Return a cloned `Arc<DB>` for the Swartz SQL layer and other subsystems
+    /// that need an owned handle to the same RocksDB instance.
+    pub fn db_arc(&self) -> Arc<DB> {
+        Arc::clone(&self.db)
+    }
+
     // ── Internal helpers ───────────────────────────────
 
     #[inline]
@@ -1499,6 +1514,125 @@ impl GraphStorage {
 
         Ok(count)
     }
+
+    // ── Swartz SQL Layer — low-level CF operations ────────────────────
+
+    /// Store a SQL table schema (serialized by nietzsche-swartz).
+    pub fn put_sql_schema(&self, table_name: &str, data: &[u8]) -> Result<(), GraphError> {
+        self.db.put_cf(&self.cf_sql_schema(), table_name.as_bytes(), data)
+            .map_err(|e| GraphError::Storage(e.to_string()))
+    }
+
+    /// Read a SQL table schema.
+    pub fn get_sql_schema(&self, table_name: &str) -> Result<Option<Vec<u8>>, GraphError> {
+        self.db.get_cf(&self.cf_sql_schema(), table_name.as_bytes())
+            .map_err(|e| GraphError::Storage(e.to_string()))
+    }
+
+    /// Delete a SQL table schema.
+    pub fn delete_sql_schema(&self, table_name: &str) -> Result<(), GraphError> {
+        self.db.delete_cf(&self.cf_sql_schema(), table_name.as_bytes())
+            .map_err(|e| GraphError::Storage(e.to_string()))
+    }
+
+    /// List all SQL table schemas. Returns `(table_name, schema_bytes)` pairs.
+    pub fn scan_sql_schemas(&self) -> Result<Vec<(String, Vec<u8>)>, GraphError> {
+        let cf = self.cf_sql_schema();
+        let iter = self.db.iterator_cf(&cf, rocksdb::IteratorMode::Start);
+        let mut results = Vec::new();
+        for item in iter {
+            let (key, value) = item.map_err(|e| GraphError::Storage(e.to_string()))?;
+            let name = String::from_utf8_lossy(&key).to_string();
+            results.push((name, value.to_vec()));
+        }
+        Ok(results)
+    }
+
+    /// Store a SQL row.
+    /// Key format: `[table_name \x00 row_id_be(8B)]`
+    pub fn put_sql_row(&self, table_name: &str, row_id: u64, data: &[u8]) -> Result<(), GraphError> {
+        let key = sql_row_key(table_name, row_id);
+        self.db.put_cf(&self.cf_sql_data(), &key, data)
+            .map_err(|e| GraphError::Storage(e.to_string()))
+    }
+
+    /// Read a SQL row by table + row_id.
+    pub fn get_sql_row(&self, table_name: &str, row_id: u64) -> Result<Option<Vec<u8>>, GraphError> {
+        let key = sql_row_key(table_name, row_id);
+        self.db.get_cf(&self.cf_sql_data(), &key)
+            .map_err(|e| GraphError::Storage(e.to_string()))
+    }
+
+    /// Delete a SQL row.
+    pub fn delete_sql_row(&self, table_name: &str, row_id: u64) -> Result<(), GraphError> {
+        let key = sql_row_key(table_name, row_id);
+        self.db.delete_cf(&self.cf_sql_data(), &key)
+            .map_err(|e| GraphError::Storage(e.to_string()))
+    }
+
+    /// Scan all rows of a SQL table. Returns `(row_id, data_bytes)` pairs.
+    pub fn scan_sql_table(&self, table_name: &str) -> Result<Vec<(u64, Vec<u8>)>, GraphError> {
+        let prefix = sql_table_prefix(table_name);
+        let cf = self.cf_sql_data();
+        let iter = self.db.prefix_iterator_cf(&cf, &prefix);
+        let mut results = Vec::new();
+        for item in iter {
+            let (key, value) = item.map_err(|e| GraphError::Storage(e.to_string()))?;
+            if !key.starts_with(&prefix) {
+                break;
+            }
+            // Extract row_id from key suffix (last 8 bytes)
+            if key.len() >= prefix.len() + 8 {
+                let row_id_offset = key.len() - 8;
+                let mut row_id_bytes = [0u8; 8];
+                row_id_bytes.copy_from_slice(&key[row_id_offset..]);
+                let row_id = u64::from_be_bytes(row_id_bytes);
+                results.push((row_id, value.to_vec()));
+            }
+        }
+        Ok(results)
+    }
+
+    /// Delete all rows of a SQL table. Returns the number deleted.
+    pub fn delete_sql_table_rows(&self, table_name: &str) -> Result<u64, GraphError> {
+        let prefix = sql_table_prefix(table_name);
+        let cf = self.cf_sql_data();
+        let iter = self.db.prefix_iterator_cf(&cf, &prefix);
+        let mut batch = rocksdb::WriteBatch::default();
+        let mut count = 0u64;
+        for item in iter {
+            let (key, _) = item.map_err(|e| GraphError::Storage(e.to_string()))?;
+            if !key.starts_with(&prefix) {
+                break;
+            }
+            batch.delete_cf(&cf, &*key);
+            count += 1;
+        }
+        if count > 0 {
+            self.db.write(batch)
+                .map_err(|e| GraphError::Storage(e.to_string()))?;
+        }
+        Ok(count)
+    }
+}
+
+/// Build a SQL row key: `table_name \x00 row_id_be(8 bytes)`.
+#[inline]
+fn sql_row_key(table_name: &str, row_id: u64) -> Vec<u8> {
+    let mut key = Vec::with_capacity(table_name.len() + 1 + 8);
+    key.extend_from_slice(table_name.as_bytes());
+    key.push(0x00); // null separator
+    key.extend_from_slice(&row_id.to_be_bytes());
+    key
+}
+
+/// Build the prefix for scanning all rows of a SQL table: `table_name \x00`.
+#[inline]
+fn sql_table_prefix(table_name: &str) -> Vec<u8> {
+    let mut prefix = Vec::with_capacity(table_name.len() + 1);
+    prefix.extend_from_slice(table_name.as_bytes());
+    prefix.push(0x00);
+    prefix
 }
 
 // ─────────────────────────────────────────────
