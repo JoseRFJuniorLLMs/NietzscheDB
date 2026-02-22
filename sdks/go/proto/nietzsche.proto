@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package nietzsche;
 
+option go_package = "nietzsche-sdk/pb";
+
 // ── NietzscheDB unified gRPC API ──────────────────────────────────────────
 //
 // Exposes all core subsystems over a single service:
@@ -38,6 +40,9 @@ service NietzscheDB {
   // ── MERGE (upsert semantic: get-or-create) ────────────────────────────────────
   rpc MergeNode (MergeNodeRequest) returns (MergeNodeResponse);
   rpc MergeEdge (MergeEdgeRequest) returns (MergeEdgeResponse);
+
+  // ── Edge metadata increment (atomic counter) ───────────────────────────────
+  rpc IncrementEdgeMeta (IncrementEdgeMetaRequest) returns (IncrementEdgeMetaResponse);
 
   // ── NQL query (Nietzsche Query Language) ─────────────────────────────
   rpc Query (QueryRequest) returns (QueryResponse);
@@ -88,13 +93,46 @@ service NietzscheDB {
 
   // ── Full-Text Search ────────────────────────────────────────────────
   rpc FullTextSearch (FullTextSearchRequest) returns (FullTextSearchResponse);
+  rpc HybridSearch   (HybridSearchRequest)  returns (KnnResponse);
 
   // ── Change Data Capture ──────────────────────────────────────────────
   rpc SubscribeCDC (CdcRequest) returns (stream CdcEvent);
 
+  // ── Multi-Manifold Operations (Phase M — Klein · Riemann · Minkowski) ──
+  rpc Synthesis       (SynthesisRequest)       returns (SynthesisResponse);
+  rpc SynthesisMulti  (SynthesisMultiRequest)  returns (SynthesisResponse);
+  rpc CausalNeighbors (CausalNeighborsRequest) returns (CausalNeighborsResponse);
+  rpc CausalChain     (CausalChainRequest)     returns (CausalChainResponse);
+  rpc KleinPath       (KleinPathRequest)       returns (KleinPathResponse);
+  rpc IsOnShortestPath(ShortestPathCheckRequest) returns (ShortestPathCheckResponse);
+
   // ── Admin ─────────────────────────────────────────────────────────────
   rpc GetStats (Empty) returns (StatsResponse);
   rpc HealthCheck (Empty) returns (StatusResponse);
+
+  // ── ListStore (RPUSH/LRANGE) ──────────────────────────────────────────
+  rpc ListRPush  (ListPushRequest)   returns (ListPushResponse);
+  rpc ListLRange (ListRangeRequest)  returns (ListRangeResponse);
+  rpc ListLen    (ListLenRequest)    returns (ListLenResponse);
+
+  // ── Cluster gossip (Phase G) ────────────────────────────────────────
+  rpc ExchangeGossip (GossipRequest) returns (GossipResponse);
+
+  // ── Schema Validation ──────────────────────────────────────────────
+  rpc SetSchema   (SetSchemaRequest)   returns (StatusResponse);
+  rpc GetSchema   (GetSchemaRequest)   returns (GetSchemaResponse);
+  rpc ListSchemas (Empty)              returns (ListSchemasResponse);
+
+  // ── Secondary Indexes (Phase E) ──────────────────────────────────
+  rpc CreateIndex  (CreateIndexRequest)  returns (StatusResponse);
+  rpc DropIndex    (DropIndexRequest)    returns (StatusResponse);
+  rpc ListIndexes  (ListIndexesRequest)  returns (ListIndexesResponse);
+
+  // ── Cache (Phase C — Redis replacement) ────────────────────────
+  rpc CacheSet     (CacheSetRequest)     returns (StatusResponse);
+  rpc CacheGet     (CacheGetRequest)     returns (CacheGetResponse);
+  rpc CacheDel     (CacheDelRequest)     returns (StatusResponse);
+  rpc ReapExpired  (ReapExpiredRequest)   returns (ReapExpiredResponse);
 }
 
 // ── Common primitives ──────────────────────────────────────────────────────
@@ -140,6 +178,19 @@ message ListCollectionsResponse {
   repeated CollectionInfoProto collections = 1;
 }
 
+// ── Backpressure ────────────────────────────────────────────────────────────
+//
+// Returned by write RPCs (InsertNode, BatchInsertNodes) to signal ingestion
+// pressure. Clients should respect `suggested_delay_ms` before the next write.
+// This is the "Attention Gate" — the database tells the AI:
+// "Slow down, I need time to consolidate."
+
+message BackpressureSignal {
+  bool   accept            = 1;  // true = write accepted; false = rejected (future)
+  string reason            = 2;  // "" | "energy_inflated" | "capacity_high"
+  uint32 suggested_delay_ms = 3;  // 0 = no delay needed
+}
+
 // ── Node messages ──────────────────────────────────────────────────────────
 
 // Supported values: "Semantic", "Episodic", "Concept", "DreamSnapshot"
@@ -176,6 +227,8 @@ message NodeResponse {
   bytes          content         = 8;  // JSON bytes
   string         node_type       = 9;
   int64          expires_at      = 10; // TTL: Unix seconds; 0 = never expires
+  // Populated only on write RPCs (InsertNode). Absent on reads.
+  BackpressureSignal backpressure = 11;
 }
 
 // ── Edge messages ──────────────────────────────────────────────────────────
@@ -232,6 +285,19 @@ message MergeEdgeResponse {
   string edge_id = 2;
 }
 
+// ── Edge metadata increment (FASE D.2 — atomic counter) ───────────────────
+
+message IncrementEdgeMetaRequest {
+  string collection = 1;  // empty → "default"
+  string edge_id    = 2;  // UUID of the edge
+  string field      = 3;  // metadata field name (e.g. "count")
+  double delta      = 4;  // increment value (can be negative for decrement)
+}
+
+message IncrementEdgeMetaResponse {
+  double new_value = 1;   // value after increment
+}
+
 // ── Batch messages ──────────────────────────────────────────────────────────
 
 message BatchInsertNodesRequest {
@@ -240,8 +306,9 @@ message BatchInsertNodesRequest {
 }
 
 message BatchInsertNodesResponse {
-  uint32          inserted = 1;
-  repeated string node_ids = 2;  // UUIDs of inserted nodes (parallel order)
+  uint32             inserted     = 1;
+  repeated string    node_ids     = 2;  // UUIDs of inserted nodes (parallel order)
+  BackpressureSignal backpressure = 3;  // ingestion pressure signal
 }
 
 message BatchInsertEdgesRequest {
@@ -313,10 +380,29 @@ message NodePair {
 
 // ── KNN messages ──────────────────────────────────────────────────────────
 
+message KnnFilter {
+  oneof condition {
+    KnnFilterMatch  match_filter = 1;
+    KnnFilterRange  range_filter = 2;
+  }
+}
+
+message KnnFilterMatch {
+  string field = 1;
+  string value = 2;
+}
+
+message KnnFilterRange {
+  string field = 1;
+  optional double gte = 2;
+  optional double lte = 3;
+}
+
 message KnnRequest {
-  repeated double query_coords = 1;
-  uint32          k            = 2;
-  string          collection   = 3;  // empty → "default"
+  repeated double    query_coords = 1;
+  uint32             k            = 2;
+  string             collection   = 3;  // empty → "default"
+  repeated KnnFilter filters      = 4;  // pushed-down metadata filters (AND semantics)
 }
 
 message KnnResult {
@@ -622,6 +708,15 @@ message FullTextSearchResponse {
   repeated FtsResultProto results = 1;
 }
 
+message HybridSearchRequest {
+  string          text_query     = 1;  // BM25 text query
+  repeated double query_coords   = 2;  // ANN vector query
+  uint32          k              = 3;  // top-k results (0 → default 10)
+  double          text_weight    = 4;  // RRF weight for BM25 (default 1.0)
+  double          vector_weight  = 5;  // RRF weight for KNN (default 1.0)
+  string          collection     = 6;  // empty → "default"
+}
+
 // ── CDC messages ──────────────────────────────────────────────────────────
 
 message CdcRequest {
@@ -636,4 +731,222 @@ message CdcEvent {
   string entity_id    = 4;  // UUID of the mutated entity
   string collection   = 5;  // collection where mutation occurred
   uint32 batch_count  = 6;  // for BATCH_INSERT_* events: number of items inserted
+}
+
+// ── ListStore messages ────────────────────────────────────────────────────
+
+message ListPushRequest {
+  string node_id    = 1;  // UUID of the node
+  string list_name  = 2;  // name of the list (e.g. "history", "tags")
+  bytes  value      = 3;  // value to append
+  string collection = 4;
+}
+
+message ListPushResponse {
+  uint64 new_length = 1;  // current sequence number after push
+}
+
+message ListRangeRequest {
+  string node_id    = 1;
+  string list_name  = 2;
+  uint64 start      = 3;  // 0-based start index
+  int64  stop       = 4;  // 0-based stop index (inclusive, -1 = to end)
+  string collection = 5;
+}
+
+message ListRangeResponse {
+  repeated bytes values = 1;
+}
+
+message ListLenRequest {
+  string node_id    = 1;
+  string list_name  = 2;
+  string collection = 3;
+}
+
+message ListLenResponse {
+  uint64 length = 1;
+}
+
+// ── Cache messages (Phase C — Redis replacement) ──────────────────────────
+
+message CacheSetRequest {
+  string collection = 1;
+  string key        = 2;
+  bytes  value      = 3;
+  uint64 ttl_secs   = 4;  // 0 = no TTL
+}
+
+message CacheGetRequest {
+  string collection = 1;
+  string key        = 2;
+}
+
+message CacheGetResponse {
+  bool  found = 1;
+  bytes value = 2;
+}
+
+message CacheDelRequest {
+  string collection = 1;
+  string key        = 2;
+}
+
+message ReapExpiredRequest {
+  string collection = 1;
+}
+
+message ReapExpiredResponse {
+  uint64 reaped_count = 1;
+}
+
+// ── Cluster gossip messages (Phase G) ─────────────────────────────────────
+
+message ClusterNodeProto {
+  string id          = 1;  // UUID
+  string addr        = 2;  // gRPC address "host:port"
+  string name        = 3;  // Human-readable name
+  string role        = 4;  // "primary" | "replica" | "coordinator"
+  string health      = 5;  // "healthy" | "degraded" | "unreachable"
+  uint64 last_seen_ms = 6; // Unix milliseconds
+  uint64 token       = 7;  // Consistent-hash partition token
+}
+
+message GossipRequest {
+  string            sender_id = 1;  // UUID of the sending node
+  repeated ClusterNodeProto nodes = 2;  // sender's cluster snapshot
+}
+
+message GossipResponse {
+  repeated ClusterNodeProto nodes = 1;  // receiver's cluster snapshot (for bidirectional merge)
+}
+
+// ── Schema Validation messages ────────────────────────────────────────────
+
+message SchemaFieldType {
+  string field_name = 1;
+  string field_type = 2;  // "string" | "number" | "bool" | "array" | "object"
+}
+
+message SetSchemaRequest {
+  string                  node_type       = 1;
+  repeated string         required_fields = 2;
+  repeated SchemaFieldType field_types    = 3;
+  string                  collection      = 4;  // empty → "default"
+}
+
+message GetSchemaRequest {
+  string node_type  = 1;
+  string collection = 2;  // empty → "default"
+}
+
+message GetSchemaResponse {
+  string                  node_type       = 1;
+  repeated string         required_fields = 2;
+  repeated SchemaFieldType field_types    = 3;
+  bool                    found           = 4;
+}
+
+message ListSchemasResponse {
+  repeated GetSchemaResponse schemas = 1;
+}
+
+// ── Secondary Indexes (Phase E) ───────────────────────────────────────────
+
+message CreateIndexRequest {
+  string collection = 1;  // empty → "default"
+  string field      = 2;  // metadata field name to index
+}
+
+message DropIndexRequest {
+  string collection = 1;  // empty → "default"
+  string field      = 2;  // metadata field name to drop index for
+}
+
+message ListIndexesRequest {
+  string collection = 1;  // empty → "default"
+}
+
+message ListIndexesResponse {
+  repeated string fields = 1;  // currently indexed field names
+}
+
+// ── Multi-Manifold messages (Phase M — Klein · Riemann · Minkowski) ───
+
+// -- Riemann Synthesis --
+
+message SynthesisRequest {
+  string node_id_a  = 1;  // UUID of first concept (Thesis)
+  string node_id_b  = 2;  // UUID of second concept (Antithesis)
+  string collection = 3;  // empty → "default"
+}
+
+message SynthesisMultiRequest {
+  repeated string node_ids = 1;  // UUIDs of concepts to synthesize
+  string          collection = 2;
+}
+
+message SynthesisResponse {
+  repeated double synthesis_coords = 1;  // Poincaré ball coordinates of synthesis point
+  string          nearest_node_id  = 2;  // UUID of the nearest existing node to the synthesis
+  double          nearest_distance = 3;  // hyperbolic distance to nearest node
+}
+
+// -- Minkowski Causal Filtering --
+
+message CausalNeighborsRequest {
+  string node_id    = 1;  // origin node UUID
+  string direction  = 2;  // "future" | "past" | "both"; empty → "both"
+  string collection = 3;
+}
+
+message CausalNeighborsResponse {
+  repeated CausalEdge edges = 1;
+}
+
+message CausalEdge {
+  string edge_id            = 1;
+  string from_node_id       = 2;
+  string to_node_id         = 3;
+  double minkowski_interval = 4;  // ds² value
+  string causal_type        = 5;  // "Timelike" | "Spacelike" | "Lightlike" | "Unknown"
+  string edge_type          = 6;
+}
+
+message CausalChainRequest {
+  string node_id    = 1;  // origin node UUID
+  uint32 max_depth  = 2;  // max recursive depth; 0 → default 10
+  string direction  = 3;  // "future" | "past"; empty → "past" (WHY query)
+  string collection = 4;
+}
+
+message CausalChainResponse {
+  repeated string     chain_ids = 1;  // ordered node UUIDs in causal chain
+  repeated CausalEdge edges     = 2;  // edges in the chain
+}
+
+// -- Klein Pathfinding --
+
+message KleinPathRequest {
+  string start_node_id = 1;
+  string goal_node_id  = 2;
+  string collection    = 3;
+}
+
+message KleinPathResponse {
+  bool            found = 1;
+  repeated string path  = 2;  // node UUIDs from start to goal (Klein geodesic)
+  double          cost  = 3;  // total hyperbolic distance
+}
+
+message ShortestPathCheckRequest {
+  string node_id_a  = 1;  // endpoint A
+  string node_id_b  = 2;  // endpoint B
+  string node_id_c  = 3;  // point to check
+  string collection = 4;
+}
+
+message ShortestPathCheckResponse {
+  bool   on_path  = 1;  // true if C lies on the geodesic between A and B
+  double distance = 2;  // Klein distance A→B
 }

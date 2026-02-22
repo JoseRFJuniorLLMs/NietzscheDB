@@ -610,7 +610,7 @@ let clients: Vec<_> = (0..4)
 
 ## 13. Conclusão
 
-NietzscheDB ocupa um nicho único: **banco de dados vetorial hiperbólico com grafo nativo**.
+NietzscheDB ocupa um nicho único: **banco de dados multi-manifold com grafo nativo**.
 Nenhum dos competidores avaliados combina as três propriedades simultaneamente.
 
 **Para workloads puramente vectoriais (sem grafo):** Qdrant é ~3× mais rápido no KNN.

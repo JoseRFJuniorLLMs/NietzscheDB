@@ -1172,7 +1172,7 @@ e implementar a Will to Power.
 
 ### 15.9 Posicionamento Final
 
-Com estas adicoes, o NietzscheDB deixa de ser apenas *"Temporal Hyperbolic Graph Database"* e se torna:
+Com estas adicoes, o NietzscheDB consolida seu status como *"Multi-Manifold Graph Database"* e se torna:
 
 > **NietzscheDB: Autopoietic Subconscious Engine**
 > *The first database that dreams, forgets, evolves, and thinks counterfactually.*

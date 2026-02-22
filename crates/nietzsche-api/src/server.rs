@@ -16,7 +16,7 @@
 //! db.write().await →   &mut NietzscheDB (exclusive mutations)
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use tonic::{Request, Response, Status};
@@ -24,11 +24,12 @@ use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
 use nietzsche_graph::{
-    BackpressureSignal, CollectionConfig, CollectionManager,
+    AdjEntry, BackpressureSignal, CausalType, CollectionConfig, CollectionManager,
     Edge, EdgeType, GraphError, MetadataFilter, Node, NodeType, PoincareVector,
     traversal::{BfsConfig, DijkstraConfig},
     bfs, dijkstra,
 };
+use nietzsche_hyp_ops::{klein, riemann, minkowski, manifold};
 use nietzsche_pregel::{DiffusionConfig, DiffusionEngine};
 use nietzsche_query::{ParamValue, Params, execute_with_indexes, parse};
 use nietzsche_sleep::{SleepConfig, SleepCycle};
@@ -2430,6 +2431,495 @@ impl NietzscheDb for NietzscheServer {
         info!(reaped = reaped, collection = %col_name, "ReapExpired");
         Ok(Response::new(nietzsche::ReapExpiredResponse {
             reaped_count: reaped as u64,
+        }))
+    }
+
+    // ── Multi-Manifold Operations (Klein · Riemann · Minkowski) ──────────
+
+    /// Dialectical synthesis of two concepts via the Riemann sphere.
+    ///
+    /// Projects both node embeddings to the sphere, computes the midpoint,
+    /// and returns the result as a new Poincaré ball point that is more
+    /// abstract (closer to the origin) than either input.
+    #[instrument(skip(self, req))]
+    async fn synthesis(
+        &self,
+        req: Request<nietzsche::SynthesisRequest>,
+    ) -> Result<Response<nietzsche::SynthesisResponse>, Status> {
+        let r = req.into_inner();
+        let id_a = parse_uuid(&r.node_id_a, "node_id_a")?;
+        let id_b = parse_uuid(&r.node_id_b, "node_id_b")?;
+
+        let shared = get_col!(self.cm, &r.collection);
+        let db = shared.read().await;
+
+        // Fetch embeddings
+        let emb_a = db.storage().get_embedding(&id_a).map_err(graph_err)?
+            .ok_or_else(|| Status::not_found(format!("node {id_a} not found")))?;
+        let emb_b = db.storage().get_embedding(&id_b).map_err(graph_err)?
+            .ok_or_else(|| Status::not_found(format!("node {id_b} not found")))?;
+
+        // Promote f32 → f64 for manifold math
+        let coords_a = emb_a.coords_f64();
+        let coords_b = emb_b.coords_f64();
+
+        // Riemann synthesis: Poincaré → Sphere → midpoint → Poincaré (shallower)
+        let synthesis_raw = riemann::synthesis(&coords_a, &coords_b)
+            .map_err(|e| Status::internal(format!("synthesis failed: {e}")))?;
+        // Post-query sanitize: ensure ‖x‖ < 1.0 after inter-manifold projection
+        let synthesis_coords = manifold::sanitize_poincare_f64(&synthesis_raw);
+
+        // Find nearest existing node to the synthesis point
+        let synthesis_pv = PoincareVector::from_f64(synthesis_coords.clone());
+        let nearest = db.knn(&synthesis_pv, 1).map_err(graph_err)?;
+        let (nearest_id, nearest_dist) = nearest.first()
+            .map(|(id, d)| (id.to_string(), *d))
+            .unwrap_or_default();
+
+        info!(
+            node_a = %id_a, node_b = %id_b,
+            nearest = %nearest_id, distance = nearest_dist,
+            "Synthesis complete"
+        );
+
+        Ok(Response::new(nietzsche::SynthesisResponse {
+            synthesis_coords,
+            nearest_node_id: nearest_id,
+            nearest_distance: nearest_dist,
+        }))
+    }
+
+    /// Multi-point synthesis: find the unifying concept of N nodes.
+    #[instrument(skip(self, req))]
+    async fn synthesis_multi(
+        &self,
+        req: Request<nietzsche::SynthesisMultiRequest>,
+    ) -> Result<Response<nietzsche::SynthesisResponse>, Status> {
+        let r = req.into_inner();
+        if r.node_ids.len() < 2 {
+            return Err(Status::invalid_argument("synthesis_multi requires at least 2 node IDs"));
+        }
+
+        let shared = get_col!(self.cm, &r.collection);
+        let db = shared.read().await;
+
+        // Fetch all embeddings (f64)
+        let mut coords_list: Vec<Vec<f64>> = Vec::with_capacity(r.node_ids.len());
+        for id_str in &r.node_ids {
+            let id = parse_uuid(id_str, "node_ids")?;
+            let emb = db.storage().get_embedding(&id).map_err(graph_err)?
+                .ok_or_else(|| Status::not_found(format!("node {id} not found")))?;
+            coords_list.push(emb.coords_f64());
+        }
+
+        let refs: Vec<&[f64]> = coords_list.iter().map(|v| v.as_slice()).collect();
+        let synthesis_raw = riemann::synthesis_multi(&refs)
+            .map_err(|e| Status::internal(format!("synthesis_multi failed: {e}")))?;
+        // Post-query sanitize: ensure ‖x‖ < 1.0 after inter-manifold projection
+        let synthesis_coords = manifold::sanitize_poincare_f64(&synthesis_raw);
+
+        // Find nearest existing node
+        let synthesis_pv = PoincareVector::from_f64(synthesis_coords.clone());
+        let nearest = db.knn(&synthesis_pv, 1).map_err(graph_err)?;
+        let (nearest_id, nearest_dist) = nearest.first()
+            .map(|(id, d)| (id.to_string(), *d))
+            .unwrap_or_default();
+
+        info!(
+            count = r.node_ids.len(),
+            nearest = %nearest_id, distance = nearest_dist,
+            "SynthesisMulti complete"
+        );
+
+        Ok(Response::new(nietzsche::SynthesisResponse {
+            synthesis_coords,
+            nearest_node_id: nearest_id,
+            nearest_distance: nearest_dist,
+        }))
+    }
+
+    /// Return only causally-connected (timelike) neighbors of a node.
+    ///
+    /// Uses the Minkowski spacetime interval stored on each edge to filter
+    /// by ds² < 0 (timelike) and direction (future/past cone).
+    #[instrument(skip(self, req))]
+    async fn causal_neighbors(
+        &self,
+        req: Request<nietzsche::CausalNeighborsRequest>,
+    ) -> Result<Response<nietzsche::CausalNeighborsResponse>, Status> {
+        let r = req.into_inner();
+        let node_id = parse_uuid(&r.node_id, "node_id")?;
+
+        let shared = get_col!(self.cm, &r.collection);
+        let db = shared.read().await;
+
+        // Get origin node meta for timestamp
+        let origin_meta = db.get_node_meta(node_id).map_err(graph_err)?
+            .ok_or_else(|| Status::not_found(format!("node {node_id} not found")))?;
+        let origin_ts = origin_meta.created_at;
+
+        // Determine direction filter
+        let direction = match r.direction.to_lowercase().as_str() {
+            "future" => "future",
+            "past" => "past",
+            _ => "both",
+        };
+
+        // Collect edges from adjacency (both directions)
+        let entries_out = db.adjacency().entries_out(&node_id);
+        let entries_in = db.adjacency().entries_in(&node_id);
+
+        let mut causal_edges = Vec::new();
+
+        // Helper: check an adjacency entry, load the edge, filter by causality
+        let process_entry = |entry: &AdjEntry, is_outgoing: bool| -> Option<nietzsche::CausalEdge> {
+            let edge = db.storage().get_edge(&entry.edge_id).ok()??;
+
+            // Check causal type
+            if !matches!(edge.causal_type, CausalType::Timelike) {
+                // If edge has pre-computed causality and it's not timelike, skip.
+                // For legacy edges (Unknown), compute on-the-fly.
+                if !matches!(edge.causal_type, CausalType::Unknown) {
+                    return None;
+                }
+                // Legacy edge: compute Minkowski interval on-the-fly
+                let target_id = if is_outgoing { edge.to } else { edge.from };
+                let target_meta = db.get_node_meta(target_id).ok()??;
+                let emb_origin = db.storage().get_embedding(&node_id).ok()??;
+                let emb_target = db.storage().get_embedding(&target_id).ok()??;
+                let interval = minkowski::minkowski_interval(
+                    &emb_origin.coords, &emb_target.coords,
+                    origin_ts, target_meta.created_at,
+                    minkowski::DEFAULT_CAUSAL_SPEED,
+                );
+                if !minkowski::is_timelike(interval) {
+                    return None;
+                }
+            }
+
+            // Direction filter using timestamps
+            let target_id = if is_outgoing { edge.to } else { edge.from };
+            let target_meta = db.get_node_meta(target_id).ok()??;
+            match direction {
+                "future" if target_meta.created_at <= origin_ts => return None,
+                "past" if target_meta.created_at >= origin_ts => return None,
+                _ => {}
+            }
+
+            Some(nietzsche::CausalEdge {
+                edge_id: edge.id.to_string(),
+                from_node_id: edge.from.to_string(),
+                to_node_id: edge.to.to_string(),
+                minkowski_interval: edge.minkowski_interval as f64,
+                causal_type: format!("{}", edge.causal_type),
+                edge_type: format!("{:?}", edge.edge_type),
+            })
+        };
+
+        for entry in &entries_out {
+            if let Some(ce) = process_entry(entry, true) {
+                causal_edges.push(ce);
+            }
+        }
+        for entry in &entries_in {
+            if let Some(ce) = process_entry(entry, false) {
+                causal_edges.push(ce);
+            }
+        }
+
+        info!(
+            node = %node_id, direction = %direction,
+            causal_count = causal_edges.len(),
+            "CausalNeighbors"
+        );
+
+        Ok(Response::new(nietzsche::CausalNeighborsResponse {
+            edges: causal_edges,
+        }))
+    }
+
+    /// Recursive causal chain traversal following only timelike edges.
+    ///
+    /// Starting from a node, follows the causal chain (ds² < 0) in the
+    /// requested direction up to max_depth. Used for "WHY did X happen?"
+    /// queries — returns the chain of events that provably led to X.
+    #[instrument(skip(self, req))]
+    async fn causal_chain(
+        &self,
+        req: Request<nietzsche::CausalChainRequest>,
+    ) -> Result<Response<nietzsche::CausalChainResponse>, Status> {
+        let r = req.into_inner();
+        let start_id = parse_uuid(&r.node_id, "node_id")?;
+        let max_depth = if r.max_depth > 0 { r.max_depth as usize } else { 10 };
+        let is_past = r.direction.to_lowercase() != "future";
+
+        let shared = get_col!(self.cm, &r.collection);
+        let db = shared.read().await;
+
+        let mut chain_ids: Vec<String> = vec![start_id.to_string()];
+        let mut chain_edges: Vec<nietzsche::CausalEdge> = Vec::new();
+        let mut visited = HashSet::new();
+        visited.insert(start_id);
+
+        let mut queue: VecDeque<(Uuid, usize)> = VecDeque::new();
+        queue.push_back((start_id, 0));
+
+        while let Some((current_id, depth)) = queue.pop_front() {
+            if depth >= max_depth {
+                continue;
+            }
+
+            let current_meta = match db.get_node_meta(current_id).map_err(graph_err)? {
+                Some(m) => m,
+                None => continue,
+            };
+
+            // Get adjacency entries in the desired direction
+            let entries = if is_past {
+                db.adjacency().entries_in(&current_id)
+            } else {
+                db.adjacency().entries_out(&current_id)
+            };
+
+            for entry in &entries {
+                if visited.contains(&entry.neighbor_id) {
+                    continue;
+                }
+
+                // Load the full edge to check causality
+                let edge = match db.storage().get_edge(&entry.edge_id).ok().flatten() {
+                    Some(e) => e,
+                    None => continue,
+                };
+
+                // Check timelike: either pre-computed or compute on-the-fly
+                let is_causal = match edge.causal_type {
+                    CausalType::Timelike => true,
+                    CausalType::Spacelike | CausalType::Lightlike => false,
+                    CausalType::Unknown => {
+                        // Legacy edge: compute Minkowski interval
+                        let neighbor_meta = match db.get_node_meta(entry.neighbor_id).ok().flatten() {
+                            Some(m) => m,
+                            None => continue,
+                        };
+                        let emb_cur = match db.storage().get_embedding(&current_id).ok().flatten() {
+                            Some(e) => e,
+                            None => continue,
+                        };
+                        let emb_nbr = match db.storage().get_embedding(&entry.neighbor_id).ok().flatten() {
+                            Some(e) => e,
+                            None => continue,
+                        };
+                        let interval = minkowski::minkowski_interval(
+                            &emb_cur.coords, &emb_nbr.coords,
+                            current_meta.created_at, neighbor_meta.created_at,
+                            minkowski::DEFAULT_CAUSAL_SPEED,
+                        );
+                        minkowski::is_timelike(interval)
+                    }
+                };
+
+                if !is_causal {
+                    continue;
+                }
+
+                // Direction check on timestamps
+                let neighbor_meta = match db.get_node_meta(entry.neighbor_id).ok().flatten() {
+                    Some(m) => m,
+                    None => continue,
+                };
+                if is_past && neighbor_meta.created_at > current_meta.created_at {
+                    continue;
+                }
+                if !is_past && neighbor_meta.created_at < current_meta.created_at {
+                    continue;
+                }
+
+                visited.insert(entry.neighbor_id);
+                chain_ids.push(entry.neighbor_id.to_string());
+                chain_edges.push(nietzsche::CausalEdge {
+                    edge_id: edge.id.to_string(),
+                    from_node_id: edge.from.to_string(),
+                    to_node_id: edge.to.to_string(),
+                    minkowski_interval: edge.minkowski_interval as f64,
+                    causal_type: format!("{}", edge.causal_type),
+                    edge_type: format!("{:?}", edge.edge_type),
+                });
+                queue.push_back((entry.neighbor_id, depth + 1));
+            }
+        }
+
+        info!(
+            start = %start_id,
+            direction = if is_past { "past" } else { "future" },
+            chain_len = chain_ids.len(),
+            "CausalChain"
+        );
+
+        Ok(Response::new(nietzsche::CausalChainResponse {
+            chain_ids,
+            edges: chain_edges,
+        }))
+    }
+
+    /// Find the shortest path between two nodes using Klein model geodesics.
+    ///
+    /// Projects all embeddings to the Klein model (where geodesics are
+    /// straight lines), runs Dijkstra with Klein distances, then returns
+    /// the path as Poincaré-space node IDs.
+    #[instrument(skip(self, req))]
+    async fn klein_path(
+        &self,
+        req: Request<nietzsche::KleinPathRequest>,
+    ) -> Result<Response<nietzsche::KleinPathResponse>, Status> {
+        let r = req.into_inner();
+        let start_id = parse_uuid(&r.start_node_id, "start_node_id")?;
+        let goal_id = parse_uuid(&r.goal_node_id, "goal_node_id")?;
+
+        let shared = get_col!(self.cm, &r.collection);
+        let db = shared.read().await;
+
+        // Verify both nodes exist
+        db.get_node_meta(start_id).map_err(graph_err)?
+            .ok_or_else(|| Status::not_found(format!("start node {start_id} not found")))?;
+        db.get_node_meta(goal_id).map_err(graph_err)?
+            .ok_or_else(|| Status::not_found(format!("goal node {goal_id} not found")))?;
+
+        // Klein-projected Dijkstra: BFS with priority queue using Klein distance
+        let mut dist_map: HashMap<Uuid, f64> = HashMap::new();
+        let mut prev_map: HashMap<Uuid, Uuid> = HashMap::new();
+        let mut heap = std::collections::BinaryHeap::new();
+
+        dist_map.insert(start_id, 0.0);
+        // BinaryHeap is max-heap; use Reverse for min-heap behavior
+        heap.push(std::cmp::Reverse((ordered_float::OrderedFloat(0.0_f64), start_id)));
+
+        let mut found = false;
+
+        while let Some(std::cmp::Reverse((ordered_float::OrderedFloat(cost), current))) = heap.pop() {
+            if current == goal_id {
+                found = true;
+                break;
+            }
+
+            if cost > *dist_map.get(&current).unwrap_or(&f64::INFINITY) {
+                continue; // outdated entry
+            }
+
+            // Get current node's embedding → project to Klein
+            let emb_cur = match db.storage().get_embedding(&current).ok().flatten() {
+                Some(e) => e,
+                None => continue,
+            };
+            let coords_cur_f64 = emb_cur.coords_f64();
+            let klein_cur = match klein::to_klein(&coords_cur_f64) {
+                Ok(k) => k,
+                Err(_) => continue,
+            };
+
+            // Explore neighbors
+            let neighbors_out = db.adjacency().entries_out(&current);
+            for entry in &neighbors_out {
+                let emb_nbr = match db.storage().get_embedding(&entry.neighbor_id).ok().flatten() {
+                    Some(e) => e,
+                    None => continue,
+                };
+                let coords_nbr_f64 = emb_nbr.coords_f64();
+                let klein_nbr = match klein::to_klein(&coords_nbr_f64) {
+                    Ok(k) => k,
+                    Err(_) => continue,
+                };
+
+                // Klein distance (same as hyperbolic distance, straight-line geodesic)
+                let edge_cost = klein::klein_distance(&klein_cur, &klein_nbr);
+                let new_cost = cost + edge_cost;
+
+                if new_cost < *dist_map.get(&entry.neighbor_id).unwrap_or(&f64::INFINITY) {
+                    dist_map.insert(entry.neighbor_id, new_cost);
+                    prev_map.insert(entry.neighbor_id, current);
+                    heap.push(std::cmp::Reverse((ordered_float::OrderedFloat(new_cost), entry.neighbor_id)));
+                }
+            }
+        }
+
+        if !found {
+            return Ok(Response::new(nietzsche::KleinPathResponse {
+                found: false,
+                path: vec![],
+                cost: 0.0,
+            }));
+        }
+
+        // Reconstruct path
+        let mut path = vec![goal_id.to_string()];
+        let mut cursor = goal_id;
+        while let Some(&prev) = prev_map.get(&cursor) {
+            path.push(prev.to_string());
+            cursor = prev;
+            if cursor == start_id { break; }
+        }
+        path.reverse();
+
+        let total_cost = dist_map.get(&goal_id).copied().unwrap_or(0.0);
+
+        info!(
+            start = %start_id, goal = %goal_id,
+            path_len = path.len(), cost = total_cost,
+            "KleinPath found"
+        );
+
+        Ok(Response::new(nietzsche::KleinPathResponse {
+            found: true,
+            path,
+            cost: total_cost,
+        }))
+    }
+
+    /// Check if a point C lies on the geodesic between A and B in Klein space.
+    ///
+    /// Projects all three node embeddings to the Klein model and performs
+    /// an O(1) collinearity + betweenness check.
+    #[instrument(skip(self, req))]
+    async fn is_on_shortest_path(
+        &self,
+        req: Request<nietzsche::ShortestPathCheckRequest>,
+    ) -> Result<Response<nietzsche::ShortestPathCheckResponse>, Status> {
+        let r = req.into_inner();
+        let id_a = parse_uuid(&r.node_id_a, "node_id_a")?;
+        let id_b = parse_uuid(&r.node_id_b, "node_id_b")?;
+        let id_c = parse_uuid(&r.node_id_c, "node_id_c")?;
+
+        let shared = get_col!(self.cm, &r.collection);
+        let db = shared.read().await;
+
+        // Fetch embeddings
+        let emb_a = db.storage().get_embedding(&id_a).map_err(graph_err)?
+            .ok_or_else(|| Status::not_found(format!("node {id_a} not found")))?;
+        let emb_b = db.storage().get_embedding(&id_b).map_err(graph_err)?
+            .ok_or_else(|| Status::not_found(format!("node {id_b} not found")))?;
+        let emb_c = db.storage().get_embedding(&id_c).map_err(graph_err)?
+            .ok_or_else(|| Status::not_found(format!("node {id_c} not found")))?;
+
+        // Project to Klein
+        let klein_a = klein::to_klein(&emb_a.coords_f64())
+            .map_err(|e| Status::internal(format!("Klein projection failed for A: {e}")))?;
+        let klein_b = klein::to_klein(&emb_b.coords_f64())
+            .map_err(|e| Status::internal(format!("Klein projection failed for B: {e}")))?;
+        let klein_c = klein::to_klein(&emb_c.coords_f64())
+            .map_err(|e| Status::internal(format!("Klein projection failed for C: {e}")))?;
+
+        let on_path = klein::is_on_shortest_path(&klein_a, &klein_b, &klein_c, 1e-7);
+        let distance = klein::klein_distance(&klein_a, &klein_b);
+
+        info!(
+            a = %id_a, b = %id_b, c = %id_c,
+            on_path = on_path, distance = distance,
+            "IsOnShortestPath"
+        );
+
+        Ok(Response::new(nietzsche::ShortestPathCheckResponse {
+            on_path,
+            distance,
         }))
     }
 }

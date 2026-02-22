@@ -1,12 +1,12 @@
 //! # nietzsche-graph
 //!
-//! Hyperbolic graph engine for NietzscheDB.
+//! Multi-manifold graph engine for NietzscheDB.
 //!
 //! Provides the core data model, persistent storage, and in-memory index
-//! for the knowledge graph:
+//! for the knowledge graph. 4 Geometries · 1 Storage · 0 Duplication:
 //!
 //! - [`model::PoincareVector`]     — points in the Poincaré ball (‖x‖ < 1.0)
-//! - [`model::Node`]               — hyperbolic graph node with energy + Hausdorff fields
+//! - [`model::Node`]               — graph node with energy + Hausdorff fields
 //! - [`model::NodeMeta`]           — lightweight node metadata (no embedding)
 //! - [`model::Edge`]               — directed typed edge
 //! - [`adjacency::AdjacencyIndex`] — lock-free bidirectional adjacency index
@@ -56,7 +56,7 @@ pub use collection_manager::{CollectionConfig, CollectionInfo, CollectionManager
 pub use db::{BackpressureSignal, MetadataFilter, MockVectorStore, NietzscheDB, VectorStore};
 pub use embedded_vector_store::{AnyVectorStore, EmbeddedVectorStore, VectorMetric};
 pub use error::GraphError;
-pub use model::{Edge, EdgeType, Node, NodeMeta, NodeType, PoincareVector, SparseVector};
+pub use model::{CausalType, Edge, EdgeType, Node, NodeMeta, NodeType, PoincareVector, SparseVector};
 pub use storage::{GraphStorage, NodeIterator, NodeMetaIterator, EdgeIterator};
 pub use transaction::{Transaction, TxError, TxOp, TxReport};
 pub use traversal::{

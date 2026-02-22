@@ -6,7 +6,7 @@
 ![Size](https://img.shields.io/docker/image-size/yarlabs/hyperspacedb/latest?style=for-the-badge)
 
 **The Spatial Memory for AI.**
-HyperspaceDB is a high-performance, hyperbolic vector database written in Rust. It features 1-bit quantization, async replication, and native support for hierarchical datasets (Poincaré ball model).
+NietzscheDB is a high-performance, multi-manifold graph database written in Rust. It features 4 non-Euclidean geometries (Poincaré · Klein · Riemann · Minkowski), 1-bit quantization, async replication, and native support for hierarchical datasets.
 
 ---
 

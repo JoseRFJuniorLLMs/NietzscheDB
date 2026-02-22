@@ -5,7 +5,7 @@
 ## Manual de Referencia Completo
 
 **Versao:** 2.0 (NQL v2 — Fases 1-11 implementadas)
-**Banco:** NietzscheDB — Temporal Hyperbolic Graph Database
+**Banco:** NietzscheDB — Multi-Manifold Graph Database (Poincaré · Klein · Riemann · Minkowski)
 **Parser:** pest (PEG Grammar) em Rust
 **Repositorio:** github.com/JoseRFJuniorLLMs/NietzscheDB
 

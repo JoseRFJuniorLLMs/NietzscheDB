@@ -30,6 +30,7 @@ const (
 	NietzscheDB_DeleteEdge_FullMethodName           = "/nietzsche.NietzscheDB/DeleteEdge"
 	NietzscheDB_MergeNode_FullMethodName            = "/nietzsche.NietzscheDB/MergeNode"
 	NietzscheDB_MergeEdge_FullMethodName            = "/nietzsche.NietzscheDB/MergeEdge"
+	NietzscheDB_IncrementEdgeMeta_FullMethodName    = "/nietzsche.NietzscheDB/IncrementEdgeMeta"
 	NietzscheDB_Query_FullMethodName                = "/nietzsche.NietzscheDB/Query"
 	NietzscheDB_KnnSearch_FullMethodName            = "/nietzsche.NietzscheDB/KnnSearch"
 	NietzscheDB_Bfs_FullMethodName                  = "/nietzsche.NietzscheDB/Bfs"
@@ -58,9 +59,30 @@ const (
 	NietzscheDB_ListBackups_FullMethodName          = "/nietzsche.NietzscheDB/ListBackups"
 	NietzscheDB_RestoreBackup_FullMethodName        = "/nietzsche.NietzscheDB/RestoreBackup"
 	NietzscheDB_FullTextSearch_FullMethodName       = "/nietzsche.NietzscheDB/FullTextSearch"
+	NietzscheDB_HybridSearch_FullMethodName         = "/nietzsche.NietzscheDB/HybridSearch"
 	NietzscheDB_SubscribeCDC_FullMethodName         = "/nietzsche.NietzscheDB/SubscribeCDC"
+	NietzscheDB_Synthesis_FullMethodName            = "/nietzsche.NietzscheDB/Synthesis"
+	NietzscheDB_SynthesisMulti_FullMethodName       = "/nietzsche.NietzscheDB/SynthesisMulti"
+	NietzscheDB_CausalNeighbors_FullMethodName      = "/nietzsche.NietzscheDB/CausalNeighbors"
+	NietzscheDB_CausalChain_FullMethodName          = "/nietzsche.NietzscheDB/CausalChain"
+	NietzscheDB_KleinPath_FullMethodName            = "/nietzsche.NietzscheDB/KleinPath"
+	NietzscheDB_IsOnShortestPath_FullMethodName     = "/nietzsche.NietzscheDB/IsOnShortestPath"
 	NietzscheDB_GetStats_FullMethodName             = "/nietzsche.NietzscheDB/GetStats"
 	NietzscheDB_HealthCheck_FullMethodName          = "/nietzsche.NietzscheDB/HealthCheck"
+	NietzscheDB_ListRPush_FullMethodName            = "/nietzsche.NietzscheDB/ListRPush"
+	NietzscheDB_ListLRange_FullMethodName           = "/nietzsche.NietzscheDB/ListLRange"
+	NietzscheDB_ListLen_FullMethodName              = "/nietzsche.NietzscheDB/ListLen"
+	NietzscheDB_ExchangeGossip_FullMethodName       = "/nietzsche.NietzscheDB/ExchangeGossip"
+	NietzscheDB_SetSchema_FullMethodName            = "/nietzsche.NietzscheDB/SetSchema"
+	NietzscheDB_GetSchema_FullMethodName            = "/nietzsche.NietzscheDB/GetSchema"
+	NietzscheDB_ListSchemas_FullMethodName          = "/nietzsche.NietzscheDB/ListSchemas"
+	NietzscheDB_CreateIndex_FullMethodName          = "/nietzsche.NietzscheDB/CreateIndex"
+	NietzscheDB_DropIndex_FullMethodName            = "/nietzsche.NietzscheDB/DropIndex"
+	NietzscheDB_ListIndexes_FullMethodName          = "/nietzsche.NietzscheDB/ListIndexes"
+	NietzscheDB_CacheSet_FullMethodName             = "/nietzsche.NietzscheDB/CacheSet"
+	NietzscheDB_CacheGet_FullMethodName             = "/nietzsche.NietzscheDB/CacheGet"
+	NietzscheDB_CacheDel_FullMethodName             = "/nietzsche.NietzscheDB/CacheDel"
+	NietzscheDB_ReapExpired_FullMethodName          = "/nietzsche.NietzscheDB/ReapExpired"
 )
 
 // NietzscheDBClient is the client API for NietzscheDB service.
@@ -82,6 +104,8 @@ type NietzscheDBClient interface {
 	// ── MERGE (upsert semantic: get-or-create) ────────────────────────────────────
 	MergeNode(ctx context.Context, in *MergeNodeRequest, opts ...grpc.CallOption) (*MergeNodeResponse, error)
 	MergeEdge(ctx context.Context, in *MergeEdgeRequest, opts ...grpc.CallOption) (*MergeEdgeResponse, error)
+	// ── Edge metadata increment (atomic counter) ───────────────────────────────
+	IncrementEdgeMeta(ctx context.Context, in *IncrementEdgeMetaRequest, opts ...grpc.CallOption) (*IncrementEdgeMetaResponse, error)
 	// ── NQL query (Nietzsche Query Language) ─────────────────────────────
 	Query(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (*QueryResponse, error)
 	// ── Vector search (hyperbolic KNN) ───────────────────────────────────
@@ -121,11 +145,38 @@ type NietzscheDBClient interface {
 	RestoreBackup(ctx context.Context, in *RestoreBackupRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	// ── Full-Text Search ────────────────────────────────────────────────
 	FullTextSearch(ctx context.Context, in *FullTextSearchRequest, opts ...grpc.CallOption) (*FullTextSearchResponse, error)
+	HybridSearch(ctx context.Context, in *HybridSearchRequest, opts ...grpc.CallOption) (*KnnResponse, error)
 	// ── Change Data Capture ──────────────────────────────────────────────
 	SubscribeCDC(ctx context.Context, in *CdcRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CdcEvent], error)
+	// ── Multi-Manifold Operations (Phase M — Klein · Riemann · Minkowski) ──
+	Synthesis(ctx context.Context, in *SynthesisRequest, opts ...grpc.CallOption) (*SynthesisResponse, error)
+	SynthesisMulti(ctx context.Context, in *SynthesisMultiRequest, opts ...grpc.CallOption) (*SynthesisResponse, error)
+	CausalNeighbors(ctx context.Context, in *CausalNeighborsRequest, opts ...grpc.CallOption) (*CausalNeighborsResponse, error)
+	CausalChain(ctx context.Context, in *CausalChainRequest, opts ...grpc.CallOption) (*CausalChainResponse, error)
+	KleinPath(ctx context.Context, in *KleinPathRequest, opts ...grpc.CallOption) (*KleinPathResponse, error)
+	IsOnShortestPath(ctx context.Context, in *ShortestPathCheckRequest, opts ...grpc.CallOption) (*ShortestPathCheckResponse, error)
 	// ── Admin ─────────────────────────────────────────────────────────────
 	GetStats(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*StatsResponse, error)
 	HealthCheck(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*StatusResponse, error)
+	// ── ListStore (RPUSH/LRANGE) ──────────────────────────────────────────
+	ListRPush(ctx context.Context, in *ListPushRequest, opts ...grpc.CallOption) (*ListPushResponse, error)
+	ListLRange(ctx context.Context, in *ListRangeRequest, opts ...grpc.CallOption) (*ListRangeResponse, error)
+	ListLen(ctx context.Context, in *ListLenRequest, opts ...grpc.CallOption) (*ListLenResponse, error)
+	// ── Cluster gossip (Phase G) ────────────────────────────────────────
+	ExchangeGossip(ctx context.Context, in *GossipRequest, opts ...grpc.CallOption) (*GossipResponse, error)
+	// ── Schema Validation ──────────────────────────────────────────────
+	SetSchema(ctx context.Context, in *SetSchemaRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	GetSchema(ctx context.Context, in *GetSchemaRequest, opts ...grpc.CallOption) (*GetSchemaResponse, error)
+	ListSchemas(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListSchemasResponse, error)
+	// ── Secondary Indexes (Phase E) ──────────────────────────────────
+	CreateIndex(ctx context.Context, in *CreateIndexRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	DropIndex(ctx context.Context, in *DropIndexRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	ListIndexes(ctx context.Context, in *ListIndexesRequest, opts ...grpc.CallOption) (*ListIndexesResponse, error)
+	// ── Cache (Phase C — Redis replacement) ────────────────────────
+	CacheSet(ctx context.Context, in *CacheSetRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	CacheGet(ctx context.Context, in *CacheGetRequest, opts ...grpc.CallOption) (*CacheGetResponse, error)
+	CacheDel(ctx context.Context, in *CacheDelRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	ReapExpired(ctx context.Context, in *ReapExpiredRequest, opts ...grpc.CallOption) (*ReapExpiredResponse, error)
 }
 
 type nietzscheDBClient struct {
@@ -240,6 +291,16 @@ func (c *nietzscheDBClient) MergeEdge(ctx context.Context, in *MergeEdgeRequest,
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(MergeEdgeResponse)
 	err := c.cc.Invoke(ctx, NietzscheDB_MergeEdge_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) IncrementEdgeMeta(ctx context.Context, in *IncrementEdgeMetaRequest, opts ...grpc.CallOption) (*IncrementEdgeMetaResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(IncrementEdgeMetaResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_IncrementEdgeMeta_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -526,6 +587,16 @@ func (c *nietzscheDBClient) FullTextSearch(ctx context.Context, in *FullTextSear
 	return out, nil
 }
 
+func (c *nietzscheDBClient) HybridSearch(ctx context.Context, in *HybridSearchRequest, opts ...grpc.CallOption) (*KnnResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(KnnResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_HybridSearch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nietzscheDBClient) SubscribeCDC(ctx context.Context, in *CdcRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CdcEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &NietzscheDB_ServiceDesc.Streams[0], NietzscheDB_SubscribeCDC_FullMethodName, cOpts...)
@@ -545,6 +616,66 @@ func (c *nietzscheDBClient) SubscribeCDC(ctx context.Context, in *CdcRequest, op
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NietzscheDB_SubscribeCDCClient = grpc.ServerStreamingClient[CdcEvent]
 
+func (c *nietzscheDBClient) Synthesis(ctx context.Context, in *SynthesisRequest, opts ...grpc.CallOption) (*SynthesisResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SynthesisResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_Synthesis_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) SynthesisMulti(ctx context.Context, in *SynthesisMultiRequest, opts ...grpc.CallOption) (*SynthesisResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SynthesisResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_SynthesisMulti_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) CausalNeighbors(ctx context.Context, in *CausalNeighborsRequest, opts ...grpc.CallOption) (*CausalNeighborsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CausalNeighborsResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_CausalNeighbors_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) CausalChain(ctx context.Context, in *CausalChainRequest, opts ...grpc.CallOption) (*CausalChainResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CausalChainResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_CausalChain_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) KleinPath(ctx context.Context, in *KleinPathRequest, opts ...grpc.CallOption) (*KleinPathResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(KleinPathResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_KleinPath_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) IsOnShortestPath(ctx context.Context, in *ShortestPathCheckRequest, opts ...grpc.CallOption) (*ShortestPathCheckResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ShortestPathCheckResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_IsOnShortestPath_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nietzscheDBClient) GetStats(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*StatsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StatsResponse)
@@ -559,6 +690,146 @@ func (c *nietzscheDBClient) HealthCheck(ctx context.Context, in *Empty, opts ...
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StatusResponse)
 	err := c.cc.Invoke(ctx, NietzscheDB_HealthCheck_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) ListRPush(ctx context.Context, in *ListPushRequest, opts ...grpc.CallOption) (*ListPushResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListPushResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_ListRPush_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) ListLRange(ctx context.Context, in *ListRangeRequest, opts ...grpc.CallOption) (*ListRangeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListRangeResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_ListLRange_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) ListLen(ctx context.Context, in *ListLenRequest, opts ...grpc.CallOption) (*ListLenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListLenResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_ListLen_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) ExchangeGossip(ctx context.Context, in *GossipRequest, opts ...grpc.CallOption) (*GossipResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GossipResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_ExchangeGossip_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) SetSchema(ctx context.Context, in *SetSchemaRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_SetSchema_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) GetSchema(ctx context.Context, in *GetSchemaRequest, opts ...grpc.CallOption) (*GetSchemaResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSchemaResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_GetSchema_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) ListSchemas(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListSchemasResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSchemasResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_ListSchemas_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) CreateIndex(ctx context.Context, in *CreateIndexRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_CreateIndex_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) DropIndex(ctx context.Context, in *DropIndexRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_DropIndex_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) ListIndexes(ctx context.Context, in *ListIndexesRequest, opts ...grpc.CallOption) (*ListIndexesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListIndexesResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_ListIndexes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) CacheSet(ctx context.Context, in *CacheSetRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_CacheSet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) CacheGet(ctx context.Context, in *CacheGetRequest, opts ...grpc.CallOption) (*CacheGetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CacheGetResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_CacheGet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) CacheDel(ctx context.Context, in *CacheDelRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_CacheDel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) ReapExpired(ctx context.Context, in *ReapExpiredRequest, opts ...grpc.CallOption) (*ReapExpiredResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReapExpiredResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_ReapExpired_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -584,6 +855,8 @@ type NietzscheDBServer interface {
 	// ── MERGE (upsert semantic: get-or-create) ────────────────────────────────────
 	MergeNode(context.Context, *MergeNodeRequest) (*MergeNodeResponse, error)
 	MergeEdge(context.Context, *MergeEdgeRequest) (*MergeEdgeResponse, error)
+	// ── Edge metadata increment (atomic counter) ───────────────────────────────
+	IncrementEdgeMeta(context.Context, *IncrementEdgeMetaRequest) (*IncrementEdgeMetaResponse, error)
 	// ── NQL query (Nietzsche Query Language) ─────────────────────────────
 	Query(context.Context, *QueryRequest) (*QueryResponse, error)
 	// ── Vector search (hyperbolic KNN) ───────────────────────────────────
@@ -623,11 +896,38 @@ type NietzscheDBServer interface {
 	RestoreBackup(context.Context, *RestoreBackupRequest) (*StatusResponse, error)
 	// ── Full-Text Search ────────────────────────────────────────────────
 	FullTextSearch(context.Context, *FullTextSearchRequest) (*FullTextSearchResponse, error)
+	HybridSearch(context.Context, *HybridSearchRequest) (*KnnResponse, error)
 	// ── Change Data Capture ──────────────────────────────────────────────
 	SubscribeCDC(*CdcRequest, grpc.ServerStreamingServer[CdcEvent]) error
+	// ── Multi-Manifold Operations (Phase M — Klein · Riemann · Minkowski) ──
+	Synthesis(context.Context, *SynthesisRequest) (*SynthesisResponse, error)
+	SynthesisMulti(context.Context, *SynthesisMultiRequest) (*SynthesisResponse, error)
+	CausalNeighbors(context.Context, *CausalNeighborsRequest) (*CausalNeighborsResponse, error)
+	CausalChain(context.Context, *CausalChainRequest) (*CausalChainResponse, error)
+	KleinPath(context.Context, *KleinPathRequest) (*KleinPathResponse, error)
+	IsOnShortestPath(context.Context, *ShortestPathCheckRequest) (*ShortestPathCheckResponse, error)
 	// ── Admin ─────────────────────────────────────────────────────────────
 	GetStats(context.Context, *Empty) (*StatsResponse, error)
 	HealthCheck(context.Context, *Empty) (*StatusResponse, error)
+	// ── ListStore (RPUSH/LRANGE) ──────────────────────────────────────────
+	ListRPush(context.Context, *ListPushRequest) (*ListPushResponse, error)
+	ListLRange(context.Context, *ListRangeRequest) (*ListRangeResponse, error)
+	ListLen(context.Context, *ListLenRequest) (*ListLenResponse, error)
+	// ── Cluster gossip (Phase G) ────────────────────────────────────────
+	ExchangeGossip(context.Context, *GossipRequest) (*GossipResponse, error)
+	// ── Schema Validation ──────────────────────────────────────────────
+	SetSchema(context.Context, *SetSchemaRequest) (*StatusResponse, error)
+	GetSchema(context.Context, *GetSchemaRequest) (*GetSchemaResponse, error)
+	ListSchemas(context.Context, *Empty) (*ListSchemasResponse, error)
+	// ── Secondary Indexes (Phase E) ──────────────────────────────────
+	CreateIndex(context.Context, *CreateIndexRequest) (*StatusResponse, error)
+	DropIndex(context.Context, *DropIndexRequest) (*StatusResponse, error)
+	ListIndexes(context.Context, *ListIndexesRequest) (*ListIndexesResponse, error)
+	// ── Cache (Phase C — Redis replacement) ────────────────────────
+	CacheSet(context.Context, *CacheSetRequest) (*StatusResponse, error)
+	CacheGet(context.Context, *CacheGetRequest) (*CacheGetResponse, error)
+	CacheDel(context.Context, *CacheDelRequest) (*StatusResponse, error)
+	ReapExpired(context.Context, *ReapExpiredRequest) (*ReapExpiredResponse, error)
 	mustEmbedUnimplementedNietzscheDBServer()
 }
 
@@ -670,6 +970,9 @@ func (UnimplementedNietzscheDBServer) MergeNode(context.Context, *MergeNodeReque
 }
 func (UnimplementedNietzscheDBServer) MergeEdge(context.Context, *MergeEdgeRequest) (*MergeEdgeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method MergeEdge not implemented")
+}
+func (UnimplementedNietzscheDBServer) IncrementEdgeMeta(context.Context, *IncrementEdgeMetaRequest) (*IncrementEdgeMetaResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method IncrementEdgeMeta not implemented")
 }
 func (UnimplementedNietzscheDBServer) Query(context.Context, *QueryRequest) (*QueryResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Query not implemented")
@@ -755,14 +1058,77 @@ func (UnimplementedNietzscheDBServer) RestoreBackup(context.Context, *RestoreBac
 func (UnimplementedNietzscheDBServer) FullTextSearch(context.Context, *FullTextSearchRequest) (*FullTextSearchResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FullTextSearch not implemented")
 }
+func (UnimplementedNietzscheDBServer) HybridSearch(context.Context, *HybridSearchRequest) (*KnnResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method HybridSearch not implemented")
+}
 func (UnimplementedNietzscheDBServer) SubscribeCDC(*CdcRequest, grpc.ServerStreamingServer[CdcEvent]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeCDC not implemented")
+}
+func (UnimplementedNietzscheDBServer) Synthesis(context.Context, *SynthesisRequest) (*SynthesisResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Synthesis not implemented")
+}
+func (UnimplementedNietzscheDBServer) SynthesisMulti(context.Context, *SynthesisMultiRequest) (*SynthesisResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SynthesisMulti not implemented")
+}
+func (UnimplementedNietzscheDBServer) CausalNeighbors(context.Context, *CausalNeighborsRequest) (*CausalNeighborsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CausalNeighbors not implemented")
+}
+func (UnimplementedNietzscheDBServer) CausalChain(context.Context, *CausalChainRequest) (*CausalChainResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CausalChain not implemented")
+}
+func (UnimplementedNietzscheDBServer) KleinPath(context.Context, *KleinPathRequest) (*KleinPathResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method KleinPath not implemented")
+}
+func (UnimplementedNietzscheDBServer) IsOnShortestPath(context.Context, *ShortestPathCheckRequest) (*ShortestPathCheckResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method IsOnShortestPath not implemented")
 }
 func (UnimplementedNietzscheDBServer) GetStats(context.Context, *Empty) (*StatsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetStats not implemented")
 }
 func (UnimplementedNietzscheDBServer) HealthCheck(context.Context, *Empty) (*StatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method HealthCheck not implemented")
+}
+func (UnimplementedNietzscheDBServer) ListRPush(context.Context, *ListPushRequest) (*ListPushResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListRPush not implemented")
+}
+func (UnimplementedNietzscheDBServer) ListLRange(context.Context, *ListRangeRequest) (*ListRangeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListLRange not implemented")
+}
+func (UnimplementedNietzscheDBServer) ListLen(context.Context, *ListLenRequest) (*ListLenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListLen not implemented")
+}
+func (UnimplementedNietzscheDBServer) ExchangeGossip(context.Context, *GossipRequest) (*GossipResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExchangeGossip not implemented")
+}
+func (UnimplementedNietzscheDBServer) SetSchema(context.Context, *SetSchemaRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetSchema not implemented")
+}
+func (UnimplementedNietzscheDBServer) GetSchema(context.Context, *GetSchemaRequest) (*GetSchemaResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSchema not implemented")
+}
+func (UnimplementedNietzscheDBServer) ListSchemas(context.Context, *Empty) (*ListSchemasResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListSchemas not implemented")
+}
+func (UnimplementedNietzscheDBServer) CreateIndex(context.Context, *CreateIndexRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateIndex not implemented")
+}
+func (UnimplementedNietzscheDBServer) DropIndex(context.Context, *DropIndexRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DropIndex not implemented")
+}
+func (UnimplementedNietzscheDBServer) ListIndexes(context.Context, *ListIndexesRequest) (*ListIndexesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListIndexes not implemented")
+}
+func (UnimplementedNietzscheDBServer) CacheSet(context.Context, *CacheSetRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CacheSet not implemented")
+}
+func (UnimplementedNietzscheDBServer) CacheGet(context.Context, *CacheGetRequest) (*CacheGetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CacheGet not implemented")
+}
+func (UnimplementedNietzscheDBServer) CacheDel(context.Context, *CacheDelRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CacheDel not implemented")
+}
+func (UnimplementedNietzscheDBServer) ReapExpired(context.Context, *ReapExpiredRequest) (*ReapExpiredResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReapExpired not implemented")
 }
 func (UnimplementedNietzscheDBServer) mustEmbedUnimplementedNietzscheDBServer() {}
 func (UnimplementedNietzscheDBServer) testEmbeddedByValue()                     {}
@@ -979,6 +1345,24 @@ func _NietzscheDB_MergeEdge_Handler(srv interface{}, ctx context.Context, dec fu
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NietzscheDBServer).MergeEdge(ctx, req.(*MergeEdgeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_IncrementEdgeMeta_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(IncrementEdgeMetaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).IncrementEdgeMeta(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_IncrementEdgeMeta_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).IncrementEdgeMeta(ctx, req.(*IncrementEdgeMetaRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1487,6 +1871,24 @@ func _NietzscheDB_FullTextSearch_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NietzscheDB_HybridSearch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HybridSearchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).HybridSearch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_HybridSearch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).HybridSearch(ctx, req.(*HybridSearchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NietzscheDB_SubscribeCDC_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(CdcRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -1497,6 +1899,114 @@ func _NietzscheDB_SubscribeCDC_Handler(srv interface{}, stream grpc.ServerStream
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NietzscheDB_SubscribeCDCServer = grpc.ServerStreamingServer[CdcEvent]
+
+func _NietzscheDB_Synthesis_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SynthesisRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).Synthesis(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_Synthesis_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).Synthesis(ctx, req.(*SynthesisRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_SynthesisMulti_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SynthesisMultiRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).SynthesisMulti(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_SynthesisMulti_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).SynthesisMulti(ctx, req.(*SynthesisMultiRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_CausalNeighbors_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CausalNeighborsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).CausalNeighbors(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_CausalNeighbors_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).CausalNeighbors(ctx, req.(*CausalNeighborsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_CausalChain_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CausalChainRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).CausalChain(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_CausalChain_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).CausalChain(ctx, req.(*CausalChainRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_KleinPath_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(KleinPathRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).KleinPath(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_KleinPath_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).KleinPath(ctx, req.(*KleinPathRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_IsOnShortestPath_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShortestPathCheckRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).IsOnShortestPath(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_IsOnShortestPath_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).IsOnShortestPath(ctx, req.(*ShortestPathCheckRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 func _NietzscheDB_GetStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Empty)
@@ -1530,6 +2040,258 @@ func _NietzscheDB_HealthCheck_Handler(srv interface{}, ctx context.Context, dec 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NietzscheDBServer).HealthCheck(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_ListRPush_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListPushRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).ListRPush(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_ListRPush_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).ListRPush(ctx, req.(*ListPushRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_ListLRange_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListRangeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).ListLRange(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_ListLRange_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).ListLRange(ctx, req.(*ListRangeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_ListLen_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListLenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).ListLen(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_ListLen_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).ListLen(ctx, req.(*ListLenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_ExchangeGossip_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GossipRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).ExchangeGossip(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_ExchangeGossip_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).ExchangeGossip(ctx, req.(*GossipRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_SetSchema_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetSchemaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).SetSchema(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_SetSchema_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).SetSchema(ctx, req.(*SetSchemaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_GetSchema_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSchemaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).GetSchema(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_GetSchema_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).GetSchema(ctx, req.(*GetSchemaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_ListSchemas_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).ListSchemas(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_ListSchemas_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).ListSchemas(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_CreateIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateIndexRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).CreateIndex(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_CreateIndex_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).CreateIndex(ctx, req.(*CreateIndexRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_DropIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DropIndexRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).DropIndex(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_DropIndex_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).DropIndex(ctx, req.(*DropIndexRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_ListIndexes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListIndexesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).ListIndexes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_ListIndexes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).ListIndexes(ctx, req.(*ListIndexesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_CacheSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CacheSetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).CacheSet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_CacheSet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).CacheSet(ctx, req.(*CacheSetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_CacheGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CacheGetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).CacheGet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_CacheGet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).CacheGet(ctx, req.(*CacheGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_CacheDel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CacheDelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).CacheDel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_CacheDel_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).CacheDel(ctx, req.(*CacheDelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_ReapExpired_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReapExpiredRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).ReapExpired(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_ReapExpired_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).ReapExpired(ctx, req.(*ReapExpiredRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1584,6 +2346,10 @@ var NietzscheDB_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "MergeEdge",
 			Handler:    _NietzscheDB_MergeEdge_Handler,
+		},
+		{
+			MethodName: "IncrementEdgeMeta",
+			Handler:    _NietzscheDB_IncrementEdgeMeta_Handler,
 		},
 		{
 			MethodName: "Query",
@@ -1698,12 +2464,96 @@ var NietzscheDB_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _NietzscheDB_FullTextSearch_Handler,
 		},
 		{
+			MethodName: "HybridSearch",
+			Handler:    _NietzscheDB_HybridSearch_Handler,
+		},
+		{
+			MethodName: "Synthesis",
+			Handler:    _NietzscheDB_Synthesis_Handler,
+		},
+		{
+			MethodName: "SynthesisMulti",
+			Handler:    _NietzscheDB_SynthesisMulti_Handler,
+		},
+		{
+			MethodName: "CausalNeighbors",
+			Handler:    _NietzscheDB_CausalNeighbors_Handler,
+		},
+		{
+			MethodName: "CausalChain",
+			Handler:    _NietzscheDB_CausalChain_Handler,
+		},
+		{
+			MethodName: "KleinPath",
+			Handler:    _NietzscheDB_KleinPath_Handler,
+		},
+		{
+			MethodName: "IsOnShortestPath",
+			Handler:    _NietzscheDB_IsOnShortestPath_Handler,
+		},
+		{
 			MethodName: "GetStats",
 			Handler:    _NietzscheDB_GetStats_Handler,
 		},
 		{
 			MethodName: "HealthCheck",
 			Handler:    _NietzscheDB_HealthCheck_Handler,
+		},
+		{
+			MethodName: "ListRPush",
+			Handler:    _NietzscheDB_ListRPush_Handler,
+		},
+		{
+			MethodName: "ListLRange",
+			Handler:    _NietzscheDB_ListLRange_Handler,
+		},
+		{
+			MethodName: "ListLen",
+			Handler:    _NietzscheDB_ListLen_Handler,
+		},
+		{
+			MethodName: "ExchangeGossip",
+			Handler:    _NietzscheDB_ExchangeGossip_Handler,
+		},
+		{
+			MethodName: "SetSchema",
+			Handler:    _NietzscheDB_SetSchema_Handler,
+		},
+		{
+			MethodName: "GetSchema",
+			Handler:    _NietzscheDB_GetSchema_Handler,
+		},
+		{
+			MethodName: "ListSchemas",
+			Handler:    _NietzscheDB_ListSchemas_Handler,
+		},
+		{
+			MethodName: "CreateIndex",
+			Handler:    _NietzscheDB_CreateIndex_Handler,
+		},
+		{
+			MethodName: "DropIndex",
+			Handler:    _NietzscheDB_DropIndex_Handler,
+		},
+		{
+			MethodName: "ListIndexes",
+			Handler:    _NietzscheDB_ListIndexes_Handler,
+		},
+		{
+			MethodName: "CacheSet",
+			Handler:    _NietzscheDB_CacheSet_Handler,
+		},
+		{
+			MethodName: "CacheGet",
+			Handler:    _NietzscheDB_CacheGet_Handler,
+		},
+		{
+			MethodName: "CacheDel",
+			Handler:    _NietzscheDB_CacheDel_Handler,
+		},
+		{
+			MethodName: "ReapExpired",
+			Handler:    _NietzscheDB_ReapExpired_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

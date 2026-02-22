@@ -2,7 +2,7 @@
 name = "nietzsche-hyp-ops"
 version = "0.1.0"
 edition = "2021"
-description = "Hyperbolic geometry operations for the Poincaré ball model — the mathematical foundation of NietzscheDB"
+description = "Multi-manifold geometry operations (Poincaré · Klein · Riemann · Minkowski) — the mathematical foundation of NietzscheDB"
 
 [dependencies]
 thiserror = { workspace = true }

@@ -2,7 +2,7 @@
 
 **Complete Language Reference**
 
-NQL is a declarative query language designed for temporal hyperbolic graph databases. It provides first-class primitives for hyperbolic geometry, graph traversal, heat-kernel diffusion, and fractal-space operations that have no equivalent in SQL, Cypher, or SPARQL.
+NQL is a declarative query language designed for multi-manifold graph databases. It provides first-class primitives for non-Euclidean geometry (Poincaré, Klein, Riemann, Minkowski), graph traversal, heat-kernel diffusion, and fractal-space operations that have no equivalent in SQL, Cypher, or SPARQL.
 
 ---
 

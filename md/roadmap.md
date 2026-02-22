@@ -1,8 +1,8 @@
 # Nietzsche Database — Roadmap Completo
 
-## Construindo um banco hiperbólico + grafo + fractal em Rust sobre HyperspaceDB
+## Construindo um banco multi-manifold + grafo + fractal em Rust sobre HyperspaceDB
 
-> **Premissa**: HyperspaceDB como camada vetorial hiperbólica nativa (Poincaré + HNSW). Tudo o mais é construído em Rust por cima, resultando num banco de dados completo original.
+> **Premissa**: HyperspaceDB como camada vetorial Poincaré nativa (HNSW). Tudo o mais é construído em Rust por cima, resultando num banco de dados multi-manifold completo original.
 
 ---
 

@@ -1,6 +1,6 @@
 # Roadmap de Performance — NietzscheDB
 
-> **Missão**: superar Qdrant e Neo4j em workloads hiperbólicos + grafos.
+> **Missão**: superar Qdrant e Neo4j em workloads multi-manifold + grafos.
 > Análise baseada na inspeção direta do código-fonte + pesquisa profunda nas
 > arquiteturas Qdrant 1.13 e Neo4j Block Format — 2026-02-19.
 
@@ -111,9 +111,9 @@
     • Oversampling + rescore com f32 original para precision recovery
     • Target: modelos com ≥ 768 dims (OpenAI, Cohere, MxBai)
 
-16. True Hyperbolic HNSW            → nova crate nietzsche-hnsw
+16. True Multi-Manifold HNSW         → nova crate nietzsche-hnsw
     • Substituir CosineMetric por PoincareDistance no grafo de navegação
-    • Recall correto para embeddings hiperbólicos (hoje usa métrica errada!)
+    • Recall correto para embeddings multi-manifold (hoje usa métrica errada!)
     • Wrapper HnswPoincareWrapper<N> mantém compatibilidade de API
 
 17. Adjacency B+ Tree               → storage.rs / adjacency.rs

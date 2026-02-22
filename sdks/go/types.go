@@ -225,3 +225,17 @@ type ZaratustraResult struct {
 	DurationMs uint64
 	CyclesRun  uint32
 }
+
+// ── Edge result with Minkowski causality metadata ─────────────────────
+
+// EdgeResult represents a full edge with all fields including Minkowski metadata.
+type EdgeResult struct {
+	ID                string
+	From              string
+	To                string
+	EdgeType          string
+	Weight            float64
+	CreatedAt         int64
+	MinkowskiInterval float32 // ds² value: negative = timelike (causal)
+	CausalType        string  // "Timelike" | "Spacelike" | "Lightlike" | "Unknown"
+}

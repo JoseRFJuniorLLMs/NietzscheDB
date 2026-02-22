@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-02-22
+
+### Added — Multi-Manifold Architecture
+NietzscheDB is now the world's first **Multi-Manifold Graph Database**, operating across 4 non-Euclidean geometries simultaneously from a single Poincaré storage layer.
+
+*   **Klein Model** (`nietzsche-hyp-ops::klein`): Pathfinding via straight-line geodesics. `to_klein()`, `to_poincare()`, `klein_distance()`, `is_collinear()`, `is_on_shortest_path()`, batch operations. O(1) colinearity checks via determinant instead of expensive trig. 10 tests including 10,000-vector roundtrip with error < 1e-6.
+*   **Riemann Sphere** (`nietzsche-hyp-ops::riemann`): Dialectical synthesis and aggregation. `synthesis()`, `synthesis_multi()`, `spherical_midpoint()`, `frechet_mean_sphere()`, exp/log maps. Synthesis produces a point MORE ABSTRACT (closer to center) than either input. 10 tests including 10,000-vector roundtrip.
+*   **Minkowski Spacetime** (`nietzsche-hyp-ops::minkowski`): Causal edge classification. `minkowski_interval()`, `classify()` (Timelike/Spacelike/Lightlike), `light_cone_filter()`, `compute_edge_causality()`. ds² < 0 = timelike = causal. 8 tests.
+*   **Manifold Normalization** (`nietzsche-hyp-ops::manifold`): Post-projection normalization to prevent floating-point drift. `normalize_poincare()`, `normalize_klein()`, `normalize_sphere()`, `health_check_poincare()`, `safe_klein_roundtrip()`, `safe_sphere_roundtrip()`. Cascaded 10x roundtrip error < 1e-4.
+*   **Edge Causality Metadata**: `CausalType` enum (Timelike/Spacelike/Lightlike/Unknown) and `minkowski_interval: f32` on Edge struct. Backward compatible via `#[serde(default)]`.
+*   **6 New gRPC RPCs**: `Synthesis`, `SynthesisMulti`, `CausalNeighbors`, `CausalChain`, `KleinPath`, `IsOnShortestPath`.
+*   **Go SDK Manifold Methods**: `Synthesis()`, `SynthesisMulti()`, `CausalNeighbors()`, `CausalChain()`, `KleinPath()`, `IsOnShortestPath()` with full type definitions.
+
+### Changed
+*   **Category**: NietzscheDB is now a "Multi-Manifold Graph Database" (previously "Temporal Hyperbolic Graph Database").
+*   **`nietzsche-hyp-ops`**: Description updated to "Multi-manifold geometry operations (Poincaré · Klein · Riemann · Minkowski)".
+*   **RPC count**: 65+ → 71+ RPCs.
+
 ## [2.1.0] - 2026-02-19
 
 ### Added
@@ -20,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     *   New helpers: `PoincareVector::from_f64()` (narrowing constructor), `coords_f64()` (widening accessor).
     *   Proto wire format (`repeated double`) unchanged — server converts at the gRPC boundary.
     *   Sleep cycle and L-System math remain in f64 precision — promote/narrow at function boundaries.
-*   **Binary Quantization Rejection (ITEM F)**: Formally documented that Binary Quantization (`sign(x)` → 1-bit) is **permanently rejected** for NietzscheDB's hyperbolic embeddings.
+*   **Binary Quantization Rejection (ITEM F)**: Formally documented that Binary Quantization (`sign(x)` → 1-bit) is **permanently rejected** for NietzscheDB's multi-manifold embeddings.
     *   `sign(x)` destroys magnitude, which encodes hierarchical position in the Poincaré ball (center = abstract, boundary = specific).
     *   Decision recorded in `lib.rs`, `risco_hiperbolico.md`, and `CLAUDE.md`.
 
@@ -73,9 +91,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.5.0] - 2026-02-09
 
 ### Added
-*   **Hyperbolic Efficiency**: Optimized Poincaré ball model implementation for 64d vectors, achieving 2.47ms p99 latency with significant storage savings (64d vs 1024d is 16x compression).
+*   **Multi-Manifold Efficiency**: Optimized Poincaré ball model implementation for 64d vectors, achieving 2.47ms p99 latency with significant storage savings (64d vs 1024d is 16x compression).
 *   **Benchmarks**: Added comprehensive benchmarking suite comparisons against Milvus, Qdrant, and Weaviate.
-    *   `run_benchmark_hyperbolic.py`: Specific script for demonstrating Hyperbolic vs Euclidean efficiency.
+    *   `run_benchmark_hyperbolic.py`: Specific script for demonstrating Multi-Manifold vs Euclidean efficiency.
     *   `BENCHMARK_RESULTS.md` and `HYPERBOLIC_BENCHMARK_RESULTS.md`: Official performance reports.
 
 ### Performance
@@ -168,10 +186,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🚀 Initial Release ("Hyperspace One")
 
-HyperspaceDB v1.0 is the first production-ready release of the fastest hyperbolic vector database.
+HyperspaceDB v1.0 is the first production-ready release of a native Poincaré-ball vector database (now evolved into the NietzscheDB multi-manifold graph database).
 
 ### Features
-*   **Core Engine**: Hyperbolic HNSW implementation optimized for Poincaré ball model.
+*   **Core Engine**: Poincaré Ball HNSW implementation (multi-manifold foundation).
 *   **Performance**: Sub-millisecond search at 1M+ vector scale.
 *   **Storage**: Segmented memory-mapped storage with `ScalarI8` and `Binary` quantization (8x and 32x-64x compression respectively).
 *   **Persistence**: Write-Ahead Log (WAL) and Zero-Copy Snapshots (Rkyv).

@@ -1,12 +1,21 @@
 //! # nietzsche-hyp-ops
 //!
-//! Hyperbolic geometry operations for the Poincaré ball model.
+//! Multi-manifold geometry operations for NietzscheDB.
 //!
-//! This crate is the **single source of truth** for all hyperbolic math in
-//! NietzscheDB. Every crate that touches Poincaré coordinates imports from
+//! This crate is the **single source of truth** for all geometric math in
+//! NietzscheDB. Every crate that touches manifold coordinates imports from
 //! here — no inline reimplementations allowed.
 //!
-//! ## Core operations
+//! ## Architecture: 4 Geometries · 1 Storage · 0 Duplication
+//!
+//! | Manifold | Curvature | Module | Purpose |
+//! |---|---|---|---|
+//! | **Poincaré** | K < 0 | root | Storage + Distance + KNN |
+//! | **Klein** | K < 0 | [`klein`] | Pathfinding + Colinearity |
+//! | **Riemann** (Spherical) | K > 0 | [`riemann`] | Synthesis + Aggregation |
+//! | **Minkowski** | Pseudo-Riemann | [`minkowski`] | Causal Filtering |
+//!
+//! ## Core operations (Poincaré — base geometry)
 //!
 //! | Function | Direction | Purpose |
 //! |---|---|---|
@@ -16,12 +25,36 @@
 //! | [`poincare_distance`] | Poincaré × Poincaré → ℝ⁺ | Hyperbolic distance |
 //! | [`gyromidpoint`] | \[Poincaré\] → Poincaré | Fréchet mean for multimodal fusion |
 //!
+//! ## Multi-manifold operations
+//!
+//! | Function | Module | Purpose |
+//! |---|---|---|
+//! | [`klein::to_klein`] | [`klein`] | Poincaré → Klein projection |
+//! | [`klein::is_collinear`] | [`klein`] | Geodesic check (straight lines) |
+//! | [`klein::is_on_shortest_path`] | [`klein`] | O(1) shortest path verification |
+//! | [`riemann::synthesis`] | [`riemann`] | Dialectical synthesis (Thesis + Antithesis) |
+//! | [`riemann::frechet_mean_sphere`] | [`riemann`] | Spherical GROUP BY centroid |
+//! | [`minkowski::minkowski_interval`] | [`minkowski`] | Spacetime interval ds² |
+//! | [`minkowski::light_cone_filter`] | [`minkowski`] | Causal edge filtering |
+//!
+//! ## Manifold normalization
+//!
+//! Use [`manifold::normalize_poincare`], [`manifold::normalize_klein`],
+//! [`manifold::normalize_sphere`] after every inter-geometry projection to
+//! prevent floating-point drift.
+//!
 //! ## Safety invariant
 //!
-//! Every vector returned by this crate satisfies **‖x‖ < 1.0** (open unit ball).
+//! Every vector returned by this crate satisfies its manifold's invariant:
+//! - Poincaré/Klein: **‖x‖ < 1.0** (open unit ball)
+//! - Sphere: **‖x‖ = 1.0** (unit sphere)
 //! Use [`assert_poincare`] to validate external inputs.
 
 pub mod error;
+pub mod klein;
+pub mod riemann;
+pub mod minkowski;
+pub mod manifold;
 
 use error::HypError;
 
