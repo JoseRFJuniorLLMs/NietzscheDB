@@ -156,7 +156,10 @@ impl BackupManager {
         opts.set_error_if_exists(false);
 
         // Try to open read-only with the known column families.
-        let cfs = ["nodes", "embeddings", "edges", "adj_out", "adj_in", "meta", "sensory", "energy_idx"];
+        let cfs = [
+            "nodes", "embeddings", "edges", "adj_out", "adj_in", "meta",
+            "sensory", "energy_idx", "meta_idx", "lists", "sql_schema", "sql_data",
+        ];
         match DB::open_cf_for_read_only(&opts, backup_path, &cfs, false) {
             Ok(_db) => Ok(true),
             Err(_) => {
