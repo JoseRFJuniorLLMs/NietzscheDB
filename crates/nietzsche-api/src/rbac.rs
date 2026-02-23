@@ -17,20 +17,22 @@ pub enum Role {
     Reader,
 }
 
-/// Reject the request if the caller has `Reader` role.
-/// Writers and Admins pass through.
+/// Reject the request unless the caller has `Writer` or `Admin` role.
+/// Fail-closed: if no role is present, the request is rejected.
 pub fn require_writer<T>(req: &Request<T>) -> Result<(), Status> {
     match req.extensions().get::<Role>() {
+        Some(Role::Admin) | Some(Role::Writer) => Ok(()),
         Some(Role::Reader) => Err(Status::permission_denied("writer or admin role required")),
-        _ => Ok(()),
+        None => Err(Status::unauthenticated("no authentication context")),
     }
 }
 
 /// Reject the request unless the caller has `Admin` role.
+/// Fail-closed: if no role is present, the request is rejected.
 pub fn require_admin<T>(req: &Request<T>) -> Result<(), Status> {
     match req.extensions().get::<Role>() {
         Some(Role::Admin) => Ok(()),
         Some(_) => Err(Status::permission_denied("admin role required")),
-        None => Ok(()), // no auth configured
+        None => Err(Status::unauthenticated("no authentication context")),
     }
 }

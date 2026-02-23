@@ -1,8 +1,10 @@
-//! Application-level encryption at-rest using AES-256-CTR.
+//! Application-level authenticated encryption at-rest using AES-256-GCM.
 //!
 //! Provides transparent encrypt/decrypt for data stored in RocksDB.
 //! Master key is loaded from `NIETZSCHE_ENCRYPTION_KEY` (base64-encoded 32 bytes).
-//! Per-item keys are derived via HKDF-SHA256 using a unique salt (e.g., CF name + key).
+//! Per-CF keys are derived via HKDF-SHA256. Each ciphertext is prepended with a
+//! random 12-byte nonce and includes a 16-byte GCM authentication tag for
+//! integrity verification.
 //!
 //! ## Design
 //!
@@ -22,21 +24,58 @@
 //!     ├─ HKDF-SHA256(info = "nietzsche:edges") → derived_key for CF_EDGES
 //!     └─ HKDF-SHA256(info = "nietzsche:sensory") → derived_key for CF_SENSORY
 //! ```
+//!
+//! ## Ciphertext format
+//!
+//! ```text
+//! [version: u8 = 0x02][nonce: 12 bytes][ciphertext + GCM tag: N + 16 bytes]
+//! ```
+//!
+//! Version 0x01 (legacy AES-CTR) is supported for reading during migration.
 
 use aes::Aes256;
+use aes_gcm::{Aes256Gcm, Nonce as GcmNonce};
+use aes_gcm::aead::{Aead, KeyInit};
 use ctr::cipher::{KeyIvInit, StreamCipher};
 use hkdf::Hkdf;
 use sha2::Sha256;
 
 type Aes256Ctr = ctr::Ctr128BE<Aes256>;
 
+/// Version byte for the new AES-256-GCM format.
+const ENCRYPTION_VERSION_GCM: u8 = 0x02;
+
+/// GCM nonce size (96 bits as recommended by NIST SP 800-38D).
+const GCM_NONCE_SIZE: usize = 12;
+
 /// Configuration for at-rest encryption.
-#[derive(Clone)]
 pub struct EncryptionConfig {
     /// Whether encryption is enabled.
     pub enabled: bool,
     /// Master key (32 bytes). `None` if encryption is disabled.
+    /// Wrapped in a zeroing type for memory safety.
     master_key: Option<[u8; 32]>,
+}
+
+impl Clone for EncryptionConfig {
+    fn clone(&self) -> Self {
+        Self {
+            enabled: self.enabled,
+            master_key: self.master_key,
+        }
+    }
+}
+
+impl Drop for EncryptionConfig {
+    fn drop(&mut self) {
+        // Zeroize master key on drop to prevent key material lingering in memory
+        if let Some(ref mut key) = self.master_key {
+            for byte in key.iter_mut() {
+                // Use volatile write to prevent compiler from optimizing away the zeroization
+                unsafe { std::ptr::write_volatile(byte, 0) };
+            }
+        }
+    }
 }
 
 impl std::fmt::Debug for EncryptionConfig {
@@ -64,10 +103,10 @@ impl EncryptionConfig {
     ///
     /// Reads `NIETZSCHE_ENCRYPTION_KEY` as a base64-encoded 32-byte key.
     /// If the env var is absent or empty, encryption is disabled.
+    /// **Panics** if the env var is set but contains an invalid key (fail-fast).
     pub fn from_env() -> Self {
         match std::env::var("NIETZSCHE_ENCRYPTION_KEY") {
             Ok(b64) if !b64.is_empty() => {
-                // Simple base64 decode (no padding required)
                 match decode_base64(&b64) {
                     Some(key) if key.len() == 32 => {
                         let mut master = [0u8; 32];
@@ -75,8 +114,11 @@ impl EncryptionConfig {
                         Self::new(master)
                     }
                     _ => {
-                        eprintln!("WARNING: NIETZSCHE_ENCRYPTION_KEY is not a valid 32-byte base64 key; encryption disabled");
-                        Self::default()
+                        panic!(
+                            "FATAL: NIETZSCHE_ENCRYPTION_KEY is set but is not a valid 32-byte \
+                             base64 key. Refusing to start with invalid encryption config. \
+                             Remove the variable to disable encryption, or provide a valid key."
+                        );
                     }
                 }
             }
@@ -84,42 +126,102 @@ impl EncryptionConfig {
         }
     }
 
-    /// Derive a per-CF encryption key using HKDF-SHA256.
+    /// Derive a per-CF encryption key using HKDF-SHA256 with a fixed salt.
     fn derive_key(&self, info: &[u8]) -> [u8; 32] {
         let master = self.master_key.expect("derive_key called with no master key");
-        let hk = Hkdf::<Sha256>::new(None, &master);
+        // Use a fixed salt for domain separation (better than None)
+        let salt = b"nietzsche-db-encryption-v2";
+        let hk = Hkdf::<Sha256>::new(Some(salt), &master);
         let mut derived = [0u8; 32];
         hk.expand(info, &mut derived).expect("HKDF expand failed");
         derived
     }
 
-    /// Encrypt data for a specific column family.
+    /// Encrypt data for a specific column family using AES-256-GCM.
     ///
-    /// The IV is derived from the first 16 bytes of `item_key` (e.g. node UUID).
-    /// This makes encryption deterministic per key, which is acceptable since
-    /// each node ID is unique (UUIDv4) and the key is never reused with different data.
-    pub fn encrypt(&self, cf_name: &str, item_key: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    /// Returns: `[version_byte | random_nonce(12B) | ciphertext + tag]`
+    pub fn encrypt(&self, cf_name: &str, _item_key: &[u8], plaintext: &[u8]) -> Vec<u8> {
         if !self.enabled {
             return plaintext.to_vec();
         }
         let derived = self.derive_key(format!("nietzsche:{cf_name}").as_bytes());
-        let iv = derive_iv(item_key);
-        let mut buf = plaintext.to_vec();
+
+        // Generate random nonce (critical: must be unique per encryption)
+        let mut nonce_bytes = [0u8; GCM_NONCE_SIZE];
+        getrandom::getrandom(&mut nonce_bytes)
+            .expect("failed to generate random nonce");
+
+        let cipher = Aes256Gcm::new(derived.as_ref().into());
+        let nonce = GcmNonce::from_slice(&nonce_bytes);
+        let ciphertext = cipher.encrypt(nonce, plaintext)
+            .expect("AES-256-GCM encryption should not fail");
+
+        // Format: [version | nonce | ciphertext+tag]
+        let mut out = Vec::with_capacity(1 + GCM_NONCE_SIZE + ciphertext.len());
+        out.push(ENCRYPTION_VERSION_GCM);
+        out.extend_from_slice(&nonce_bytes);
+        out.extend_from_slice(&ciphertext);
+        out
+    }
+
+    /// Decrypt data from a specific column family.
+    ///
+    /// Supports both V2 (AES-256-GCM) and legacy V1 (AES-256-CTR) formats.
+    pub fn decrypt(&self, cf_name: &str, item_key: &[u8], data: &[u8]) -> Vec<u8> {
+        if !self.enabled {
+            return data.to_vec();
+        }
+
+        // Check version byte to determine format
+        if !data.is_empty() && data[0] == ENCRYPTION_VERSION_GCM {
+            // V2: AES-256-GCM
+            self.decrypt_gcm(cf_name, &data[1..])
+        } else {
+            // Legacy V1: AES-256-CTR (for migration compatibility)
+            self.decrypt_ctr_legacy(cf_name, item_key, data)
+        }
+    }
+
+    /// Decrypt using new AES-256-GCM format.
+    fn decrypt_gcm(&self, cf_name: &str, data: &[u8]) -> Vec<u8> {
+        if data.len() < GCM_NONCE_SIZE + 16 {
+            // Too short to contain nonce + tag; return as-is (likely unencrypted)
+            return data.to_vec();
+        }
+        let derived = self.derive_key(format!("nietzsche:{cf_name}").as_bytes());
+        let nonce = GcmNonce::from_slice(&data[..GCM_NONCE_SIZE]);
+        let ciphertext = &data[GCM_NONCE_SIZE..];
+
+        let cipher = Aes256Gcm::new(derived.as_ref().into());
+        match cipher.decrypt(nonce, ciphertext) {
+            Ok(plaintext) => plaintext,
+            Err(_) => {
+                tracing::error!(cf = cf_name, "AES-GCM decryption failed — data integrity violation!");
+                // Return empty rather than corrupted data
+                Vec::new()
+            }
+        }
+    }
+
+    /// Decrypt using legacy AES-256-CTR format (backward compatibility).
+    fn decrypt_ctr_legacy(&self, cf_name: &str, item_key: &[u8], ciphertext: &[u8]) -> Vec<u8> {
+        // Legacy: derive key without salt for backward compat
+        let master = self.master_key.expect("decrypt called with no master key");
+        let hk = Hkdf::<Sha256>::new(None, &master);
+        let mut derived = [0u8; 32];
+        hk.expand(format!("nietzsche:{cf_name}").as_bytes(), &mut derived)
+            .expect("HKDF expand failed");
+
+        let iv = derive_iv_legacy(item_key);
+        let mut buf = ciphertext.to_vec();
         let mut cipher = Aes256Ctr::new(derived.as_ref().into(), iv.as_ref().into());
         cipher.apply_keystream(&mut buf);
         buf
     }
-
-    /// Decrypt data from a specific column family.
-    pub fn decrypt(&self, cf_name: &str, item_key: &[u8], ciphertext: &[u8]) -> Vec<u8> {
-        // AES-CTR is symmetric: encrypt == decrypt with the same keystream
-        self.encrypt(cf_name, item_key, ciphertext)
-    }
 }
 
-/// Derive a 16-byte IV from an item key.
-/// Uses the first 16 bytes of the key, zero-padded if shorter.
-fn derive_iv(key: &[u8]) -> [u8; 16] {
+/// Legacy IV derivation (first 16 bytes of item key).
+fn derive_iv_legacy(key: &[u8]) -> [u8; 16] {
     let mut iv = [0u8; 16];
     let len = key.len().min(16);
     iv[..len].copy_from_slice(&key[..len]);
@@ -167,17 +269,54 @@ mod tests {
     use super::*;
 
     #[test]
-    fn encrypt_decrypt_roundtrip() {
+    fn encrypt_decrypt_roundtrip_gcm() {
         let key = [0x42u8; 32];
         let config = EncryptionConfig::new(key);
         let plaintext = b"hello world, this is sensitive node data";
         let item_key = uuid::Uuid::new_v4();
 
         let encrypted = config.encrypt("nodes", item_key.as_bytes(), plaintext);
-        assert_ne!(encrypted, plaintext.to_vec());
+        // GCM format: version(1) + nonce(12) + ciphertext + tag(16)
+        assert_eq!(encrypted[0], ENCRYPTION_VERSION_GCM);
+        assert!(encrypted.len() > 1 + GCM_NONCE_SIZE + 16);
+        assert_ne!(&encrypted[1 + GCM_NONCE_SIZE..], plaintext.as_slice());
 
         let decrypted = config.decrypt("nodes", item_key.as_bytes(), &encrypted);
         assert_eq!(decrypted, plaintext.to_vec());
+    }
+
+    #[test]
+    fn tampered_ciphertext_detected() {
+        let key = [0x42u8; 32];
+        let config = EncryptionConfig::new(key);
+        let plaintext = b"sensitive data";
+        let item_key = [0xBB; 16];
+
+        let mut encrypted = config.encrypt("nodes", &item_key, plaintext);
+        // Flip a bit in the ciphertext
+        let last = encrypted.len() - 1;
+        encrypted[last] ^= 0x01;
+
+        let decrypted = config.decrypt("nodes", &item_key, &encrypted);
+        // GCM should detect tampering and return empty
+        assert!(decrypted.is_empty());
+    }
+
+    #[test]
+    fn same_plaintext_produces_different_ciphertext() {
+        let key = [0x42u8; 32];
+        let config = EncryptionConfig::new(key);
+        let plaintext = b"same data";
+        let item_key = [0xAA; 16];
+
+        let enc1 = config.encrypt("nodes", &item_key, plaintext);
+        let enc2 = config.encrypt("nodes", &item_key, plaintext);
+        // Random nonce ensures different ciphertext each time
+        assert_ne!(enc1, enc2);
+
+        // But both decrypt to the same plaintext
+        assert_eq!(config.decrypt("nodes", &item_key, &enc1), plaintext.to_vec());
+        assert_eq!(config.decrypt("nodes", &item_key, &enc2), plaintext.to_vec());
     }
 
     #[test]
@@ -198,5 +337,14 @@ mod tests {
         let enc1 = config.encrypt("nodes", &item_key, data);
         let enc2 = config.encrypt("embeddings", &item_key, data);
         assert_ne!(enc1, enc2);
+    }
+
+    #[test]
+    fn zeroize_on_drop() {
+        let key = [0x42u8; 32];
+        let config = EncryptionConfig::new(key);
+        // After drop, the key should be zeroed (we can't easily test this
+        // without unsafe, but at least test that drop doesn't panic)
+        drop(config);
     }
 }

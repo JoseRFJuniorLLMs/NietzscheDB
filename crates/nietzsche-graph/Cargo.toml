@@ -21,7 +21,9 @@ ordered-float    = { workspace = true }
 rand             = { workspace = true }
 crc32fast        = "1.4"
 aes              = { workspace = true }
+aes-gcm          = { workspace = true }
 ctr              = { workspace = true }
+getrandom        = { workspace = true }
 hkdf             = { workspace = true }
 sha2             = { workspace = true }
 

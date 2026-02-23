@@ -497,7 +497,9 @@ fn deserialize_node_meta_migrating(
     if let Ok(v15) = bincode::deserialize::<NodeMetaV15>(value) {
         let meta: NodeMeta = v15.into();
         if let Ok(new_bytes) = bincode::serialize(&meta) {
-            let _ = db.put_cf(cf_nodes, key, &new_bytes);
+            if let Err(e) = db.put_cf(cf_nodes, key, &new_bytes) {
+                tracing::warn!("V1.5 migration write-back failed: {e}");
+            }
         }
         return Ok(meta);
     }
@@ -506,7 +508,9 @@ fn deserialize_node_meta_migrating(
     if let Ok(v1) = bincode::deserialize::<NodeMetaV1>(value) {
         let meta: NodeMeta = v1.into();
         if let Ok(new_bytes) = bincode::serialize(&meta) {
-            let _ = db.put_cf(cf_nodes, key, &new_bytes);
+            if let Err(e) = db.put_cf(cf_nodes, key, &new_bytes) {
+                tracing::warn!("V1 migration write-back failed: {e}");
+            }
         }
         return Ok(meta);
     }
@@ -515,7 +519,9 @@ fn deserialize_node_meta_migrating(
     if let Some(meta) = parse_node_v0_manual(value) {
         // Re-serialize in current format and write back (lazy migration)
         if let Ok(new_bytes) = bincode::serialize(&meta) {
-            let _ = db.put_cf(cf_nodes, key, &new_bytes);
+            if let Err(e) = db.put_cf(cf_nodes, key, &new_bytes) {
+                tracing::warn!("V0 migration write-back failed: {e}");
+            }
         }
         return Ok(meta);
     }
@@ -1273,20 +1279,37 @@ impl GraphStorage {
     }
 
     /// Batch-insert multiple edges in a single RocksDB write.
+    ///
+    /// Correctly accumulates adjacency lists across the batch so that
+    /// multiple edges from/to the same node are all preserved.
     pub fn put_edges_batch(&self, edges: &[Edge]) -> Result<(), GraphError> {
+        use std::collections::HashMap;
         let mut batch = rocksdb::WriteBatch::default();
+
+        // Accumulate adjacency modifications to handle multiple edges from/to same node
+        let mut out_map: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+        let mut in_map: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+
         for edge in edges {
             let edge_bytes = bincode::serialize(edge)?;
             batch.put_cf(&self.cf_edges(), edge.id.as_bytes(), &edge_bytes);
 
-            let mut out_ids = self.read_uuid_list_cf_out(&edge.from)?;
-            out_ids.push(edge.id);
-            batch.put_cf(&self.cf_adj_out(), edge.from.as_bytes(), bincode::serialize(&out_ids)?);
-
-            let mut in_ids = self.read_uuid_list_cf_in(&edge.to)?;
-            in_ids.push(edge.id);
-            batch.put_cf(&self.cf_adj_in(), edge.to.as_bytes(), bincode::serialize(&in_ids)?);
+            out_map.entry(edge.from).or_default().push(edge.id);
+            in_map.entry(edge.to).or_default().push(edge.id);
         }
+
+        // Write accumulated adjacency lists (read once per node, append all)
+        for (from_id, new_edge_ids) in out_map {
+            let mut out_ids = self.read_uuid_list_cf_out(&from_id)?;
+            out_ids.extend(new_edge_ids);
+            batch.put_cf(&self.cf_adj_out(), from_id.as_bytes(), bincode::serialize(&out_ids)?);
+        }
+        for (to_id, new_edge_ids) in in_map {
+            let mut in_ids = self.read_uuid_list_cf_in(&to_id)?;
+            in_ids.extend(new_edge_ids);
+            batch.put_cf(&self.cf_adj_in(), to_id.as_bytes(), bincode::serialize(&in_ids)?);
+        }
+
         self.db.write(batch)
             .map_err(|e| GraphError::Storage(e.to_string()))
     }

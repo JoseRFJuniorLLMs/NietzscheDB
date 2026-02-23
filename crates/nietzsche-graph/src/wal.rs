@@ -84,6 +84,9 @@ impl GraphWalEntry {
 
 const MAGIC: u32 = 0x4E5A4757; // "NZGW" (NietzscheGraphWAL)
 
+/// Maximum WAL record payload size (64 MiB). Prevents OOM on corrupted files.
+const MAX_WAL_RECORD_SIZE: u32 = 64 * 1024 * 1024;
+
 // ─────────────────────────────────────────────
 // GraphWal
 // ─────────────────────────────────────────────
@@ -121,7 +124,7 @@ impl GraphWal {
         })
     }
 
-    /// Append one entry to the WAL and **immediately flush** to the OS buffer.
+    /// Append one entry to the WAL and **immediately flush + fsync** to stable storage.
     ///
     /// Guarantees durability for single-entry writes. For bulk operations,
     /// use [`append_buffered`] followed by a single [`flush`] call.
@@ -129,6 +132,9 @@ impl GraphWal {
         self.write_record(entry)?;
         self.writer.flush()
             .map_err(|e| GraphError::Storage(format!("WAL flush: {e}")))?;
+        // fsync to guarantee data reaches stable storage (not just OS page cache)
+        self.writer.get_ref().sync_data()
+            .map_err(|e| GraphError::Storage(format!("WAL fsync: {e}")))?;
         Ok(())
     }
 
@@ -145,12 +151,15 @@ impl GraphWal {
         self.write_record(entry)
     }
 
-    /// Flush all buffered WAL entries to the OS.
+    /// Flush all buffered WAL entries to stable storage (flush + fsync).
     ///
     /// Call once after a series of [`append_buffered`] calls.
     pub fn flush(&mut self) -> Result<(), GraphError> {
         self.writer.flush()
-            .map_err(|e| GraphError::Storage(format!("WAL flush: {e}")))
+            .map_err(|e| GraphError::Storage(format!("WAL flush: {e}")))?;
+        self.writer.get_ref().sync_data()
+            .map_err(|e| GraphError::Storage(format!("WAL fsync: {e}")))?;
+        Ok(())
     }
 
     /// Write a single record to the BufWriter (no flush).
@@ -199,7 +208,11 @@ impl GraphWal {
             // Read len
             let mut len_buf = [0u8; 4];
             if reader.read_exact(&mut len_buf).is_err() { break; }
-            let len = u32::from_le_bytes(len_buf) as usize;
+            let len = u32::from_le_bytes(len_buf);
+            if len > MAX_WAL_RECORD_SIZE {
+                break; // corrupted — unreasonable payload size
+            }
+            let len = len as usize;
 
             // Read CRC
             let mut crc_buf = [0u8; 4];
@@ -250,7 +263,9 @@ impl GraphWal {
 
             let mut len_buf = [0u8; 4];
             if reader.read_exact(&mut len_buf).is_err() { break; }
-            let len = u32::from_le_bytes(len_buf) as usize;
+            let len = u32::from_le_bytes(len_buf);
+            if len > MAX_WAL_RECORD_SIZE { break; }
+            let len = len as usize;
 
             let mut crc_buf = [0u8; 4];
             if reader.read_exact(&mut crc_buf).is_err() { break; }

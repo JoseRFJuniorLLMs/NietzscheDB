@@ -106,6 +106,13 @@ impl VectorStore {
             let start = local_idx * self.element_size;
 
             let mut guard = segment.write_mmap.lock();
+            assert!(
+                start + self.element_size <= guard.len(),
+                "mmap write out of bounds: {} + {} > {}",
+                start,
+                self.element_size,
+                guard.len()
+            );
             let ptr = unsafe { guard.as_mut_ptr().add(start) };
 
             unsafe {
@@ -131,6 +138,13 @@ impl VectorStore {
 
         let start = local_idx * self.element_size;
 
+        assert!(
+            start + self.element_size <= segment.read_mmap.len(),
+            "mmap read out of bounds: {} + {} > {}",
+            start,
+            self.element_size,
+            segment.read_mmap.len()
+        );
         let ptr = unsafe { segment.read_mmap.as_ptr().add(start) };
 
         unsafe { std::slice::from_raw_parts(ptr, self.element_size) }
@@ -159,6 +173,13 @@ impl VectorStore {
         let start = local_idx * self.element_size;
 
         let mut guard = segment.write_mmap.lock();
+        assert!(
+            start + self.element_size <= guard.len(),
+            "mmap write out of bounds: {} + {} > {}",
+            start,
+            self.element_size,
+            guard.len()
+        );
         let ptr = unsafe { guard.as_mut_ptr().add(start) };
 
         unsafe {
@@ -209,6 +230,12 @@ impl VectorStore {
             let chunk_data_size = self.element_size * CHUNK_SIZE;
             let to_copy = std::cmp::min(remaining, chunk_data_size);
 
+            assert!(
+                to_copy <= data_guard.len(),
+                "mmap export read out of bounds: {} > {}",
+                to_copy,
+                data_guard.len()
+            );
             unsafe {
                 let ptr = data_guard.as_ptr();
                 let slice = std::slice::from_raw_parts(ptr, to_copy);
@@ -247,6 +274,12 @@ impl VectorStore {
             let remaining_data = data.len() - offset;
             let to_copy = std::cmp::min(remaining_data, seg_capacity);
 
+            assert!(
+                to_copy <= mmap_guard.len(),
+                "mmap from_bytes write out of bounds: {} > {}",
+                to_copy,
+                mmap_guard.len()
+            );
             unsafe {
                 let ptr = mmap_guard.as_mut_ptr();
                 std::ptr::copy_nonoverlapping(data[offset..].as_ptr(), ptr, to_copy);

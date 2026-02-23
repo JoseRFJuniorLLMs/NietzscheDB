@@ -33,7 +33,7 @@
 //! ```
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
@@ -97,6 +97,9 @@ pub struct CollectionInfo {
 pub struct CollectionManager {
     base_dir:    PathBuf,
     collections: DashMap<String, (CollectionConfig, SharedDb)>,
+    /// Serialises `create_collection` calls to eliminate the TOCTOU race
+    /// between the `contains_key` check and the `insert`.
+    create_lock: Mutex<()>,
 }
 
 impl CollectionManager {
@@ -119,6 +122,7 @@ impl CollectionManager {
         let cm = Arc::new(Self {
             base_dir:    base_dir.to_path_buf(),
             collections: DashMap::new(),
+            create_lock: Mutex::new(()),
         });
 
         // Load existing collections from disk
@@ -166,7 +170,11 @@ impl CollectionManager {
     // ── Public API ────────────────────────────────────────────────────────
 
     /// Create a new collection (idempotent — succeeds silently if already exists).
+    ///
+    /// Uses a creation mutex to eliminate the TOCTOU race between the
+    /// `contains_key` check and the actual insert into the `DashMap`.
     pub fn create_collection(&self, cfg: CollectionConfig) -> Result<(), GraphError> {
+        let _guard = self.create_lock.lock().unwrap_or_else(|e| e.into_inner());
         if self.collections.contains_key(&cfg.name) {
             return Ok(()); // Already exists — idempotent
         }

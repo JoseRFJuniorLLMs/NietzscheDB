@@ -30,13 +30,15 @@ use std::net::SocketAddr;
 
 use axum::{
     extract::{Extension, Path, Query, State},
-    http::StatusCode,
+    http::{Request, StatusCode},
+    middleware::{self, Next},
     response::{Html, IntoResponse, Json},
     routing::{delete, get, post},
     Router,
 };
 use serde::{Deserialize, Serialize};
-use tower_http::cors::CorsLayer;
+use sha2::{Digest, Sha256};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -58,6 +60,109 @@ use crate::metrics::OperationMetrics;
 
 type AppState = (Arc<CollectionManager>, Arc<OperationMetrics>);
 
+// ── Dashboard authentication middleware ──────────────────────────────────────
+
+/// API key hash for dashboard auth (loaded from same env vars as gRPC).
+/// If empty, auth is disabled (development mode).
+#[derive(Clone)]
+struct DashboardAuth {
+    key_hashes: Arc<Vec<String>>,
+}
+
+impl DashboardAuth {
+    fn from_env() -> Self {
+        let mut hashes = Vec::new();
+        for env_var in [
+            "NIETZSCHE_API_KEY",
+            "NIETZSCHE_API_KEY_ADMIN",
+            "NIETZSCHE_API_KEY_WRITER",
+            "NIETZSCHE_API_KEY_READER",
+            "NIETZSCHE_DASHBOARD_KEY",
+        ] {
+            if let Ok(key) = std::env::var(env_var) {
+                if !key.is_empty() {
+                    let hash = sha256_hex(&key);
+                    hashes.push(hash);
+                }
+            }
+        }
+        if hashes.is_empty() {
+            warn!("Dashboard authentication DISABLED — no API key env vars set");
+        } else {
+            info!(keys = hashes.len(), "Dashboard authentication enabled");
+        }
+        Self { key_hashes: Arc::new(hashes) }
+    }
+}
+
+fn sha256_hex(input: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(input.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+/// Constant-time byte comparison.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() { return false; }
+    a.iter().zip(b.iter()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// Axum middleware: check `x-api-key` header or `?api_key=` query param.
+/// Unauthenticated endpoints (/, /api/health, /metrics) are excluded.
+async fn auth_middleware(
+    Extension(auth): Extension<DashboardAuth>,
+    req: Request<axum::body::Body>,
+    next: Next,
+) -> impl IntoResponse {
+    // If no keys configured, allow all (dev mode)
+    if auth.key_hashes.is_empty() {
+        return next.run(req).await;
+    }
+
+    // Allow health/root/metrics without auth
+    let path = req.uri().path();
+    if path == "/" || path == "/api/health" || path == "/metrics" {
+        return next.run(req).await;
+    }
+
+    // Check x-api-key header
+    let key = req.headers()
+        .get("x-api-key")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            // Check ?api_key= query param (for browser access)
+            req.uri().query()
+                .and_then(|q| {
+                    q.split('&')
+                        .find_map(|pair| {
+                            let mut kv = pair.splitn(2, '=');
+                            match (kv.next(), kv.next()) {
+                                (Some("api_key"), Some(v)) => Some(v.to_string()),
+                                _ => None,
+                            }
+                        })
+                })
+        });
+
+    match key {
+        Some(k) => {
+            let request_hash = sha256_hex(&k);
+            let valid = auth.key_hashes.iter().any(|expected| {
+                constant_time_eq(request_hash.as_bytes(), expected.as_bytes())
+            });
+            if valid {
+                next.run(req).await
+            } else {
+                (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "invalid API key"}))).into_response()
+            }
+        }
+        None => {
+            (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "missing x-api-key header"}))).into_response()
+        }
+    }
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 pub async fn serve(
@@ -68,6 +173,7 @@ pub async fn serve(
 ) {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let state: AppState = (db, ops);
+    let auth = DashboardAuth::from_env();
 
     let app = Router::new()
         .route("/", get(root))
@@ -131,7 +237,18 @@ pub async fn serve(
         .route("/api/cluster/status", get(cluster_status))
         .route("/api/cluster/ring", get(cluster_ring))
         .layer(Extension(cluster))
-        .layer(CorsLayer::permissive())
+        .layer(Extension(auth))
+        .layer(middleware::from_fn(auth_middleware))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(AllowOrigin::predicate(|origin, _| {
+                    // Allow localhost origins for development
+                    let o = origin.as_bytes();
+                    o.starts_with(b"http://localhost") || o.starts_with(b"http://127.0.0.1")
+                }))
+                .allow_methods(tower_http::cors::Any)
+                .allow_headers(tower_http::cors::Any),
+        )
         .with_state(state);
 
     info!(%addr, "NietzscheDB dashboard listening");

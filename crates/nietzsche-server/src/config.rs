@@ -109,10 +109,16 @@ fn env_str(key: &str, default: &str) -> String {
 }
 
 fn env_parse<T: std::str::FromStr>(key: &str, default: T) -> T {
-    std::env::var(key)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
+    match std::env::var(key) {
+        Ok(v) => match v.parse() {
+            Ok(parsed) => parsed,
+            Err(_) => {
+                eprintln!("WARNING: env var {key}={v:?} is not valid; using default");
+                default
+            }
+        },
+        Err(_) => default,
+    }
 }
 
 fn env_csv(key: &str) -> Vec<String> {

@@ -409,6 +409,12 @@ impl<const N: usize> HyperVector<N> {
     /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
     #[allow(clippy::cast_ptr_alignment)]
     pub fn from_bytes(bytes: &[u8]) -> &Self {
+        assert!(
+            bytes.len() >= Self::SIZE,
+            "from_bytes: buffer too short ({} < {})",
+            bytes.len(),
+            Self::SIZE
+        );
         assert_eq!(
             bytes.as_ptr().align_offset(std::mem::align_of::<Self>()),
             0,
@@ -431,6 +437,12 @@ impl<const N: usize> HyperVectorF32<N> {
     /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
     #[allow(clippy::cast_ptr_alignment)]
     pub fn from_bytes(bytes: &[u8]) -> &Self {
+        assert!(
+            bytes.len() >= Self::SIZE,
+            "from_bytes: buffer too short ({} < {})",
+            bytes.len(),
+            Self::SIZE
+        );
         assert_eq!(
             bytes.as_ptr().align_offset(std::mem::align_of::<Self>()),
             0,
@@ -453,6 +465,12 @@ impl<const N: usize> QuantizedHyperVector<N> {
     /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
     #[allow(clippy::cast_ptr_alignment)]
     pub fn from_bytes(bytes: &[u8]) -> &Self {
+        assert!(
+            bytes.len() >= Self::SIZE,
+            "from_bytes: buffer too short ({} < {})",
+            bytes.len(),
+            Self::SIZE
+        );
         assert_eq!(
             bytes.as_ptr().align_offset(std::mem::align_of::<Self>()),
             0,
@@ -474,6 +492,12 @@ impl<const N: usize> BinaryHyperVector<N> {
     /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
     #[allow(clippy::cast_ptr_alignment)]
     pub fn from_bytes(bytes: &[u8]) -> &Self {
+        assert!(
+            bytes.len() >= Self::SIZE,
+            "from_bytes: buffer too short ({} < {})",
+            bytes.len(),
+            Self::SIZE
+        );
         assert_eq!(
             bytes.as_ptr().align_offset(std::mem::align_of::<Self>()),
             0,
