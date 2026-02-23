@@ -34,6 +34,7 @@
 //! ```
 
 pub mod code_as_data;
+pub mod circuit_breaker;
 pub mod config;
 pub mod counterfactual;
 pub mod daemons;

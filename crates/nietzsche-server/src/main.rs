@@ -672,6 +672,28 @@ async fn main() -> anyhow::Result<()> {
                                                 break;
                                             }
                                         }
+                                        nietzsche_agency::AgencyIntent::ExecuteNQL { node_id, nql, description } => {
+                                            info!(
+                                                collection = %col_name,
+                                                node_id    = %node_id,
+                                                desc       = %description,
+                                                "agency: executing reflexive action (Code-as-Data)"
+                                            );
+                                            match nietzsche_query::parse(&nql) {
+                                                Ok(query) => {
+                                                    match nietzsche_query::execute(&query, db.storage(), db.adjacency(), &Default::default()) {
+                                                        Ok(_) => {
+                                                            // Record firing to trigger cooldown (write-back to node content)
+                                                            if let Err(e) = nietzsche_agency::code_as_data::record_firing(db.storage(), node_id) {
+                                                                warn!(node_id = %node_id, error = %e, "agency: failed to record firing");
+                                                            }
+                                                        }
+                                                        Err(e) => warn!(node_id = %node_id, error = %e, "agency: reflexive NQL failed"),
+                                                    }
+                                                }
+                                                Err(e) => warn!(node_id = %node_id, error = %e, "agency: reflexive NQL parse failed"),
+                                            }
+                                        }
                                     }
                                 }
 
