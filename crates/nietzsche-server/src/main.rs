@@ -107,6 +107,45 @@ async fn main() -> anyhow::Result<()> {
         info!(fields = ?config.indexed_fields, "metadata indexing enabled");
     }
 
+    // ── Neural Model Registry — Background Scanner ────────────────────────────
+    // Periodically scans NIETZSCHE_MODEL_DIR for new .onnx files and loads them.
+    {
+        let model_dir = config.model_dir.clone();
+        tokio::spawn(async move {
+            let interval = Duration::from_secs(60);
+            info!(path = %model_dir, "background neural model scanner started");
+            loop {
+                let model_path = PathBuf::from(&model_dir);
+                if model_path.exists() && model_path.is_dir() {
+                    if let Ok(entries) = std::fs::read_dir(&model_path) {
+                        for entry in entries.flatten() {
+                            let path = entry.path();
+                            if path.extension().and_then(|s| s.to_str()) == Some("onnx") {
+                                let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown");
+                                
+                                // Check if already loaded (REGISTRY.list_models() or similar)
+                                // For now, load_model will just overwrite in DashMap which is safe.
+                                let meta = nietzsche_neural::ModelMetadata {
+                                    name: name.to_string(),
+                                    path: path.clone(),
+                                    version: "1.0".to_string(),
+                                    input_shape: vec![],
+                                    output_shape: vec![],
+                                };
+                                
+                                match nietzsche_neural::REGISTRY.load_model(meta) {
+                                    Ok(_) => {} // Silent on repeat loads
+                                    Err(e) => warn!(model = %name, error = %e, "failed to load neural model in background"),
+                                }
+                            }
+                        }
+                    }
+                }
+                tokio::time::sleep(interval).await;
+            }
+        });
+    }
+
     // ── GPU vector backend injection ──────────────────────────────────────────
     // Activated when compiled with `--features gpu` AND
     // `NIETZSCHE_VECTOR_BACKEND=gpu` is set at runtime.
@@ -528,7 +567,7 @@ async fn main() -> anyhow::Result<()> {
                             continue;
                         };
 
-                        let db = shared.read().await;
+                        let mut db = shared.read().await;
                         match engine.tick(db.storage(), db.adjacency()) {
                             Ok(report) => {
                                 if let Some(ref health) = report.health_report {
@@ -692,6 +731,55 @@ async fn main() -> anyhow::Result<()> {
                                                     }
                                                 }
                                                 Err(e) => warn!(node_id = %node_id, error = %e, "agency: reflexive NQL parse failed"),
+                                            }
+                                        }
+                                        nietzsche_agency::AgencyIntent::ApplyLtd { from_id, to_id, weight_delta, correction_count } => {
+                                            info!(
+                                                weight_delta = weight_delta,
+                                                count = correction_count,
+                                                "agency: ApplyLtd intent executed"
+                                            );
+                                            
+                                            // Find the specific edge ID between from_id and to_id
+                                            let edge_id = db.adjacency().entries_out(&from_id)
+                                                .into_iter()
+                                                .find(|e| e.neighbor_id == to_id)
+                                                .map(|e| e.edge_id);
+
+                                            if let Some(eid) = edge_id {
+                                                drop(db);
+                                                {
+                                                    let mut db_w = shared.write().await;
+                                                    if let Ok(Some(mut edge)) = db_w.storage().get_edge(&eid) {
+                                                        edge.weight -= weight_delta;
+                                                        if edge.weight <= 1e-4 {
+                                                            // Pruning: weight reached zero
+                                                            if let Err(e) = db_w.delete_edge(eid) {
+                                                                warn!(edge_id = %eid, error = %e, "agency: LTD pruning failed");
+                                                            } else {
+                                                                info!(edge_id = %eid, "agency: LTD pruning complete (weight=0)");
+                                                            }
+                                                        } else if let Err(e) = db_w.storage().put_edge(&edge) {
+                                                            warn!(from = %from_id, to = %to_id, error = %e, "agency: ApplyLtd update failed");
+                                                        }
+                                                    }
+                                                }
+                                                db = shared.read().await;
+                                            }
+                                        }
+                                        nietzsche_agency::AgencyIntent::NeuralBoost { node_id, importance, reason } => {
+                                            info!(
+                                                collection = %col_name,
+                                                node_id    = %node_id,
+                                                importance = importance,
+                                                reason     = %reason,
+                                                "agency: NeuralBoost intent executed"
+                                            );
+                                            if let Ok(Some(mut meta)) = db.storage().get_node_meta(&node_id) {
+                                                meta.energy = (meta.energy + 0.1).min(1.0);
+                                                if let Err(e) = db.storage().put_node_meta(&meta) {
+                                                    warn!(node_id = %node_id, error = %e, "agency: NeuralBoost update failed");
+                                                }
                                             }
                                         }
                                     }

@@ -1,0 +1,19 @@
+[package]
+name = "nietzsche-mcts"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nietzsche-graph = { workspace = true }
+nietzsche-neural = { workspace = true }
+nietzsche-gnn = { workspace = true }
+nietzsche-hyp-ops = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+rand = { workspace = true }
+async-trait = "0.1"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

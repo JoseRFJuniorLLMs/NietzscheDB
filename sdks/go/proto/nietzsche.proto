@@ -27,6 +27,11 @@ service NietzscheDB {
   rpc DropCollection   (DropCollectionRequest)    returns (StatusResponse);
   rpc ListCollections  (Empty)                    returns (ListCollectionsResponse);
 
+  // ── Wiederkehr Daemons ────────────────────────────────────────────────
+  rpc CreateDaemon (CreateDaemonRequest) returns (StatusResponse);
+  rpc ListDaemons   (ListDaemonsRequest)   returns (ListDaemonsResponse);
+  rpc DropDaemon   (DropDaemonRequest)   returns (StatusResponse);
+
   // ── Node CRUD ─────────────────────────────────────────────────────────
   rpc InsertNode   (InsertNodeRequest)    returns (NodeResponse);
   rpc GetNode      (NodeIdRequest)        returns (NodeResponse);
@@ -138,10 +143,99 @@ service NietzscheDB {
   rpc SqlQuery     (SqlRequest)          returns (SqlResultSet);
   rpc SqlExec      (SqlRequest)          returns (SqlExecResult);
 
-  // ── Wiederkehr Daemons (Phase W — periodic autonomous tasks) ───────
-  rpc CreateDaemon (CreateDaemonRequest) returns (StatusResponse);
-  rpc DropDaemon   (DropDaemonRequest)   returns (StatusResponse);
-  rpc ListDaemons  (ListDaemonsRequest)  returns (ListDaemonsResponse);
+  // ── Neural Foundation (Phase 1 — Ag.5/Ag.8/Ag.9) ───────────────────────
+  rpc LoadModel    (LoadModelRequest)    returns (StatusResponse);
+  rpc ListModels   (Empty)               returns (ListModelsResponse);
+  rpc UnloadModel  (ModelNameRequest)    returns (StatusResponse);
+  rpc GnnInfer     (GnnInferRequest)     returns (GnnInferResponse);
+  rpc MctsSearch   (MctsRequest)         returns (MctsResponse);
+
+  // ── DreamerV3 Speculative Simulation (Phase 4 — Ag.9) ───────────────
+  rpc DreamFrom    (DreamRequest)        returns (DreamSessionProto);
+  rpc ApplyDream   (DreamIdRequest)      returns (DreamSessionProto);
+  rpc RejectDream  (DreamIdRequest)      returns (DreamSessionProto);
+}
+
+// ── Neural messages ────────────────────────────────────────────────────────
+
+message LoadModelRequest {
+  string name    = 1;
+  string path    = 2;
+  string version = 3;
+}
+
+message ListModelsResponse {
+  repeated ModelMeta models = 1;
+}
+
+message ModelMeta {
+  string name    = 1;
+  string path    = 2;
+  string version = 3;
+}
+
+message ModelNameRequest {
+  string name = 1;
+}
+
+message GnnInferRequest {
+  string model_name = 1;
+  string collection = 2;
+  repeated string node_ids = 3;
+}
+
+message GnnInferResponse {
+  repeated PoincareVector embeddings = 1;
+}
+
+message MctsRequest {
+  string model_name = 1;
+  string start_node_id = 2;
+  uint32 simulations = 3;
+  string collection = 4;
+}
+
+message MctsResponse {
+  string best_action_id = 1;
+  double value = 2;
+}
+
+message DreamRequest {
+  string collection = 1;
+  string seed_id    = 2;
+  uint32 depth      = 3;
+  double noise      = 4;
+}
+
+message DreamIdRequest {
+  string collection = 1;
+  string dream_id   = 2;
+}
+
+message DreamSessionProto {
+  string id          = 1;
+  string seed_node   = 2;
+  uint32 depth       = 3;
+  double noise       = 4;
+  int64  created_at  = 5;
+  string status      = 6; // "pending" | "applied" | "rejected"
+  repeated DreamEventProto     events      = 7;
+  repeated DreamNodeDeltaProto node_deltas = 8;
+}
+
+message DreamEventProto {
+  string event_type  = 1; // "EnergySpike" | "CurvatureAnomaly"
+  string node_id     = 2;
+  double energy      = 3;
+  double depth       = 4;
+  string description = 5;
+}
+
+message DreamNodeDeltaProto {
+  string node_id    = 1;
+  double old_energy = 2;
+  double new_energy = 3;
+  string event_type = 4; // optional
 }
 
 // ── Common primitives ──────────────────────────────────────────────────────
@@ -376,6 +470,8 @@ message QueryResponse {
   string                explain     = 5;
   // Aggregation / scalar rows
   repeated ScalarRow    scalar_rows = 6;
+  // NEW Phase 4: Dream session result for DREAM FROM ... queries
+  DreamSessionProto     dream_result = 7;
 }
 
 message ScalarRow {
@@ -808,37 +904,7 @@ message ReapExpiredRequest {
 }
 
 message ReapExpiredResponse {
-  uint32 reaped_count = 1;
-}
-
-// ── Wiederkehr Daemon messages ──────────────────────────────────────────
-
-message CreateDaemonRequest {
-  string collection    = 1;
-  string label         = 2;  // human readable name
-  string nql           = 3;  // NQL command to execute periodically
-  uint32 interval_secs = 4;  // execution period
-}
-
-message ListDaemonsRequest {
-  string collection = 1;
-}
-
-message DaemonInfoProto {
-  string label         = 1;
-  string nql           = 2;
-  uint32 interval_secs = 3;
-  int64  last_run_at   = 4;
-  uint64 run_count     = 5;
-}
-
-message ListDaemonsResponse {
-  repeated DaemonInfoProto daemons = 1;
-}
-
-message DropDaemonRequest {
-  string collection = 1;
-  string label      = 2;
+  uint64 reaped_count = 1;
 }
 
 // ── Cluster gossip messages (Phase G) ─────────────────────────────────────
@@ -1018,4 +1084,31 @@ message SqlExecResult {
   uint64 affected_rows = 1;  // number of rows affected
   bool   success       = 2;  // true if statement succeeded
   string message       = 3;  // optional message
+}
+message CreateDaemonRequest {
+  string collection    = 1;
+  string label         = 2;
+  string nql           = 3;
+  uint32 interval_secs = 4;
+}
+
+message ListDaemonsRequest {
+  string collection = 1;
+}
+
+message ListDaemonsResponse {
+  repeated DaemonInfoProto daemons = 1;
+}
+
+message DaemonInfoProto {
+  string label         = 1;
+  string nql           = 2;
+  uint32 interval_secs = 3;
+  int64  last_run_at   = 4;
+  uint64 run_count     = 5;
+}
+
+message DropDaemonRequest {
+  string collection = 1;
+  string label      = 2;
 }

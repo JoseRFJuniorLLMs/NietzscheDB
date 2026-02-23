@@ -126,6 +126,21 @@ type IncrementEdgeMetaOpts struct {
 	Delta      float64
 }
 
+// GnnInferOpts configures a GNN inference request.
+type GnnInferOpts struct {
+	ModelName  string
+	Collection string
+	NodeIDs    []string
+}
+
+// MctsOpts configures an MCTS search request.
+type MctsOpts struct {
+	ModelName   string
+	StartNodeID string
+	Simulations uint32
+	Collection  string // "" → "default"
+}
+
 // ── Result types ────────────────────────────────────────────────────────────
 
 // NodeResult represents a node returned by NietzscheDB.
@@ -182,6 +197,8 @@ type QueryResult struct {
 	ScalarRows []map[string]interface{}
 	Explain    string
 	Error      string
+	// Neural DreamerV3 result (Phase 4)
+	DreamResult *DreamSession
 }
 
 // NodePairResult represents a pair of nodes from an edge query.
@@ -242,6 +259,17 @@ type ZaratustraResult struct {
 	CyclesRun  uint32
 }
 
+// GnnInferResult contains the output of a GNN inference call.
+type GnnInferResult struct {
+	Embeddings [][]float64
+}
+
+// MctsResult contains the output of an MCTS search.
+type MctsResult struct {
+	BestActionID string
+	Value        float64
+}
+
 // ── Edge result with Minkowski causality metadata ─────────────────────
 
 // EdgeResult represents a full edge with all fields including Minkowski metadata.
@@ -263,4 +291,35 @@ type DaemonInfo struct {
 	IntervalSecs uint32
 	LastRunAt    int64
 	RunCount     uint64
+}
+
+// ── Neural Dream types (Phase 4) ──────────────────────────────────────────
+
+// DreamSession represents a speculative graph simulation state.
+type DreamSession struct {
+	ID         string
+	SeedNode   string
+	Depth      uint32
+	Noise      float64
+	CreatedAt  int64
+	Status     string // "pending" | "applied" | "rejected"
+	Events     []DreamEvent
+	NodeDeltas []DreamNodeDelta
+}
+
+// DreamEvent represents a significant discovery or anomaly within a dream.
+type DreamEvent struct {
+	EventType   string // "EnergySpike" | "CurvatureAnomaly"
+	NodeID      string
+	Energy      float64
+	Depth       float64
+	Description string
+}
+
+// DreamNodeDelta represents a speculative energy change for a node.
+type DreamNodeDelta struct {
+	NodeID    string
+	OldEnergy float64
+	NewEnergy float64
+	EventType string
 }

@@ -189,12 +189,31 @@ fn parse_pattern_inner(pair: Pair<Rule>) -> Result<Pattern, QueryError> {
 }
 
 fn parse_node_pattern(pair: Pair<Rule>) -> Result<NodePattern, QueryError> {
-    let mut parts = pair.into_inner();
-    let alias = parts.next()
-        .ok_or_else(|| QueryError::Parse("missing node alias".into()))?
-        .as_str().to_string();
-    let label = parts.next().map(|p| p.as_str().to_string());
-    Ok(NodePattern { alias, label })
+    let mut alias = String::new();
+    let mut label = None;
+    let mut semantic_id = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::ident => {
+                if alias.is_empty() {
+                    alias = inner.as_str().to_string();
+                } else {
+                    label = Some(inner.as_str().to_string());
+                }
+            }
+            Rule::semantic_id => {
+                semantic_id = Some(inner.as_str().to_string());
+            }
+            _ => {}
+        }
+    }
+
+    if alias.is_empty() {
+        return Err(QueryError::Parse("missing node alias".into()));
+    }
+
+    Ok(NodePattern { alias, label, semantic_id })
 }
 
 fn parse_path_pattern(pair: Pair<Rule>) -> Result<PathPattern, QueryError> {

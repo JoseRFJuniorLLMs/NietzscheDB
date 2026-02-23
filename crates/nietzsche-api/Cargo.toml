@@ -19,6 +19,9 @@ nietzsche-wiederkehr  = { workspace = true }
 nietzsche-dream       = { workspace = true }
 nietzsche-narrative   = { workspace = true }
 nietzsche-swartz      = { workspace = true }
+nietzsche-neural      = { workspace = true }
+nietzsche-gnn         = { workspace = true }
+nietzsche-mcts        = { workspace = true }
 tonic             = { workspace = true }
 prost             = { workspace = true }
 serde             = { workspace = true }

@@ -557,10 +557,12 @@ const CF_SQL_DATA: &str = "sql_data";
 /// Cooldown registry: key = node_id (16 bytes) → empty.
 /// Enables O(1) scan of nodes with active cooldowns.
 const CF_COOLDOWNS: &str = "cooldowns";
+const CF_DSI_ID: &str = "dsi_id";           // node_id -> semantic_id (bincode)
+const CF_DSI_SEMANTIC: &str = "dsi_semantic"; // semantic_id -> node_id
 
 const ALL_CFS: &[&str] = &[
     CF_NODES, CF_EMBEDDINGS, CF_EDGES, CF_ADJ_OUT, CF_ADJ_IN, CF_META, CF_SENSORY, CF_ENERGY_IDX,
-    CF_META_IDX, CF_LISTS, CF_SQL_SCHEMA, CF_SQL_DATA, CF_COOLDOWNS,
+    CF_META_IDX, CF_LISTS, CF_SQL_SCHEMA, CF_SQL_DATA, CF_COOLDOWNS, CF_DSI_ID, CF_DSI_SEMANTIC,
 ];
 
 // ─────────────────────────────────────────────
@@ -699,6 +701,8 @@ impl GraphStorage {
             ColumnFamilyDescriptor::new(CF_SQL_SCHEMA, cf_opts_read_heavy(&cache)),
             ColumnFamilyDescriptor::new(CF_SQL_DATA,   cf_opts_read_heavy(&cache)),
             ColumnFamilyDescriptor::new(CF_COOLDOWNS,  cf_opts_read_heavy(&cache)),
+            ColumnFamilyDescriptor::new(CF_DSI_ID,     cf_opts_read_heavy(&cache)),
+            ColumnFamilyDescriptor::new(CF_DSI_SEMANTIC, cf_opts_read_heavy(&cache)),
         ];
 
         let db = DB::open_cf_descriptors(&db_opts, path, cf_descs)
@@ -723,6 +727,8 @@ impl GraphStorage {
     #[inline] fn cf_sql_schema(&self) -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_SQL_SCHEMA).unwrap() }
     #[inline] fn cf_sql_data(&self)   -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_SQL_DATA).unwrap() }
     #[inline] fn cf_cooldowns(&self)  -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_COOLDOWNS).unwrap() }
+    #[inline] fn cf_dsi_id(&self)      -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_DSI_ID).unwrap() }
+    #[inline] fn cf_dsi_semantic(&self) -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_DSI_SEMANTIC).unwrap() }
 
     // ── Node operations ────────────────────────────────
 
@@ -800,19 +806,66 @@ impl GraphStorage {
     ) -> Result<(), GraphError> {
         let mut batch = rocksdb::WriteBatch::default();
 
+        // 1. Delete old energy index entry
+        let old_key = energy_index_key(old_energy, &meta.id);
+        batch.delete_cf(&self.cf_energy(), &old_key);
+
+        // 2. Write updated NodeMeta
         let value = bincode::serialize(meta)?;
         batch.put_cf(&self.cf_nodes(), meta.id.as_bytes(), &value);
 
-        if (old_energy - meta.energy).abs() > f32::EPSILON {
-            let old_key = energy_index_key(old_energy, &meta.id);
-            batch.delete_cf(&self.cf_energy(), &old_key);
-        }
-
+        // 3. Write new energy index entry
         let new_key = energy_index_key(meta.energy, &meta.id);
         batch.put_cf(&self.cf_energy(), &new_key, &[]);
 
         self.db.write(batch)
             .map_err(|e| GraphError::Storage(e.to_string()))
+    }
+
+    // ── DSI (Generative Retrieval) operations ──────────
+
+    /// Store a semantic identifier for a node.
+    /// Also updates the reverse index.
+    pub fn put_dsi_id(&self, node_id: &Uuid, semantic_id: &[u8]) -> Result<(), GraphError> {
+        let mut batch = rocksdb::WriteBatch::default();
+        batch.put_cf(&self.cf_dsi_id(), node_id.as_bytes(), semantic_id);
+        batch.put_cf(&self.cf_dsi_semantic(), semantic_id, node_id.as_bytes());
+        self.db.write(batch).map_err(|e| GraphError::Storage(e.to_string()))
+    }
+
+    /// Retrieve a node's semantic identifier.
+    pub fn get_dsi_id(&self, node_id: &Uuid) -> Result<Option<Vec<u8>>, GraphError> {
+        self.db.get_cf(&self.cf_dsi_id(), node_id.as_bytes())
+            .map_err(|e| GraphError::Storage(e.to_string()))
+    }
+
+    /// Retrieve a node ID by its semantic identifier.
+    pub fn get_node_by_dsi_id(&self, semantic_id: &[u8]) -> Result<Option<Uuid>, GraphError> {
+        match self.db.get_cf(&self.cf_dsi_semantic(), semantic_id)
+            .map_err(|e| GraphError::Storage(e.to_string()))?
+        {
+            Some(bytes) => {
+                let uuid = Uuid::from_slice(&bytes).map_err(|_| GraphError::Storage("invalid uuid in dsi_semantic".into()))?;
+                Ok(Some(uuid))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Scan all node IDs matching a specific semantic prefix.
+    pub fn scan_nodes_by_dsi_prefix(&self, prefix: &[u8]) -> Result<Vec<Uuid>, GraphError> {
+        let cf = self.cf_dsi_semantic();
+        let iter = self.db.prefix_iterator_cf(&cf, prefix);
+        let mut results = Vec::new();
+        for item in iter {
+            let (key, value) = item.map_err(|e| GraphError::Storage(e.to_string()))?;
+            if !key.starts_with(prefix) {
+                break;
+            }
+            let uuid = Uuid::from_slice(&value).map_err(|_| GraphError::Storage("invalid uuid in dsi_semantic scan".into()))?;
+            results.push(uuid);
+        }
+        Ok(results)
     }
 
     /// Legacy wrapper — delegates to [`put_node_meta_update_energy`].

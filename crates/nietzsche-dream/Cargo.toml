@@ -7,8 +7,11 @@ description = "Dream Queries — speculative graph exploration via hyperbolic di
 [dependencies]
 nietzsche-graph = { workspace = true }
 nietzsche-query = { workspace = true }
+nietzsche-neural = { path = "../nietzsche-neural" }
 serde           = { workspace = true }
 serde_json      = "1.0"
+ndarray         = { workspace = true }
+ort             = { workspace = true }
 tokio           = { workspace = true }
 tracing         = { workspace = true }
 thiserror       = { workspace = true }

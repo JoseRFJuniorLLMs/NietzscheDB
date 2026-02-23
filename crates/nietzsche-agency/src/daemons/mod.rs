@@ -3,6 +3,8 @@ pub mod entropy;
 pub mod gap;
 pub mod ltd_daemon;
 pub mod niilista;
+pub mod neural_threshold;
+pub mod evolution_daemon;
 
 use nietzsche_graph::{AdjacencyIndex, GraphStorage};
 
@@ -41,3 +43,5 @@ pub use entropy::EntropyDaemon;
 pub use gap::GapDaemon;
 pub use ltd_daemon::LTDDaemon;
 pub use niilista::NiilistaGcDaemon;
+pub use neural_threshold::NeuralThresholdDaemon;
+pub use evolution_daemon::EvolutionDaemon;

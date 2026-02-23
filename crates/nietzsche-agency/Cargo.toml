@@ -8,6 +8,9 @@ description = "Autonomous agency engine: daemons, observer, and counterfactual s
 nietzsche-graph   = { path = "../nietzsche-graph" }
 nietzsche-pregel  = { path = "../nietzsche-pregel" }
 nietzsche-lsystem = { path = "../nietzsche-lsystem" }
+nietzsche-neural  = { path = "../nietzsche-neural" }
+nietzsche-gnn     = { path = "../nietzsche-gnn" }
+nietzsche-rl      = { path = "../nietzsche-rl" }
 uuid              = { workspace = true }
 serde             = { workspace = true }
 serde_json        = { workspace = true }

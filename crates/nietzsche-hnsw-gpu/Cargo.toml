@@ -20,7 +20,7 @@ nietzsche-graph = { workspace = true }
 # NVIDIA cuVS — GPU-accelerated approximate nearest neighbors
 # https://crates.io/crates/cuvs  — only compiled when feature `cuda` is enabled
 cuvs    = { version = "24.6", optional = true }
-ndarray = { version = "0.15", optional = true }
+ndarray = { version = "0.17", optional = true }
 
 # Shared workspace deps
 dashmap      = { workspace = true }

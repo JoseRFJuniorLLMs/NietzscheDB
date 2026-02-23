@@ -102,6 +102,9 @@ ident   = @{ ASCII_ALPHA ~ ident_tail* }
 // Compound-atomic ($) — no whitespace between the three parts
 prop = ${ ident ~ "." ~ ident }
 
+// Phase 4: Semantic ID for generative retrieval (e.g. 12.5.128)
+semantic_id = @{ integer ~ ("." ~ integer)* }
+
 // ── Numeric list  [0.1, 1.0, 10.0] ─────────────────────
 
 number   = { float | integer }
@@ -188,8 +191,8 @@ where_clause = { kw_where ~ conditions }
 
 // ── Graph patterns ──────────────────────────────────────
 
-// (alias) or (alias:Label)
-node_pattern = { "(" ~ ident ~ (":" ~ ident)? ~ ")" }
+// (alias) or (alias:Label) or (alias:Label<12.5.128>) or (alias<12.5.128>)
+node_pattern = { "(" ~ ident ~ (":" ~ ident)? ~ ("<" ~ semantic_id ~ ">")? ~ ")" }
 
 // Edge direction — typed or anonymous; optional hop range for variable-length paths
 // Optional edge alias: -[r:TYPE]->  or  -[:TYPE]->

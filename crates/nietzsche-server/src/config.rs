@@ -72,6 +72,9 @@ pub struct Config {
     /// Comma-separated list of metadata fields to maintain secondary indexes on.
     /// e.g. `"created_at,node_type,category"`. Empty = no metadata indexing.
     pub indexed_fields: Vec<String>,
+
+    /// Directory containing .onnx models for the neural foundation.
+    pub model_dir: String,
 }
 
 impl Config {
@@ -96,6 +99,7 @@ impl Config {
             backup_interval_secs:    env_parse("NIETZSCHE_BACKUP_INTERVAL_SECS", 0),
             backup_retention_count:  env_parse("NIETZSCHE_BACKUP_RETENTION_COUNT", 5),
             indexed_fields:          env_csv("NIETZSCHE_INDEXED_FIELDS"),
+            model_dir:               env_str("NIETZSCHE_MODEL_DIR", "/data/nietzsche/models"),
         }
     }
 }

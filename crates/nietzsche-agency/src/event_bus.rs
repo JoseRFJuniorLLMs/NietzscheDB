@@ -90,6 +90,13 @@ pub enum AgencyEvent {
         /// Pre-computed weight reduction = min(ltd_rate × count, current_weight).
         weight_delta: f32,
     },
+    /// NeuralThresholdDaemon (Ag.8) detected a node with high structural
+    /// importance but low energy.
+    NeuralProtection {
+        node_id: Uuid,
+        importance: f32,
+        description: String,
+    },
 }
 
 /// Internal pub/sub bus for inter-daemon communication.
