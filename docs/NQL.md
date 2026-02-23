@@ -883,6 +883,31 @@ Creates an ephemeral overlay (Copy-on-Write) over the real graph. Discarded afte
 
 ---
 
+## INVOKE ZARATUSTRA
+
+Manual trigger for the Zaratustra AGI engine cycles. Allows for on-demand energy propagation and phase transitions.
+
+### Syntax
+
+```sql
+INVOKE ZARATUSTRA [IN "collection"] [CYCLES <n>] [ALPHA <f>] [DECAY <f>]
+```
+
+### Examples
+
+```sql
+-- Run one standard cycle on the default collection
+INVOKE ZARATUSTRA
+
+-- Run 5 deep cycles with custom energy propagation (alpha)
+INVOKE ZARATUSTRA CYCLES 5 ALPHA 0.15 DECAY 0.02
+```
+
+The algorithm follows the **Will to Power → Eternal Recurrence → Ubermensch** phase transition logic documented in the architecture.
+
+---
+
+
 ## Archetypes
 
 Cross-collection archetype sharing via gossip protocol.
