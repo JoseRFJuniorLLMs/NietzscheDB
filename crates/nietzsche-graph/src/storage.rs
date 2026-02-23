@@ -553,12 +553,14 @@ const CF_META_IDX: &str = "meta_idx";
 const CF_LISTS: &str = "lists";
 /// Swartz SQL layer — table schemas: key = table_name (UTF-8) → serialized Schema + auto-inc counter.
 const CF_SQL_SCHEMA: &str = "sql_schema";
-/// Swartz SQL layer — row data: key = [table_name \x00 row_id_be(8B)] → serialized Row.
 const CF_SQL_DATA: &str = "sql_data";
+/// Cooldown registry: key = node_id (16 bytes) → empty.
+/// Enables O(1) scan of nodes with active cooldowns.
+const CF_COOLDOWNS: &str = "cooldowns";
 
 const ALL_CFS: &[&str] = &[
     CF_NODES, CF_EMBEDDINGS, CF_EDGES, CF_ADJ_OUT, CF_ADJ_IN, CF_META, CF_SENSORY, CF_ENERGY_IDX,
-    CF_META_IDX, CF_LISTS, CF_SQL_SCHEMA, CF_SQL_DATA,
+    CF_META_IDX, CF_LISTS, CF_SQL_SCHEMA, CF_SQL_DATA, CF_COOLDOWNS,
 ];
 
 // ─────────────────────────────────────────────
@@ -696,6 +698,7 @@ impl GraphStorage {
             ColumnFamilyDescriptor::new(CF_LISTS,      cf_opts_read_heavy(&cache)),
             ColumnFamilyDescriptor::new(CF_SQL_SCHEMA, cf_opts_read_heavy(&cache)),
             ColumnFamilyDescriptor::new(CF_SQL_DATA,   cf_opts_read_heavy(&cache)),
+            ColumnFamilyDescriptor::new(CF_COOLDOWNS,  cf_opts_read_heavy(&cache)),
         ];
 
         let db = DB::open_cf_descriptors(&db_opts, path, cf_descs)
@@ -719,6 +722,7 @@ impl GraphStorage {
     #[inline] fn cf_lists(&self)    -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_LISTS).unwrap() }
     #[inline] fn cf_sql_schema(&self) -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_SQL_SCHEMA).unwrap() }
     #[inline] fn cf_sql_data(&self)   -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_SQL_DATA).unwrap() }
+    #[inline] fn cf_cooldowns(&self)  -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_COOLDOWNS).unwrap() }
 
     // ── Node operations ────────────────────────────────
 
@@ -731,6 +735,15 @@ impl GraphStorage {
     /// - `PoincareVector` → `CF_EMBEDDINGS` (~24 KB at 3072 dims)
     /// - Energy secondary index key → `CF_ENERGY_IDX`
     pub fn put_node(&self, node: &Node) -> Result<(), GraphError> {
+        self.put_node_atomic(node, &std::collections::HashSet::new())
+    }
+
+    /// Persist a node and its metadata indices atomically.
+    pub fn put_node_atomic(
+        &self,
+        node: &Node,
+        indexed_fields: &std::collections::HashSet<String>,
+    ) -> Result<(), GraphError> {
         let mut batch = rocksdb::WriteBatch::default();
 
         let meta_bytes = bincode::serialize(&node.meta)?;
@@ -741,6 +754,15 @@ impl GraphStorage {
 
         let energy_key = energy_index_key(node.energy, &node.id);
         batch.put_cf(&self.cf_energy(), &energy_key, &[]);
+
+        // Metadata secondary index
+        for field in indexed_fields {
+            if let Some(val) = node.meta.metadata.get(field) {
+                if let Some(key) = meta_index_key(field, val, &node.id) {
+                    batch.put_cf(&self.cf_meta_idx(), &key, &[]);
+                }
+            }
+        }
 
         self.db.write(batch)
             .map_err(|e| GraphError::Storage(e.to_string()))
@@ -802,8 +824,12 @@ impl GraphStorage {
         self.put_node_meta_update_energy(&node.meta, old_energy)
     }
 
-    /// Batch-insert multiple nodes in a single RocksDB write (10× faster than individual puts).
-    pub fn put_nodes_batch(&self, nodes: &[Node]) -> Result<(), GraphError> {
+    /// Batch-insert multiple nodes and their indices in a single RocksDB write (O(1) atomicity).
+    pub fn put_nodes_batch_atomic(
+        &self,
+        nodes: &[Node],
+        indexed_fields: &std::collections::HashSet<String>,
+    ) -> Result<(), GraphError> {
         let mut batch = rocksdb::WriteBatch::default();
         for node in nodes {
             let meta_bytes = bincode::serialize(&node.meta)?;
@@ -814,9 +840,44 @@ impl GraphStorage {
 
             let energy_key = energy_index_key(node.energy, &node.id);
             batch.put_cf(&self.cf_energy(), &energy_key, &[]);
+
+            // Metadata secondary index
+            for field in indexed_fields {
+                if let Some(val) = node.meta.metadata.get(field) {
+                    if let Some(key) = meta_index_key(field, val, &node.id) {
+                        batch.put_cf(&self.cf_meta_idx(), &key, &[]);
+                    }
+                }
+            }
         }
         self.db.write(batch)
             .map_err(|e| GraphError::Storage(e.to_string()))
+    }
+
+    /// Legacy batch insert (unindexed).
+    pub fn put_nodes_batch(&self, nodes: &[Node]) -> Result<(), GraphError> {
+        self.put_nodes_batch_atomic(nodes, &std::collections::HashSet::new())
+    }
+
+    /// Add a node to the cooldown registry.
+    pub fn add_to_cooldown_registry(&self, id: &Uuid) -> Result<(), GraphError> {
+        self.db.put_cf(&self.cf_cooldowns(), id.as_bytes(), &[])
+            .map_err(|e| GraphError::Storage(e.to_string()))
+    }
+
+    /// Remove a node from the cooldown registry.
+    pub fn remove_from_cooldown_registry(&self, id: &Uuid) -> Result<(), GraphError> {
+        self.db.delete_cf(&self.cf_cooldowns(), id.as_bytes())
+            .map_err(|e| GraphError::Storage(e.to_string()))
+    }
+
+    /// Iterator over IDs in the cooldown registry.
+    pub fn iter_active_cooldowns(&self) -> impl Iterator<Item = Result<Uuid, GraphError>> + '_ {
+        self.db.iterator_cf(&self.cf_cooldowns(), rocksdb::IteratorMode::Start)
+            .map(|item| {
+                let (key, _) = item.map_err(|e| GraphError::Storage(e.to_string()))?;
+                Uuid::from_slice(&key).map_err(|e| GraphError::Storage(e.to_string()))
+            })
     }
 
     /// Retrieve node metadata by ID (~100 bytes). Returns `None` if not found.
@@ -1375,7 +1436,7 @@ impl GraphStorage {
         }
     }
 
-    // ── Metadata ───────────────────────────────────────
+    // ── Metadata operations ───────────────────────
 
     /// Write a metadata key/value pair.
     pub fn put_meta(&self, key: &str, value: &[u8]) -> Result<(), GraphError> {

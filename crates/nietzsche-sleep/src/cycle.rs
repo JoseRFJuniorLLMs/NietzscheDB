@@ -296,6 +296,10 @@ impl SleepCycle {
 
         if !committed {
             snapshot.restore(db)?;
+            // Point 5 Audit Fix: Force-sync vector store to ensure no orphans/drift
+            // remain after the failed cycle.
+            db.force_sync_vector_store()?;
+
             // Phase 11: also rollback sensory latents
             if let Some(consolidator) = consolidator {
                 consolidator.restore_sensory()?;

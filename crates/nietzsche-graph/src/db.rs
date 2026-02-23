@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
-
-use dashmap::DashMap;
+use lru::LruCache;
+use parking_lot::{Mutex, RwLock};
 use tracing;
 use uuid::Uuid;
 
@@ -66,6 +66,14 @@ pub enum MetadataFilter {
     Range { field: String, gte: Option<f64>, lte: Option<f64> },
     /// All sub-filters must match (intersection).
     And(Vec<MetadataFilter>),
+    /// At least one sub-filter must match (union).
+    Or(Vec<MetadataFilter>),
+    /// Invert the match of the sub-filter.
+    Not(Box<MetadataFilter>),
+    /// Field contains the given value (JSONB containment match).
+    Contains { field: String, value: serde_json::Value },
+    /// Field exists in the metadata.
+    Exists { field: String },
     /// No filtering — return all K results.
     None,
 }
@@ -192,11 +200,10 @@ pub struct NietzscheDB<V: VectorStore> {
     vector_store: V,
     /// Hot-tier RAM cache: elite Übermensch node metadata pinned for O(1) access.
     ///
-    /// ## BUG A fix (Committee 2026-02-19)
-    /// Changed from `DashMap<Uuid, Node>` (~24 KB/entry) to `DashMap<Uuid, NodeMeta>`
-    /// (~100 bytes/entry) — **240× less RAM per cached node**.
-    /// Populated by [`ZaratustraEngine`] after each Übermensch phase.
-    pub hot_tier: Arc<DashMap<Uuid, NodeMeta>>,
+    /// ## Point 8 Audit Fix: LRU Eviction
+    /// Changed from `DashMap` to `Mutex<LruCache>` to support fixed-size pinning
+    /// with Least-Recently-Used (LRU) eviction strategy.
+    pub hot_tier: Arc<Mutex<LruCache<Uuid, NodeMeta>>>,
     /// Metadata fields to maintain secondary indexes on (set via `NIETZSCHE_INDEXED_FIELDS`).
     /// When a node is inserted/deleted, index entries are written/removed for these fields.
     indexed_fields: HashSet<String>,
@@ -224,9 +231,10 @@ impl<V: VectorStore> NietzscheDB<V> {
         // Replay committed transactions that may not have been fully applied.
         // The WAL is opened with tail truncation, then replayed before normal
         // operation. This ensures crash consistency.
+        let mut vector_store = vector_store;
         let replay_entries = GraphWal::replay(data_dir)?;
         if !replay_entries.is_empty() {
-            let replayed = Self::replay_wal_entries(&storage, &replay_entries);
+            let replayed = Self::replay_wal_entries(&storage, &mut vector_store, &replay_entries);
             if replayed > 0 {
                 tracing::info!(
                     total_entries = replay_entries.len(),
@@ -244,7 +252,7 @@ impl<V: VectorStore> NietzscheDB<V> {
 
         let mut db = Self {
             storage, wal, adjacency, vector_store,
-            hot_tier: Arc::new(DashMap::new()),
+            hot_tier: Arc::new(Mutex::new(LruCache::new(std::num::NonZeroUsize::new(10000).unwrap()))),
             indexed_fields: HashSet::new(),
             schema_validator,
         };
@@ -263,7 +271,11 @@ impl<V: VectorStore> NietzscheDB<V> {
     /// flushed to the WAL.
     ///
     /// Returns the number of operations replayed.
-    fn replay_wal_entries(storage: &Arc<GraphStorage>, entries: &[GraphWalEntry]) -> usize {
+    fn replay_wal_entries(
+        storage: &Arc<GraphStorage>,
+        vector_store: &mut V,
+        entries: &[GraphWalEntry],
+    ) -> usize {
         let mut replayed = 0;
         let mut in_tx: Option<Uuid> = None;
         let mut tx_ops: Vec<&GraphWalEntry> = Vec::new();
@@ -287,7 +299,7 @@ impl<V: VectorStore> NietzscheDB<V> {
                     if in_tx == Some(*tx_id) {
                         // Replay all buffered ops for this committed transaction
                         for op in &tx_ops {
-                            if Self::replay_single_entry(storage, op) {
+                            if Self::replay_single_entry(storage, vector_store, op) {
                                 replayed += 1;
                             }
                         }
@@ -309,7 +321,7 @@ impl<V: VectorStore> NietzscheDB<V> {
                     } else {
                         // Non-transactional entry — replay immediately
                         // (these were flushed with fsync before the WAL returned)
-                        if Self::replay_single_entry(storage, entry) {
+                        if Self::replay_single_entry(storage, vector_store, entry) {
                             replayed += 1;
                         }
                     }
@@ -322,18 +334,30 @@ impl<V: VectorStore> NietzscheDB<V> {
 
     /// Replay a single WAL entry to RocksDB storage.
     /// Returns true if the entry was applied, false on error (logged and skipped).
-    fn replay_single_entry(storage: &Arc<GraphStorage>, entry: &GraphWalEntry) -> bool {
+    fn replay_single_entry(
+        storage: &Arc<GraphStorage>,
+        vector_store: &mut V,
+        entry: &GraphWalEntry,
+    ) -> bool {
         let result = match entry {
-            GraphWalEntry::InsertNode(node) => storage.put_node(node),
+            GraphWalEntry::InsertNode(node) => {
+                // Point 9: InsertNode in WAL replay MUST also populate vector store
+                // if it's a synchronous recovery path.
+                let _ = vector_store.upsert(node.id, &node.embedding);
+                storage.put_node(node)
+            }
             GraphWalEntry::InsertEdge(edge) => storage.put_edge(edge),
-            GraphWalEntry::DeleteNode(id) => storage.delete_node(id),
+            GraphWalEntry::DeleteNode(id) => {
+                // Point 9 Audit Fix: Propagate deletion to vector store during recovery
+                let _ = vector_store.delete(*id);
+                storage.delete_node(id)
+            }
             GraphWalEntry::DeleteEdge(id) => {
-                // Need to find the edge first to delete it properly
-                match storage.get_edge(id) {
-                    Ok(Some(edge)) => storage.delete_edge(&edge),
-                    Ok(None) => Ok(()), // already deleted
-                    Err(e) => Err(e),
-                }
+                // Point 9: Implement direct deletion without existence check during recovery
+                // We use a dummy edge with given ID to trigger deletion in RocksDB
+                let mut dummy = Edge::association(*id, *id, 0.0);
+                dummy.id = *id;
+                storage.delete_edge(&dummy)
             }
             GraphWalEntry::PruneNode(id) => {
                 match storage.get_node_meta(id) {
@@ -567,7 +591,7 @@ impl<V: VectorStore> NietzscheDB<V> {
     /// Checks the hot-tier RAM cache first (O(1) DashMap lookup) before
     /// falling back to RocksDB `CF_NODES`.
     pub fn get_node_meta(&self, id: Uuid) -> Result<Option<NodeMeta>, GraphError> {
-        if let Some(meta) = self.hot_tier.get(&id) {
+        if let Some(meta) = self.hot_tier.lock().get(&id) {
             return Ok(Some(meta.clone()));
         }
         self.storage.get_node_meta(&id)
@@ -592,13 +616,8 @@ impl<V: VectorStore> NietzscheDB<V> {
         // 1. WAL
         self.wal.append(&GraphWalEntry::InsertNode(node.clone()))?;
 
-        // 2. RocksDB
-        self.storage.put_node(&node)?;
-
-        // 3. Metadata secondary index
-        if !self.indexed_fields.is_empty() {
-            self.storage.put_meta_index(&node.id, &node.meta.metadata, &self.indexed_fields)?;
-        }
+        // 2 & 3. RocksDB + Metadata Index (Atomic)
+        self.storage.put_node_atomic(&node, &self.indexed_fields)?;
 
         // 4. Vector store — pass indexed metadata for pushed-down KNN filtering
         if self.indexed_fields.is_empty() {
@@ -606,6 +625,11 @@ impl<V: VectorStore> NietzscheDB<V> {
         } else {
             let hnsw_meta = Self::extract_hnsw_meta(&node, &self.indexed_fields);
             self.vector_store.upsert_with_meta(node.id, &node.embedding, hnsw_meta)?;
+        }
+
+        // 5. Immediate hot-tier promotion (Industrial Consistency - Point 3)
+        if node.energy >= 0.85 {
+            self.promote_to_hot_tier(&node);
         }
 
         Ok(())
@@ -628,15 +652,8 @@ impl<V: VectorStore> NietzscheDB<V> {
         }
         self.wal.flush()?;
 
-        // 2. RocksDB — single WriteBatch for all nodes + energy_idx keys.
-        self.storage.put_nodes_batch(&nodes)?;
-
-        // 3. Metadata secondary index
-        if !self.indexed_fields.is_empty() {
-            for node in &nodes {
-                self.storage.put_meta_index(&node.id, &node.meta.metadata, &self.indexed_fields)?;
-            }
-        }
+        // 2 & 3. RocksDB + Metadata Index (Atomic - Point 2)
+        self.storage.put_nodes_batch_atomic(&nodes, &self.indexed_fields)?;
 
         // 4. Vector store — pass indexed metadata for pushed-down KNN filtering
         let has_indexed = !self.indexed_fields.is_empty();
@@ -646,6 +663,13 @@ impl<V: VectorStore> NietzscheDB<V> {
                 self.vector_store.upsert_with_meta(node.id, &node.embedding, hnsw_meta)?;
             } else {
                 self.vector_store.upsert(node.id, &node.embedding)?;
+            }
+        }
+
+        // 5. Immediate promotion for large batches
+        for node in &nodes {
+            if node.energy >= 0.85 {
+                self.promote_to_hot_tier(node);
             }
         }
 
@@ -681,7 +705,7 @@ impl<V: VectorStore> NietzscheDB<V> {
     /// `CF_EMBEDDINGS` read. Otherwise falls back to the full
     /// `GraphStorage::get_node()` join.
     pub fn get_node(&self, id: Uuid) -> Result<Option<Node>, GraphError> {
-        if let Some(meta) = self.hot_tier.get(&id) {
+        if let Some(meta) = self.hot_tier.lock().get(&id) {
             // Hot-tier hit: we have meta, just need the embedding
             return match self.storage.get_embedding(&id)? {
                 Some(emb) => Ok(Some(Node::from((meta.clone(), emb)))),
@@ -713,7 +737,7 @@ impl<V: VectorStore> NietzscheDB<V> {
         self.vector_store.delete(id)?;
 
         // 4. Remove from hot-tier + in-memory adjacency
-        self.hot_tier.remove(&id);
+        self.hot_tier.lock().pop(&id);
         self.adjacency.remove_node(&id);
 
         Ok(())
@@ -744,7 +768,7 @@ impl<V: VectorStore> NietzscheDB<V> {
         self.vector_store.delete(id)?;
 
         // 4. Remove from hot-tier cache
-        self.hot_tier.remove(&id);
+        self.hot_tier.lock().pop(&id);
 
         // 5. KEEP adjacency intact — topology is preserved!
         Ok(())
@@ -853,7 +877,7 @@ impl<V: VectorStore> NietzscheDB<V> {
         if let Some(mut meta) = self.storage.get_node_meta(&node_id)? {
             let old_energy = meta.energy;
             meta.energy = energy;
-            self.hot_tier.remove(&node_id);
+            self.hot_tier.lock().pop(&node_id);
             self.storage.put_node_meta_update_energy(&meta, old_energy)?;
         }
 
@@ -869,7 +893,7 @@ impl<V: VectorStore> NietzscheDB<V> {
         if let Some(mut meta) = self.storage.get_node_meta(&node_id)? {
             let old_energy = meta.energy; // energy unchanged but must pass it
             meta.hausdorff_local = hausdorff;
-            self.hot_tier.remove(&node_id);
+            self.hot_tier.lock().pop(&node_id);
             self.storage.put_node_meta_update_energy(&meta, old_energy)?;
         }
 
@@ -897,7 +921,7 @@ impl<V: VectorStore> NietzscheDB<V> {
         if let Some(mut meta) = self.storage.get_node_meta(&node_id)? {
             meta.depth = embedding.depth() as f32;
             self.storage.put_node_meta(&meta)?;
-            self.hot_tier.remove(&node_id);
+            self.hot_tier.lock().pop(&node_id);
         }
 
         self.vector_store.upsert(node_id, &embedding)?;
@@ -1064,7 +1088,7 @@ impl<V: VectorStore> NietzscheDB<V> {
 
             // Re-persist meta (energy unchanged)
             let old_energy = meta.energy;
-            self.hot_tier.remove(&id);
+            self.hot_tier.lock().pop(&id);
             self.storage.put_node_meta_update_energy(&meta, old_energy)?;
         }
 
@@ -1128,39 +1152,42 @@ impl<V: VectorStore> NietzscheDB<V> {
     /// Only caches `NodeMeta` (~100 bytes) — the embedding stays in `CF_EMBEDDINGS`
     /// and is read on demand via `get_node()`.
     pub fn promote_to_hot_tier(&self, node: &Node) {
-        self.hot_tier.insert(node.id, node.meta.clone());
+        self.hot_tier.lock().put(node.id, node.meta.clone());
     }
 
     /// Promote `NodeMeta` directly (avoids needing the full Node).
     pub fn promote_meta_to_hot_tier(&self, meta: NodeMeta) {
-        self.hot_tier.insert(meta.id, meta);
+        let id = meta.id;
+        self.hot_tier.lock().put(id, meta);
     }
 
     /// Evict a node from the hot-tier RAM cache.
     pub fn evict_from_hot_tier(&self, id: &Uuid) {
-        self.hot_tier.remove(id);
+        self.hot_tier.lock().pop(id);
     }
 
     /// Replace the entire hot-tier with metadata from a set of elite nodes.
     /// Called after every Zaratustra Übermensch phase.
     pub fn replace_hot_tier(&self, elite_nodes: &[Node]) {
-        self.hot_tier.clear();
+        let mut guard = self.hot_tier.lock();
+        guard.clear();
         for node in elite_nodes {
-            self.hot_tier.insert(node.id, node.meta.clone());
+            guard.put(node.id, node.meta.clone());
         }
     }
 
     /// Replace the entire hot-tier with pre-extracted metadata.
     pub fn replace_hot_tier_meta(&self, elite_metas: Vec<NodeMeta>) {
-        self.hot_tier.clear();
+        let mut guard = self.hot_tier.lock();
+        guard.clear();
         for meta in elite_metas {
-            self.hot_tier.insert(meta.id, meta);
+            guard.put(meta.id, meta);
         }
     }
 
     /// Current hot-tier node count.
     pub fn hot_tier_len(&self) -> usize {
-        self.hot_tier.len()
+        self.hot_tier.lock().len()
     }
 
     /// k-nearest-neighbour search in the vector store.
@@ -1441,6 +1468,25 @@ impl<V: VectorStore> NietzscheDB<V> {
         Ok(())
     }
 
+    /// Update a node's energy directly in storage and hot-tier.
+    pub(crate) fn apply_update_energy(&mut self, id: Uuid, energy: f32) -> Result<(), GraphError> {
+        if let Some(mut meta) = self.storage.get_node_meta(&id)? {
+            let old_energy = meta.energy;
+            meta.energy = energy;
+            self.storage.put_node_meta_update_energy(&meta, old_energy)?;
+            
+            // Sync hot-tier RAM cache
+            let mut guard = self.hot_tier.lock();
+            if let Some(entry) = guard.get_mut(&id) {
+                entry.energy = energy;
+            } else if energy >= 0.85 {
+                // Point 3: Auto-promote to hot-tier if energy becomes high
+                guard.put(id, meta);
+            }
+        }
+        Ok(())
+    }
+
     /// Apply a `DeleteEdge` directly to storage.
     pub(crate) fn apply_delete_edge(&mut self, id: Uuid) -> Result<(), GraphError> {
         if let Some(edge) = self.storage.get_edge(&id)? {
@@ -1450,14 +1496,39 @@ impl<V: VectorStore> NietzscheDB<V> {
         Ok(())
     }
 
-    /// Apply an `UpdateEnergy` directly to storage (NodeMeta only — no embedding I/O).
-    pub(crate) fn apply_update_energy(&mut self, node_id: Uuid, energy: f32) -> Result<(), GraphError> {
-        if let Some(mut meta) = self.storage.get_node_meta(&node_id)? {
-            let old_energy = meta.energy;
-            meta.energy = energy;
-            self.storage.put_node_meta_update_energy(&meta, old_energy)?;
+    /// Force-sync the vector store against the RocksDB node table ("DeepRecovery").
+    ///
+    /// Point 5 Audit Fix: Scans all nodes in `CF_NODES` and ensures the
+    /// vector store has exactly those IDs with their current embeddings.
+    /// This resolves drift after failed SleepCycle rollbacks.
+    pub fn force_sync_vector_store(&mut self) -> Result<usize, GraphError> {
+        tracing::info!("Starting DeepRecovery: force-syncing vector store against RocksDB...");
+        let mut count = 0;
+        
+        let nodes = self.storage.scan_nodes()?;
+        for node in nodes {
+            self.vector_store.upsert(node.id, &node.embedding)?;
+            count += 1;
         }
-        Ok(())
+        
+        tracing::info!(count, "DeepRecovery complete: vector store synced.");
+        Ok(count)
+    }
+
+    /// Prune nodes from the hot-tier cache whose energy is below `threshold`.
+    ///
+    /// Point 8 Audit Fix: Energy-based LRU eviction to prevent memory growth.
+    pub fn prune_low_energy_nodes(&self, threshold: f32) {
+        let mut guard = self.hot_tier.lock();
+        let mut to_remove = Vec::new();
+        for (id, meta) in guard.iter() {
+            if meta.energy < threshold {
+                to_remove.push(*id);
+            }
+        }
+        for id in to_remove {
+            guard.pop(&id);
+        }
     }
 }
 

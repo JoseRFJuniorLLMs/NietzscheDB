@@ -24,3 +24,4 @@ tracing   = { workspace = true }
 tokio     = { workspace = true }
 rand      = { workspace = true }
 dashmap   = { workspace = true }
+siphasher = { workspace = true }

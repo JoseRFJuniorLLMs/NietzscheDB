@@ -20,9 +20,25 @@ use crate::error::QueryError;
 /// Below this threshold the overhead of rayon outweighs the gain.
 const PARALLEL_SCAN_THRESHOLD: usize = 2_000;
 
-// ─────────────────────────────────────────────
-// Parameters
-// ─────────────────────────────────────────────
+// ── Gas Tracking (Industrial Refactors) ──────
+
+pub struct GasTracker {
+    pub remaining: usize,
+}
+
+impl GasTracker {
+    pub fn d_node(&mut self) -> Result<(), QueryError> { self.consume(1) }
+    pub fn d_edge(&mut self) -> Result<(), QueryError> { self.consume(2) }
+    pub fn d_eval(&mut self) -> Result<(), QueryError> { self.consume(1) }
+    
+    fn consume(&mut self, amount: usize) -> Result<(), QueryError> {
+        if self.remaining < amount {
+            return Err(QueryError::Execution("gas limit exceeded: query too complex or infinite recursion detected".into()));
+        }
+        self.remaining -= amount;
+        Ok(())
+    }
+}
 
 /// Typed parameter values passed at query execution time.
 #[derive(Debug, Clone)]
@@ -190,31 +206,63 @@ pub enum ScalarValue {
 // Entry point
 // ─────────────────────────────────────────────
 
-/// Execute a parsed NQL [`Query`] and return the result rows.
+/// Default gas budget for a single NQL query.
+///
+/// 50,000 units provides roughly:
+/// - 50,000 node scans, OR
+/// - 25,000 edge scans (2 units each), OR
+/// - ~1,200 full edge + condition evaluations on a mid-size graph.
+///
+/// Override via `execute_with_gas_limit()` for privileged internal queries.
+pub const DEFAULT_GAS_LIMIT: usize = 50_000;
+
 pub fn execute(
     query:     &Query,
     storage:   &GraphStorage,
     adjacency: &AdjacencyIndex,
     params:    &Params,
 ) -> Result<Vec<QueryResult>, QueryError> {
-    execute_with_indexes(query, storage, adjacency, params, &HashSet::new())
+    let mut gas = GasTracker { remaining: DEFAULT_GAS_LIMIT };
+    execute_with_indexes_and_gas(query, storage, adjacency, params, &HashSet::new(), &mut gas)
 }
 
-/// Execute a parsed NQL query with secondary index awareness.
+/// Execute an NQL query with a custom gas limit.
 ///
-/// When `indexed_fields` is non-empty, the executor will use
-/// `CF_META_IDX` scans for simple WHERE conditions on indexed fields
-/// instead of doing a full node scan.
-pub fn execute_with_indexes(
+/// Use this for privileged callers (internal agency queries, admin APIs)
+/// that need a higher budget. For anonymous REST endpoints, prefer a
+/// *lower* limit (e.g. 10_000) for safety.
+///
+/// # Example
+/// ```rust
+/// // Agency daemon queries — allow 5× the default budget
+/// let results = execute_with_gas_limit(
+///     &query, storage, adjacency, params,
+///     DEFAULT_GAS_LIMIT * 5
+/// )?;
+/// ```
+pub fn execute_with_gas_limit(
+    query:     &Query,
+    storage:   &GraphStorage,
+    adjacency: &AdjacencyIndex,
+    params:    &Params,
+    gas_limit: usize,
+) -> Result<Vec<QueryResult>, QueryError> {
+    let mut gas = GasTracker { remaining: gas_limit };
+    execute_with_indexes_and_gas(query, storage, adjacency, params, &HashSet::new(), &mut gas)
+}
+
+/// Execute a parsed NQL query with secondary index awareness and gas tracking.
+pub fn execute_with_indexes_and_gas(
     query:          &Query,
     storage:        &GraphStorage,
     adjacency:      &AdjacencyIndex,
     params:         &Params,
     indexed_fields: &HashSet<String>,
+    gas:            &mut GasTracker,
 ) -> Result<Vec<QueryResult>, QueryError> {
     match query {
-        Query::Match(m)              => execute_match(m, storage, adjacency, params, indexed_fields),
-        Query::Diffuse(d)            => execute_diffuse(d, storage, adjacency, params),
+        Query::Match(m)              => execute_match(m, storage, adjacency, params, indexed_fields, gas),
+        Query::Diffuse(d)            => execute_diffuse(d, storage, adjacency, params, gas),
         Query::Reconstruct(r)        => execute_reconstruct(r, params),
         Query::Explain(inner)        => execute_explain(inner, storage, adjacency, params),
         Query::InvokeZaratustra(iz)  => Ok(vec![QueryResult::InvokeZaratustraRequest {
@@ -228,8 +276,8 @@ pub fn execute_with_indexes(
         Query::RollbackTx            => Ok(vec![QueryResult::TxRollback]),
         Query::Merge(m)              => execute_merge(m, params),
         Query::Create(c)             => execute_create(c, params),
-        Query::MatchSet(ms)          => execute_match_set(ms, storage, adjacency, params),
-        Query::MatchDelete(md)       => execute_match_delete(md, storage, adjacency, params),
+        Query::MatchSet(ms)          => execute_match_set(ms, storage, adjacency, params, gas),
+        Query::MatchDelete(md)       => execute_match_delete(md, storage, adjacency, params, gas),
         Query::CreateDaemon(cd)      => Ok(vec![QueryResult::CreateDaemonRequest {
             name:        cd.name.clone(),
             on_pattern:  cd.on_pattern.clone(),
@@ -292,9 +340,10 @@ pub fn execute_with_indexes(
                     })
                 }).collect::<Vec<_>>()
             );
-            let inner_results = execute(
+            let inner_results = execute_with_indexes_and_gas(
                 &Query::Match(cf.inner.clone()),
                 storage, adjacency, params,
+                indexed_fields, gas
             )?;
             Ok(vec![QueryResult::CounterfactualRequest {
                 overlays: overlay_json,
@@ -542,10 +591,11 @@ fn execute_match(
     adjacency:      &AdjacencyIndex,
     params:         &Params,
     indexed_fields: &HashSet<String>,
+    gas:            &mut GasTracker,
 ) -> Result<Vec<QueryResult>, QueryError> {
     match &query.pattern {
-        Pattern::Node(np) => execute_node_match(query, np, storage, adjacency, params, indexed_fields),
-        Pattern::Path(pp) => execute_path_match(query, pp, storage, adjacency, params),
+        Pattern::Node(np) => execute_node_match(query, np, storage, adjacency, params, indexed_fields, gas),
+        Pattern::Path(pp) => execute_path_match(query, pp, storage, adjacency, params, gas),
     }
 }
 
@@ -558,6 +608,7 @@ fn execute_node_match(
     adjacency:      &AdjacencyIndex,
     params:         &Params,
     indexed_fields: &HashSet<String>,
+    gas:            &mut GasTracker,
 ) -> Result<Vec<QueryResult>, QueryError> {
     // ── Fast path 1: use energy secondary index for energy range queries ──
     // ── Fast path 2: use metadata secondary index for indexed field queries ──
@@ -575,6 +626,11 @@ fn execute_node_match(
     } else {
         storage.scan_nodes()?
     };
+
+    // Gas consumption for nodes scanned
+    for _ in 0..nodes.len() {
+        gas.d_node()?;
+    }
 
     let alias = &np.alias;
 
@@ -657,10 +713,11 @@ fn execute_path_match(
     storage:   &GraphStorage,
     adjacency: &AdjacencyIndex,
     params:    &Params,
+    gas:       &mut GasTracker,
 ) -> Result<Vec<QueryResult>, QueryError> {
     // Multi-hop BFS when hop_range is present (e.g. *2..4)
     if pp.hop_range.is_some() {
-        return execute_multi_hop_path(query, pp, storage, adjacency, params);
+        return execute_multi_hop_path(query, pp, storage, adjacency, params, gas);
     }
 
     let from_alias = &pp.from.alias;
@@ -670,6 +727,7 @@ fn execute_path_match(
     // Collect (from_node, edge, to_node) triples
     let mut triples: Vec<(Node, Edge, Node)> = Vec::new();
     let edges = storage.scan_edges()?;
+    for _ in 0..edges.len() { gas.d_edge()?; }
 
     for edge in edges {
         // Direction filter
@@ -777,6 +835,7 @@ fn execute_multi_hop_path(
     storage:   &GraphStorage,
     adjacency: &AdjacencyIndex,
     params:    &Params,
+    _gas:      &mut GasTracker,
 ) -> Result<Vec<QueryResult>, QueryError> {
     let from_alias = &pp.from.alias;
     let to_alias   = &pp.to.alias;
@@ -946,7 +1005,11 @@ fn execute_diffuse(
     storage:   &GraphStorage,
     adjacency: &AdjacencyIndex,
     params:    &Params,
+    gas:       &mut GasTracker,
 ) -> Result<Vec<QueryResult>, QueryError> {
+    // Basic gas consumption based on walk depth
+    gas.consume(query.max_hops as usize * 5)?; // 5 units per hop as a heuristic
+
     let start_id = resolve_diffuse_from(&query.from, params)?;
 
     let config = DiffusionConfig {
@@ -1052,9 +1115,10 @@ fn execute_match_set(
     storage:   &GraphStorage,
     adjacency: &AdjacencyIndex,
     params:    &Params,
+    gas:       &mut GasTracker,
 ) -> Result<Vec<QueryResult>, QueryError> {
     // Resolve matched nodes (need full nodes for per-node arithmetic)
-    let matched = resolve_match_nodes(&query.pattern, &query.conditions, storage, adjacency, params)?;
+    let matched = resolve_match_nodes(&query.pattern, &query.conditions, storage, adjacency, params, gas)?;
 
     // Evaluate SET assignments per node (supports n.count = n.count + 1)
     let mut updates = Vec::with_capacity(matched.len());
@@ -1081,10 +1145,16 @@ fn resolve_match_nodes(
     storage:    &GraphStorage,
     adjacency:  &AdjacencyIndex,
     params:     &Params,
+    gas:        &mut GasTracker,
 ) -> Result<Vec<Node>, QueryError> {
     match pattern {
         Pattern::Node(np) => {
             let nodes = storage.scan_nodes()?;
+            
+            // Gas consumption for scanning nodes
+            for _ in 0..nodes.len() {
+                gas.d_node()?;
+            }
             let alias = &np.alias;
 
             let typed: Vec<Node> = if let Some(label) = &np.label {
@@ -1129,8 +1199,9 @@ fn execute_match_delete(
     storage:   &GraphStorage,
     adjacency: &AdjacencyIndex,
     params:    &Params,
+    gas:       &mut GasTracker,
 ) -> Result<Vec<QueryResult>, QueryError> {
-    let matched_ids = resolve_match_ids(&query.pattern, &query.conditions, storage, adjacency, params)?;
+    let matched_ids = resolve_match_ids(&query.pattern, &query.conditions, storage, adjacency, params, gas)?;
     Ok(vec![QueryResult::DeleteRequest { matched_ids, detach: query.detach }])
 }
 
@@ -1142,10 +1213,16 @@ fn resolve_match_ids(
     storage:    &GraphStorage,
     adjacency:  &AdjacencyIndex,
     params:     &Params,
+    gas:        &mut GasTracker,
 ) -> Result<Vec<Uuid>, QueryError> {
     match pattern {
         Pattern::Node(np) => {
             let nodes = storage.scan_nodes()?;
+
+            // Gas consumption for scanning nodes
+            for _ in 0..nodes.len() {
+                gas.d_node()?;
+            }
             let alias = &np.alias;
 
             // Filter by label

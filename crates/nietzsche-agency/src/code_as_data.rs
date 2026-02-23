@@ -25,6 +25,7 @@
 //! }
 //! ```
 
+use std::collections::HashSet;
 use uuid::Uuid;
 
 use nietzsche_graph::{GraphStorage, Node, NodeType};
@@ -182,40 +183,118 @@ pub fn record_firing(
         }
 
         storage.put_node(&node).map_err(|e| e.to_string())?;
+
+        // Point 1 Audit Fix: Register node for fast cooldown ticking
+        if cooldown_ticks > 0 {
+            storage.add_to_cooldown_registry(&node_id)
+                .map_err(|e| e.to_string())?;
+        }
     }
 
     Ok(())
 }
 
 /// Tick all action nodes' cooldowns (decrement cooldown_remaining by 1).
+///
+/// Point 1 Audit Fix: Uses the `CF_COOLDOWNS` registry to avoid O(N) global scan.
 pub fn tick_cooldowns(
     storage: &GraphStorage,
 ) -> Result<usize, String> {
-    let nodes = storage.scan_nodes().map_err(|e| e.to_string())?;
     let mut updated = 0;
+    let mut to_remove = Vec::new();
 
-    for mut node in nodes {
-        if node.meta.is_phantom { continue; }
-        if let Some(action) = node.meta.content.get("action").cloned() {
-            let cooldown = action.get("cooldown_remaining")
+    // Itera apenas sobre nós que sabemos ter cooldown ativo
+    for res in storage.iter_active_cooldowns() {
+        let id = res.map_err(|e| e.to_string())?;
+        
+        let mut node = match storage.get_node(&id).map_err(|e| e.to_string())? {
+            Some(n) => n,
+            None => {
+                to_remove.push(id);
+                continue;
+            }
+        };
+
+        if let Some(action_val) = node.meta.content.get("action").cloned() {
+            let cooldown = action_val.get("cooldown_remaining")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0);
 
             if cooldown > 0 {
-                let mut action = action;
+                let mut action = action_val;
+                let new_cooldown = cooldown - 1;
                 action.as_object_mut().map(|obj| {
-                    obj.insert("cooldown_remaining".into(), serde_json::json!(cooldown - 1));
+                    obj.insert("cooldown_remaining".into(), serde_json::json!(new_cooldown));
                 });
+                
                 if let Some(obj) = node.meta.content.as_object_mut() {
                     obj.insert("action".into(), action);
                 }
+                
                 storage.put_node(&node).map_err(|e| e.to_string())?;
                 updated += 1;
+                
+                if new_cooldown == 0 {
+                    to_remove.push(id);
+                }
+            } else {
+                to_remove.push(id);
+            }
+        } else {
+            to_remove.push(id);
+        }
+    }
+
+    // Clean up registry
+    for id in to_remove {
+        storage.remove_from_cooldown_registry(&id).map_err(|e| e.to_string())?;
+    }
+
+    Ok(updated)
+}
+
+/// Tick cooldowns only for the specified set of active nodes.
+/// Returns a list of nodes that have finished their cooldown and should be removed from the set.
+pub fn tick_cooldowns_optimized(
+    storage: &GraphStorage,
+    active_set: &HashSet<Uuid>,
+) -> Result<Vec<Uuid>, String> {
+    let mut finished = Vec::new();
+    
+    for id in active_set {
+        let mut node = storage.get_node(id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("action node {} not found", id))?;
+
+        if let Some(action_val) = node.meta.content.get("action").cloned() {
+            let cooldown = action_val.get("cooldown_remaining")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+
+            if cooldown > 0 {
+                let mut action = action_val;
+                let new_cooldown = cooldown - 1;
+                action.as_object_mut().map(|obj| {
+                    obj.insert("cooldown_remaining".into(), serde_json::json!(new_cooldown));
+                });
+                
+                if let Some(obj) = node.meta.content.as_object_mut() {
+                    obj.insert("action".into(), action);
+                }
+                
+                storage.put_node(&node).map_err(|e| e.to_string())?;
+                
+                if new_cooldown == 0 {
+                    finished.push(*id);
+                }
+            } else {
+                // Already at zero, remove from set
+                finished.push(*id);
             }
         }
     }
 
-    Ok(updated)
+    Ok(finished)
 }
 
 /// Create an Action node with the given NQL query.

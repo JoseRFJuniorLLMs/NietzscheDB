@@ -94,6 +94,15 @@ pub enum AgencyIntent {
         nql: String,
         description: String,
     },
+
+    /// Apply Long-Term Depression to an edge.
+    /// Produced when: LTDDaemon detects correction_count > 0 on an edge.
+    /// The server executes: `edge.weight = (edge.weight - weight_delta).max(0.0)`
+    ApplyLtd {
+        edge_id: Uuid,
+        weight_delta: f32,
+        correction_count: u64,
+    },
 }
 
 /// Converts agency events into executable intents.
@@ -133,6 +142,7 @@ impl AgencyReactor {
         let mut health_reports = Vec::new();
         let mut wake_ups = Vec::new();
         let mut redundancies: Vec<(Uuid, Vec<Uuid>)> = Vec::new();
+        let mut ltd_events: Vec<(Uuid, Uuid, f32, u64)> = Vec::new(); // (from, to, delta, count)
 
         loop {
             match self.rx.try_recv() {
@@ -165,6 +175,9 @@ impl AgencyReactor {
                     }
                     AgencyEvent::DaemonWakeUp { reason } => {
                         wake_ups.push(reason);
+                    }
+                    AgencyEvent::CorrectionAccumulated { from_id, to_id, weight_delta, correction_count } => {
+                        ltd_events.push((from_id, to_id, weight_delta, correction_count));
                     }
                 },
                 Err(broadcast::error::TryRecvError::Empty) => break,
@@ -267,6 +280,16 @@ impl AgencyReactor {
             intents.push(AgencyIntent::TriggerSemanticGc {
                 archetype_id,
                 redundant_ids,
+            });
+        }
+
+        // ── LTD events → emit ApplyLTD intents ─────────────────────────────
+        for (from_id, to_id, weight_delta, correction_count) in ltd_events {
+            intents.push(AgencyIntent::ApplyLTD {
+                from_id,
+                to_id,
+                weight_delta,
+                correction_count,
             });
         }
 

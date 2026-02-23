@@ -2,7 +2,7 @@ use nietzsche_graph::{AdjacencyIndex, GraphStorage};
 
 use crate::config::AgencyConfig;
 use crate::circuit_breaker::EnergyCircuitBreaker;
-use crate::daemons::{AgencyDaemon, CoherenceDaemon, DaemonReport, EntropyDaemon, GapDaemon, NiilistaGcDaemon};
+use crate::daemons::{AgencyDaemon, CoherenceDaemon, DaemonReport, EntropyDaemon, GapDaemon, LTDDaemon, NiilistaGcDaemon};
 use crate::desire::{DesireEngine, DesireSignal};
 use crate::error::AgencyError;
 use crate::event_bus::{AgencyEvent, AgencyEventBus, SectorId};
@@ -10,8 +10,9 @@ use crate::identity::ObserverIdentity;
 use crate::observer::{HealthReport, MetaObserver};
 use crate::reactor::{AgencyIntent, AgencyReactor};
 
-use std::collections::hash_map::DefaultHasher;
+use std::collections::{hash_map::DefaultHasher, HashSet};
 use std::hash::{Hash, Hasher};
+use uuid::Uuid;
 
 /// Full tick report from the agency engine.
 #[derive(Debug)]
@@ -51,6 +52,8 @@ pub struct AgencyEngine {
     /// Collects gap events from daemons for the desire engine.
     gap_rx: tokio::sync::broadcast::Receiver<AgencyEvent>,
     circuit_breaker: EnergyCircuitBreaker,
+    /// HashSet of actions currently on cooldown (O(1) access).
+    pub active_reflex_cooldowns: HashSet<Uuid>,
 }
 
 impl AgencyEngine {
@@ -66,6 +69,7 @@ impl AgencyEngine {
                 Box::new(GapDaemon),
                 Box::new(CoherenceDaemon),
                 Box::new(NiilistaGcDaemon),
+                Box::new(LTDDaemon),
             ],
             observer,
             reactor,
@@ -76,6 +80,7 @@ impl AgencyEngine {
                 max_active_reflexes: config.circuit_breaker_max_actions,
                 energy_sum_threshold: config.circuit_breaker_energy_sum_threshold,
             },
+            active_reflex_cooldowns: HashSet::new(),
             config,
         }
     }
@@ -153,6 +158,8 @@ impl AgencyEngine {
                                 nql: action.nql,
                                 description: action.description,
                             });
+                            // Add to memory-active cooldown set
+                            self.active_reflex_cooldowns.insert(action.node_id);
                         }
                     }
                     Ok(false) => {
@@ -161,9 +168,16 @@ impl AgencyEngine {
                     Err(e) => tracing::error!(error = ?e, "circuit breaker check failed"),
                 }
             }
-            // Always tick cooldowns
-            if let Err(e) = crate::code_as_data::tick_cooldowns(storage) {
-                tracing::error!(error = ?e, "failed to tick reflexes cooldowns");
+            // Tick cooldowns using optimized HashSet (avoids O(N) scan)
+            if !self.active_reflex_cooldowns.is_empty() {
+                match crate::code_as_data::tick_cooldowns_optimized(storage, &self.active_reflex_cooldowns) {
+                    Ok(finished) => {
+                        for id in finished {
+                            self.active_reflex_cooldowns.remove(&id);
+                        }
+                    }
+                    Err(e) => tracing::error!(error = ?e, "failed to tick reflexes cooldowns"),
+                }
             }
         }
 

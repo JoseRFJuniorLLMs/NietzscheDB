@@ -3,14 +3,30 @@ use nietzsche_graph::GraphStorage;
 use crate::error::DaemonError;
 use crate::model::DaemonDef;
 
+use once_cell::sync::Lazy;
+use parking_lot::RwLock;
+use lru::LruCache;
+use std::num::NonZeroUsize;
+
 const DAEMON_PREFIX: &str = "daemon:";
+
+/// Small LRU cache for `list_daemons` results to avoid linear scans.
+/// Key is the (optional) storage identifier or hash. For simplicity,
+/// we use a single entry for the primary storage.
+static LIST_CACHE: Lazy<RwLock<LruCache<String, Vec<DaemonDef>>>> = Lazy::new(|| {
+    RwLock::new(LruCache::new(NonZeroUsize::new(16).unwrap()))
+});
 
 /// Persist a daemon definition to CF_META.
 pub fn put_daemon(storage: &GraphStorage, def: &DaemonDef) -> Result<(), DaemonError> {
     let key = format!("{}{}", DAEMON_PREFIX, def.name);
     let json = serde_json::to_vec(def)?;
     storage.put_meta(&key, &json)
-        .map_err(|e| DaemonError::Storage(e.to_string()))
+        .map_err(|e| DaemonError::Storage(e.to_string()))?;
+    
+    // Invalidate cache
+    LIST_CACHE.write().clear();
+    Ok(())
 }
 
 /// Retrieve a daemon definition by name.
@@ -26,18 +42,34 @@ pub fn get_daemon(storage: &GraphStorage, name: &str) -> Result<Option<DaemonDef
 pub fn delete_daemon(storage: &GraphStorage, name: &str) -> Result<(), DaemonError> {
     let key = format!("{}{}", DAEMON_PREFIX, name);
     storage.delete_meta(&key)
-        .map_err(|e| DaemonError::Storage(e.to_string()))
+        .map_err(|e| DaemonError::Storage(e.to_string()))?;
+    
+    // Invalidate cache
+    LIST_CACHE.write().clear();
+    Ok(())
 }
 
 /// List all daemon definitions.
+///
+/// Point 6 Audit Fix: Uses a small LRU cache to avoid repeated linear scans of CF_META.
 pub fn list_daemons(storage: &GraphStorage) -> Result<Vec<DaemonDef>, DaemonError> {
+    // We use the storage address as a proxy for the instance identity
+    let cache_key = format!("{:p}", storage);
+    
+    if let Some(daemons) = LIST_CACHE.read().peek(&cache_key) {
+        return Ok(daemons.clone());
+    }
+
     let entries = storage.scan_meta_prefix(DAEMON_PREFIX.as_bytes())
         .map_err(|e| DaemonError::Storage(e.to_string()))?;
+    
     let mut daemons = Vec::with_capacity(entries.len());
     for (_key, value) in entries {
         let def: DaemonDef = serde_json::from_slice(&value)?;
         daemons.push(def);
     }
+    
+    LIST_CACHE.write().put(cache_key, daemons.clone());
     Ok(daemons)
 }
 

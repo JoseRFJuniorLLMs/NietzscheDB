@@ -509,9 +509,40 @@ fn collect_filter(
             });
         }
         crate::db::MetadataFilter::And(subs) => {
+            let mut sub_exprs = Vec::new();
             for sub in subs {
-                collect_filter(sub, tags, exprs);
+                collect_filter(sub, tags, &mut sub_exprs);
             }
+            if !sub_exprs.is_empty() {
+                exprs.push(hyperspace_core::FilterExpr::And(sub_exprs));
+            }
+        }
+        crate::db::MetadataFilter::Or(subs) => {
+            let mut sub_exprs = Vec::new();
+            for sub in subs {
+                collect_filter(sub, tags, &mut sub_exprs);
+            }
+            if !sub_exprs.is_empty() {
+                exprs.push(hyperspace_core::FilterExpr::Or(sub_exprs));
+            }
+        }
+        crate::db::MetadataFilter::Not(sub) => {
+            let mut sub_exprs = Vec::new();
+            collect_filter(sub, tags, &mut sub_exprs);
+            if let Some(expr) = sub_exprs.pop() {
+                exprs.push(hyperspace_core::FilterExpr::Not(Box::new(expr)));
+            }
+        }
+        crate::db::MetadataFilter::Contains { field, value } => {
+            exprs.push(hyperspace_core::FilterExpr::Contains {
+                key: field.clone(),
+                value: value.clone(),
+            });
+        }
+        crate::db::MetadataFilter::Exists { field } => {
+            exprs.push(hyperspace_core::FilterExpr::Exists {
+                key: field.clone(),
+            });
         }
         crate::db::MetadataFilter::None => {}
     }

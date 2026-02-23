@@ -735,6 +735,14 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                         }
                         apply_mask(&range_union);
                     }
+                    _ => {
+                        // Point 10 Audit Fix: Other complex filters (And/Or/Not/Contains/Exists) 
+                        // are handled by the graph-layer `collect_filter` but not yet 
+                        // accelerated by the HNSW secondary index. 
+                        // For now we return empty to avoid false positives, 
+                        // or we could skip and let the final filter handle it.
+                        return Vec::new(); 
+                    }
                 }
             }
 
