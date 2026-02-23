@@ -2934,15 +2934,17 @@ func (x *SleepRequest) GetCollection() string {
 }
 
 type SleepResponse struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	HausdorffBefore float32                `protobuf:"fixed32,1,opt,name=hausdorff_before,json=hausdorffBefore,proto3" json:"hausdorff_before,omitempty"`
-	HausdorffAfter  float32                `protobuf:"fixed32,2,opt,name=hausdorff_after,json=hausdorffAfter,proto3" json:"hausdorff_after,omitempty"`
-	HausdorffDelta  float32                `protobuf:"fixed32,3,opt,name=hausdorff_delta,json=hausdorffDelta,proto3" json:"hausdorff_delta,omitempty"`
-	Committed       bool                   `protobuf:"varint,4,opt,name=committed,proto3" json:"committed,omitempty"`
-	NodesPerturbed  uint32                 `protobuf:"varint,5,opt,name=nodes_perturbed,json=nodesPerturbed,proto3" json:"nodes_perturbed,omitempty"`
-	SnapshotNodes   uint32                 `protobuf:"varint,6,opt,name=snapshot_nodes,json=snapshotNodes,proto3" json:"snapshot_nodes,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	HausdorffBefore  float32                `protobuf:"fixed32,1,opt,name=hausdorff_before,json=hausdorffBefore,proto3" json:"hausdorff_before,omitempty"`
+	HausdorffAfter   float32                `protobuf:"fixed32,2,opt,name=hausdorff_after,json=hausdorffAfter,proto3" json:"hausdorff_after,omitempty"`
+	HausdorffDelta   float32                `protobuf:"fixed32,3,opt,name=hausdorff_delta,json=hausdorffDelta,proto3" json:"hausdorff_delta,omitempty"`
+	Committed        bool                   `protobuf:"varint,4,opt,name=committed,proto3" json:"committed,omitempty"`
+	NodesPerturbed   uint32                 `protobuf:"varint,5,opt,name=nodes_perturbed,json=nodesPerturbed,proto3" json:"nodes_perturbed,omitempty"`
+	SnapshotNodes    uint32                 `protobuf:"varint,6,opt,name=snapshot_nodes,json=snapshotNodes,proto3" json:"snapshot_nodes,omitempty"`
+	SemanticDriftAvg float64                `protobuf:"fixed64,7,opt,name=semantic_drift_avg,json=semanticDriftAvg,proto3" json:"semantic_drift_avg,omitempty"`
+	SemanticDriftMax float64                `protobuf:"fixed64,8,opt,name=semantic_drift_max,json=semanticDriftMax,proto3" json:"semantic_drift_max,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *SleepResponse) Reset() {
@@ -3013,6 +3015,20 @@ func (x *SleepResponse) GetNodesPerturbed() uint32 {
 func (x *SleepResponse) GetSnapshotNodes() uint32 {
 	if x != nil {
 		return x.SnapshotNodes
+	}
+	return 0
+}
+
+func (x *SleepResponse) GetSemanticDriftAvg() float64 {
+	if x != nil {
+		return x.SemanticDriftAvg
+	}
+	return 0
+}
+
+func (x *SleepResponse) GetSemanticDriftMax() float64 {
+	if x != nil {
+		return x.SemanticDriftMax
 	}
 	return 0
 }
@@ -5953,7 +5969,7 @@ func (x *ReapExpiredRequest) GetCollection() string {
 
 type ReapExpiredResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ReapedCount   uint64                 `protobuf:"varint,1,opt,name=reaped_count,json=reapedCount,proto3" json:"reaped_count,omitempty"`
+	ReapedCount   uint32                 `protobuf:"varint,1,opt,name=reaped_count,json=reapedCount,proto3" json:"reaped_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5988,11 +6004,295 @@ func (*ReapExpiredResponse) Descriptor() ([]byte, []int) {
 	return file_proto_nietzsche_proto_rawDescGZIP(), []int{94}
 }
 
-func (x *ReapExpiredResponse) GetReapedCount() uint64 {
+func (x *ReapExpiredResponse) GetReapedCount() uint32 {
 	if x != nil {
 		return x.ReapedCount
 	}
 	return 0
+}
+
+type CreateDaemonRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Collection    string                 `protobuf:"bytes,1,opt,name=collection,proto3" json:"collection,omitempty"`
+	Label         string                 `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`                                    // human readable name
+	Nql           string                 `protobuf:"bytes,3,opt,name=nql,proto3" json:"nql,omitempty"`                                        // NQL command to execute periodically
+	IntervalSecs  uint32                 `protobuf:"varint,4,opt,name=interval_secs,json=intervalSecs,proto3" json:"interval_secs,omitempty"` // execution period
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateDaemonRequest) Reset() {
+	*x = CreateDaemonRequest{}
+	mi := &file_proto_nietzsche_proto_msgTypes[95]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateDaemonRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateDaemonRequest) ProtoMessage() {}
+
+func (x *CreateDaemonRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_nietzsche_proto_msgTypes[95]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateDaemonRequest.ProtoReflect.Descriptor instead.
+func (*CreateDaemonRequest) Descriptor() ([]byte, []int) {
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{95}
+}
+
+func (x *CreateDaemonRequest) GetCollection() string {
+	if x != nil {
+		return x.Collection
+	}
+	return ""
+}
+
+func (x *CreateDaemonRequest) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *CreateDaemonRequest) GetNql() string {
+	if x != nil {
+		return x.Nql
+	}
+	return ""
+}
+
+func (x *CreateDaemonRequest) GetIntervalSecs() uint32 {
+	if x != nil {
+		return x.IntervalSecs
+	}
+	return 0
+}
+
+type ListDaemonsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Collection    string                 `protobuf:"bytes,1,opt,name=collection,proto3" json:"collection,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDaemonsRequest) Reset() {
+	*x = ListDaemonsRequest{}
+	mi := &file_proto_nietzsche_proto_msgTypes[96]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDaemonsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDaemonsRequest) ProtoMessage() {}
+
+func (x *ListDaemonsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_nietzsche_proto_msgTypes[96]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDaemonsRequest.ProtoReflect.Descriptor instead.
+func (*ListDaemonsRequest) Descriptor() ([]byte, []int) {
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{96}
+}
+
+func (x *ListDaemonsRequest) GetCollection() string {
+	if x != nil {
+		return x.Collection
+	}
+	return ""
+}
+
+type DaemonInfoProto struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Label         string                 `protobuf:"bytes,1,opt,name=label,proto3" json:"label,omitempty"`
+	Nql           string                 `protobuf:"bytes,2,opt,name=nql,proto3" json:"nql,omitempty"`
+	IntervalSecs  uint32                 `protobuf:"varint,3,opt,name=interval_secs,json=intervalSecs,proto3" json:"interval_secs,omitempty"`
+	LastRunAt     int64                  `protobuf:"varint,4,opt,name=last_run_at,json=lastRunAt,proto3" json:"last_run_at,omitempty"`
+	RunCount      uint64                 `protobuf:"varint,5,opt,name=run_count,json=runCount,proto3" json:"run_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DaemonInfoProto) Reset() {
+	*x = DaemonInfoProto{}
+	mi := &file_proto_nietzsche_proto_msgTypes[97]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DaemonInfoProto) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DaemonInfoProto) ProtoMessage() {}
+
+func (x *DaemonInfoProto) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_nietzsche_proto_msgTypes[97]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DaemonInfoProto.ProtoReflect.Descriptor instead.
+func (*DaemonInfoProto) Descriptor() ([]byte, []int) {
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{97}
+}
+
+func (x *DaemonInfoProto) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *DaemonInfoProto) GetNql() string {
+	if x != nil {
+		return x.Nql
+	}
+	return ""
+}
+
+func (x *DaemonInfoProto) GetIntervalSecs() uint32 {
+	if x != nil {
+		return x.IntervalSecs
+	}
+	return 0
+}
+
+func (x *DaemonInfoProto) GetLastRunAt() int64 {
+	if x != nil {
+		return x.LastRunAt
+	}
+	return 0
+}
+
+func (x *DaemonInfoProto) GetRunCount() uint64 {
+	if x != nil {
+		return x.RunCount
+	}
+	return 0
+}
+
+type ListDaemonsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Daemons       []*DaemonInfoProto     `protobuf:"bytes,1,rep,name=daemons,proto3" json:"daemons,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDaemonsResponse) Reset() {
+	*x = ListDaemonsResponse{}
+	mi := &file_proto_nietzsche_proto_msgTypes[98]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDaemonsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDaemonsResponse) ProtoMessage() {}
+
+func (x *ListDaemonsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_nietzsche_proto_msgTypes[98]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDaemonsResponse.ProtoReflect.Descriptor instead.
+func (*ListDaemonsResponse) Descriptor() ([]byte, []int) {
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{98}
+}
+
+func (x *ListDaemonsResponse) GetDaemons() []*DaemonInfoProto {
+	if x != nil {
+		return x.Daemons
+	}
+	return nil
+}
+
+type DropDaemonRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Collection    string                 `protobuf:"bytes,1,opt,name=collection,proto3" json:"collection,omitempty"`
+	Label         string                 `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DropDaemonRequest) Reset() {
+	*x = DropDaemonRequest{}
+	mi := &file_proto_nietzsche_proto_msgTypes[99]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DropDaemonRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DropDaemonRequest) ProtoMessage() {}
+
+func (x *DropDaemonRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_nietzsche_proto_msgTypes[99]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DropDaemonRequest.ProtoReflect.Descriptor instead.
+func (*DropDaemonRequest) Descriptor() ([]byte, []int) {
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{99}
+}
+
+func (x *DropDaemonRequest) GetCollection() string {
+	if x != nil {
+		return x.Collection
+	}
+	return ""
+}
+
+func (x *DropDaemonRequest) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
 }
 
 type ClusterNodeProto struct {
@@ -6010,7 +6310,7 @@ type ClusterNodeProto struct {
 
 func (x *ClusterNodeProto) Reset() {
 	*x = ClusterNodeProto{}
-	mi := &file_proto_nietzsche_proto_msgTypes[95]
+	mi := &file_proto_nietzsche_proto_msgTypes[100]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6022,7 +6322,7 @@ func (x *ClusterNodeProto) String() string {
 func (*ClusterNodeProto) ProtoMessage() {}
 
 func (x *ClusterNodeProto) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[95]
+	mi := &file_proto_nietzsche_proto_msgTypes[100]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6035,7 +6335,7 @@ func (x *ClusterNodeProto) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterNodeProto.ProtoReflect.Descriptor instead.
 func (*ClusterNodeProto) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{95}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{100}
 }
 
 func (x *ClusterNodeProto) GetId() string {
@@ -6097,7 +6397,7 @@ type GossipRequest struct {
 
 func (x *GossipRequest) Reset() {
 	*x = GossipRequest{}
-	mi := &file_proto_nietzsche_proto_msgTypes[96]
+	mi := &file_proto_nietzsche_proto_msgTypes[101]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6109,7 +6409,7 @@ func (x *GossipRequest) String() string {
 func (*GossipRequest) ProtoMessage() {}
 
 func (x *GossipRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[96]
+	mi := &file_proto_nietzsche_proto_msgTypes[101]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6122,7 +6422,7 @@ func (x *GossipRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GossipRequest.ProtoReflect.Descriptor instead.
 func (*GossipRequest) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{96}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{101}
 }
 
 func (x *GossipRequest) GetSenderId() string {
@@ -6148,7 +6448,7 @@ type GossipResponse struct {
 
 func (x *GossipResponse) Reset() {
 	*x = GossipResponse{}
-	mi := &file_proto_nietzsche_proto_msgTypes[97]
+	mi := &file_proto_nietzsche_proto_msgTypes[102]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6160,7 +6460,7 @@ func (x *GossipResponse) String() string {
 func (*GossipResponse) ProtoMessage() {}
 
 func (x *GossipResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[97]
+	mi := &file_proto_nietzsche_proto_msgTypes[102]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6173,7 +6473,7 @@ func (x *GossipResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GossipResponse.ProtoReflect.Descriptor instead.
 func (*GossipResponse) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{97}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{102}
 }
 
 func (x *GossipResponse) GetNodes() []*ClusterNodeProto {
@@ -6193,7 +6493,7 @@ type SchemaFieldType struct {
 
 func (x *SchemaFieldType) Reset() {
 	*x = SchemaFieldType{}
-	mi := &file_proto_nietzsche_proto_msgTypes[98]
+	mi := &file_proto_nietzsche_proto_msgTypes[103]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6205,7 +6505,7 @@ func (x *SchemaFieldType) String() string {
 func (*SchemaFieldType) ProtoMessage() {}
 
 func (x *SchemaFieldType) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[98]
+	mi := &file_proto_nietzsche_proto_msgTypes[103]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6218,7 +6518,7 @@ func (x *SchemaFieldType) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SchemaFieldType.ProtoReflect.Descriptor instead.
 func (*SchemaFieldType) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{98}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{103}
 }
 
 func (x *SchemaFieldType) GetFieldName() string {
@@ -6247,7 +6547,7 @@ type SetSchemaRequest struct {
 
 func (x *SetSchemaRequest) Reset() {
 	*x = SetSchemaRequest{}
-	mi := &file_proto_nietzsche_proto_msgTypes[99]
+	mi := &file_proto_nietzsche_proto_msgTypes[104]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6259,7 +6559,7 @@ func (x *SetSchemaRequest) String() string {
 func (*SetSchemaRequest) ProtoMessage() {}
 
 func (x *SetSchemaRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[99]
+	mi := &file_proto_nietzsche_proto_msgTypes[104]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6272,7 +6572,7 @@ func (x *SetSchemaRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetSchemaRequest.ProtoReflect.Descriptor instead.
 func (*SetSchemaRequest) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{99}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{104}
 }
 
 func (x *SetSchemaRequest) GetNodeType() string {
@@ -6313,7 +6613,7 @@ type GetSchemaRequest struct {
 
 func (x *GetSchemaRequest) Reset() {
 	*x = GetSchemaRequest{}
-	mi := &file_proto_nietzsche_proto_msgTypes[100]
+	mi := &file_proto_nietzsche_proto_msgTypes[105]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6325,7 +6625,7 @@ func (x *GetSchemaRequest) String() string {
 func (*GetSchemaRequest) ProtoMessage() {}
 
 func (x *GetSchemaRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[100]
+	mi := &file_proto_nietzsche_proto_msgTypes[105]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6338,7 +6638,7 @@ func (x *GetSchemaRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSchemaRequest.ProtoReflect.Descriptor instead.
 func (*GetSchemaRequest) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{100}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{105}
 }
 
 func (x *GetSchemaRequest) GetNodeType() string {
@@ -6367,7 +6667,7 @@ type GetSchemaResponse struct {
 
 func (x *GetSchemaResponse) Reset() {
 	*x = GetSchemaResponse{}
-	mi := &file_proto_nietzsche_proto_msgTypes[101]
+	mi := &file_proto_nietzsche_proto_msgTypes[106]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6379,7 +6679,7 @@ func (x *GetSchemaResponse) String() string {
 func (*GetSchemaResponse) ProtoMessage() {}
 
 func (x *GetSchemaResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[101]
+	mi := &file_proto_nietzsche_proto_msgTypes[106]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6392,7 +6692,7 @@ func (x *GetSchemaResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSchemaResponse.ProtoReflect.Descriptor instead.
 func (*GetSchemaResponse) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{101}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{106}
 }
 
 func (x *GetSchemaResponse) GetNodeType() string {
@@ -6432,7 +6732,7 @@ type ListSchemasResponse struct {
 
 func (x *ListSchemasResponse) Reset() {
 	*x = ListSchemasResponse{}
-	mi := &file_proto_nietzsche_proto_msgTypes[102]
+	mi := &file_proto_nietzsche_proto_msgTypes[107]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6444,7 +6744,7 @@ func (x *ListSchemasResponse) String() string {
 func (*ListSchemasResponse) ProtoMessage() {}
 
 func (x *ListSchemasResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[102]
+	mi := &file_proto_nietzsche_proto_msgTypes[107]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6457,7 +6757,7 @@ func (x *ListSchemasResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSchemasResponse.ProtoReflect.Descriptor instead.
 func (*ListSchemasResponse) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{102}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{107}
 }
 
 func (x *ListSchemasResponse) GetSchemas() []*GetSchemaResponse {
@@ -6477,7 +6777,7 @@ type CreateIndexRequest struct {
 
 func (x *CreateIndexRequest) Reset() {
 	*x = CreateIndexRequest{}
-	mi := &file_proto_nietzsche_proto_msgTypes[103]
+	mi := &file_proto_nietzsche_proto_msgTypes[108]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6489,7 +6789,7 @@ func (x *CreateIndexRequest) String() string {
 func (*CreateIndexRequest) ProtoMessage() {}
 
 func (x *CreateIndexRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[103]
+	mi := &file_proto_nietzsche_proto_msgTypes[108]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6502,7 +6802,7 @@ func (x *CreateIndexRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateIndexRequest.ProtoReflect.Descriptor instead.
 func (*CreateIndexRequest) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{103}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{108}
 }
 
 func (x *CreateIndexRequest) GetCollection() string {
@@ -6529,7 +6829,7 @@ type DropIndexRequest struct {
 
 func (x *DropIndexRequest) Reset() {
 	*x = DropIndexRequest{}
-	mi := &file_proto_nietzsche_proto_msgTypes[104]
+	mi := &file_proto_nietzsche_proto_msgTypes[109]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6541,7 +6841,7 @@ func (x *DropIndexRequest) String() string {
 func (*DropIndexRequest) ProtoMessage() {}
 
 func (x *DropIndexRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[104]
+	mi := &file_proto_nietzsche_proto_msgTypes[109]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6554,7 +6854,7 @@ func (x *DropIndexRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DropIndexRequest.ProtoReflect.Descriptor instead.
 func (*DropIndexRequest) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{104}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{109}
 }
 
 func (x *DropIndexRequest) GetCollection() string {
@@ -6580,7 +6880,7 @@ type ListIndexesRequest struct {
 
 func (x *ListIndexesRequest) Reset() {
 	*x = ListIndexesRequest{}
-	mi := &file_proto_nietzsche_proto_msgTypes[105]
+	mi := &file_proto_nietzsche_proto_msgTypes[110]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6592,7 +6892,7 @@ func (x *ListIndexesRequest) String() string {
 func (*ListIndexesRequest) ProtoMessage() {}
 
 func (x *ListIndexesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[105]
+	mi := &file_proto_nietzsche_proto_msgTypes[110]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6605,7 +6905,7 @@ func (x *ListIndexesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListIndexesRequest.ProtoReflect.Descriptor instead.
 func (*ListIndexesRequest) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{105}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{110}
 }
 
 func (x *ListIndexesRequest) GetCollection() string {
@@ -6624,7 +6924,7 @@ type ListIndexesResponse struct {
 
 func (x *ListIndexesResponse) Reset() {
 	*x = ListIndexesResponse{}
-	mi := &file_proto_nietzsche_proto_msgTypes[106]
+	mi := &file_proto_nietzsche_proto_msgTypes[111]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6636,7 +6936,7 @@ func (x *ListIndexesResponse) String() string {
 func (*ListIndexesResponse) ProtoMessage() {}
 
 func (x *ListIndexesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[106]
+	mi := &file_proto_nietzsche_proto_msgTypes[111]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6649,7 +6949,7 @@ func (x *ListIndexesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListIndexesResponse.ProtoReflect.Descriptor instead.
 func (*ListIndexesResponse) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{106}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{111}
 }
 
 func (x *ListIndexesResponse) GetFields() []string {
@@ -6670,7 +6970,7 @@ type SynthesisRequest struct {
 
 func (x *SynthesisRequest) Reset() {
 	*x = SynthesisRequest{}
-	mi := &file_proto_nietzsche_proto_msgTypes[107]
+	mi := &file_proto_nietzsche_proto_msgTypes[112]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6682,7 +6982,7 @@ func (x *SynthesisRequest) String() string {
 func (*SynthesisRequest) ProtoMessage() {}
 
 func (x *SynthesisRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[107]
+	mi := &file_proto_nietzsche_proto_msgTypes[112]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6695,7 +6995,7 @@ func (x *SynthesisRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesisRequest.ProtoReflect.Descriptor instead.
 func (*SynthesisRequest) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{107}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{112}
 }
 
 func (x *SynthesisRequest) GetNodeIdA() string {
@@ -6729,7 +7029,7 @@ type SynthesisMultiRequest struct {
 
 func (x *SynthesisMultiRequest) Reset() {
 	*x = SynthesisMultiRequest{}
-	mi := &file_proto_nietzsche_proto_msgTypes[108]
+	mi := &file_proto_nietzsche_proto_msgTypes[113]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6741,7 +7041,7 @@ func (x *SynthesisMultiRequest) String() string {
 func (*SynthesisMultiRequest) ProtoMessage() {}
 
 func (x *SynthesisMultiRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[108]
+	mi := &file_proto_nietzsche_proto_msgTypes[113]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6754,7 +7054,7 @@ func (x *SynthesisMultiRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesisMultiRequest.ProtoReflect.Descriptor instead.
 func (*SynthesisMultiRequest) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{108}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{113}
 }
 
 func (x *SynthesisMultiRequest) GetNodeIds() []string {
@@ -6782,7 +7082,7 @@ type SynthesisResponse struct {
 
 func (x *SynthesisResponse) Reset() {
 	*x = SynthesisResponse{}
-	mi := &file_proto_nietzsche_proto_msgTypes[109]
+	mi := &file_proto_nietzsche_proto_msgTypes[114]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6794,7 +7094,7 @@ func (x *SynthesisResponse) String() string {
 func (*SynthesisResponse) ProtoMessage() {}
 
 func (x *SynthesisResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[109]
+	mi := &file_proto_nietzsche_proto_msgTypes[114]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6807,7 +7107,7 @@ func (x *SynthesisResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesisResponse.ProtoReflect.Descriptor instead.
 func (*SynthesisResponse) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{109}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{114}
 }
 
 func (x *SynthesisResponse) GetSynthesisCoords() []float64 {
@@ -6842,7 +7142,7 @@ type CausalNeighborsRequest struct {
 
 func (x *CausalNeighborsRequest) Reset() {
 	*x = CausalNeighborsRequest{}
-	mi := &file_proto_nietzsche_proto_msgTypes[110]
+	mi := &file_proto_nietzsche_proto_msgTypes[115]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6854,7 +7154,7 @@ func (x *CausalNeighborsRequest) String() string {
 func (*CausalNeighborsRequest) ProtoMessage() {}
 
 func (x *CausalNeighborsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[110]
+	mi := &file_proto_nietzsche_proto_msgTypes[115]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6867,7 +7167,7 @@ func (x *CausalNeighborsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CausalNeighborsRequest.ProtoReflect.Descriptor instead.
 func (*CausalNeighborsRequest) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{110}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{115}
 }
 
 func (x *CausalNeighborsRequest) GetNodeId() string {
@@ -6900,7 +7200,7 @@ type CausalNeighborsResponse struct {
 
 func (x *CausalNeighborsResponse) Reset() {
 	*x = CausalNeighborsResponse{}
-	mi := &file_proto_nietzsche_proto_msgTypes[111]
+	mi := &file_proto_nietzsche_proto_msgTypes[116]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6912,7 +7212,7 @@ func (x *CausalNeighborsResponse) String() string {
 func (*CausalNeighborsResponse) ProtoMessage() {}
 
 func (x *CausalNeighborsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[111]
+	mi := &file_proto_nietzsche_proto_msgTypes[116]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6925,7 +7225,7 @@ func (x *CausalNeighborsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CausalNeighborsResponse.ProtoReflect.Descriptor instead.
 func (*CausalNeighborsResponse) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{111}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{116}
 }
 
 func (x *CausalNeighborsResponse) GetEdges() []*CausalEdge {
@@ -6949,7 +7249,7 @@ type CausalEdge struct {
 
 func (x *CausalEdge) Reset() {
 	*x = CausalEdge{}
-	mi := &file_proto_nietzsche_proto_msgTypes[112]
+	mi := &file_proto_nietzsche_proto_msgTypes[117]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6961,7 +7261,7 @@ func (x *CausalEdge) String() string {
 func (*CausalEdge) ProtoMessage() {}
 
 func (x *CausalEdge) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[112]
+	mi := &file_proto_nietzsche_proto_msgTypes[117]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6974,7 +7274,7 @@ func (x *CausalEdge) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CausalEdge.ProtoReflect.Descriptor instead.
 func (*CausalEdge) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{112}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{117}
 }
 
 func (x *CausalEdge) GetEdgeId() string {
@@ -7031,7 +7331,7 @@ type CausalChainRequest struct {
 
 func (x *CausalChainRequest) Reset() {
 	*x = CausalChainRequest{}
-	mi := &file_proto_nietzsche_proto_msgTypes[113]
+	mi := &file_proto_nietzsche_proto_msgTypes[118]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7043,7 +7343,7 @@ func (x *CausalChainRequest) String() string {
 func (*CausalChainRequest) ProtoMessage() {}
 
 func (x *CausalChainRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[113]
+	mi := &file_proto_nietzsche_proto_msgTypes[118]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7056,7 +7356,7 @@ func (x *CausalChainRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CausalChainRequest.ProtoReflect.Descriptor instead.
 func (*CausalChainRequest) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{113}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{118}
 }
 
 func (x *CausalChainRequest) GetNodeId() string {
@@ -7097,7 +7397,7 @@ type CausalChainResponse struct {
 
 func (x *CausalChainResponse) Reset() {
 	*x = CausalChainResponse{}
-	mi := &file_proto_nietzsche_proto_msgTypes[114]
+	mi := &file_proto_nietzsche_proto_msgTypes[119]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7109,7 +7409,7 @@ func (x *CausalChainResponse) String() string {
 func (*CausalChainResponse) ProtoMessage() {}
 
 func (x *CausalChainResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[114]
+	mi := &file_proto_nietzsche_proto_msgTypes[119]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7122,7 +7422,7 @@ func (x *CausalChainResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CausalChainResponse.ProtoReflect.Descriptor instead.
 func (*CausalChainResponse) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{114}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{119}
 }
 
 func (x *CausalChainResponse) GetChainIds() []string {
@@ -7150,7 +7450,7 @@ type KleinPathRequest struct {
 
 func (x *KleinPathRequest) Reset() {
 	*x = KleinPathRequest{}
-	mi := &file_proto_nietzsche_proto_msgTypes[115]
+	mi := &file_proto_nietzsche_proto_msgTypes[120]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7162,7 +7462,7 @@ func (x *KleinPathRequest) String() string {
 func (*KleinPathRequest) ProtoMessage() {}
 
 func (x *KleinPathRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[115]
+	mi := &file_proto_nietzsche_proto_msgTypes[120]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7175,7 +7475,7 @@ func (x *KleinPathRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KleinPathRequest.ProtoReflect.Descriptor instead.
 func (*KleinPathRequest) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{115}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{120}
 }
 
 func (x *KleinPathRequest) GetStartNodeId() string {
@@ -7210,7 +7510,7 @@ type KleinPathResponse struct {
 
 func (x *KleinPathResponse) Reset() {
 	*x = KleinPathResponse{}
-	mi := &file_proto_nietzsche_proto_msgTypes[116]
+	mi := &file_proto_nietzsche_proto_msgTypes[121]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7222,7 +7522,7 @@ func (x *KleinPathResponse) String() string {
 func (*KleinPathResponse) ProtoMessage() {}
 
 func (x *KleinPathResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[116]
+	mi := &file_proto_nietzsche_proto_msgTypes[121]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7235,7 +7535,7 @@ func (x *KleinPathResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KleinPathResponse.ProtoReflect.Descriptor instead.
 func (*KleinPathResponse) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{116}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{121}
 }
 
 func (x *KleinPathResponse) GetFound() bool {
@@ -7271,7 +7571,7 @@ type ShortestPathCheckRequest struct {
 
 func (x *ShortestPathCheckRequest) Reset() {
 	*x = ShortestPathCheckRequest{}
-	mi := &file_proto_nietzsche_proto_msgTypes[117]
+	mi := &file_proto_nietzsche_proto_msgTypes[122]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7283,7 +7583,7 @@ func (x *ShortestPathCheckRequest) String() string {
 func (*ShortestPathCheckRequest) ProtoMessage() {}
 
 func (x *ShortestPathCheckRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[117]
+	mi := &file_proto_nietzsche_proto_msgTypes[122]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7296,7 +7596,7 @@ func (x *ShortestPathCheckRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShortestPathCheckRequest.ProtoReflect.Descriptor instead.
 func (*ShortestPathCheckRequest) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{117}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{122}
 }
 
 func (x *ShortestPathCheckRequest) GetNodeIdA() string {
@@ -7337,7 +7637,7 @@ type ShortestPathCheckResponse struct {
 
 func (x *ShortestPathCheckResponse) Reset() {
 	*x = ShortestPathCheckResponse{}
-	mi := &file_proto_nietzsche_proto_msgTypes[118]
+	mi := &file_proto_nietzsche_proto_msgTypes[123]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7349,7 +7649,7 @@ func (x *ShortestPathCheckResponse) String() string {
 func (*ShortestPathCheckResponse) ProtoMessage() {}
 
 func (x *ShortestPathCheckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[118]
+	mi := &file_proto_nietzsche_proto_msgTypes[123]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7362,7 +7662,7 @@ func (x *ShortestPathCheckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShortestPathCheckResponse.ProtoReflect.Descriptor instead.
 func (*ShortestPathCheckResponse) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{118}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{123}
 }
 
 func (x *ShortestPathCheckResponse) GetOnPath() bool {
@@ -7389,7 +7689,7 @@ type SqlRequest struct {
 
 func (x *SqlRequest) Reset() {
 	*x = SqlRequest{}
-	mi := &file_proto_nietzsche_proto_msgTypes[119]
+	mi := &file_proto_nietzsche_proto_msgTypes[124]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7401,7 +7701,7 @@ func (x *SqlRequest) String() string {
 func (*SqlRequest) ProtoMessage() {}
 
 func (x *SqlRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[119]
+	mi := &file_proto_nietzsche_proto_msgTypes[124]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7414,7 +7714,7 @@ func (x *SqlRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SqlRequest.ProtoReflect.Descriptor instead.
 func (*SqlRequest) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{119}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{124}
 }
 
 func (x *SqlRequest) GetSql() string {
@@ -7441,7 +7741,7 @@ type SqlColumn struct {
 
 func (x *SqlColumn) Reset() {
 	*x = SqlColumn{}
-	mi := &file_proto_nietzsche_proto_msgTypes[120]
+	mi := &file_proto_nietzsche_proto_msgTypes[125]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7453,7 +7753,7 @@ func (x *SqlColumn) String() string {
 func (*SqlColumn) ProtoMessage() {}
 
 func (x *SqlColumn) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[120]
+	mi := &file_proto_nietzsche_proto_msgTypes[125]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7466,7 +7766,7 @@ func (x *SqlColumn) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SqlColumn.ProtoReflect.Descriptor instead.
 func (*SqlColumn) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{120}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{125}
 }
 
 func (x *SqlColumn) GetName() string {
@@ -7492,7 +7792,7 @@ type SqlRow struct {
 
 func (x *SqlRow) Reset() {
 	*x = SqlRow{}
-	mi := &file_proto_nietzsche_proto_msgTypes[121]
+	mi := &file_proto_nietzsche_proto_msgTypes[126]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7504,7 +7804,7 @@ func (x *SqlRow) String() string {
 func (*SqlRow) ProtoMessage() {}
 
 func (x *SqlRow) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[121]
+	mi := &file_proto_nietzsche_proto_msgTypes[126]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7517,7 +7817,7 @@ func (x *SqlRow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SqlRow.ProtoReflect.Descriptor instead.
 func (*SqlRow) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{121}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *SqlRow) GetValues() [][]byte {
@@ -7538,7 +7838,7 @@ type SqlResultSet struct {
 
 func (x *SqlResultSet) Reset() {
 	*x = SqlResultSet{}
-	mi := &file_proto_nietzsche_proto_msgTypes[122]
+	mi := &file_proto_nietzsche_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7550,7 +7850,7 @@ func (x *SqlResultSet) String() string {
 func (*SqlResultSet) ProtoMessage() {}
 
 func (x *SqlResultSet) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[122]
+	mi := &file_proto_nietzsche_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7563,7 +7863,7 @@ func (x *SqlResultSet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SqlResultSet.ProtoReflect.Descriptor instead.
 func (*SqlResultSet) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{122}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *SqlResultSet) GetColumns() []*SqlColumn {
@@ -7598,7 +7898,7 @@ type SqlExecResult struct {
 
 func (x *SqlExecResult) Reset() {
 	*x = SqlExecResult{}
-	mi := &file_proto_nietzsche_proto_msgTypes[123]
+	mi := &file_proto_nietzsche_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7610,7 +7910,7 @@ func (x *SqlExecResult) String() string {
 func (*SqlExecResult) ProtoMessage() {}
 
 func (x *SqlExecResult) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[123]
+	mi := &file_proto_nietzsche_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7623,7 +7923,7 @@ func (x *SqlExecResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SqlExecResult.ProtoReflect.Descriptor instead.
 func (*SqlExecResult) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{123}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{128}
 }
 
 func (x *SqlExecResult) GetAffectedRows() uint64 {
@@ -7907,14 +8207,16 @@ const file_proto_nietzsche_proto_rawDesc = "" +
 	"\brng_seed\x18\x05 \x01(\x04R\arngSeed\x12\x1e\n" +
 	"\n" +
 	"collection\x18\x06 \x01(\tR\n" +
-	"collection\"\xfa\x01\n" +
+	"collection\"\xd6\x02\n" +
 	"\rSleepResponse\x12)\n" +
 	"\x10hausdorff_before\x18\x01 \x01(\x02R\x0fhausdorffBefore\x12'\n" +
 	"\x0fhausdorff_after\x18\x02 \x01(\x02R\x0ehausdorffAfter\x12'\n" +
 	"\x0fhausdorff_delta\x18\x03 \x01(\x02R\x0ehausdorffDelta\x12\x1c\n" +
 	"\tcommitted\x18\x04 \x01(\bR\tcommitted\x12'\n" +
 	"\x0fnodes_perturbed\x18\x05 \x01(\rR\x0enodesPerturbed\x12%\n" +
-	"\x0esnapshot_nodes\x18\x06 \x01(\rR\rsnapshotNodes\"\x8c\x01\n" +
+	"\x0esnapshot_nodes\x18\x06 \x01(\rR\rsnapshotNodes\x12,\n" +
+	"\x12semantic_drift_avg\x18\a \x01(\x01R\x10semanticDriftAvg\x12,\n" +
+	"\x12semantic_drift_max\x18\b \x01(\x01R\x10semanticDriftMax\"\x8c\x01\n" +
 	"\rStatsResponse\x12\x1d\n" +
 	"\n" +
 	"node_count\x18\x01 \x01(\x04R\tnodeCount\x12\x1d\n" +
@@ -8197,7 +8499,31 @@ const file_proto_nietzsche_proto_rawDesc = "" +
 	"collection\x18\x01 \x01(\tR\n" +
 	"collection\"8\n" +
 	"\x13ReapExpiredResponse\x12!\n" +
-	"\freaped_count\x18\x01 \x01(\x04R\vreapedCount\"\xae\x01\n" +
+	"\freaped_count\x18\x01 \x01(\rR\vreapedCount\"\x82\x01\n" +
+	"\x13CreateDaemonRequest\x12\x1e\n" +
+	"\n" +
+	"collection\x18\x01 \x01(\tR\n" +
+	"collection\x12\x14\n" +
+	"\x05label\x18\x02 \x01(\tR\x05label\x12\x10\n" +
+	"\x03nql\x18\x03 \x01(\tR\x03nql\x12#\n" +
+	"\rinterval_secs\x18\x04 \x01(\rR\fintervalSecs\"4\n" +
+	"\x12ListDaemonsRequest\x12\x1e\n" +
+	"\n" +
+	"collection\x18\x01 \x01(\tR\n" +
+	"collection\"\x9b\x01\n" +
+	"\x0fDaemonInfoProto\x12\x14\n" +
+	"\x05label\x18\x01 \x01(\tR\x05label\x12\x10\n" +
+	"\x03nql\x18\x02 \x01(\tR\x03nql\x12#\n" +
+	"\rinterval_secs\x18\x03 \x01(\rR\fintervalSecs\x12\x1e\n" +
+	"\vlast_run_at\x18\x04 \x01(\x03R\tlastRunAt\x12\x1b\n" +
+	"\trun_count\x18\x05 \x01(\x04R\brunCount\"K\n" +
+	"\x13ListDaemonsResponse\x124\n" +
+	"\adaemons\x18\x01 \x03(\v2\x1a.nietzsche.DaemonInfoProtoR\adaemons\"I\n" +
+	"\x11DropDaemonRequest\x12\x1e\n" +
+	"\n" +
+	"collection\x18\x01 \x01(\tR\n" +
+	"collection\x12\x14\n" +
+	"\x05label\x18\x02 \x01(\tR\x05label\"\xae\x01\n" +
 	"\x10ClusterNodeProto\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04addr\x18\x02 \x01(\tR\x04addr\x12\x12\n" +
@@ -8337,7 +8663,7 @@ const file_proto_nietzsche_proto_rawDesc = "" +
 	"\rSqlExecResult\x12#\n" +
 	"\raffected_rows\x18\x01 \x01(\x04R\faffectedRows\x12\x18\n" +
 	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x03 \x01(\tR\amessage2\x98&\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage2\xf8'\n" +
 	"\vNietzscheDB\x12[\n" +
 	"\x10CreateCollection\x12\".nietzsche.CreateCollectionRequest\x1a#.nietzsche.CreateCollectionResponse\x12M\n" +
 	"\x0eDropCollection\x12 .nietzsche.DropCollectionRequest\x1a\x19.nietzsche.StatusResponse\x12G\n" +
@@ -8411,7 +8737,11 @@ const file_proto_nietzsche_proto_rawDesc = "" +
 	"\bCacheDel\x12\x1a.nietzsche.CacheDelRequest\x1a\x19.nietzsche.StatusResponse\x12L\n" +
 	"\vReapExpired\x12\x1d.nietzsche.ReapExpiredRequest\x1a\x1e.nietzsche.ReapExpiredResponse\x12:\n" +
 	"\bSqlQuery\x12\x15.nietzsche.SqlRequest\x1a\x17.nietzsche.SqlResultSet\x12:\n" +
-	"\aSqlExec\x12\x15.nietzsche.SqlRequest\x1a\x18.nietzsche.SqlExecResultB\x12Z\x10nietzsche-sdk/pbb\x06proto3"
+	"\aSqlExec\x12\x15.nietzsche.SqlRequest\x1a\x18.nietzsche.SqlExecResult\x12I\n" +
+	"\fCreateDaemon\x12\x1e.nietzsche.CreateDaemonRequest\x1a\x19.nietzsche.StatusResponse\x12E\n" +
+	"\n" +
+	"DropDaemon\x12\x1c.nietzsche.DropDaemonRequest\x1a\x19.nietzsche.StatusResponse\x12L\n" +
+	"\vListDaemons\x12\x1d.nietzsche.ListDaemonsRequest\x1a\x1e.nietzsche.ListDaemonsResponseB\x12Z\x10nietzsche-sdk/pbb\x06proto3"
 
 var (
 	file_proto_nietzsche_proto_rawDescOnce sync.Once
@@ -8425,7 +8755,7 @@ func file_proto_nietzsche_proto_rawDescGZIP() []byte {
 	return file_proto_nietzsche_proto_rawDescData
 }
 
-var file_proto_nietzsche_proto_msgTypes = make([]protoimpl.MessageInfo, 125)
+var file_proto_nietzsche_proto_msgTypes = make([]protoimpl.MessageInfo, 130)
 var file_proto_nietzsche_proto_goTypes = []any{
 	(*Empty)(nil),                      // 0: nietzsche.Empty
 	(*StatusResponse)(nil),             // 1: nietzsche.StatusResponse
@@ -8522,36 +8852,41 @@ var file_proto_nietzsche_proto_goTypes = []any{
 	(*CacheDelRequest)(nil),            // 92: nietzsche.CacheDelRequest
 	(*ReapExpiredRequest)(nil),         // 93: nietzsche.ReapExpiredRequest
 	(*ReapExpiredResponse)(nil),        // 94: nietzsche.ReapExpiredResponse
-	(*ClusterNodeProto)(nil),           // 95: nietzsche.ClusterNodeProto
-	(*GossipRequest)(nil),              // 96: nietzsche.GossipRequest
-	(*GossipResponse)(nil),             // 97: nietzsche.GossipResponse
-	(*SchemaFieldType)(nil),            // 98: nietzsche.SchemaFieldType
-	(*SetSchemaRequest)(nil),           // 99: nietzsche.SetSchemaRequest
-	(*GetSchemaRequest)(nil),           // 100: nietzsche.GetSchemaRequest
-	(*GetSchemaResponse)(nil),          // 101: nietzsche.GetSchemaResponse
-	(*ListSchemasResponse)(nil),        // 102: nietzsche.ListSchemasResponse
-	(*CreateIndexRequest)(nil),         // 103: nietzsche.CreateIndexRequest
-	(*DropIndexRequest)(nil),           // 104: nietzsche.DropIndexRequest
-	(*ListIndexesRequest)(nil),         // 105: nietzsche.ListIndexesRequest
-	(*ListIndexesResponse)(nil),        // 106: nietzsche.ListIndexesResponse
-	(*SynthesisRequest)(nil),           // 107: nietzsche.SynthesisRequest
-	(*SynthesisMultiRequest)(nil),      // 108: nietzsche.SynthesisMultiRequest
-	(*SynthesisResponse)(nil),          // 109: nietzsche.SynthesisResponse
-	(*CausalNeighborsRequest)(nil),     // 110: nietzsche.CausalNeighborsRequest
-	(*CausalNeighborsResponse)(nil),    // 111: nietzsche.CausalNeighborsResponse
-	(*CausalEdge)(nil),                 // 112: nietzsche.CausalEdge
-	(*CausalChainRequest)(nil),         // 113: nietzsche.CausalChainRequest
-	(*CausalChainResponse)(nil),        // 114: nietzsche.CausalChainResponse
-	(*KleinPathRequest)(nil),           // 115: nietzsche.KleinPathRequest
-	(*KleinPathResponse)(nil),          // 116: nietzsche.KleinPathResponse
-	(*ShortestPathCheckRequest)(nil),   // 117: nietzsche.ShortestPathCheckRequest
-	(*ShortestPathCheckResponse)(nil),  // 118: nietzsche.ShortestPathCheckResponse
-	(*SqlRequest)(nil),                 // 119: nietzsche.SqlRequest
-	(*SqlColumn)(nil),                  // 120: nietzsche.SqlColumn
-	(*SqlRow)(nil),                     // 121: nietzsche.SqlRow
-	(*SqlResultSet)(nil),               // 122: nietzsche.SqlResultSet
-	(*SqlExecResult)(nil),              // 123: nietzsche.SqlExecResult
-	nil,                                // 124: nietzsche.QueryRequest.ParamsEntry
+	(*CreateDaemonRequest)(nil),        // 95: nietzsche.CreateDaemonRequest
+	(*ListDaemonsRequest)(nil),         // 96: nietzsche.ListDaemonsRequest
+	(*DaemonInfoProto)(nil),            // 97: nietzsche.DaemonInfoProto
+	(*ListDaemonsResponse)(nil),        // 98: nietzsche.ListDaemonsResponse
+	(*DropDaemonRequest)(nil),          // 99: nietzsche.DropDaemonRequest
+	(*ClusterNodeProto)(nil),           // 100: nietzsche.ClusterNodeProto
+	(*GossipRequest)(nil),              // 101: nietzsche.GossipRequest
+	(*GossipResponse)(nil),             // 102: nietzsche.GossipResponse
+	(*SchemaFieldType)(nil),            // 103: nietzsche.SchemaFieldType
+	(*SetSchemaRequest)(nil),           // 104: nietzsche.SetSchemaRequest
+	(*GetSchemaRequest)(nil),           // 105: nietzsche.GetSchemaRequest
+	(*GetSchemaResponse)(nil),          // 106: nietzsche.GetSchemaResponse
+	(*ListSchemasResponse)(nil),        // 107: nietzsche.ListSchemasResponse
+	(*CreateIndexRequest)(nil),         // 108: nietzsche.CreateIndexRequest
+	(*DropIndexRequest)(nil),           // 109: nietzsche.DropIndexRequest
+	(*ListIndexesRequest)(nil),         // 110: nietzsche.ListIndexesRequest
+	(*ListIndexesResponse)(nil),        // 111: nietzsche.ListIndexesResponse
+	(*SynthesisRequest)(nil),           // 112: nietzsche.SynthesisRequest
+	(*SynthesisMultiRequest)(nil),      // 113: nietzsche.SynthesisMultiRequest
+	(*SynthesisResponse)(nil),          // 114: nietzsche.SynthesisResponse
+	(*CausalNeighborsRequest)(nil),     // 115: nietzsche.CausalNeighborsRequest
+	(*CausalNeighborsResponse)(nil),    // 116: nietzsche.CausalNeighborsResponse
+	(*CausalEdge)(nil),                 // 117: nietzsche.CausalEdge
+	(*CausalChainRequest)(nil),         // 118: nietzsche.CausalChainRequest
+	(*CausalChainResponse)(nil),        // 119: nietzsche.CausalChainResponse
+	(*KleinPathRequest)(nil),           // 120: nietzsche.KleinPathRequest
+	(*KleinPathResponse)(nil),          // 121: nietzsche.KleinPathResponse
+	(*ShortestPathCheckRequest)(nil),   // 122: nietzsche.ShortestPathCheckRequest
+	(*ShortestPathCheckResponse)(nil),  // 123: nietzsche.ShortestPathCheckResponse
+	(*SqlRequest)(nil),                 // 124: nietzsche.SqlRequest
+	(*SqlColumn)(nil),                  // 125: nietzsche.SqlColumn
+	(*SqlRow)(nil),                     // 126: nietzsche.SqlRow
+	(*SqlResultSet)(nil),               // 127: nietzsche.SqlResultSet
+	(*SqlExecResult)(nil),              // 128: nietzsche.SqlExecResult
+	nil,                                // 129: nietzsche.QueryRequest.ParamsEntry
 }
 var file_proto_nietzsche_proto_depIdxs = []int32{
 	6,   // 0: nietzsche.ListCollectionsResponse.collections:type_name -> nietzsche.CollectionInfoProto
@@ -8564,7 +8899,7 @@ var file_proto_nietzsche_proto_depIdxs = []int32{
 	8,   // 7: nietzsche.BatchInsertNodesResponse.backpressure:type_name -> nietzsche.BackpressureSignal
 	13,  // 8: nietzsche.BatchInsertEdgesRequest.edges:type_name -> nietzsche.InsertEdgeRequest
 	27,  // 9: nietzsche.QueryParamValue.vec_val:type_name -> nietzsche.VectorParam
-	124, // 10: nietzsche.QueryRequest.params:type_name -> nietzsche.QueryRequest.ParamsEntry
+	129, // 10: nietzsche.QueryRequest.params:type_name -> nietzsche.QueryRequest.ParamsEntry
 	12,  // 11: nietzsche.QueryResponse.nodes:type_name -> nietzsche.NodeResponse
 	32,  // 12: nietzsche.QueryResponse.node_pairs:type_name -> nietzsche.NodePair
 	31,  // 13: nietzsche.QueryResponse.scalar_rows:type_name -> nietzsche.ScalarRow
@@ -8581,153 +8916,160 @@ var file_proto_nietzsche_proto_depIdxs = []int32{
 	70,  // 24: nietzsche.SimilarityResponse.pairs:type_name -> nietzsche.SimilarityPairProto
 	73,  // 25: nietzsche.ListBackupsResponse.backups:type_name -> nietzsche.BackupInfoProto
 	78,  // 26: nietzsche.FullTextSearchResponse.results:type_name -> nietzsche.FtsResultProto
-	95,  // 27: nietzsche.GossipRequest.nodes:type_name -> nietzsche.ClusterNodeProto
-	95,  // 28: nietzsche.GossipResponse.nodes:type_name -> nietzsche.ClusterNodeProto
-	98,  // 29: nietzsche.SetSchemaRequest.field_types:type_name -> nietzsche.SchemaFieldType
-	98,  // 30: nietzsche.GetSchemaResponse.field_types:type_name -> nietzsche.SchemaFieldType
-	101, // 31: nietzsche.ListSchemasResponse.schemas:type_name -> nietzsche.GetSchemaResponse
-	112, // 32: nietzsche.CausalNeighborsResponse.edges:type_name -> nietzsche.CausalEdge
-	112, // 33: nietzsche.CausalChainResponse.edges:type_name -> nietzsche.CausalEdge
-	120, // 34: nietzsche.SqlResultSet.columns:type_name -> nietzsche.SqlColumn
-	121, // 35: nietzsche.SqlResultSet.rows:type_name -> nietzsche.SqlRow
-	26,  // 36: nietzsche.QueryRequest.ParamsEntry.value:type_name -> nietzsche.QueryParamValue
-	3,   // 37: nietzsche.NietzscheDB.CreateCollection:input_type -> nietzsche.CreateCollectionRequest
-	5,   // 38: nietzsche.NietzscheDB.DropCollection:input_type -> nietzsche.DropCollectionRequest
-	0,   // 39: nietzsche.NietzscheDB.ListCollections:input_type -> nietzsche.Empty
-	9,   // 40: nietzsche.NietzscheDB.InsertNode:input_type -> nietzsche.InsertNodeRequest
-	10,  // 41: nietzsche.NietzscheDB.GetNode:input_type -> nietzsche.NodeIdRequest
-	10,  // 42: nietzsche.NietzscheDB.DeleteNode:input_type -> nietzsche.NodeIdRequest
-	11,  // 43: nietzsche.NietzscheDB.UpdateEnergy:input_type -> nietzsche.UpdateEnergyRequest
-	13,  // 44: nietzsche.NietzscheDB.InsertEdge:input_type -> nietzsche.InsertEdgeRequest
-	15,  // 45: nietzsche.NietzscheDB.DeleteEdge:input_type -> nietzsche.EdgeIdRequest
-	16,  // 46: nietzsche.NietzscheDB.MergeNode:input_type -> nietzsche.MergeNodeRequest
-	18,  // 47: nietzsche.NietzscheDB.MergeEdge:input_type -> nietzsche.MergeEdgeRequest
-	20,  // 48: nietzsche.NietzscheDB.IncrementEdgeMeta:input_type -> nietzsche.IncrementEdgeMetaRequest
-	28,  // 49: nietzsche.NietzscheDB.Query:input_type -> nietzsche.QueryRequest
-	36,  // 50: nietzsche.NietzscheDB.KnnSearch:input_type -> nietzsche.KnnRequest
-	39,  // 51: nietzsche.NietzscheDB.Bfs:input_type -> nietzsche.TraversalRequest
-	39,  // 52: nietzsche.NietzscheDB.Dijkstra:input_type -> nietzsche.TraversalRequest
-	41,  // 53: nietzsche.NietzscheDB.Diffuse:input_type -> nietzsche.DiffusionRequest
-	44,  // 54: nietzsche.NietzscheDB.TriggerSleep:input_type -> nietzsche.SleepRequest
-	47,  // 55: nietzsche.NietzscheDB.InsertSensory:input_type -> nietzsche.InsertSensoryRequest
-	10,  // 56: nietzsche.NietzscheDB.GetSensory:input_type -> nietzsche.NodeIdRequest
-	49,  // 57: nietzsche.NietzscheDB.Reconstruct:input_type -> nietzsche.ReconstructRequest
-	10,  // 58: nietzsche.NietzscheDB.DegradeSensory:input_type -> nietzsche.NodeIdRequest
-	51,  // 59: nietzsche.NietzscheDB.InvokeZaratustra:input_type -> nietzsche.ZaratustraRequest
-	22,  // 60: nietzsche.NietzscheDB.BatchInsertNodes:input_type -> nietzsche.BatchInsertNodesRequest
-	24,  // 61: nietzsche.NietzscheDB.BatchInsertEdges:input_type -> nietzsche.BatchInsertEdgesRequest
-	53,  // 62: nietzsche.NietzscheDB.RunPageRank:input_type -> nietzsche.PageRankRequest
-	54,  // 63: nietzsche.NietzscheDB.RunLouvain:input_type -> nietzsche.LouvainRequest
-	55,  // 64: nietzsche.NietzscheDB.RunLabelProp:input_type -> nietzsche.LabelPropRequest
-	56,  // 65: nietzsche.NietzscheDB.RunBetweenness:input_type -> nietzsche.BetweennessRequest
-	57,  // 66: nietzsche.NietzscheDB.RunCloseness:input_type -> nietzsche.ClosenessRequest
-	58,  // 67: nietzsche.NietzscheDB.RunDegreeCentrality:input_type -> nietzsche.DegreeCentralityRequest
-	59,  // 68: nietzsche.NietzscheDB.RunWCC:input_type -> nietzsche.WccRequest
-	60,  // 69: nietzsche.NietzscheDB.RunSCC:input_type -> nietzsche.SccRequest
-	61,  // 70: nietzsche.NietzscheDB.RunAStar:input_type -> nietzsche.AStarRequest
-	62,  // 71: nietzsche.NietzscheDB.RunTriangleCount:input_type -> nietzsche.TriangleCountRequest
-	63,  // 72: nietzsche.NietzscheDB.RunJaccardSimilarity:input_type -> nietzsche.JaccardRequest
-	72,  // 73: nietzsche.NietzscheDB.CreateBackup:input_type -> nietzsche.CreateBackupRequest
-	0,   // 74: nietzsche.NietzscheDB.ListBackups:input_type -> nietzsche.Empty
-	76,  // 75: nietzsche.NietzscheDB.RestoreBackup:input_type -> nietzsche.RestoreBackupRequest
-	77,  // 76: nietzsche.NietzscheDB.FullTextSearch:input_type -> nietzsche.FullTextSearchRequest
-	80,  // 77: nietzsche.NietzscheDB.HybridSearch:input_type -> nietzsche.HybridSearchRequest
-	81,  // 78: nietzsche.NietzscheDB.SubscribeCDC:input_type -> nietzsche.CdcRequest
-	107, // 79: nietzsche.NietzscheDB.Synthesis:input_type -> nietzsche.SynthesisRequest
-	108, // 80: nietzsche.NietzscheDB.SynthesisMulti:input_type -> nietzsche.SynthesisMultiRequest
-	110, // 81: nietzsche.NietzscheDB.CausalNeighbors:input_type -> nietzsche.CausalNeighborsRequest
-	113, // 82: nietzsche.NietzscheDB.CausalChain:input_type -> nietzsche.CausalChainRequest
-	115, // 83: nietzsche.NietzscheDB.KleinPath:input_type -> nietzsche.KleinPathRequest
-	117, // 84: nietzsche.NietzscheDB.IsOnShortestPath:input_type -> nietzsche.ShortestPathCheckRequest
-	0,   // 85: nietzsche.NietzscheDB.GetStats:input_type -> nietzsche.Empty
-	0,   // 86: nietzsche.NietzscheDB.HealthCheck:input_type -> nietzsche.Empty
-	83,  // 87: nietzsche.NietzscheDB.ListRPush:input_type -> nietzsche.ListPushRequest
-	85,  // 88: nietzsche.NietzscheDB.ListLRange:input_type -> nietzsche.ListRangeRequest
-	87,  // 89: nietzsche.NietzscheDB.ListLen:input_type -> nietzsche.ListLenRequest
-	96,  // 90: nietzsche.NietzscheDB.ExchangeGossip:input_type -> nietzsche.GossipRequest
-	99,  // 91: nietzsche.NietzscheDB.SetSchema:input_type -> nietzsche.SetSchemaRequest
-	100, // 92: nietzsche.NietzscheDB.GetSchema:input_type -> nietzsche.GetSchemaRequest
-	0,   // 93: nietzsche.NietzscheDB.ListSchemas:input_type -> nietzsche.Empty
-	103, // 94: nietzsche.NietzscheDB.CreateIndex:input_type -> nietzsche.CreateIndexRequest
-	104, // 95: nietzsche.NietzscheDB.DropIndex:input_type -> nietzsche.DropIndexRequest
-	105, // 96: nietzsche.NietzscheDB.ListIndexes:input_type -> nietzsche.ListIndexesRequest
-	89,  // 97: nietzsche.NietzscheDB.CacheSet:input_type -> nietzsche.CacheSetRequest
-	90,  // 98: nietzsche.NietzscheDB.CacheGet:input_type -> nietzsche.CacheGetRequest
-	92,  // 99: nietzsche.NietzscheDB.CacheDel:input_type -> nietzsche.CacheDelRequest
-	93,  // 100: nietzsche.NietzscheDB.ReapExpired:input_type -> nietzsche.ReapExpiredRequest
-	119, // 101: nietzsche.NietzscheDB.SqlQuery:input_type -> nietzsche.SqlRequest
-	119, // 102: nietzsche.NietzscheDB.SqlExec:input_type -> nietzsche.SqlRequest
-	4,   // 103: nietzsche.NietzscheDB.CreateCollection:output_type -> nietzsche.CreateCollectionResponse
-	1,   // 104: nietzsche.NietzscheDB.DropCollection:output_type -> nietzsche.StatusResponse
-	7,   // 105: nietzsche.NietzscheDB.ListCollections:output_type -> nietzsche.ListCollectionsResponse
-	12,  // 106: nietzsche.NietzscheDB.InsertNode:output_type -> nietzsche.NodeResponse
-	12,  // 107: nietzsche.NietzscheDB.GetNode:output_type -> nietzsche.NodeResponse
-	1,   // 108: nietzsche.NietzscheDB.DeleteNode:output_type -> nietzsche.StatusResponse
-	1,   // 109: nietzsche.NietzscheDB.UpdateEnergy:output_type -> nietzsche.StatusResponse
-	14,  // 110: nietzsche.NietzscheDB.InsertEdge:output_type -> nietzsche.EdgeResponse
-	1,   // 111: nietzsche.NietzscheDB.DeleteEdge:output_type -> nietzsche.StatusResponse
-	17,  // 112: nietzsche.NietzscheDB.MergeNode:output_type -> nietzsche.MergeNodeResponse
-	19,  // 113: nietzsche.NietzscheDB.MergeEdge:output_type -> nietzsche.MergeEdgeResponse
-	21,  // 114: nietzsche.NietzscheDB.IncrementEdgeMeta:output_type -> nietzsche.IncrementEdgeMetaResponse
-	30,  // 115: nietzsche.NietzscheDB.Query:output_type -> nietzsche.QueryResponse
-	38,  // 116: nietzsche.NietzscheDB.KnnSearch:output_type -> nietzsche.KnnResponse
-	40,  // 117: nietzsche.NietzscheDB.Bfs:output_type -> nietzsche.TraversalResponse
-	40,  // 118: nietzsche.NietzscheDB.Dijkstra:output_type -> nietzsche.TraversalResponse
-	43,  // 119: nietzsche.NietzscheDB.Diffuse:output_type -> nietzsche.DiffusionResponse
-	45,  // 120: nietzsche.NietzscheDB.TriggerSleep:output_type -> nietzsche.SleepResponse
-	1,   // 121: nietzsche.NietzscheDB.InsertSensory:output_type -> nietzsche.StatusResponse
-	48,  // 122: nietzsche.NietzscheDB.GetSensory:output_type -> nietzsche.SensoryResponse
-	50,  // 123: nietzsche.NietzscheDB.Reconstruct:output_type -> nietzsche.ReconstructResponse
-	1,   // 124: nietzsche.NietzscheDB.DegradeSensory:output_type -> nietzsche.StatusResponse
-	52,  // 125: nietzsche.NietzscheDB.InvokeZaratustra:output_type -> nietzsche.ZaratustraResponse
-	23,  // 126: nietzsche.NietzscheDB.BatchInsertNodes:output_type -> nietzsche.BatchInsertNodesResponse
-	25,  // 127: nietzsche.NietzscheDB.BatchInsertEdges:output_type -> nietzsche.BatchInsertEdgesResponse
-	65,  // 128: nietzsche.NietzscheDB.RunPageRank:output_type -> nietzsche.AlgorithmScoreResponse
-	67,  // 129: nietzsche.NietzscheDB.RunLouvain:output_type -> nietzsche.AlgorithmCommunityResponse
-	67,  // 130: nietzsche.NietzscheDB.RunLabelProp:output_type -> nietzsche.AlgorithmCommunityResponse
-	65,  // 131: nietzsche.NietzscheDB.RunBetweenness:output_type -> nietzsche.AlgorithmScoreResponse
-	65,  // 132: nietzsche.NietzscheDB.RunCloseness:output_type -> nietzsche.AlgorithmScoreResponse
-	65,  // 133: nietzsche.NietzscheDB.RunDegreeCentrality:output_type -> nietzsche.AlgorithmScoreResponse
-	67,  // 134: nietzsche.NietzscheDB.RunWCC:output_type -> nietzsche.AlgorithmCommunityResponse
-	67,  // 135: nietzsche.NietzscheDB.RunSCC:output_type -> nietzsche.AlgorithmCommunityResponse
-	68,  // 136: nietzsche.NietzscheDB.RunAStar:output_type -> nietzsche.AStarResponse
-	69,  // 137: nietzsche.NietzscheDB.RunTriangleCount:output_type -> nietzsche.TriangleCountResponse
-	71,  // 138: nietzsche.NietzscheDB.RunJaccardSimilarity:output_type -> nietzsche.SimilarityResponse
-	74,  // 139: nietzsche.NietzscheDB.CreateBackup:output_type -> nietzsche.BackupResponse
-	75,  // 140: nietzsche.NietzscheDB.ListBackups:output_type -> nietzsche.ListBackupsResponse
-	1,   // 141: nietzsche.NietzscheDB.RestoreBackup:output_type -> nietzsche.StatusResponse
-	79,  // 142: nietzsche.NietzscheDB.FullTextSearch:output_type -> nietzsche.FullTextSearchResponse
-	38,  // 143: nietzsche.NietzscheDB.HybridSearch:output_type -> nietzsche.KnnResponse
-	82,  // 144: nietzsche.NietzscheDB.SubscribeCDC:output_type -> nietzsche.CdcEvent
-	109, // 145: nietzsche.NietzscheDB.Synthesis:output_type -> nietzsche.SynthesisResponse
-	109, // 146: nietzsche.NietzscheDB.SynthesisMulti:output_type -> nietzsche.SynthesisResponse
-	111, // 147: nietzsche.NietzscheDB.CausalNeighbors:output_type -> nietzsche.CausalNeighborsResponse
-	114, // 148: nietzsche.NietzscheDB.CausalChain:output_type -> nietzsche.CausalChainResponse
-	116, // 149: nietzsche.NietzscheDB.KleinPath:output_type -> nietzsche.KleinPathResponse
-	118, // 150: nietzsche.NietzscheDB.IsOnShortestPath:output_type -> nietzsche.ShortestPathCheckResponse
-	46,  // 151: nietzsche.NietzscheDB.GetStats:output_type -> nietzsche.StatsResponse
-	1,   // 152: nietzsche.NietzscheDB.HealthCheck:output_type -> nietzsche.StatusResponse
-	84,  // 153: nietzsche.NietzscheDB.ListRPush:output_type -> nietzsche.ListPushResponse
-	86,  // 154: nietzsche.NietzscheDB.ListLRange:output_type -> nietzsche.ListRangeResponse
-	88,  // 155: nietzsche.NietzscheDB.ListLen:output_type -> nietzsche.ListLenResponse
-	97,  // 156: nietzsche.NietzscheDB.ExchangeGossip:output_type -> nietzsche.GossipResponse
-	1,   // 157: nietzsche.NietzscheDB.SetSchema:output_type -> nietzsche.StatusResponse
-	101, // 158: nietzsche.NietzscheDB.GetSchema:output_type -> nietzsche.GetSchemaResponse
-	102, // 159: nietzsche.NietzscheDB.ListSchemas:output_type -> nietzsche.ListSchemasResponse
-	1,   // 160: nietzsche.NietzscheDB.CreateIndex:output_type -> nietzsche.StatusResponse
-	1,   // 161: nietzsche.NietzscheDB.DropIndex:output_type -> nietzsche.StatusResponse
-	106, // 162: nietzsche.NietzscheDB.ListIndexes:output_type -> nietzsche.ListIndexesResponse
-	1,   // 163: nietzsche.NietzscheDB.CacheSet:output_type -> nietzsche.StatusResponse
-	91,  // 164: nietzsche.NietzscheDB.CacheGet:output_type -> nietzsche.CacheGetResponse
-	1,   // 165: nietzsche.NietzscheDB.CacheDel:output_type -> nietzsche.StatusResponse
-	94,  // 166: nietzsche.NietzscheDB.ReapExpired:output_type -> nietzsche.ReapExpiredResponse
-	122, // 167: nietzsche.NietzscheDB.SqlQuery:output_type -> nietzsche.SqlResultSet
-	123, // 168: nietzsche.NietzscheDB.SqlExec:output_type -> nietzsche.SqlExecResult
-	103, // [103:169] is the sub-list for method output_type
-	37,  // [37:103] is the sub-list for method input_type
-	37,  // [37:37] is the sub-list for extension type_name
-	37,  // [37:37] is the sub-list for extension extendee
-	0,   // [0:37] is the sub-list for field type_name
+	97,  // 27: nietzsche.ListDaemonsResponse.daemons:type_name -> nietzsche.DaemonInfoProto
+	100, // 28: nietzsche.GossipRequest.nodes:type_name -> nietzsche.ClusterNodeProto
+	100, // 29: nietzsche.GossipResponse.nodes:type_name -> nietzsche.ClusterNodeProto
+	103, // 30: nietzsche.SetSchemaRequest.field_types:type_name -> nietzsche.SchemaFieldType
+	103, // 31: nietzsche.GetSchemaResponse.field_types:type_name -> nietzsche.SchemaFieldType
+	106, // 32: nietzsche.ListSchemasResponse.schemas:type_name -> nietzsche.GetSchemaResponse
+	117, // 33: nietzsche.CausalNeighborsResponse.edges:type_name -> nietzsche.CausalEdge
+	117, // 34: nietzsche.CausalChainResponse.edges:type_name -> nietzsche.CausalEdge
+	125, // 35: nietzsche.SqlResultSet.columns:type_name -> nietzsche.SqlColumn
+	126, // 36: nietzsche.SqlResultSet.rows:type_name -> nietzsche.SqlRow
+	26,  // 37: nietzsche.QueryRequest.ParamsEntry.value:type_name -> nietzsche.QueryParamValue
+	3,   // 38: nietzsche.NietzscheDB.CreateCollection:input_type -> nietzsche.CreateCollectionRequest
+	5,   // 39: nietzsche.NietzscheDB.DropCollection:input_type -> nietzsche.DropCollectionRequest
+	0,   // 40: nietzsche.NietzscheDB.ListCollections:input_type -> nietzsche.Empty
+	9,   // 41: nietzsche.NietzscheDB.InsertNode:input_type -> nietzsche.InsertNodeRequest
+	10,  // 42: nietzsche.NietzscheDB.GetNode:input_type -> nietzsche.NodeIdRequest
+	10,  // 43: nietzsche.NietzscheDB.DeleteNode:input_type -> nietzsche.NodeIdRequest
+	11,  // 44: nietzsche.NietzscheDB.UpdateEnergy:input_type -> nietzsche.UpdateEnergyRequest
+	13,  // 45: nietzsche.NietzscheDB.InsertEdge:input_type -> nietzsche.InsertEdgeRequest
+	15,  // 46: nietzsche.NietzscheDB.DeleteEdge:input_type -> nietzsche.EdgeIdRequest
+	16,  // 47: nietzsche.NietzscheDB.MergeNode:input_type -> nietzsche.MergeNodeRequest
+	18,  // 48: nietzsche.NietzscheDB.MergeEdge:input_type -> nietzsche.MergeEdgeRequest
+	20,  // 49: nietzsche.NietzscheDB.IncrementEdgeMeta:input_type -> nietzsche.IncrementEdgeMetaRequest
+	28,  // 50: nietzsche.NietzscheDB.Query:input_type -> nietzsche.QueryRequest
+	36,  // 51: nietzsche.NietzscheDB.KnnSearch:input_type -> nietzsche.KnnRequest
+	39,  // 52: nietzsche.NietzscheDB.Bfs:input_type -> nietzsche.TraversalRequest
+	39,  // 53: nietzsche.NietzscheDB.Dijkstra:input_type -> nietzsche.TraversalRequest
+	41,  // 54: nietzsche.NietzscheDB.Diffuse:input_type -> nietzsche.DiffusionRequest
+	44,  // 55: nietzsche.NietzscheDB.TriggerSleep:input_type -> nietzsche.SleepRequest
+	47,  // 56: nietzsche.NietzscheDB.InsertSensory:input_type -> nietzsche.InsertSensoryRequest
+	10,  // 57: nietzsche.NietzscheDB.GetSensory:input_type -> nietzsche.NodeIdRequest
+	49,  // 58: nietzsche.NietzscheDB.Reconstruct:input_type -> nietzsche.ReconstructRequest
+	10,  // 59: nietzsche.NietzscheDB.DegradeSensory:input_type -> nietzsche.NodeIdRequest
+	51,  // 60: nietzsche.NietzscheDB.InvokeZaratustra:input_type -> nietzsche.ZaratustraRequest
+	22,  // 61: nietzsche.NietzscheDB.BatchInsertNodes:input_type -> nietzsche.BatchInsertNodesRequest
+	24,  // 62: nietzsche.NietzscheDB.BatchInsertEdges:input_type -> nietzsche.BatchInsertEdgesRequest
+	53,  // 63: nietzsche.NietzscheDB.RunPageRank:input_type -> nietzsche.PageRankRequest
+	54,  // 64: nietzsche.NietzscheDB.RunLouvain:input_type -> nietzsche.LouvainRequest
+	55,  // 65: nietzsche.NietzscheDB.RunLabelProp:input_type -> nietzsche.LabelPropRequest
+	56,  // 66: nietzsche.NietzscheDB.RunBetweenness:input_type -> nietzsche.BetweennessRequest
+	57,  // 67: nietzsche.NietzscheDB.RunCloseness:input_type -> nietzsche.ClosenessRequest
+	58,  // 68: nietzsche.NietzscheDB.RunDegreeCentrality:input_type -> nietzsche.DegreeCentralityRequest
+	59,  // 69: nietzsche.NietzscheDB.RunWCC:input_type -> nietzsche.WccRequest
+	60,  // 70: nietzsche.NietzscheDB.RunSCC:input_type -> nietzsche.SccRequest
+	61,  // 71: nietzsche.NietzscheDB.RunAStar:input_type -> nietzsche.AStarRequest
+	62,  // 72: nietzsche.NietzscheDB.RunTriangleCount:input_type -> nietzsche.TriangleCountRequest
+	63,  // 73: nietzsche.NietzscheDB.RunJaccardSimilarity:input_type -> nietzsche.JaccardRequest
+	72,  // 74: nietzsche.NietzscheDB.CreateBackup:input_type -> nietzsche.CreateBackupRequest
+	0,   // 75: nietzsche.NietzscheDB.ListBackups:input_type -> nietzsche.Empty
+	76,  // 76: nietzsche.NietzscheDB.RestoreBackup:input_type -> nietzsche.RestoreBackupRequest
+	77,  // 77: nietzsche.NietzscheDB.FullTextSearch:input_type -> nietzsche.FullTextSearchRequest
+	80,  // 78: nietzsche.NietzscheDB.HybridSearch:input_type -> nietzsche.HybridSearchRequest
+	81,  // 79: nietzsche.NietzscheDB.SubscribeCDC:input_type -> nietzsche.CdcRequest
+	112, // 80: nietzsche.NietzscheDB.Synthesis:input_type -> nietzsche.SynthesisRequest
+	113, // 81: nietzsche.NietzscheDB.SynthesisMulti:input_type -> nietzsche.SynthesisMultiRequest
+	115, // 82: nietzsche.NietzscheDB.CausalNeighbors:input_type -> nietzsche.CausalNeighborsRequest
+	118, // 83: nietzsche.NietzscheDB.CausalChain:input_type -> nietzsche.CausalChainRequest
+	120, // 84: nietzsche.NietzscheDB.KleinPath:input_type -> nietzsche.KleinPathRequest
+	122, // 85: nietzsche.NietzscheDB.IsOnShortestPath:input_type -> nietzsche.ShortestPathCheckRequest
+	0,   // 86: nietzsche.NietzscheDB.GetStats:input_type -> nietzsche.Empty
+	0,   // 87: nietzsche.NietzscheDB.HealthCheck:input_type -> nietzsche.Empty
+	83,  // 88: nietzsche.NietzscheDB.ListRPush:input_type -> nietzsche.ListPushRequest
+	85,  // 89: nietzsche.NietzscheDB.ListLRange:input_type -> nietzsche.ListRangeRequest
+	87,  // 90: nietzsche.NietzscheDB.ListLen:input_type -> nietzsche.ListLenRequest
+	101, // 91: nietzsche.NietzscheDB.ExchangeGossip:input_type -> nietzsche.GossipRequest
+	104, // 92: nietzsche.NietzscheDB.SetSchema:input_type -> nietzsche.SetSchemaRequest
+	105, // 93: nietzsche.NietzscheDB.GetSchema:input_type -> nietzsche.GetSchemaRequest
+	0,   // 94: nietzsche.NietzscheDB.ListSchemas:input_type -> nietzsche.Empty
+	108, // 95: nietzsche.NietzscheDB.CreateIndex:input_type -> nietzsche.CreateIndexRequest
+	109, // 96: nietzsche.NietzscheDB.DropIndex:input_type -> nietzsche.DropIndexRequest
+	110, // 97: nietzsche.NietzscheDB.ListIndexes:input_type -> nietzsche.ListIndexesRequest
+	89,  // 98: nietzsche.NietzscheDB.CacheSet:input_type -> nietzsche.CacheSetRequest
+	90,  // 99: nietzsche.NietzscheDB.CacheGet:input_type -> nietzsche.CacheGetRequest
+	92,  // 100: nietzsche.NietzscheDB.CacheDel:input_type -> nietzsche.CacheDelRequest
+	93,  // 101: nietzsche.NietzscheDB.ReapExpired:input_type -> nietzsche.ReapExpiredRequest
+	124, // 102: nietzsche.NietzscheDB.SqlQuery:input_type -> nietzsche.SqlRequest
+	124, // 103: nietzsche.NietzscheDB.SqlExec:input_type -> nietzsche.SqlRequest
+	95,  // 104: nietzsche.NietzscheDB.CreateDaemon:input_type -> nietzsche.CreateDaemonRequest
+	99,  // 105: nietzsche.NietzscheDB.DropDaemon:input_type -> nietzsche.DropDaemonRequest
+	96,  // 106: nietzsche.NietzscheDB.ListDaemons:input_type -> nietzsche.ListDaemonsRequest
+	4,   // 107: nietzsche.NietzscheDB.CreateCollection:output_type -> nietzsche.CreateCollectionResponse
+	1,   // 108: nietzsche.NietzscheDB.DropCollection:output_type -> nietzsche.StatusResponse
+	7,   // 109: nietzsche.NietzscheDB.ListCollections:output_type -> nietzsche.ListCollectionsResponse
+	12,  // 110: nietzsche.NietzscheDB.InsertNode:output_type -> nietzsche.NodeResponse
+	12,  // 111: nietzsche.NietzscheDB.GetNode:output_type -> nietzsche.NodeResponse
+	1,   // 112: nietzsche.NietzscheDB.DeleteNode:output_type -> nietzsche.StatusResponse
+	1,   // 113: nietzsche.NietzscheDB.UpdateEnergy:output_type -> nietzsche.StatusResponse
+	14,  // 114: nietzsche.NietzscheDB.InsertEdge:output_type -> nietzsche.EdgeResponse
+	1,   // 115: nietzsche.NietzscheDB.DeleteEdge:output_type -> nietzsche.StatusResponse
+	17,  // 116: nietzsche.NietzscheDB.MergeNode:output_type -> nietzsche.MergeNodeResponse
+	19,  // 117: nietzsche.NietzscheDB.MergeEdge:output_type -> nietzsche.MergeEdgeResponse
+	21,  // 118: nietzsche.NietzscheDB.IncrementEdgeMeta:output_type -> nietzsche.IncrementEdgeMetaResponse
+	30,  // 119: nietzsche.NietzscheDB.Query:output_type -> nietzsche.QueryResponse
+	38,  // 120: nietzsche.NietzscheDB.KnnSearch:output_type -> nietzsche.KnnResponse
+	40,  // 121: nietzsche.NietzscheDB.Bfs:output_type -> nietzsche.TraversalResponse
+	40,  // 122: nietzsche.NietzscheDB.Dijkstra:output_type -> nietzsche.TraversalResponse
+	43,  // 123: nietzsche.NietzscheDB.Diffuse:output_type -> nietzsche.DiffusionResponse
+	45,  // 124: nietzsche.NietzscheDB.TriggerSleep:output_type -> nietzsche.SleepResponse
+	1,   // 125: nietzsche.NietzscheDB.InsertSensory:output_type -> nietzsche.StatusResponse
+	48,  // 126: nietzsche.NietzscheDB.GetSensory:output_type -> nietzsche.SensoryResponse
+	50,  // 127: nietzsche.NietzscheDB.Reconstruct:output_type -> nietzsche.ReconstructResponse
+	1,   // 128: nietzsche.NietzscheDB.DegradeSensory:output_type -> nietzsche.StatusResponse
+	52,  // 129: nietzsche.NietzscheDB.InvokeZaratustra:output_type -> nietzsche.ZaratustraResponse
+	23,  // 130: nietzsche.NietzscheDB.BatchInsertNodes:output_type -> nietzsche.BatchInsertNodesResponse
+	25,  // 131: nietzsche.NietzscheDB.BatchInsertEdges:output_type -> nietzsche.BatchInsertEdgesResponse
+	65,  // 132: nietzsche.NietzscheDB.RunPageRank:output_type -> nietzsche.AlgorithmScoreResponse
+	67,  // 133: nietzsche.NietzscheDB.RunLouvain:output_type -> nietzsche.AlgorithmCommunityResponse
+	67,  // 134: nietzsche.NietzscheDB.RunLabelProp:output_type -> nietzsche.AlgorithmCommunityResponse
+	65,  // 135: nietzsche.NietzscheDB.RunBetweenness:output_type -> nietzsche.AlgorithmScoreResponse
+	65,  // 136: nietzsche.NietzscheDB.RunCloseness:output_type -> nietzsche.AlgorithmScoreResponse
+	65,  // 137: nietzsche.NietzscheDB.RunDegreeCentrality:output_type -> nietzsche.AlgorithmScoreResponse
+	67,  // 138: nietzsche.NietzscheDB.RunWCC:output_type -> nietzsche.AlgorithmCommunityResponse
+	67,  // 139: nietzsche.NietzscheDB.RunSCC:output_type -> nietzsche.AlgorithmCommunityResponse
+	68,  // 140: nietzsche.NietzscheDB.RunAStar:output_type -> nietzsche.AStarResponse
+	69,  // 141: nietzsche.NietzscheDB.RunTriangleCount:output_type -> nietzsche.TriangleCountResponse
+	71,  // 142: nietzsche.NietzscheDB.RunJaccardSimilarity:output_type -> nietzsche.SimilarityResponse
+	74,  // 143: nietzsche.NietzscheDB.CreateBackup:output_type -> nietzsche.BackupResponse
+	75,  // 144: nietzsche.NietzscheDB.ListBackups:output_type -> nietzsche.ListBackupsResponse
+	1,   // 145: nietzsche.NietzscheDB.RestoreBackup:output_type -> nietzsche.StatusResponse
+	79,  // 146: nietzsche.NietzscheDB.FullTextSearch:output_type -> nietzsche.FullTextSearchResponse
+	38,  // 147: nietzsche.NietzscheDB.HybridSearch:output_type -> nietzsche.KnnResponse
+	82,  // 148: nietzsche.NietzscheDB.SubscribeCDC:output_type -> nietzsche.CdcEvent
+	114, // 149: nietzsche.NietzscheDB.Synthesis:output_type -> nietzsche.SynthesisResponse
+	114, // 150: nietzsche.NietzscheDB.SynthesisMulti:output_type -> nietzsche.SynthesisResponse
+	116, // 151: nietzsche.NietzscheDB.CausalNeighbors:output_type -> nietzsche.CausalNeighborsResponse
+	119, // 152: nietzsche.NietzscheDB.CausalChain:output_type -> nietzsche.CausalChainResponse
+	121, // 153: nietzsche.NietzscheDB.KleinPath:output_type -> nietzsche.KleinPathResponse
+	123, // 154: nietzsche.NietzscheDB.IsOnShortestPath:output_type -> nietzsche.ShortestPathCheckResponse
+	46,  // 155: nietzsche.NietzscheDB.GetStats:output_type -> nietzsche.StatsResponse
+	1,   // 156: nietzsche.NietzscheDB.HealthCheck:output_type -> nietzsche.StatusResponse
+	84,  // 157: nietzsche.NietzscheDB.ListRPush:output_type -> nietzsche.ListPushResponse
+	86,  // 158: nietzsche.NietzscheDB.ListLRange:output_type -> nietzsche.ListRangeResponse
+	88,  // 159: nietzsche.NietzscheDB.ListLen:output_type -> nietzsche.ListLenResponse
+	102, // 160: nietzsche.NietzscheDB.ExchangeGossip:output_type -> nietzsche.GossipResponse
+	1,   // 161: nietzsche.NietzscheDB.SetSchema:output_type -> nietzsche.StatusResponse
+	106, // 162: nietzsche.NietzscheDB.GetSchema:output_type -> nietzsche.GetSchemaResponse
+	107, // 163: nietzsche.NietzscheDB.ListSchemas:output_type -> nietzsche.ListSchemasResponse
+	1,   // 164: nietzsche.NietzscheDB.CreateIndex:output_type -> nietzsche.StatusResponse
+	1,   // 165: nietzsche.NietzscheDB.DropIndex:output_type -> nietzsche.StatusResponse
+	111, // 166: nietzsche.NietzscheDB.ListIndexes:output_type -> nietzsche.ListIndexesResponse
+	1,   // 167: nietzsche.NietzscheDB.CacheSet:output_type -> nietzsche.StatusResponse
+	91,  // 168: nietzsche.NietzscheDB.CacheGet:output_type -> nietzsche.CacheGetResponse
+	1,   // 169: nietzsche.NietzscheDB.CacheDel:output_type -> nietzsche.StatusResponse
+	94,  // 170: nietzsche.NietzscheDB.ReapExpired:output_type -> nietzsche.ReapExpiredResponse
+	127, // 171: nietzsche.NietzscheDB.SqlQuery:output_type -> nietzsche.SqlResultSet
+	128, // 172: nietzsche.NietzscheDB.SqlExec:output_type -> nietzsche.SqlExecResult
+	1,   // 173: nietzsche.NietzscheDB.CreateDaemon:output_type -> nietzsche.StatusResponse
+	1,   // 174: nietzsche.NietzscheDB.DropDaemon:output_type -> nietzsche.StatusResponse
+	98,  // 175: nietzsche.NietzscheDB.ListDaemons:output_type -> nietzsche.ListDaemonsResponse
+	107, // [107:176] is the sub-list for method output_type
+	38,  // [38:107] is the sub-list for method input_type
+	38,  // [38:38] is the sub-list for extension type_name
+	38,  // [38:38] is the sub-list for extension extendee
+	0,   // [0:38] is the sub-list for field type_name
 }
 
 func init() { file_proto_nietzsche_proto_init() }
@@ -8759,7 +9101,7 @@ func file_proto_nietzsche_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_nietzsche_proto_rawDesc), len(file_proto_nietzsche_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   125,
+			NumMessages:   130,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

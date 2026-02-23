@@ -48,3 +48,17 @@ func (c *NietzscheClient) DeleteEdge(ctx context.Context, id, collection string)
 
 	return nil
 }
+
+// IncrementEdgeMeta atomically increments a numeric metadata field on an edge.
+func (c *NietzscheClient) IncrementEdgeMeta(ctx context.Context, opts IncrementEdgeMetaOpts) (float64, error) {
+	resp, err := c.stub.IncrementEdgeMeta(ctx, &pb.IncrementEdgeMetaRequest{
+		Collection: opts.Collection,
+		EdgeId:     opts.EdgeID,
+		Field:      opts.Field,
+		Delta:      opts.Delta,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("nietzsche IncrementEdgeMeta: %w", err)
+	}
+	return resp.NewValue, nil
+}
