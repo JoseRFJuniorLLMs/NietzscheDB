@@ -39,6 +39,8 @@ nietzsche-lsystem     = { workspace = true }
 nietzsche-dream       = { workspace = true }
 nietzsche-narrative   = { workspace = true }
 nietzsche-neural      = { workspace = true }
+nietzsche-dsi         = { workspace = true }
+nietzsche-vqvae       = { workspace = true }
 tokio           = { workspace = true }
 tonic           = { workspace = true }
 tracing         = { workspace = true }

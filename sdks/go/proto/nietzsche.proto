@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package nietzsche;
-
+ 
 option go_package = "nietzsche-sdk/pb";
 
 // ── NietzscheDB unified gRPC API ──────────────────────────────────────────
@@ -27,16 +27,16 @@ service NietzscheDB {
   rpc DropCollection   (DropCollectionRequest)    returns (StatusResponse);
   rpc ListCollections  (Empty)                    returns (ListCollectionsResponse);
 
-  // ── Wiederkehr Daemons ────────────────────────────────────────────────
-  rpc CreateDaemon (CreateDaemonRequest) returns (StatusResponse);
-  rpc ListDaemons   (ListDaemonsRequest)   returns (ListDaemonsResponse);
-  rpc DropDaemon   (DropDaemonRequest)   returns (StatusResponse);
-
   // ── Node CRUD ─────────────────────────────────────────────────────────
   rpc InsertNode   (InsertNodeRequest)    returns (NodeResponse);
   rpc GetNode      (NodeIdRequest)        returns (NodeResponse);
   rpc DeleteNode   (NodeIdRequest)        returns (StatusResponse);
   rpc UpdateEnergy (UpdateEnergyRequest)  returns (StatusResponse);
+
+  //  Wiederkehr Daemons 
+  rpc CreateDaemon (CreateDaemonRequest) returns (StatusResponse);
+  rpc ListDaemons  (ListDaemonsRequest)  returns (ListDaemonsResponse);
+  rpc DropDaemon   (DropDaemonRequest)   returns (StatusResponse);
 
   // ── Edge CRUD ─────────────────────────────────────────────────────────
   rpc InsertEdge (InsertEdgeRequest) returns (EdgeResponse);
@@ -319,6 +319,7 @@ message UpdateEnergyRequest {
   string collection = 3;  // empty → "default"
 }
 
+ 
 message NodeResponse {
   bool           found           = 1;
   string         id              = 2;
@@ -1085,21 +1086,24 @@ message SqlExecResult {
   bool   success       = 2;  // true if statement succeeded
   string message       = 3;  // optional message
 }
+ 
+// ── Wiederkehr Daemons (Phase 8) ──────────────────────────────────────────
+ 
 message CreateDaemonRequest {
   string collection    = 1;
   string label         = 2;
   string nql           = 3;
   uint32 interval_secs = 4;
 }
-
+ 
 message ListDaemonsRequest {
   string collection = 1;
 }
-
+ 
 message ListDaemonsResponse {
   repeated DaemonInfoProto daemons = 1;
 }
-
+ 
 message DaemonInfoProto {
   string label         = 1;
   string nql           = 2;
@@ -1107,7 +1111,7 @@ message DaemonInfoProto {
   int64  last_run_at   = 4;
   uint64 run_count     = 5;
 }
-
+ 
 message DropDaemonRequest {
   string collection = 1;
   string label      = 2;
