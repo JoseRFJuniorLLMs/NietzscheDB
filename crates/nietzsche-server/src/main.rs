@@ -746,6 +746,8 @@ async fn main() -> anyhow::Result<()> {
         server = server.with_cluster_registry(registry.clone());
     }
 
+    // NOTE: gRPC reflection is enabled for tooling compatibility.
+    // In production, restrict access via network policies / firewall rules.
     let reflection = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(nietzsche_api::NIETZSCHE_DESCRIPTOR)
         .build()

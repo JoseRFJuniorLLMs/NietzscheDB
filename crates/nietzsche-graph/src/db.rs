@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use tracing;
 use uuid::Uuid;
 
 use crate::adjacency::AdjacencyIndex;
@@ -218,6 +219,23 @@ impl<V: VectorStore> NietzscheDB<V> {
             .ok_or_else(|| GraphError::Storage("invalid RocksDB path".into()))?;
 
         let storage   = Arc::new(GraphStorage::open(rocksdb_str)?);
+
+        // ── WAL crash recovery ──────────────────────────────────────────
+        // Replay committed transactions that may not have been fully applied.
+        // The WAL is opened with tail truncation, then replayed before normal
+        // operation. This ensures crash consistency.
+        let replay_entries = GraphWal::replay(data_dir)?;
+        if !replay_entries.is_empty() {
+            let replayed = Self::replay_wal_entries(&storage, &replay_entries);
+            if replayed > 0 {
+                tracing::info!(
+                    total_entries = replay_entries.len(),
+                    replayed = replayed,
+                    "WAL crash recovery: replayed committed operations"
+                );
+            }
+        }
+
         let wal       = GraphWal::open(data_dir)?;
         let adjacency = storage.rebuild_adjacency()?;
 
@@ -235,6 +253,174 @@ impl<V: VectorStore> NietzscheDB<V> {
         let _ = db.load_persisted_indexes();
 
         Ok(db)
+    }
+
+    /// Replay WAL entries to RocksDB storage for crash recovery.
+    ///
+    /// Scans the WAL for `TxBegin`/`TxCommitted` pairs and re-applies all
+    /// operations from committed transactions. Non-transactional entries
+    /// (outside a tx) are also re-applied since they were already durably
+    /// flushed to the WAL.
+    ///
+    /// Returns the number of operations replayed.
+    fn replay_wal_entries(storage: &Arc<GraphStorage>, entries: &[GraphWalEntry]) -> usize {
+        let mut replayed = 0;
+        let mut in_tx: Option<Uuid> = None;
+        let mut tx_ops: Vec<&GraphWalEntry> = Vec::new();
+        let mut committed_txs: HashSet<Uuid> = HashSet::new();
+
+        // First pass: identify committed transactions
+        for entry in entries {
+            if let GraphWalEntry::TxCommitted(tx_id) = entry {
+                committed_txs.insert(*tx_id);
+            }
+        }
+
+        // Second pass: replay operations
+        for entry in entries {
+            match entry {
+                GraphWalEntry::TxBegin(tx_id) => {
+                    in_tx = Some(*tx_id);
+                    tx_ops.clear();
+                }
+                GraphWalEntry::TxCommitted(tx_id) => {
+                    if in_tx == Some(*tx_id) {
+                        // Replay all buffered ops for this committed transaction
+                        for op in &tx_ops {
+                            if Self::replay_single_entry(storage, op) {
+                                replayed += 1;
+                            }
+                        }
+                    }
+                    in_tx = None;
+                    tx_ops.clear();
+                }
+                GraphWalEntry::TxRolledBack(tx_id) => {
+                    if in_tx == Some(*tx_id) {
+                        // Discard buffered ops — transaction was rolled back
+                        in_tx = None;
+                        tx_ops.clear();
+                    }
+                }
+                _ => {
+                    if in_tx.is_some() {
+                        // Buffer ops inside a transaction
+                        tx_ops.push(entry);
+                    } else {
+                        // Non-transactional entry — replay immediately
+                        // (these were flushed with fsync before the WAL returned)
+                        if Self::replay_single_entry(storage, entry) {
+                            replayed += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        replayed
+    }
+
+    /// Replay a single WAL entry to RocksDB storage.
+    /// Returns true if the entry was applied, false on error (logged and skipped).
+    fn replay_single_entry(storage: &Arc<GraphStorage>, entry: &GraphWalEntry) -> bool {
+        let result = match entry {
+            GraphWalEntry::InsertNode(node) => storage.put_node(node),
+            GraphWalEntry::InsertEdge(edge) => storage.put_edge(edge),
+            GraphWalEntry::DeleteNode(id) => storage.delete_node(id),
+            GraphWalEntry::DeleteEdge(id) => {
+                // Need to find the edge first to delete it properly
+                match storage.get_edge(id) {
+                    Ok(Some(edge)) => storage.delete_edge(&edge),
+                    Ok(None) => Ok(()), // already deleted
+                    Err(e) => Err(e),
+                }
+            }
+            GraphWalEntry::PruneNode(id) => {
+                match storage.get_node_meta(id) {
+                    Ok(Some(mut meta)) => {
+                        let old_energy = meta.energy;
+                        meta.energy = 0.0;
+                        storage.put_node_meta_update_energy(&meta, old_energy)
+                    }
+                    Ok(None) => Ok(()),
+                    Err(e) => Err(e),
+                }
+            }
+            GraphWalEntry::UpdateNodeEnergy { node_id, energy } => {
+                match storage.get_node_meta(node_id) {
+                    Ok(Some(mut meta)) => {
+                        let old_energy = meta.energy;
+                        meta.energy = *energy;
+                        storage.put_node_meta_update_energy(&meta, old_energy)
+                    }
+                    Ok(None) => Ok(()),
+                    Err(e) => Err(e),
+                }
+            }
+            GraphWalEntry::UpdateHausdorff { node_id, hausdorff } => {
+                match storage.get_node_meta(node_id) {
+                    Ok(Some(mut meta)) => {
+                        meta.hausdorff_local = *hausdorff;
+                        storage.put_node_meta(&meta)
+                    }
+                    Ok(None) => Ok(()),
+                    Err(e) => Err(e),
+                }
+            }
+            GraphWalEntry::UpdateEmbedding { node_id: _, embedding: _ } => {
+                // Embedding updates are applied to the vector store, not RocksDB.
+                // The vector store rebuilds from its own WAL/snapshot on startup,
+                // so we skip this entry during graph WAL replay.
+                Ok(())
+            }
+            GraphWalEntry::PhantomizeNode(id) => {
+                match storage.get_node_meta(id) {
+                    Ok(Some(mut meta)) => {
+                        meta.is_phantom = true;
+                        storage.put_node_meta(&meta)
+                    }
+                    Ok(None) => Ok(()),
+                    Err(e) => Err(e),
+                }
+            }
+            GraphWalEntry::ReanimateNode { node_id, energy } => {
+                match storage.get_node_meta(node_id) {
+                    Ok(Some(mut meta)) => {
+                        meta.is_phantom = false;
+                        let old_energy = meta.energy;
+                        meta.energy = *energy;
+                        storage.put_node_meta_update_energy(&meta, old_energy)
+                    }
+                    Ok(None) => Ok(()),
+                    Err(e) => Err(e),
+                }
+            }
+            GraphWalEntry::UpdateEdgeMeta(edge) => {
+                storage.update_edge_only(edge)
+            }
+            GraphWalEntry::UpdateNodeContent { node_id, content } => {
+                match storage.get_node_meta(node_id) {
+                    Ok(Some(mut meta)) => {
+                        meta.content = content.clone();
+                        storage.put_node_meta(&meta)
+                    }
+                    Ok(None) => Ok(()),
+                    Err(e) => Err(e),
+                }
+            }
+            // Transaction markers are handled by the caller
+            GraphWalEntry::TxBegin(_) | GraphWalEntry::TxCommitted(_) | GraphWalEntry::TxRolledBack(_) => {
+                return false;
+            }
+        };
+
+        match result {
+            Ok(()) => true,
+            Err(e) => {
+                tracing::warn!(entry = %entry.tag(), error = %e, "WAL replay: failed to apply entry, skipping");
+                false
+            }
+        }
     }
 
     /// Replace the vector store backend at runtime.
@@ -1229,9 +1415,10 @@ impl<V: VectorStore> NietzscheDB<V> {
     }
 
     /// Apply an `InsertEdge` directly to storage and adjacency index.
-    pub(crate) fn apply_insert_edge(&mut self, edge: &Edge) {
-        let _ = self.storage.put_edge(edge);
+    pub(crate) fn apply_insert_edge(&mut self, edge: &Edge) -> Result<(), GraphError> {
+        self.storage.put_edge(edge)?;
         self.adjacency.add_edge(edge);
+        Ok(())
     }
 
     /// Apply a `PruneNode` (energy → 0) directly to storage.

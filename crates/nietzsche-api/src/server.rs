@@ -271,6 +271,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::CreateCollectionRequest>,
     ) -> Result<Response<nietzsche::CreateCollectionResponse>, Status> {
+        require_admin(&req)?;
         let r = req.into_inner();
         if r.collection.is_empty() {
             return Err(Status::invalid_argument("collection name must not be empty"));
@@ -395,6 +396,11 @@ impl NietzscheDb for NietzscheServer {
         require_writer(&req)?;
         let r  = req.into_inner();
         let id = parse_uuid(&r.node_id, "node_id")?;
+        if !r.energy.is_finite() || r.energy < 0.0 || r.energy > 1.0 {
+            return Err(Status::invalid_argument(format!(
+                "energy must be a finite value in [0.0, 1.0], got {}", r.energy
+            )));
+        }
 
         let shared = get_col!(self.cm, &r.collection);
         let mut db = shared.write().await;
@@ -542,6 +548,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::MergeEdgeRequest>,
     ) -> Result<Response<nietzsche::MergeEdgeResponse>, Status> {
+        require_writer(&req)?;
         let r = req.into_inner();
 
         let from = parse_uuid(&r.from_node_id, "from_node_id")?;
@@ -636,6 +643,8 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::QueryRequest>,
     ) -> Result<Response<nietzsche::QueryResponse>, Status> {
+        // NQL can execute mutations (CREATE/SET/DELETE/MERGE/DAEMON) — require writer
+        require_writer(&req)?;
         let inner = req.into_inner();
         validate_nql(&inner.nql)?;
 
@@ -1353,7 +1362,14 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::BatchInsertNodesRequest>,
     ) -> Result<Response<nietzsche::BatchInsertNodesResponse>, Status> {
+        require_writer(&req)?;
         let r = req.into_inner();
+        const MAX_BATCH_SIZE: usize = 10_000;
+        if r.nodes.len() > MAX_BATCH_SIZE {
+            return Err(Status::invalid_argument(format!(
+                "batch size {} exceeds maximum {MAX_BATCH_SIZE}", r.nodes.len()
+            )));
+        }
         let col_name = col(&r.collection);
         let shared = get_col!(self.cm, col_name);
         let mut db = shared.write().await;
@@ -1401,7 +1417,14 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::BatchInsertEdgesRequest>,
     ) -> Result<Response<nietzsche::BatchInsertEdgesResponse>, Status> {
+        require_writer(&req)?;
         let r = req.into_inner();
+        const MAX_BATCH_SIZE: usize = 10_000;
+        if r.edges.len() > MAX_BATCH_SIZE {
+            return Err(Status::invalid_argument(format!(
+                "batch size {} exceeds maximum {MAX_BATCH_SIZE}", r.edges.len()
+            )));
+        }
         let col_name = col(&r.collection);
         let shared = get_col!(self.cm, col_name);
         let mut db = shared.write().await;
@@ -1703,6 +1726,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::CreateBackupRequest>,
     ) -> Result<Response<nietzsche::BackupResponse>, Status> {
+        require_admin(&req)?;
         let r = req.into_inner();
         let label = if r.label.is_empty() { "manual" } else { &r.label };
 
@@ -1919,6 +1943,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::InsertSensoryRequest>,
     ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        require_writer(&req)?;
         let r = req.into_inner();
         let node_id = parse_uuid(&r.node_id, "node_id")?;
         let col_name = col(&r.collection).to_string();
@@ -2054,6 +2079,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::NodeIdRequest>,
     ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        require_writer(&req)?;
         let r = req.into_inner();
         let node_id = parse_uuid(&r.id, "id")?;
         let col_name = col(&r.collection).to_string();
@@ -2136,6 +2162,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::GossipRequest>,
     ) -> Result<Response<nietzsche::GossipResponse>, Status> {
+        require_writer(&req)?;
         let registry = self.cluster_registry.as_ref()
             .ok_or_else(|| Status::failed_precondition("cluster mode not enabled"))?;
 
@@ -2187,6 +2214,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::SetSchemaRequest>,
     ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        require_admin(&req)?;
         let r = req.into_inner();
         if r.node_type.is_empty() {
             return Err(Status::invalid_argument("node_type must not be empty"));
@@ -2343,6 +2371,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::CacheSetRequest>,
     ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        require_writer(&req)?;
         let r = req.into_inner();
         let col_name = col(&r.collection).to_string();
         let shared = get_col!(self.cm, &col_name);
@@ -2412,6 +2441,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::CacheDelRequest>,
     ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        require_writer(&req)?;
         let r = req.into_inner();
         let col_name = col(&r.collection).to_string();
         let shared = get_col!(self.cm, &col_name);
@@ -2426,6 +2456,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::ReapExpiredRequest>,
     ) -> Result<Response<nietzsche::ReapExpiredResponse>, Status> {
+        require_admin(&req)?;
         let r = req.into_inner();
         let col_name = col(&r.collection).to_string();
         let shared = get_col!(self.cm, &col_name);
@@ -3004,6 +3035,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::SqlRequest>,
     ) -> Result<Response<nietzsche::SqlExecResult>, Status> {
+        require_writer(&req)?;
         let r = req.into_inner();
         if r.sql.is_empty() {
             return Err(Status::invalid_argument("sql must not be empty"));

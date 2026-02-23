@@ -243,7 +243,7 @@ fn apply_op<V: VectorStore>(
             report.nodes_inserted += 1;
         }
         TxOp::InsertEdge(edge) => {
-            db.apply_insert_edge(&edge);
+            db.apply_insert_edge(&edge)?;
             report.edges_inserted += 1;
         }
         TxOp::PruneNode(id) => {

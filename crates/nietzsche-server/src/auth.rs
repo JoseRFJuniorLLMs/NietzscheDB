@@ -10,6 +10,7 @@
 //! | `NIETZSCHE_API_KEY_READER`    | Reader   | Read-only                            |
 //!
 //! If no API key env vars are set, authentication is disabled (all requests pass as Admin).
+//! **Security note**: In production, always configure at least one API key.
 //!
 //! The interceptor injects [`nietzsche_api::Role`] into `request.extensions()` so
 //! that downstream RPC handlers can call `require_writer` / `require_admin`.
@@ -54,7 +55,7 @@ impl AuthInterceptor {
         }
 
         if key_roles.is_empty() {
-            tracing::warn!("gRPC authentication disabled — no API key env vars set");
+            tracing::warn!("⚠ gRPC authentication DISABLED — no API key env vars set. Set NIETZSCHE_API_KEY_ADMIN to enable auth.");
         } else {
             tracing::info!(keys = key_roles.len(), "gRPC RBAC authentication enabled");
         }
