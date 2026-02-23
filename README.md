@@ -93,8 +93,11 @@ The name for what NietzscheDB actually is:
 │   · Schrödinger Edges (probabilistic, context-collapsed) │
 │   · Valence/Arousal emotional vectors in heat diffusion  │
 │   · Energy Circuit Breaker (anti-tumor protection)       │
+│   · Quantum Bridge (Poincaré-to-Bloch manifold mapping)  │
+│   · Niilista GC (Semantic redundancy deduplication)      │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
+
 ```
 
 **In plain language:**
@@ -161,6 +164,9 @@ It is a fork of **[YARlabs/hyperspace-db](https://github.com/YARlabs/hyperspace-
 | Relational data | Separate RDBMS | Built-in SQLite table store with NodeRef foreign keys |
 | Observability | External setup | Built-in Prometheus metrics (12 counters/gauges/histograms) |
 | CDC streaming | External CDC | Built-in Kafka Connect sink (6 mutation types) |
+| Quantum Bridge | None | Persistent Poincaré → Bloch sphere mapping |
+| Semantic GC | Standard Vacuum | Niilista: Near-duplicate embedding merge/prune |
+
 
 ---
 

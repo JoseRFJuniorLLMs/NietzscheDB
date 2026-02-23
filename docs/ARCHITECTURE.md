@@ -25,6 +25,16 @@ NietzscheDB is a **Multi-Manifold Graph Database** built as a Rust nightly works
 │  Invariants: Poincaré ‖x‖<1, Klein ‖x‖<1, Sphere ‖x‖=1         │
 │  Cascaded P→K→P roundtrip error < 1e-4 after 10 projections      │
 └───────────────────────────────────────────────────────────────────┘
+
+### Neuromorphic / Quantum Bridge (`nietzsche-agency/src/quantum.rs`)
+
+NietzscheDB maps the hyperbolic Poincaré ball coordinates to the Bloch sphere, enabling a direct bridge between semantic memory and quantum hardware states:
+
+*   **Coordinates**: Maps radius $r = \|x\|$ to polar angle $\theta = 2 \arctan(r)$.
+*   **Arousal**: Maps emotional arousal to state purity (coherence).
+*   **State**: Resulting `BlochState` represents a semantic node as a qubit state $|\psi\rangle$, allowing for quantum fidelity measurements between memories.
+*   **Entanglement Proxy**: Groups of nodes can be evaluated for "semantic entanglement" via fidelity-based overlap.
+
 ```
 
 ## NietzscheDB System Overview
@@ -105,11 +115,20 @@ NietzscheDB runs several autonomous background tasks:
 | Task | Interval | Purpose |
 |---|---|---|
 | Sleep Cycle | `NIETZSCHE_SLEEP_INTERVAL_SECS` | Riemannian reconsolidation with rollback |
-| Zaratustra | `ZARATUSTRA_INTERVAL_SECS` | Energy propagation, temporal echoes, elite identification |
+| Zaratustra | `ZARATUSTRA_INTERVAL_SECS` | Will to Power (Energy) -> Eternal Recurrence (Echo) -> Ubermensch (Elite) |
 | DAEMON Engine | `DAEMON_TICK_SECS` | Evaluate daemon conditions, execute actions, decay energy |
 | Agency Engine | `AGENCY_TICK_SECS` | Entropy/Gap/Coherence daemons + MetaObserver |
+| Niilista GC | `AGENCY_TICK_SECS` | Semantic Garbage Collector: merges near-duplicate embeddings |
 | TTL Reaper | `NIETZSCHE_TTL_REAPER_INTERVAL_SECS` | Scan and delete expired nodes |
 | Backup | `NIETZSCHE_BACKUP_INTERVAL_SECS` | Scheduled backup with auto-pruning |
+
+### Zaratustra Phase Transitions
+
+The Zaratustra cycle operates in three philosophical phases:
+1.  **Will to Power**: Energy propagates from high-influence nodes to their neighbors, creating "power clusters".
+2.  **Eternal Recurrence**: The system takes "circular snapshots" of state to detect recurring patterns and prevent catastrophic divergence.
+3.  **Ubermensch**: Nodes crossing a specific energy/complexity threshold are promoted to "Elite" status, making them globally accessible as Archetypes.
+
 
 ## AGI Subsystems (Sprint 2026-02-22)
 
@@ -201,7 +220,22 @@ When node.energy ≥ activation_threshold → extract NQL → execute
 After firing → increment firings counter, set cooldown
 ```
 
+### Niilista — Semantic Garbage Collector (AGI-5)
+
+Unlike standard DB vacuuming, Niilista performs **semantic deduplication**:
+*   **Clustering**: Uses Union-Find with a distance threshold in hyperbolic space.
+*   **Redundancy**: Identifies nodes that are semantically identical (near-zero hyperbolic distance).
+*   **Action**: Emits `SemanticRedundancy` events to the Reactor, which can consolidate or prune the redundant concepts without losing structural entropy.
+
+### Open Evolution — Adaptive Growth (AGI-6)
+
+The Evolution module adapats L-System rules based on the "health" of the graph:
+1.  **Fitness**: Measured by the local Hausdorff dimension and neighborhood energy stability.
+2.  **Strategy**: `EvolutionStrategy` (Stable, Exploratory, Aggressive) modulates mutation rates.
+3.  **Mutation**: Production rules are mutated over time, allowing the system's growth patterns to evolve to better suit the incoming data distribution.
+
 ### EnergyCircuitBreaker — Anti-Tumor
+
 
 ```
 depth_aware_cap(depth, energy)
