@@ -62,6 +62,7 @@ nietzsche-gnn          = { path = "crates/nietzsche-gnn" }
 nietzsche-mcts         = { path = "crates/nietzsche-mcts" }
 nietzsche-rl           = { path = "crates/nietzsche-rl" }
 nietzsche-vqvae        = { path = "crates/nietzsche-vqvae" }
+nietzsche-dsi          = { path = "crates/nietzsche-dsi" }
 rusqlite = { version = "0.31", features = ["bundled"] }
 memmap2 = "0.9"
 parking_lot = "0.12"

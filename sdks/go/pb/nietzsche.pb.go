@@ -9545,17 +9545,17 @@ const file_proto_nietzsche_proto_rawDesc = "" +
 	"\vNietzscheDB\x12[\n" +
 	"\x10CreateCollection\x12\".nietzsche.CreateCollectionRequest\x1a#.nietzsche.CreateCollectionResponse\x12M\n" +
 	"\x0eDropCollection\x12 .nietzsche.DropCollectionRequest\x1a\x19.nietzsche.StatusResponse\x12G\n" +
-	"\x0fListCollections\x12\x10.nietzsche.Empty\x1a\".nietzsche.ListCollectionsResponse\x12I\n" +
-	"\fCreateDaemon\x12\x1e.nietzsche.CreateDaemonRequest\x1a\x19.nietzsche.StatusResponse\x12L\n" +
-	"\vListDaemons\x12\x1d.nietzsche.ListDaemonsRequest\x1a\x1e.nietzsche.ListDaemonsResponse\x12E\n" +
-	"\n" +
-	"DropDaemon\x12\x1c.nietzsche.DropDaemonRequest\x1a\x19.nietzsche.StatusResponse\x12C\n" +
+	"\x0fListCollections\x12\x10.nietzsche.Empty\x1a\".nietzsche.ListCollectionsResponse\x12C\n" +
 	"\n" +
 	"InsertNode\x12\x1c.nietzsche.InsertNodeRequest\x1a\x17.nietzsche.NodeResponse\x12<\n" +
 	"\aGetNode\x12\x18.nietzsche.NodeIdRequest\x1a\x17.nietzsche.NodeResponse\x12A\n" +
 	"\n" +
 	"DeleteNode\x12\x18.nietzsche.NodeIdRequest\x1a\x19.nietzsche.StatusResponse\x12I\n" +
-	"\fUpdateEnergy\x12\x1e.nietzsche.UpdateEnergyRequest\x1a\x19.nietzsche.StatusResponse\x12C\n" +
+	"\fUpdateEnergy\x12\x1e.nietzsche.UpdateEnergyRequest\x1a\x19.nietzsche.StatusResponse\x12I\n" +
+	"\fCreateDaemon\x12\x1e.nietzsche.CreateDaemonRequest\x1a\x19.nietzsche.StatusResponse\x12L\n" +
+	"\vListDaemons\x12\x1d.nietzsche.ListDaemonsRequest\x1a\x1e.nietzsche.ListDaemonsResponse\x12E\n" +
+	"\n" +
+	"DropDaemon\x12\x1c.nietzsche.DropDaemonRequest\x1a\x19.nietzsche.StatusResponse\x12C\n" +
 	"\n" +
 	"InsertEdge\x12\x1c.nietzsche.InsertEdgeRequest\x1a\x17.nietzsche.EdgeResponse\x12A\n" +
 	"\n" +
@@ -9837,13 +9837,13 @@ var file_proto_nietzsche_proto_depIdxs = []int32{
 	16,  // 43: nietzsche.NietzscheDB.CreateCollection:input_type -> nietzsche.CreateCollectionRequest
 	18,  // 44: nietzsche.NietzscheDB.DropCollection:input_type -> nietzsche.DropCollectionRequest
 	13,  // 45: nietzsche.NietzscheDB.ListCollections:input_type -> nietzsche.Empty
-	137, // 46: nietzsche.NietzscheDB.CreateDaemon:input_type -> nietzsche.CreateDaemonRequest
-	138, // 47: nietzsche.NietzscheDB.ListDaemons:input_type -> nietzsche.ListDaemonsRequest
-	141, // 48: nietzsche.NietzscheDB.DropDaemon:input_type -> nietzsche.DropDaemonRequest
-	22,  // 49: nietzsche.NietzscheDB.InsertNode:input_type -> nietzsche.InsertNodeRequest
-	23,  // 50: nietzsche.NietzscheDB.GetNode:input_type -> nietzsche.NodeIdRequest
-	23,  // 51: nietzsche.NietzscheDB.DeleteNode:input_type -> nietzsche.NodeIdRequest
-	24,  // 52: nietzsche.NietzscheDB.UpdateEnergy:input_type -> nietzsche.UpdateEnergyRequest
+	22,  // 46: nietzsche.NietzscheDB.InsertNode:input_type -> nietzsche.InsertNodeRequest
+	23,  // 47: nietzsche.NietzscheDB.GetNode:input_type -> nietzsche.NodeIdRequest
+	23,  // 48: nietzsche.NietzscheDB.DeleteNode:input_type -> nietzsche.NodeIdRequest
+	24,  // 49: nietzsche.NietzscheDB.UpdateEnergy:input_type -> nietzsche.UpdateEnergyRequest
+	137, // 50: nietzsche.NietzscheDB.CreateDaemon:input_type -> nietzsche.CreateDaemonRequest
+	138, // 51: nietzsche.NietzscheDB.ListDaemons:input_type -> nietzsche.ListDaemonsRequest
+	141, // 52: nietzsche.NietzscheDB.DropDaemon:input_type -> nietzsche.DropDaemonRequest
 	26,  // 53: nietzsche.NietzscheDB.InsertEdge:input_type -> nietzsche.InsertEdgeRequest
 	28,  // 54: nietzsche.NietzscheDB.DeleteEdge:input_type -> nietzsche.EdgeIdRequest
 	29,  // 55: nietzsche.NietzscheDB.MergeNode:input_type -> nietzsche.MergeNodeRequest
@@ -9914,13 +9914,13 @@ var file_proto_nietzsche_proto_depIdxs = []int32{
 	17,  // 120: nietzsche.NietzscheDB.CreateCollection:output_type -> nietzsche.CreateCollectionResponse
 	14,  // 121: nietzsche.NietzscheDB.DropCollection:output_type -> nietzsche.StatusResponse
 	20,  // 122: nietzsche.NietzscheDB.ListCollections:output_type -> nietzsche.ListCollectionsResponse
-	14,  // 123: nietzsche.NietzscheDB.CreateDaemon:output_type -> nietzsche.StatusResponse
-	139, // 124: nietzsche.NietzscheDB.ListDaemons:output_type -> nietzsche.ListDaemonsResponse
-	14,  // 125: nietzsche.NietzscheDB.DropDaemon:output_type -> nietzsche.StatusResponse
-	25,  // 126: nietzsche.NietzscheDB.InsertNode:output_type -> nietzsche.NodeResponse
-	25,  // 127: nietzsche.NietzscheDB.GetNode:output_type -> nietzsche.NodeResponse
-	14,  // 128: nietzsche.NietzscheDB.DeleteNode:output_type -> nietzsche.StatusResponse
-	14,  // 129: nietzsche.NietzscheDB.UpdateEnergy:output_type -> nietzsche.StatusResponse
+	25,  // 123: nietzsche.NietzscheDB.InsertNode:output_type -> nietzsche.NodeResponse
+	25,  // 124: nietzsche.NietzscheDB.GetNode:output_type -> nietzsche.NodeResponse
+	14,  // 125: nietzsche.NietzscheDB.DeleteNode:output_type -> nietzsche.StatusResponse
+	14,  // 126: nietzsche.NietzscheDB.UpdateEnergy:output_type -> nietzsche.StatusResponse
+	14,  // 127: nietzsche.NietzscheDB.CreateDaemon:output_type -> nietzsche.StatusResponse
+	139, // 128: nietzsche.NietzscheDB.ListDaemons:output_type -> nietzsche.ListDaemonsResponse
+	14,  // 129: nietzsche.NietzscheDB.DropDaemon:output_type -> nietzsche.StatusResponse
 	27,  // 130: nietzsche.NietzscheDB.InsertEdge:output_type -> nietzsche.EdgeResponse
 	14,  // 131: nietzsche.NietzscheDB.DeleteEdge:output_type -> nietzsche.StatusResponse
 	30,  // 132: nietzsche.NietzscheDB.MergeNode:output_type -> nietzsche.MergeNodeResponse

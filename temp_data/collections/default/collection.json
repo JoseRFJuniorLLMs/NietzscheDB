@@ -1,0 +1,5 @@
+{
+  "name": "default",
+  "dim": 3072,
+  "metric": "cosine"
+}

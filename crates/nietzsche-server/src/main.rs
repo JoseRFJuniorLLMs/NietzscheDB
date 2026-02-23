@@ -39,6 +39,8 @@ use nietzsche_zaratustra::{ZaratustraEngine, ZaratustraConfig};
 use nietzsche_lsystem::LSystemEngine;
 use nietzsche_dream::{DreamConfig, DreamEngine};
 use nietzsche_narrative::{NarrativeConfig, NarrativeEngine};
+use nietzsche_dsi::DsiIndexer;
+use nietzsche_vqvae::{VqEncoder, VqVaeConfig};
 
 #[cfg(feature = "gpu")]
 use nietzsche_hnsw_gpu::GpuVectorStore;
@@ -142,6 +144,59 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
                 tokio::time::sleep(interval).await;
+            }
+        });
+    }
+
+    // ── DSI Background Indexer — Periodically index nodes for generative retrieval ──
+    {
+        let cm_dsi = Arc::clone(&cm);
+        tokio::spawn(async move {
+            info!("background DSI indexer started");
+            let mut interval = tokio::time::interval(Duration::from_secs(30));
+            
+            // Wait for models to be loaded by the other scanner
+            tokio::time::sleep(Duration::from_secs(10)).await;
+
+            let config = VqVaeConfig::default();
+            let indexer = DsiIndexer::new(VqEncoder::new(config), 3); // 3 levels: e.g. 1.2.3
+
+            loop {
+                interval.tick().await;
+
+                for col_info in cm_dsi.list() {
+                    let Some(shared) = cm_dsi.get(&col_info.name) else { continue; };
+                    // We need a read lock to scan, but index_node might need its own locks or internal access.
+                    // Actually DsiIndexer::index_node takes &GraphStorage, which we can get from the db handle.
+                    let db = shared.read().await;
+                    let storage = db.storage();
+
+                    let nodes = match storage.scan_nodes() {
+                        Ok(n) => n,
+                        Err(e) => {
+                            warn!(collection = %col_info.name, error = %e, "DSI indexer: scan failed");
+                            continue;
+                        }
+                    };
+
+                    for node in nodes {
+                        // Check if node already has a DSI ID
+                        match storage.get_dsi_id(&node.id) {
+                            Ok(Some(_)) => continue, // already indexed
+                            Ok(None) => {
+                                // Attempt to index the node
+                                // Note: this requires the "vqvae_graph_v1" model to be loaded in REGISTRY.
+                                if let Err(e) = indexer.index_node(storage, &node.id).await {
+                                    // Silent on most errors as it might just be the model not loaded yet
+                                    tracing::trace!(node_id = %node.id, error = %e, "DSI indexer: index failed");
+                                } else {
+                                    info!(node_id = %node.id, collection = %col_info.name, "DSI indexer: node indexed");
+                                }
+                            }
+                            Err(e) => warn!(node_id = %node.id, error = %e, "DSI indexer: storage error"),
+                        }
+                    }
+                }
             }
         });
     }

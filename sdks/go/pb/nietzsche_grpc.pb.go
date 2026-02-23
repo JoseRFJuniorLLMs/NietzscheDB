@@ -22,13 +22,13 @@ const (
 	NietzscheDB_CreateCollection_FullMethodName     = "/nietzsche.NietzscheDB/CreateCollection"
 	NietzscheDB_DropCollection_FullMethodName       = "/nietzsche.NietzscheDB/DropCollection"
 	NietzscheDB_ListCollections_FullMethodName      = "/nietzsche.NietzscheDB/ListCollections"
-	NietzscheDB_CreateDaemon_FullMethodName         = "/nietzsche.NietzscheDB/CreateDaemon"
-	NietzscheDB_ListDaemons_FullMethodName          = "/nietzsche.NietzscheDB/ListDaemons"
-	NietzscheDB_DropDaemon_FullMethodName           = "/nietzsche.NietzscheDB/DropDaemon"
 	NietzscheDB_InsertNode_FullMethodName           = "/nietzsche.NietzscheDB/InsertNode"
 	NietzscheDB_GetNode_FullMethodName              = "/nietzsche.NietzscheDB/GetNode"
 	NietzscheDB_DeleteNode_FullMethodName           = "/nietzsche.NietzscheDB/DeleteNode"
 	NietzscheDB_UpdateEnergy_FullMethodName         = "/nietzsche.NietzscheDB/UpdateEnergy"
+	NietzscheDB_CreateDaemon_FullMethodName         = "/nietzsche.NietzscheDB/CreateDaemon"
+	NietzscheDB_ListDaemons_FullMethodName          = "/nietzsche.NietzscheDB/ListDaemons"
+	NietzscheDB_DropDaemon_FullMethodName           = "/nietzsche.NietzscheDB/DropDaemon"
 	NietzscheDB_InsertEdge_FullMethodName           = "/nietzsche.NietzscheDB/InsertEdge"
 	NietzscheDB_DeleteEdge_FullMethodName           = "/nietzsche.NietzscheDB/DeleteEdge"
 	NietzscheDB_MergeNode_FullMethodName            = "/nietzsche.NietzscheDB/MergeNode"
@@ -106,15 +106,15 @@ type NietzscheDBClient interface {
 	CreateCollection(ctx context.Context, in *CreateCollectionRequest, opts ...grpc.CallOption) (*CreateCollectionResponse, error)
 	DropCollection(ctx context.Context, in *DropCollectionRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	ListCollections(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListCollectionsResponse, error)
-	// ── Wiederkehr Daemons ────────────────────────────────────────────────
-	CreateDaemon(ctx context.Context, in *CreateDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error)
-	ListDaemons(ctx context.Context, in *ListDaemonsRequest, opts ...grpc.CallOption) (*ListDaemonsResponse, error)
-	DropDaemon(ctx context.Context, in *DropDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	// ── Node CRUD ─────────────────────────────────────────────────────────
 	InsertNode(ctx context.Context, in *InsertNodeRequest, opts ...grpc.CallOption) (*NodeResponse, error)
 	GetNode(ctx context.Context, in *NodeIdRequest, opts ...grpc.CallOption) (*NodeResponse, error)
 	DeleteNode(ctx context.Context, in *NodeIdRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	UpdateEnergy(ctx context.Context, in *UpdateEnergyRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	// Wiederkehr Daemons
+	CreateDaemon(ctx context.Context, in *CreateDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	ListDaemons(ctx context.Context, in *ListDaemonsRequest, opts ...grpc.CallOption) (*ListDaemonsResponse, error)
+	DropDaemon(ctx context.Context, in *DropDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	// ── Edge CRUD ─────────────────────────────────────────────────────────
 	InsertEdge(ctx context.Context, in *InsertEdgeRequest, opts ...grpc.CallOption) (*EdgeResponse, error)
 	DeleteEdge(ctx context.Context, in *EdgeIdRequest, opts ...grpc.CallOption) (*StatusResponse, error)
@@ -247,36 +247,6 @@ func (c *nietzscheDBClient) ListCollections(ctx context.Context, in *Empty, opts
 	return out, nil
 }
 
-func (c *nietzscheDBClient) CreateDaemon(ctx context.Context, in *CreateDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(StatusResponse)
-	err := c.cc.Invoke(ctx, NietzscheDB_CreateDaemon_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *nietzscheDBClient) ListDaemons(ctx context.Context, in *ListDaemonsRequest, opts ...grpc.CallOption) (*ListDaemonsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListDaemonsResponse)
-	err := c.cc.Invoke(ctx, NietzscheDB_ListDaemons_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *nietzscheDBClient) DropDaemon(ctx context.Context, in *DropDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(StatusResponse)
-	err := c.cc.Invoke(ctx, NietzscheDB_DropDaemon_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *nietzscheDBClient) InsertNode(ctx context.Context, in *InsertNodeRequest, opts ...grpc.CallOption) (*NodeResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(NodeResponse)
@@ -311,6 +281,36 @@ func (c *nietzscheDBClient) UpdateEnergy(ctx context.Context, in *UpdateEnergyRe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StatusResponse)
 	err := c.cc.Invoke(ctx, NietzscheDB_UpdateEnergy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) CreateDaemon(ctx context.Context, in *CreateDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_CreateDaemon_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) ListDaemons(ctx context.Context, in *ListDaemonsRequest, opts ...grpc.CallOption) (*ListDaemonsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListDaemonsResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_ListDaemons_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) DropDaemon(ctx context.Context, in *DropDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_DropDaemon_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1004,15 +1004,15 @@ type NietzscheDBServer interface {
 	CreateCollection(context.Context, *CreateCollectionRequest) (*CreateCollectionResponse, error)
 	DropCollection(context.Context, *DropCollectionRequest) (*StatusResponse, error)
 	ListCollections(context.Context, *Empty) (*ListCollectionsResponse, error)
-	// ── Wiederkehr Daemons ────────────────────────────────────────────────
-	CreateDaemon(context.Context, *CreateDaemonRequest) (*StatusResponse, error)
-	ListDaemons(context.Context, *ListDaemonsRequest) (*ListDaemonsResponse, error)
-	DropDaemon(context.Context, *DropDaemonRequest) (*StatusResponse, error)
 	// ── Node CRUD ─────────────────────────────────────────────────────────
 	InsertNode(context.Context, *InsertNodeRequest) (*NodeResponse, error)
 	GetNode(context.Context, *NodeIdRequest) (*NodeResponse, error)
 	DeleteNode(context.Context, *NodeIdRequest) (*StatusResponse, error)
 	UpdateEnergy(context.Context, *UpdateEnergyRequest) (*StatusResponse, error)
+	// Wiederkehr Daemons
+	CreateDaemon(context.Context, *CreateDaemonRequest) (*StatusResponse, error)
+	ListDaemons(context.Context, *ListDaemonsRequest) (*ListDaemonsResponse, error)
+	DropDaemon(context.Context, *DropDaemonRequest) (*StatusResponse, error)
 	// ── Edge CRUD ─────────────────────────────────────────────────────────
 	InsertEdge(context.Context, *InsertEdgeRequest) (*EdgeResponse, error)
 	DeleteEdge(context.Context, *EdgeIdRequest) (*StatusResponse, error)
@@ -1124,15 +1124,6 @@ func (UnimplementedNietzscheDBServer) DropCollection(context.Context, *DropColle
 func (UnimplementedNietzscheDBServer) ListCollections(context.Context, *Empty) (*ListCollectionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListCollections not implemented")
 }
-func (UnimplementedNietzscheDBServer) CreateDaemon(context.Context, *CreateDaemonRequest) (*StatusResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method CreateDaemon not implemented")
-}
-func (UnimplementedNietzscheDBServer) ListDaemons(context.Context, *ListDaemonsRequest) (*ListDaemonsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListDaemons not implemented")
-}
-func (UnimplementedNietzscheDBServer) DropDaemon(context.Context, *DropDaemonRequest) (*StatusResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method DropDaemon not implemented")
-}
 func (UnimplementedNietzscheDBServer) InsertNode(context.Context, *InsertNodeRequest) (*NodeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InsertNode not implemented")
 }
@@ -1144,6 +1135,15 @@ func (UnimplementedNietzscheDBServer) DeleteNode(context.Context, *NodeIdRequest
 }
 func (UnimplementedNietzscheDBServer) UpdateEnergy(context.Context, *UpdateEnergyRequest) (*StatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateEnergy not implemented")
+}
+func (UnimplementedNietzscheDBServer) CreateDaemon(context.Context, *CreateDaemonRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateDaemon not implemented")
+}
+func (UnimplementedNietzscheDBServer) ListDaemons(context.Context, *ListDaemonsRequest) (*ListDaemonsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListDaemons not implemented")
+}
+func (UnimplementedNietzscheDBServer) DropDaemon(context.Context, *DropDaemonRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DropDaemon not implemented")
 }
 func (UnimplementedNietzscheDBServer) InsertEdge(context.Context, *InsertEdgeRequest) (*EdgeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InsertEdge not implemented")
@@ -1421,60 +1421,6 @@ func _NietzscheDB_ListCollections_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _NietzscheDB_CreateDaemon_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateDaemonRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(NietzscheDBServer).CreateDaemon(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: NietzscheDB_CreateDaemon_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NietzscheDBServer).CreateDaemon(ctx, req.(*CreateDaemonRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _NietzscheDB_ListDaemons_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListDaemonsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(NietzscheDBServer).ListDaemons(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: NietzscheDB_ListDaemons_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NietzscheDBServer).ListDaemons(ctx, req.(*ListDaemonsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _NietzscheDB_DropDaemon_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DropDaemonRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(NietzscheDBServer).DropDaemon(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: NietzscheDB_DropDaemon_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NietzscheDBServer).DropDaemon(ctx, req.(*DropDaemonRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _NietzscheDB_InsertNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(InsertNodeRequest)
 	if err := dec(in); err != nil {
@@ -1543,6 +1489,60 @@ func _NietzscheDB_UpdateEnergy_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NietzscheDBServer).UpdateEnergy(ctx, req.(*UpdateEnergyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_CreateDaemon_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateDaemonRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).CreateDaemon(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_CreateDaemon_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).CreateDaemon(ctx, req.(*CreateDaemonRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_ListDaemons_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListDaemonsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).ListDaemons(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_ListDaemons_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).ListDaemons(ctx, req.(*ListDaemonsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_DropDaemon_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DropDaemonRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).DropDaemon(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_DropDaemon_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).DropDaemon(ctx, req.(*DropDaemonRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2766,18 +2766,6 @@ var NietzscheDB_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _NietzscheDB_ListCollections_Handler,
 		},
 		{
-			MethodName: "CreateDaemon",
-			Handler:    _NietzscheDB_CreateDaemon_Handler,
-		},
-		{
-			MethodName: "ListDaemons",
-			Handler:    _NietzscheDB_ListDaemons_Handler,
-		},
-		{
-			MethodName: "DropDaemon",
-			Handler:    _NietzscheDB_DropDaemon_Handler,
-		},
-		{
 			MethodName: "InsertNode",
 			Handler:    _NietzscheDB_InsertNode_Handler,
 		},
@@ -2792,6 +2780,18 @@ var NietzscheDB_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateEnergy",
 			Handler:    _NietzscheDB_UpdateEnergy_Handler,
+		},
+		{
+			MethodName: "CreateDaemon",
+			Handler:    _NietzscheDB_CreateDaemon_Handler,
+		},
+		{
+			MethodName: "ListDaemons",
+			Handler:    _NietzscheDB_ListDaemons_Handler,
+		},
+		{
+			MethodName: "DropDaemon",
+			Handler:    _NietzscheDB_DropDaemon_Handler,
 		},
 		{
 			MethodName: "InsertEdge",

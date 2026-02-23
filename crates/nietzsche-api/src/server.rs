@@ -3289,6 +3289,34 @@ impl NietzscheDb for NietzscheServer {
 
         Ok(Response::new(dream_session_to_proto(session)))
     }
+ 
+    // ── Wiederkehr Daemons (Phase 8) ─────────────────────────────────────
+ 
+    async fn create_daemon(
+        &self,
+        _req: Request<nietzsche::CreateDaemonRequest>,
+    ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        // Placeholder for Phase 8
+        Err(Status::unimplemented("CreateDaemon is not yet implemented (Phase 8)"))
+    }
+ 
+    async fn list_daemons(
+        &self,
+        _req: Request<nietzsche::ListDaemonsRequest>,
+    ) -> Result<Response<nietzsche::ListDaemonsResponse>, Status> {
+        // Placeholder for Phase 8
+        Ok(Response::new(nietzsche::ListDaemonsResponse {
+            daemons: vec![],
+        }))
+    }
+ 
+    async fn drop_daemon(
+        &self,
+        _req: Request<nietzsche::DropDaemonRequest>,
+    ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        // Placeholder for Phase 8
+        Err(Status::unimplemented("DropDaemon is not yet implemented (Phase 8)"))
+    }
 }
 
 // ── Helpers (Dream) ──────────────────────────────────────────────────────────
