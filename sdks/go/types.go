@@ -110,6 +110,22 @@ type InsertSensoryOpts struct {
 	Collection     string    // "" → "default"
 }
 
+// CreateDaemonOpts configures a new Wiederkehr Daemon.
+type CreateDaemonOpts struct {
+	Collection   string
+	Label        string
+	NQL          string
+	IntervalSecs uint32
+}
+
+// IncrementEdgeMetaOpts specifies an atomic increment on edge metadata.
+type IncrementEdgeMetaOpts struct {
+	Collection string
+	EdgeID     string
+	Field      string
+	Delta      float64
+}
+
 // ── Result types ────────────────────────────────────────────────────────────
 
 // NodeResult represents a node returned by NietzscheDB.
@@ -238,4 +254,13 @@ type EdgeResult struct {
 	CreatedAt         int64
 	MinkowskiInterval float32 // ds² value: negative = timelike (causal)
 	CausalType        string  // "Timelike" | "Spacelike" | "Lightlike" | "Unknown"
+}
+
+// DaemonInfo contains metadata about a registered daemon.
+type DaemonInfo struct {
+	Label        string
+	NQL          string
+	IntervalSecs uint32
+	LastRunAt    int64
+	RunCount     uint64
 }

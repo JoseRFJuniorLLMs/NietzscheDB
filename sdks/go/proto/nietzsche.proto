@@ -137,6 +137,11 @@ service NietzscheDB {
   // ── Swartz SQL Layer (Phase S — embedded relational engine) ───
   rpc SqlQuery     (SqlRequest)          returns (SqlResultSet);
   rpc SqlExec      (SqlRequest)          returns (SqlExecResult);
+
+  // ── Wiederkehr Daemons (Phase W — periodic autonomous tasks) ───────
+  rpc CreateDaemon (CreateDaemonRequest) returns (StatusResponse);
+  rpc DropDaemon   (DropDaemonRequest)   returns (StatusResponse);
+  rpc ListDaemons  (ListDaemonsRequest)  returns (ListDaemonsResponse);
 }
 
 // ── Common primitives ──────────────────────────────────────────────────────
@@ -803,7 +808,37 @@ message ReapExpiredRequest {
 }
 
 message ReapExpiredResponse {
-  uint64 reaped_count = 1;
+  uint32 reaped_count = 1;
+}
+
+// ── Wiederkehr Daemon messages ──────────────────────────────────────────
+
+message CreateDaemonRequest {
+  string collection    = 1;
+  string label         = 2;  // human readable name
+  string nql           = 3;  // NQL command to execute periodically
+  uint32 interval_secs = 4;  // execution period
+}
+
+message ListDaemonsRequest {
+  string collection = 1;
+}
+
+message DaemonInfoProto {
+  string label         = 1;
+  string nql           = 2;
+  uint32 interval_secs = 3;
+  int64  last_run_at   = 4;
+  uint64 run_count     = 5;
+}
+
+message ListDaemonsResponse {
+  repeated DaemonInfoProto daemons = 1;
+}
+
+message DropDaemonRequest {
+  string collection = 1;
+  string label      = 2;
 }
 
 // ── Cluster gossip messages (Phase G) ─────────────────────────────────────

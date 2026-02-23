@@ -85,6 +85,9 @@ const (
 	NietzscheDB_ReapExpired_FullMethodName          = "/nietzsche.NietzscheDB/ReapExpired"
 	NietzscheDB_SqlQuery_FullMethodName             = "/nietzsche.NietzscheDB/SqlQuery"
 	NietzscheDB_SqlExec_FullMethodName              = "/nietzsche.NietzscheDB/SqlExec"
+	NietzscheDB_CreateDaemon_FullMethodName         = "/nietzsche.NietzscheDB/CreateDaemon"
+	NietzscheDB_DropDaemon_FullMethodName           = "/nietzsche.NietzscheDB/DropDaemon"
+	NietzscheDB_ListDaemons_FullMethodName          = "/nietzsche.NietzscheDB/ListDaemons"
 )
 
 // NietzscheDBClient is the client API for NietzscheDB service.
@@ -182,6 +185,10 @@ type NietzscheDBClient interface {
 	// ── Swartz SQL Layer (Phase S — embedded relational engine) ───
 	SqlQuery(ctx context.Context, in *SqlRequest, opts ...grpc.CallOption) (*SqlResultSet, error)
 	SqlExec(ctx context.Context, in *SqlRequest, opts ...grpc.CallOption) (*SqlExecResult, error)
+	// ── Wiederkehr Daemons (Phase W — periodic autonomous tasks) ───────
+	CreateDaemon(ctx context.Context, in *CreateDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	DropDaemon(ctx context.Context, in *DropDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	ListDaemons(ctx context.Context, in *ListDaemonsRequest, opts ...grpc.CallOption) (*ListDaemonsResponse, error)
 }
 
 type nietzscheDBClient struct {
@@ -861,6 +868,36 @@ func (c *nietzscheDBClient) SqlExec(ctx context.Context, in *SqlRequest, opts ..
 	return out, nil
 }
 
+func (c *nietzscheDBClient) CreateDaemon(ctx context.Context, in *CreateDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_CreateDaemon_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) DropDaemon(ctx context.Context, in *DropDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_DropDaemon_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) ListDaemons(ctx context.Context, in *ListDaemonsRequest, opts ...grpc.CallOption) (*ListDaemonsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListDaemonsResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_ListDaemons_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NietzscheDBServer is the server API for NietzscheDB service.
 // All implementations must embed UnimplementedNietzscheDBServer
 // for forward compatibility.
@@ -956,6 +993,10 @@ type NietzscheDBServer interface {
 	// ── Swartz SQL Layer (Phase S — embedded relational engine) ───
 	SqlQuery(context.Context, *SqlRequest) (*SqlResultSet, error)
 	SqlExec(context.Context, *SqlRequest) (*SqlExecResult, error)
+	// ── Wiederkehr Daemons (Phase W — periodic autonomous tasks) ───────
+	CreateDaemon(context.Context, *CreateDaemonRequest) (*StatusResponse, error)
+	DropDaemon(context.Context, *DropDaemonRequest) (*StatusResponse, error)
+	ListDaemons(context.Context, *ListDaemonsRequest) (*ListDaemonsResponse, error)
 	mustEmbedUnimplementedNietzscheDBServer()
 }
 
@@ -1163,6 +1204,15 @@ func (UnimplementedNietzscheDBServer) SqlQuery(context.Context, *SqlRequest) (*S
 }
 func (UnimplementedNietzscheDBServer) SqlExec(context.Context, *SqlRequest) (*SqlExecResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method SqlExec not implemented")
+}
+func (UnimplementedNietzscheDBServer) CreateDaemon(context.Context, *CreateDaemonRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateDaemon not implemented")
+}
+func (UnimplementedNietzscheDBServer) DropDaemon(context.Context, *DropDaemonRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DropDaemon not implemented")
+}
+func (UnimplementedNietzscheDBServer) ListDaemons(context.Context, *ListDaemonsRequest) (*ListDaemonsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListDaemons not implemented")
 }
 func (UnimplementedNietzscheDBServer) mustEmbedUnimplementedNietzscheDBServer() {}
 func (UnimplementedNietzscheDBServer) testEmbeddedByValue()                     {}
@@ -2366,6 +2416,60 @@ func _NietzscheDB_SqlExec_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NietzscheDB_CreateDaemon_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateDaemonRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).CreateDaemon(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_CreateDaemon_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).CreateDaemon(ctx, req.(*CreateDaemonRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_DropDaemon_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DropDaemonRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).DropDaemon(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_DropDaemon_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).DropDaemon(ctx, req.(*DropDaemonRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_ListDaemons_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListDaemonsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).ListDaemons(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_ListDaemons_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).ListDaemons(ctx, req.(*ListDaemonsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NietzscheDB_ServiceDesc is the grpc.ServiceDesc for NietzscheDB service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -2632,6 +2736,18 @@ var NietzscheDB_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SqlExec",
 			Handler:    _NietzscheDB_SqlExec_Handler,
+		},
+		{
+			MethodName: "CreateDaemon",
+			Handler:    _NietzscheDB_CreateDaemon_Handler,
+		},
+		{
+			MethodName: "DropDaemon",
+			Handler:    _NietzscheDB_DropDaemon_Handler,
+		},
+		{
+			MethodName: "ListDaemons",
+			Handler:    _NietzscheDB_ListDaemons_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
