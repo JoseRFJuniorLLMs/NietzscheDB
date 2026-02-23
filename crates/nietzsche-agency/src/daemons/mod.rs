@@ -1,6 +1,7 @@
 pub mod coherence;
 pub mod entropy;
 pub mod gap;
+pub mod ltd_daemon;
 pub mod niilista;
 
 use nietzsche_graph::{AdjacencyIndex, GraphStorage};
@@ -38,4 +39,5 @@ pub trait AgencyDaemon: Send + Sync {
 pub use coherence::CoherenceDaemon;
 pub use entropy::EntropyDaemon;
 pub use gap::GapDaemon;
+pub use ltd_daemon::LTDDaemon;
 pub use niilista::NiilistaGcDaemon;

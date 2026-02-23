@@ -75,6 +75,21 @@ pub enum AgencyEvent {
 
     /// Observer triggered a daemon wake-up due to critical thresholds.
     DaemonWakeUp { reason: WakeUpReason },
+
+    /// LTDDaemon detected an edge with accumulated caregiver corrections.
+    ///
+    /// The reactor converts this into an `ApplyLTD` intent, which the server
+    /// executes under write lock: `edge.weight -= weight_delta`.
+    CorrectionAccumulated {
+        /// Source node of the weakened edge.
+        from_id: Uuid,
+        /// Target node of the weakened edge.
+        to_id: Uuid,
+        /// Total correction count from edge metadata.
+        correction_count: u64,
+        /// Pre-computed weight reduction = min(ltd_rate × count, current_weight).
+        weight_delta: f32,
+    },
 }
 
 /// Internal pub/sub bus for inter-daemon communication.

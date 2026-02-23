@@ -63,6 +63,21 @@ pub enum FilterExpr {
         gte: Option<f64>,
         lte: Option<f64>,
     },
+    /// Logical AND of multiple sub-filters.
+    And(Vec<FilterExpr>),
+    /// Logical OR of multiple sub-filters.
+    Or(Vec<FilterExpr>),
+    /// Logical NOT of a sub-filter.
+    Not(Box<FilterExpr>),
+    /// JSONB-style containment: checks if the value at `key` contains `value`.
+    Contains {
+        key: String,
+        value: serde_json::Value,
+    },
+    /// Checks if a metadata key exists.
+    Exists {
+        key: String,
+    },
 }
 
 #[derive(Debug, Clone, Default)]

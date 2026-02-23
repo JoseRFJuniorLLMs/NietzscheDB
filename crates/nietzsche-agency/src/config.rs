@@ -63,6 +63,14 @@ pub struct AgencyConfig {
     pub circuit_breaker_max_actions: usize,
     /// Maximum global energy sum allowed before blocking reflexes.
     pub circuit_breaker_energy_sum_threshold: f32,
+
+    // -- LTD Daemon --
+    /// Weight reduction per caregiver correction event (default: 0.05 = 5%).
+    /// None uses the daemon's built-in default.
+    pub ltd_rate: Option<f64>,
+    /// Minimum correction count before triggering LTD.
+    /// None = any non-zero correction count triggers LTD.
+    pub ltd_correction_threshold: Option<u64>,
 }
 
 impl Default for AgencyConfig {
@@ -89,6 +97,8 @@ impl Default for AgencyConfig {
             evolution_cooldown_ticks: 5,
             circuit_breaker_max_actions: 20,
             circuit_breaker_energy_sum_threshold: 50.0,
+            ltd_rate: None,
+            ltd_correction_threshold: None,
         }
     }
 }
@@ -131,6 +141,12 @@ impl AgencyConfig {
             evolution_cooldown_ticks:       env_u64("AGENCY_EVOLUTION_COOLDOWN", 5),
             circuit_breaker_max_actions:    env_usize("AGENCY_CIRCUIT_BREAKER_MAX", 20),
             circuit_breaker_energy_sum_threshold: env_f32("AGENCY_CIRCUIT_BREAKER_ENERGY", 50.0),
+            ltd_rate: std::env::var("AGENCY_LTD_RATE")
+                .ok()
+                .and_then(|v| v.parse::<f64>().ok()),
+            ltd_correction_threshold: std::env::var("AGENCY_LTD_THRESHOLD")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok()),
         }
     }
 }

@@ -9,37 +9,28 @@ use uuid::Uuid;
 
 use crate::{ClusterError, ClusterNode, ClusterRegistry};
 
+use std::hash::{Hash, Hasher};
+use siphasher::sip::SipHasher24;
+
 // ─────────────────────────────────────────────
 // Token hashing
 // ─────────────────────────────────────────────
 
-/// Hash a `Uuid` to a `u64` partition token using FNV-1a.
-///
-/// Deterministic, fast, no external deps.
+/// Hash a `Uuid` to a `u64` partition token using SipHash-2-4.
+/// 
+/// Point 7 Audit Fix: Replace FNV-1a with SipHash for better distribution
+/// and security against collision attacks.
 pub fn hash_key(key: &Uuid) -> u64 {
-    const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
-    const FNV_PRIME:  u64 = 1_099_511_628_211;
-
-    let bytes = key.as_bytes();
-    let mut h = FNV_OFFSET;
-    for &b in bytes {
-        h ^= b as u64;
-        h = h.wrapping_mul(FNV_PRIME);
-    }
-    h
+    let mut hasher = SipHasher24::new();
+    key.hash(&mut hasher);
+    hasher.finish()
 }
 
-/// Hash an arbitrary byte slice to a `u64` partition token.
+/// Hash an arbitrary byte slice to a `u64` partition token using SipHash-2-4.
 pub fn hash_bytes(data: &[u8]) -> u64 {
-    const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
-    const FNV_PRIME:  u64 = 1_099_511_628_211;
-
-    let mut h = FNV_OFFSET;
-    for &b in data {
-        h ^= b as u64;
-        h = h.wrapping_mul(FNV_PRIME);
-    }
-    h
+    let mut hasher = SipHasher24::new();
+    data.hash(&mut hasher);
+    hasher.finish()
 }
 
 // ─────────────────────────────────────────────

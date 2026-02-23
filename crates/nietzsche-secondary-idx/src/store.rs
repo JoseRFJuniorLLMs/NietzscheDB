@@ -4,6 +4,11 @@ use uuid::Uuid;
 use crate::error::SecondaryIdxError;
 use crate::model::{IndexDef, IndexType};
 
+use once_cell::sync::Lazy;
+use parking_lot::RwLock;
+use lru::LruCache;
+use std::num::NonZeroUsize;
+
 // ─────────────────────────────────────────────
 // Key prefixes stored in CF_META
 // ─────────────────────────────────────────────
@@ -13,6 +18,11 @@ const IDX_DEF_PREFIX: &str = "idx_def:";
 
 /// Prefix for index data entries: `"sidx:{name}:{sortable_value}:{node_id}"`.
 const SIDX_PREFIX: &str = "sidx:";
+
+/// Small LRU cache for `list_indexes` results to avoid linear scans.
+static LIST_CACHE: Lazy<RwLock<LruCache<String, Vec<IndexDef>>>> = Lazy::new(|| {
+    RwLock::new(LruCache::new(NonZeroUsize::new(16).unwrap()))
+});
 
 // ─────────────────────────────────────────────
 // SecondaryIndexStore
@@ -36,6 +46,9 @@ impl SecondaryIndexStore {
         let key = format!("{}{}", IDX_DEF_PREFIX, def.name);
         let value = serde_json::to_vec(def)?;
         storage.put_meta(&key, &value)?;
+        
+        // Invalidate cache
+        LIST_CACHE.write().clear();
         Ok(())
     }
 
@@ -61,19 +74,32 @@ impl SecondaryIndexStore {
     ) -> Result<(), SecondaryIdxError> {
         let key = format!("{}{}", IDX_DEF_PREFIX, name);
         storage.delete_meta(&key)?;
+        
+        // Invalidate cache
+        LIST_CACHE.write().clear();
         Ok(())
     }
 
     /// List all index definitions.
+    ///
+    /// Point 6 Audit Fix: Uses a small LRU cache to avoid repeated linear scans of CF_META.
     pub fn list_indexes(
         storage: &GraphStorage,
     ) -> Result<Vec<IndexDef>, SecondaryIdxError> {
+        let cache_key = format!("{:p}", storage);
+        
+        if let Some(defs) = LIST_CACHE.read().peek(&cache_key) {
+            return Ok(defs.clone());
+        }
+
         let entries = storage.scan_meta_prefix(IDX_DEF_PREFIX.as_bytes())?;
         let mut defs = Vec::with_capacity(entries.len());
         for (_key, value) in entries {
             let def: IndexDef = serde_json::from_slice(&value)?;
             defs.push(def);
         }
+        
+        LIST_CACHE.write().put(cache_key, defs.clone());
         Ok(defs)
     }
 
