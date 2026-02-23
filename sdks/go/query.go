@@ -33,6 +33,10 @@ func (c *NietzscheClient) Query(ctx context.Context, nql string, params map[stri
 		Error:   resp.Error,
 	}
 
+	if resp.DreamResult != nil {
+		result.DreamResult = protoToDreamSession(resp.DreamResult)
+	}
+
 	for _, n := range resp.Nodes {
 		result.Nodes = append(result.Nodes, nodeResponseToResult(n))
 	}
@@ -128,4 +132,76 @@ func convertParams(params map[string]interface{}) (map[string]*pb.QueryParamValu
 	}
 
 	return result, nil
+}
+
+// ── Dream methods (Phase 4) ──────────────────────────────────────────────────
+
+// DreamFrom initiates a speculative dream simulation from a seed node.
+func (c *NietzscheClient) DreamFrom(ctx context.Context, seedID string, depth uint32, noise float64, collection string) (*DreamSession, error) {
+	resp, err := c.stub.DreamFrom(ctx, &pb.DreamRequest{
+		SeedId:     seedID,
+		Depth:      depth,
+		Noise:      noise,
+		Collection: collection,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("nietzsche DreamFrom: %w", err)
+	}
+	return protoToDreamSession(resp), nil
+}
+
+// ApplyDream persists the results of a dream simulation to the graph.
+func (c *NietzscheClient) ApplyDream(ctx context.Context, dreamID string, collection string) (*DreamSession, error) {
+	resp, err := c.stub.ApplyDream(ctx, &pb.DreamIdRequest{
+		DreamId:    dreamID,
+		Collection: collection,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("nietzsche ApplyDream: %w", err)
+	}
+	return protoToDreamSession(resp), nil
+}
+
+// RejectDream discards a dream simulation.
+func (c *NietzscheClient) RejectDream(ctx context.Context, dreamID string, collection string) (*DreamSession, error) {
+	resp, err := c.stub.RejectDream(ctx, &pb.DreamIdRequest{
+		DreamId:    dreamID,
+		Collection: collection,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("nietzsche RejectDream: %w", err)
+	}
+	return protoToDreamSession(resp), nil
+}
+
+func protoToDreamSession(p *pb.DreamSessionProto) *DreamSession {
+	if p == nil {
+		return nil
+	}
+	s := &DreamSession{
+		ID:        p.Id,
+		SeedNode:  p.SeedNode,
+		Depth:     p.Depth,
+		Noise:     p.Noise,
+		CreatedAt: p.CreatedAt,
+		Status:    p.Status,
+	}
+	for _, e := range p.Events {
+		s.Events = append(s.Events, DreamEvent{
+			EventType:   e.EventType,
+			NodeID:      e.NodeId,
+			Energy:      e.Energy,
+			Depth:       e.Depth,
+			Description: e.Description,
+		})
+	}
+	for _, d := range p.NodeDeltas {
+		s.NodeDeltas = append(s.NodeDeltas, DreamNodeDelta{
+			NodeID:    d.NodeId,
+			OldEnergy: d.OldEnergy,
+			NewEnergy: d.NewEnergy,
+			EventType: d.EventType,
+		})
+	}
+	return s
 }

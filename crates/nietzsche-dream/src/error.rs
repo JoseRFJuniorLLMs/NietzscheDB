@@ -14,6 +14,15 @@ pub enum DreamError {
     #[error("graph error: {0}")]
     Graph(#[from] nietzsche_graph::GraphError),
 
+    #[error("neural error: {0}")]
+    Neural(#[from] nietzsche_neural::NeuralError),
+
+    #[error("ort error: {0}")]
+    Ort(#[from] ort::Error),
+
     #[error("serde error: {0}")]
     Serde(#[from] serde_json::Error),
+
+    #[error("internal error: {0}")]
+    Internal(String),
 }

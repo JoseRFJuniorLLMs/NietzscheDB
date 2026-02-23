@@ -1,0 +1,18 @@
+[package]
+name = "nietzsche-rl"
+version = "0.1.0"
+edition = "2021"
+description = "Reinforcement Learning (PPO) for L-System growth strategies in NietzscheDB"
+
+[dependencies]
+nietzsche-graph    = { path = "../nietzsche-graph" }
+nietzsche-neural   = { path = "../nietzsche-neural" }
+serde              = { workspace = true }
+serde_json         = { workspace = true }
+thiserror          = { workspace = true }
+tracing            = { workspace = true }
+tokio              = { workspace = true, features = ["full"] }
+ndarray            = "0.15"
+ort                = "2.0.0-rc.11"
+rand               = { workspace = true }
+rand_distr         = "0.4"

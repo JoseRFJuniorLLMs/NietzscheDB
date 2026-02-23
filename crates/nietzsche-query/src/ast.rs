@@ -273,6 +273,8 @@ pub enum Pattern {
 pub struct NodePattern {
     pub alias: String,
     pub label: Option<String>,
+    /// Phase 4: Optional semantic ID for generative retrieval.
+    pub semantic_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]

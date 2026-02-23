@@ -31,14 +31,17 @@ use nietzsche_graph::{
 };
 use nietzsche_hyp_ops::{klein, riemann, minkowski, manifold};
 use nietzsche_pregel::{DiffusionConfig, DiffusionEngine};
-use nietzsche_query::{ParamValue, Params, execute_with_indexes, parse};
+use nietzsche_query::{ParamValue, Params, execute, parse};
 use nietzsche_sleep::{SleepConfig, SleepCycle};
 use nietzsche_zaratustra::{ZaratustraConfig, ZaratustraEngine};
+use nietzsche_neural::{REGISTRY, ModelMetadata};
 use nietzsche_sensory::{
     Modality, OriginalShape, QuantLevel,
     encoder::build_sensory_memory,
     storage::SensoryStorage,
 };
+use nietzsche_gnn::{GnnEngine, NeighborSampler};
+use nietzsche_mcts::{MctsAdvisor, MctsConfig};
 
 use nietzsche_cluster::{ClusterNode, ClusterRegistry, NodeHealth, NodeRole};
 use crate::cdc::{CdcBroadcaster, CdcEventType};
@@ -229,11 +232,19 @@ pub struct NietzscheServer {
     cluster_registry: Option<ClusterRegistry>,
     /// Archetype registry for Collective Unconscious.
     archetype_registry: nietzsche_cluster::ArchetypeRegistry,
+    /// Speculative exploration engine.
+    dream_engine: nietzsche_dream::DreamEngine,
 }
 
 impl NietzscheServer {
     pub fn new(cm: Arc<CollectionManager>, cdc: Arc<CdcBroadcaster>) -> Self {
-        Self { cm, cdc, cluster_registry: None, archetype_registry: nietzsche_cluster::ArchetypeRegistry::new() }
+        Self {
+            cm,
+            cdc,
+            cluster_registry: None,
+            archetype_registry: nietzsche_cluster::ArchetypeRegistry::new(),
+            dream_engine: nietzsche_dream::DreamEngine::new(nietzsche_dream::DreamConfig::from_env()),
+        }
     }
 
     /// Set the cluster registry for gossip support.
@@ -655,20 +666,36 @@ impl NietzscheDb for NietzscheServer {
 
         let shared  = get_col!(self.cm, &inner.collection);
         let mut db  = shared.read().await;
-        let idx_fields: std::collections::HashSet<String> = db.list_indexes().into_iter().collect();
-        let results = execute_with_indexes(&ast, db.storage(), db.adjacency(), &params, &idx_fields)
+        let results = execute(&ast, db.storage(), db.adjacency(), &params)
             .map_err(|e| Status::internal(e.to_string()))?;
 
         use nietzsche_query::{QueryResult, ScalarValue};
-        let mut nodes       = Vec::new();
-        let mut node_pairs  = Vec::new();
-        let mut path_ids    = Vec::new();
-        let mut explain     = String::new();
-        let mut scalar_rows = Vec::new();
+        let mut nodes        = Vec::new();
+        let mut node_pairs   = Vec::new();
+        let mut path_ids     = Vec::new();
+        let mut explain      = String::new();
+        let mut scalar_rows  = Vec::new();
+        let mut dream_result = None;
 
         for r in results {
             match r {
-                QueryResult::Node(n) => nodes.push(node_to_proto(n)),
+                QueryResult::Node(n) => {
+                    let id = n.id;
+                    nodes.push(node_to_proto(n));
+                    
+                    // Energy Backprop (Recall Boost): 
+                    // Successful retrieval strengthens the memory trace.
+                    // We drop the read lock and acquire a write lock briefly.
+                    drop(db);
+                    {
+                        let mut db_w = shared.write().await;
+                        if let Ok(Some(mut meta)) = db_w.storage().get_node_meta(&id) {
+                            meta.energy = (meta.energy + 0.01).min(1.0);
+                            let _ = db_w.storage().put_node_meta(&meta);
+                        }
+                    }
+                    db = shared.read().await;
+                }
                 QueryResult::NodePair { from, to } => node_pairs.push(nietzsche::NodePair {
                     from: Some(node_to_proto(from)),
                     to:   Some(node_to_proto(to)),
@@ -907,11 +934,12 @@ impl NietzscheDb for NietzscheServer {
                         .and_then(|p| params.get(p))
                         .and_then(|v| if let ParamValue::Uuid(u) = v { Some(*u) } else { None })
                         .ok_or_else(|| Status::invalid_argument("DREAM FROM requires a $param UUID"))?;
-                    let engine = nietzsche_dream::DreamEngine::new(
-                        nietzsche_dream::DreamConfig::from_env(),
-                    );
-                    let session = engine.dream_from(db.storage(), seed_id, depth, noise)
+                    
+                    let session = self.dream_engine.dream_from(db.storage(), seed_id, depth, noise)
                         .map_err(|e| Status::internal(format!("dream error: {e}")))?;
+                    
+                    dream_result = Some(dream_session_to_proto(session.clone()));
+                    
                     scalar_rows.push(nietzsche::ScalarRow {
                         entries: vec![
                             nietzsche::ScalarEntry { column: "dream_id".into(), is_null: false, value: Some(nietzsche::scalar_entry::Value::StringVal(session.id)) },
@@ -922,23 +950,21 @@ impl NietzscheDb for NietzscheServer {
                     });
                 }
                 QueryResult::ApplyDreamRequest { dream_id } => {
-                    let engine = nietzsche_dream::DreamEngine::new(
-                        nietzsche_dream::DreamConfig::from_env(),
-                    );
                     drop(db);
-                    let db_w = shared.read().await;
-                    engine.apply_dream(db_w.storage(), &dream_id)
+                    let mut db_w = shared.write().await;
+                    let session = self.dream_engine.apply_dream(db_w.storage(), &dream_id)
                         .map_err(|e| Status::internal(format!("dream apply error: {e}")))?;
+                    
+                    dream_result = Some(dream_session_to_proto(session));
                     path_ids.push(format!("dream:applied:{}", dream_id));
                     drop(db_w);
                     db = shared.read().await;
                 }
                 QueryResult::RejectDreamRequest { dream_id } => {
-                    let engine = nietzsche_dream::DreamEngine::new(
-                        nietzsche_dream::DreamConfig::from_env(),
-                    );
-                    engine.reject_dream(db.storage(), &dream_id)
+                    let session = self.dream_engine.reject_dream(db.storage(), &dream_id)
                         .map_err(|e| Status::internal(format!("dream reject error: {e}")))?;
+                    
+                    dream_result = Some(dream_session_to_proto(session));
                     path_ids.push(format!("dream:rejected:{}", dream_id));
                 }
                 QueryResult::ShowDreamsRequest => {
@@ -1113,6 +1139,7 @@ impl NietzscheDb for NietzscheServer {
             error: String::new(),
             explain,
             scalar_rows,
+            dream_result,
         }))
     }
 
@@ -3079,5 +3106,213 @@ impl NietzscheDb for NietzscheServer {
             success: true,
             message: String::new(),
         }))
+    }
+
+    // ── Neural Foundation (Phase 1) ───────────────────────────────────────
+
+    async fn load_model(
+        &self,
+        req: Request<nietzsche::LoadModelRequest>,
+    ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        require_admin(&req)?;
+        let r = req.into_inner();
+        let meta = ModelMetadata {
+            name: r.name,
+            path: r.path.into(),
+            version: r.version,
+            input_shape: vec![], // TODO: extract or provide in request
+            output_shape: vec![],
+        };
+
+        REGISTRY.load_model(meta)
+            .map_err(|e| Status::internal(format!("Failed to load model: {e}")))?;
+
+        Ok(Response::new(ok_status()))
+    }
+
+    async fn list_models(
+        &self,
+        _req: Request<nietzsche::Empty>,
+    ) -> Result<Response<nietzsche::ListModelsResponse>, Status> {
+        let models = REGISTRY.list_models().into_iter().map(|m| {
+            nietzsche::ModelMeta {
+                name: m.name,
+                path: m.path.to_string_lossy().to_string(),
+                version: m.version,
+            }
+        }).collect();
+
+        Ok(Response::new(nietzsche::ListModelsResponse { models }))
+    }
+
+    async fn unload_model(
+        &self,
+        req: Request<nietzsche::ModelNameRequest>,
+    ) -> Result<Response<nietzsche::StatusResponse>, Status> {
+        require_admin(&req)?;
+        let r = req.into_inner();
+        REGISTRY.unload_model(&r.name);
+        Ok(Response::new(ok_status()))
+    }
+
+    async fn gnn_infer(
+        &self,
+        req: Request<nietzsche::GnnInferRequest>,
+    ) -> Result<Response<nietzsche::GnnInferResponse>, Status> {
+        let r = req.into_inner();
+        let engine = GnnEngine::new(&r.model_name);
+
+        let shared = get_col!(self.cm, &r.collection);
+        let db = shared.read().await;
+
+        let sampler = NeighborSampler::new(db.storage(), db.adjacency());
+        
+        let mut results = Vec::new();
+        for id_str in r.node_ids {
+            let id = parse_uuid(&id_str, "node_id")?;
+            let subgraph = sampler.sample_k_hop(id, 2)
+                .map_err(|e| Status::internal(e.to_string()))?;
+            
+            let predictions = engine.predict(&subgraph).await
+                .map_err(|e| Status::internal(e.to_string()))?;
+            
+            for p in predictions {
+                results.push(nietzsche::PoincareVector {
+                    coords: p.embedding_delta.into_iter().map(|x| x as f64).collect(),
+                    dim: 0, // indicates this might be a score or delta
+                });
+            }
+        }
+
+        Ok(Response::new(nietzsche::GnnInferResponse { embeddings: results }))
+    }
+
+    async fn mcts_search(
+        &self,
+        req: Request<nietzsche::MctsRequest>,
+    ) -> Result<Response<nietzsche::MctsResponse>, Status> {
+        let r = req.into_inner();
+        let start_node = parse_uuid(&r.start_node_id, "start_node_id")?;
+        
+        let shared = get_col!(self.cm, &r.collection);
+        let db = shared.read().await;
+
+        let config = MctsConfig {
+            iterations: r.simulations as usize,
+            exploration_constant: 1.41,
+        };
+
+        let advisor = MctsAdvisor::new(&*db, &r.model_name, config);
+        let intents = advisor.advise(start_node).await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        if let Some(best) = intents.first() {
+            let best_id = best.target_node;
+            
+            // Record hit for EvolutionDaemon
+            drop(db);
+            {
+                let mut db_w = shared.write().await;
+                if let Ok(Some(mut node)) = db_w.storage().get_node(&best_id) {
+                    let hits = node.content.get("mcts_hits").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let mut content = node.content.clone();
+                    if let Some(obj) = content.as_object_mut() {
+                        obj.insert("mcts_hits".to_string(), serde_json::Value::from(hits + 1));
+                    }
+                    node.content = content;
+                    let _ = db_w.storage().put_node(&node);
+                }
+            }
+
+            Ok(Response::new(nietzsche::MctsResponse {
+                best_action_id: best_id.to_string(),
+                value: best.confidence as f64,
+            }))
+        } else {
+            Ok(Response::new(nietzsche::MctsResponse {
+                best_action_id: String::new(),
+                value: 0.0,
+            }))
+        }
+    }
+
+    // ── DreamerV3 Speculative Simulation (Phase 4) ───────────────────────
+
+    async fn dream_from(
+        &self,
+        req: Request<nietzsche::DreamRequest>,
+    ) -> Result<Response<nietzsche::DreamSessionProto>, Status> {
+        require_writer(&req)?;
+        let r = req.into_inner();
+        let seed_id = val_uuid(&r.seed_id, "seed_id")?;
+        let depth = if r.depth > 0 { Some(r.depth as usize) } else { None };
+        let noise = if r.noise > 0.0 { Some(r.noise) } else { None };
+
+        let shared = get_col!(self.cm, &r.collection);
+        let db = shared.read().await;
+
+        let session = self.dream_engine.dream_from(db.storage(), seed_id, depth, noise)
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(dream_session_to_proto(session)))
+    }
+
+    async fn apply_dream(
+        &self,
+        req: Request<nietzsche::DreamIdRequest>,
+    ) -> Result<Response<nietzsche::DreamSessionProto>, Status> {
+        require_writer(&req)?;
+        let r = req.into_inner();
+
+        let shared = get_col!(self.cm, &r.collection);
+        // We need write lock to apply changes to the graph
+        let mut db = shared.write().await;
+
+        let session = self.dream_engine.apply_dream(db.storage(), &r.dream_id)
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(dream_session_to_proto(session)))
+    }
+
+    async fn reject_dream(
+        &self,
+        req: Request<nietzsche::DreamIdRequest>,
+    ) -> Result<Response<nietzsche::DreamSessionProto>, Status> {
+        require_writer(&req)?;
+        let r = req.into_inner();
+
+        let shared = get_col!(self.cm, &r.collection);
+        let db = shared.read().await;
+
+        let session = self.dream_engine.reject_dream(db.storage(), &r.dream_id)
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(dream_session_to_proto(session)))
+    }
+}
+
+// ── Helpers (Dream) ──────────────────────────────────────────────────────────
+
+fn dream_session_to_proto(s: nietzsche_dream::DreamSession) -> nietzsche::DreamSessionProto {
+    nietzsche::DreamSessionProto {
+        id:          s.id,
+        seed_node:   s.seed_node.to_string(),
+        depth:       s.depth as u32,
+        noise:       s.noise,
+        created_at:  s.created_at,
+        status:      format!("{:?}", s.status).to_lowercase(),
+        events:      s.events.into_iter().map(|e| nietzsche::DreamEventProto {
+            event_type:  format!("{:?}", e.event_type),
+            node_id:     e.node_id.to_string(),
+            energy:      e.energy,
+            depth:       e.depth,
+            description: e.description,
+        }).collect(),
+        node_deltas: s.dream_nodes.into_iter().map(|d| nietzsche::DreamNodeDeltaProto {
+            node_id:    d.node_id.to_string(),
+            old_energy: d.old_energy,
+            new_energy: d.new_energy,
+            event_type: d.event_type.map(|et| format!("{:?}", et)).unwrap_or_default(),
+        }).collect(),
     }
 }

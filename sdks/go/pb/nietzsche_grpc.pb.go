@@ -22,6 +22,9 @@ const (
 	NietzscheDB_CreateCollection_FullMethodName     = "/nietzsche.NietzscheDB/CreateCollection"
 	NietzscheDB_DropCollection_FullMethodName       = "/nietzsche.NietzscheDB/DropCollection"
 	NietzscheDB_ListCollections_FullMethodName      = "/nietzsche.NietzscheDB/ListCollections"
+	NietzscheDB_CreateDaemon_FullMethodName         = "/nietzsche.NietzscheDB/CreateDaemon"
+	NietzscheDB_ListDaemons_FullMethodName          = "/nietzsche.NietzscheDB/ListDaemons"
+	NietzscheDB_DropDaemon_FullMethodName           = "/nietzsche.NietzscheDB/DropDaemon"
 	NietzscheDB_InsertNode_FullMethodName           = "/nietzsche.NietzscheDB/InsertNode"
 	NietzscheDB_GetNode_FullMethodName              = "/nietzsche.NietzscheDB/GetNode"
 	NietzscheDB_DeleteNode_FullMethodName           = "/nietzsche.NietzscheDB/DeleteNode"
@@ -85,9 +88,14 @@ const (
 	NietzscheDB_ReapExpired_FullMethodName          = "/nietzsche.NietzscheDB/ReapExpired"
 	NietzscheDB_SqlQuery_FullMethodName             = "/nietzsche.NietzscheDB/SqlQuery"
 	NietzscheDB_SqlExec_FullMethodName              = "/nietzsche.NietzscheDB/SqlExec"
-	NietzscheDB_CreateDaemon_FullMethodName         = "/nietzsche.NietzscheDB/CreateDaemon"
-	NietzscheDB_DropDaemon_FullMethodName           = "/nietzsche.NietzscheDB/DropDaemon"
-	NietzscheDB_ListDaemons_FullMethodName          = "/nietzsche.NietzscheDB/ListDaemons"
+	NietzscheDB_LoadModel_FullMethodName            = "/nietzsche.NietzscheDB/LoadModel"
+	NietzscheDB_ListModels_FullMethodName           = "/nietzsche.NietzscheDB/ListModels"
+	NietzscheDB_UnloadModel_FullMethodName          = "/nietzsche.NietzscheDB/UnloadModel"
+	NietzscheDB_GnnInfer_FullMethodName             = "/nietzsche.NietzscheDB/GnnInfer"
+	NietzscheDB_MctsSearch_FullMethodName           = "/nietzsche.NietzscheDB/MctsSearch"
+	NietzscheDB_DreamFrom_FullMethodName            = "/nietzsche.NietzscheDB/DreamFrom"
+	NietzscheDB_ApplyDream_FullMethodName           = "/nietzsche.NietzscheDB/ApplyDream"
+	NietzscheDB_RejectDream_FullMethodName          = "/nietzsche.NietzscheDB/RejectDream"
 )
 
 // NietzscheDBClient is the client API for NietzscheDB service.
@@ -98,6 +106,10 @@ type NietzscheDBClient interface {
 	CreateCollection(ctx context.Context, in *CreateCollectionRequest, opts ...grpc.CallOption) (*CreateCollectionResponse, error)
 	DropCollection(ctx context.Context, in *DropCollectionRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	ListCollections(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListCollectionsResponse, error)
+	// ── Wiederkehr Daemons ────────────────────────────────────────────────
+	CreateDaemon(ctx context.Context, in *CreateDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	ListDaemons(ctx context.Context, in *ListDaemonsRequest, opts ...grpc.CallOption) (*ListDaemonsResponse, error)
+	DropDaemon(ctx context.Context, in *DropDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	// ── Node CRUD ─────────────────────────────────────────────────────────
 	InsertNode(ctx context.Context, in *InsertNodeRequest, opts ...grpc.CallOption) (*NodeResponse, error)
 	GetNode(ctx context.Context, in *NodeIdRequest, opts ...grpc.CallOption) (*NodeResponse, error)
@@ -185,10 +197,16 @@ type NietzscheDBClient interface {
 	// ── Swartz SQL Layer (Phase S — embedded relational engine) ───
 	SqlQuery(ctx context.Context, in *SqlRequest, opts ...grpc.CallOption) (*SqlResultSet, error)
 	SqlExec(ctx context.Context, in *SqlRequest, opts ...grpc.CallOption) (*SqlExecResult, error)
-	// ── Wiederkehr Daemons (Phase W — periodic autonomous tasks) ───────
-	CreateDaemon(ctx context.Context, in *CreateDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error)
-	DropDaemon(ctx context.Context, in *DropDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error)
-	ListDaemons(ctx context.Context, in *ListDaemonsRequest, opts ...grpc.CallOption) (*ListDaemonsResponse, error)
+	// ── Neural Foundation (Phase 1 — Ag.5/Ag.8/Ag.9) ───────────────────────
+	LoadModel(ctx context.Context, in *LoadModelRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	ListModels(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListModelsResponse, error)
+	UnloadModel(ctx context.Context, in *ModelNameRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	GnnInfer(ctx context.Context, in *GnnInferRequest, opts ...grpc.CallOption) (*GnnInferResponse, error)
+	MctsSearch(ctx context.Context, in *MctsRequest, opts ...grpc.CallOption) (*MctsResponse, error)
+	// ── DreamerV3 Speculative Simulation (Phase 4 — Ag.9) ───────────────
+	DreamFrom(ctx context.Context, in *DreamRequest, opts ...grpc.CallOption) (*DreamSessionProto, error)
+	ApplyDream(ctx context.Context, in *DreamIdRequest, opts ...grpc.CallOption) (*DreamSessionProto, error)
+	RejectDream(ctx context.Context, in *DreamIdRequest, opts ...grpc.CallOption) (*DreamSessionProto, error)
 }
 
 type nietzscheDBClient struct {
@@ -223,6 +241,36 @@ func (c *nietzscheDBClient) ListCollections(ctx context.Context, in *Empty, opts
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListCollectionsResponse)
 	err := c.cc.Invoke(ctx, NietzscheDB_ListCollections_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) CreateDaemon(ctx context.Context, in *CreateDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_CreateDaemon_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) ListDaemons(ctx context.Context, in *ListDaemonsRequest, opts ...grpc.CallOption) (*ListDaemonsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListDaemonsResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_ListDaemons_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) DropDaemon(ctx context.Context, in *DropDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_DropDaemon_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -868,30 +916,80 @@ func (c *nietzscheDBClient) SqlExec(ctx context.Context, in *SqlRequest, opts ..
 	return out, nil
 }
 
-func (c *nietzscheDBClient) CreateDaemon(ctx context.Context, in *CreateDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+func (c *nietzscheDBClient) LoadModel(ctx context.Context, in *LoadModelRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StatusResponse)
-	err := c.cc.Invoke(ctx, NietzscheDB_CreateDaemon_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, NietzscheDB_LoadModel_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *nietzscheDBClient) DropDaemon(ctx context.Context, in *DropDaemonRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+func (c *nietzscheDBClient) ListModels(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListModelsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(StatusResponse)
-	err := c.cc.Invoke(ctx, NietzscheDB_DropDaemon_FullMethodName, in, out, cOpts...)
+	out := new(ListModelsResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_ListModels_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *nietzscheDBClient) ListDaemons(ctx context.Context, in *ListDaemonsRequest, opts ...grpc.CallOption) (*ListDaemonsResponse, error) {
+func (c *nietzscheDBClient) UnloadModel(ctx context.Context, in *ModelNameRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListDaemonsResponse)
-	err := c.cc.Invoke(ctx, NietzscheDB_ListDaemons_FullMethodName, in, out, cOpts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_UnloadModel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) GnnInfer(ctx context.Context, in *GnnInferRequest, opts ...grpc.CallOption) (*GnnInferResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GnnInferResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_GnnInfer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) MctsSearch(ctx context.Context, in *MctsRequest, opts ...grpc.CallOption) (*MctsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MctsResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_MctsSearch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) DreamFrom(ctx context.Context, in *DreamRequest, opts ...grpc.CallOption) (*DreamSessionProto, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DreamSessionProto)
+	err := c.cc.Invoke(ctx, NietzscheDB_DreamFrom_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) ApplyDream(ctx context.Context, in *DreamIdRequest, opts ...grpc.CallOption) (*DreamSessionProto, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DreamSessionProto)
+	err := c.cc.Invoke(ctx, NietzscheDB_ApplyDream_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) RejectDream(ctx context.Context, in *DreamIdRequest, opts ...grpc.CallOption) (*DreamSessionProto, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DreamSessionProto)
+	err := c.cc.Invoke(ctx, NietzscheDB_RejectDream_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -906,6 +1004,10 @@ type NietzscheDBServer interface {
 	CreateCollection(context.Context, *CreateCollectionRequest) (*CreateCollectionResponse, error)
 	DropCollection(context.Context, *DropCollectionRequest) (*StatusResponse, error)
 	ListCollections(context.Context, *Empty) (*ListCollectionsResponse, error)
+	// ── Wiederkehr Daemons ────────────────────────────────────────────────
+	CreateDaemon(context.Context, *CreateDaemonRequest) (*StatusResponse, error)
+	ListDaemons(context.Context, *ListDaemonsRequest) (*ListDaemonsResponse, error)
+	DropDaemon(context.Context, *DropDaemonRequest) (*StatusResponse, error)
 	// ── Node CRUD ─────────────────────────────────────────────────────────
 	InsertNode(context.Context, *InsertNodeRequest) (*NodeResponse, error)
 	GetNode(context.Context, *NodeIdRequest) (*NodeResponse, error)
@@ -993,10 +1095,16 @@ type NietzscheDBServer interface {
 	// ── Swartz SQL Layer (Phase S — embedded relational engine) ───
 	SqlQuery(context.Context, *SqlRequest) (*SqlResultSet, error)
 	SqlExec(context.Context, *SqlRequest) (*SqlExecResult, error)
-	// ── Wiederkehr Daemons (Phase W — periodic autonomous tasks) ───────
-	CreateDaemon(context.Context, *CreateDaemonRequest) (*StatusResponse, error)
-	DropDaemon(context.Context, *DropDaemonRequest) (*StatusResponse, error)
-	ListDaemons(context.Context, *ListDaemonsRequest) (*ListDaemonsResponse, error)
+	// ── Neural Foundation (Phase 1 — Ag.5/Ag.8/Ag.9) ───────────────────────
+	LoadModel(context.Context, *LoadModelRequest) (*StatusResponse, error)
+	ListModels(context.Context, *Empty) (*ListModelsResponse, error)
+	UnloadModel(context.Context, *ModelNameRequest) (*StatusResponse, error)
+	GnnInfer(context.Context, *GnnInferRequest) (*GnnInferResponse, error)
+	MctsSearch(context.Context, *MctsRequest) (*MctsResponse, error)
+	// ── DreamerV3 Speculative Simulation (Phase 4 — Ag.9) ───────────────
+	DreamFrom(context.Context, *DreamRequest) (*DreamSessionProto, error)
+	ApplyDream(context.Context, *DreamIdRequest) (*DreamSessionProto, error)
+	RejectDream(context.Context, *DreamIdRequest) (*DreamSessionProto, error)
 	mustEmbedUnimplementedNietzscheDBServer()
 }
 
@@ -1015,6 +1123,15 @@ func (UnimplementedNietzscheDBServer) DropCollection(context.Context, *DropColle
 }
 func (UnimplementedNietzscheDBServer) ListCollections(context.Context, *Empty) (*ListCollectionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListCollections not implemented")
+}
+func (UnimplementedNietzscheDBServer) CreateDaemon(context.Context, *CreateDaemonRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateDaemon not implemented")
+}
+func (UnimplementedNietzscheDBServer) ListDaemons(context.Context, *ListDaemonsRequest) (*ListDaemonsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListDaemons not implemented")
+}
+func (UnimplementedNietzscheDBServer) DropDaemon(context.Context, *DropDaemonRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DropDaemon not implemented")
 }
 func (UnimplementedNietzscheDBServer) InsertNode(context.Context, *InsertNodeRequest) (*NodeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InsertNode not implemented")
@@ -1205,14 +1322,29 @@ func (UnimplementedNietzscheDBServer) SqlQuery(context.Context, *SqlRequest) (*S
 func (UnimplementedNietzscheDBServer) SqlExec(context.Context, *SqlRequest) (*SqlExecResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method SqlExec not implemented")
 }
-func (UnimplementedNietzscheDBServer) CreateDaemon(context.Context, *CreateDaemonRequest) (*StatusResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method CreateDaemon not implemented")
+func (UnimplementedNietzscheDBServer) LoadModel(context.Context, *LoadModelRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method LoadModel not implemented")
 }
-func (UnimplementedNietzscheDBServer) DropDaemon(context.Context, *DropDaemonRequest) (*StatusResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method DropDaemon not implemented")
+func (UnimplementedNietzscheDBServer) ListModels(context.Context, *Empty) (*ListModelsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListModels not implemented")
 }
-func (UnimplementedNietzscheDBServer) ListDaemons(context.Context, *ListDaemonsRequest) (*ListDaemonsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListDaemons not implemented")
+func (UnimplementedNietzscheDBServer) UnloadModel(context.Context, *ModelNameRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UnloadModel not implemented")
+}
+func (UnimplementedNietzscheDBServer) GnnInfer(context.Context, *GnnInferRequest) (*GnnInferResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GnnInfer not implemented")
+}
+func (UnimplementedNietzscheDBServer) MctsSearch(context.Context, *MctsRequest) (*MctsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method MctsSearch not implemented")
+}
+func (UnimplementedNietzscheDBServer) DreamFrom(context.Context, *DreamRequest) (*DreamSessionProto, error) {
+	return nil, status.Error(codes.Unimplemented, "method DreamFrom not implemented")
+}
+func (UnimplementedNietzscheDBServer) ApplyDream(context.Context, *DreamIdRequest) (*DreamSessionProto, error) {
+	return nil, status.Error(codes.Unimplemented, "method ApplyDream not implemented")
+}
+func (UnimplementedNietzscheDBServer) RejectDream(context.Context, *DreamIdRequest) (*DreamSessionProto, error) {
+	return nil, status.Error(codes.Unimplemented, "method RejectDream not implemented")
 }
 func (UnimplementedNietzscheDBServer) mustEmbedUnimplementedNietzscheDBServer() {}
 func (UnimplementedNietzscheDBServer) testEmbeddedByValue()                     {}
@@ -1285,6 +1417,60 @@ func _NietzscheDB_ListCollections_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NietzscheDBServer).ListCollections(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_CreateDaemon_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateDaemonRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).CreateDaemon(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_CreateDaemon_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).CreateDaemon(ctx, req.(*CreateDaemonRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_ListDaemons_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListDaemonsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).ListDaemons(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_ListDaemons_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).ListDaemons(ctx, req.(*ListDaemonsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_DropDaemon_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DropDaemonRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).DropDaemon(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_DropDaemon_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).DropDaemon(ctx, req.(*DropDaemonRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2416,56 +2602,146 @@ func _NietzscheDB_SqlExec_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
-func _NietzscheDB_CreateDaemon_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateDaemonRequest)
+func _NietzscheDB_LoadModel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LoadModelRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(NietzscheDBServer).CreateDaemon(ctx, in)
+		return srv.(NietzscheDBServer).LoadModel(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: NietzscheDB_CreateDaemon_FullMethodName,
+		FullMethod: NietzscheDB_LoadModel_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NietzscheDBServer).CreateDaemon(ctx, req.(*CreateDaemonRequest))
+		return srv.(NietzscheDBServer).LoadModel(ctx, req.(*LoadModelRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _NietzscheDB_DropDaemon_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DropDaemonRequest)
+func _NietzscheDB_ListModels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(NietzscheDBServer).DropDaemon(ctx, in)
+		return srv.(NietzscheDBServer).ListModels(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: NietzscheDB_DropDaemon_FullMethodName,
+		FullMethod: NietzscheDB_ListModels_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NietzscheDBServer).DropDaemon(ctx, req.(*DropDaemonRequest))
+		return srv.(NietzscheDBServer).ListModels(ctx, req.(*Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _NietzscheDB_ListDaemons_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListDaemonsRequest)
+func _NietzscheDB_UnloadModel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ModelNameRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(NietzscheDBServer).ListDaemons(ctx, in)
+		return srv.(NietzscheDBServer).UnloadModel(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: NietzscheDB_ListDaemons_FullMethodName,
+		FullMethod: NietzscheDB_UnloadModel_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NietzscheDBServer).ListDaemons(ctx, req.(*ListDaemonsRequest))
+		return srv.(NietzscheDBServer).UnloadModel(ctx, req.(*ModelNameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_GnnInfer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GnnInferRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).GnnInfer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_GnnInfer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).GnnInfer(ctx, req.(*GnnInferRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_MctsSearch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MctsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).MctsSearch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_MctsSearch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).MctsSearch(ctx, req.(*MctsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_DreamFrom_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DreamRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).DreamFrom(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_DreamFrom_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).DreamFrom(ctx, req.(*DreamRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_ApplyDream_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DreamIdRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).ApplyDream(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_ApplyDream_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).ApplyDream(ctx, req.(*DreamIdRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_RejectDream_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DreamIdRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).RejectDream(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_RejectDream_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).RejectDream(ctx, req.(*DreamIdRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2488,6 +2764,18 @@ var NietzscheDB_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListCollections",
 			Handler:    _NietzscheDB_ListCollections_Handler,
+		},
+		{
+			MethodName: "CreateDaemon",
+			Handler:    _NietzscheDB_CreateDaemon_Handler,
+		},
+		{
+			MethodName: "ListDaemons",
+			Handler:    _NietzscheDB_ListDaemons_Handler,
+		},
+		{
+			MethodName: "DropDaemon",
+			Handler:    _NietzscheDB_DropDaemon_Handler,
 		},
 		{
 			MethodName: "InsertNode",
@@ -2738,16 +3026,36 @@ var NietzscheDB_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _NietzscheDB_SqlExec_Handler,
 		},
 		{
-			MethodName: "CreateDaemon",
-			Handler:    _NietzscheDB_CreateDaemon_Handler,
+			MethodName: "LoadModel",
+			Handler:    _NietzscheDB_LoadModel_Handler,
 		},
 		{
-			MethodName: "DropDaemon",
-			Handler:    _NietzscheDB_DropDaemon_Handler,
+			MethodName: "ListModels",
+			Handler:    _NietzscheDB_ListModels_Handler,
 		},
 		{
-			MethodName: "ListDaemons",
-			Handler:    _NietzscheDB_ListDaemons_Handler,
+			MethodName: "UnloadModel",
+			Handler:    _NietzscheDB_UnloadModel_Handler,
+		},
+		{
+			MethodName: "GnnInfer",
+			Handler:    _NietzscheDB_GnnInfer_Handler,
+		},
+		{
+			MethodName: "MctsSearch",
+			Handler:    _NietzscheDB_MctsSearch_Handler,
+		},
+		{
+			MethodName: "DreamFrom",
+			Handler:    _NietzscheDB_DreamFrom_Handler,
+		},
+		{
+			MethodName: "ApplyDream",
+			Handler:    _NietzscheDB_ApplyDream_Handler,
+		},
+		{
+			MethodName: "RejectDream",
+			Handler:    _NietzscheDB_RejectDream_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

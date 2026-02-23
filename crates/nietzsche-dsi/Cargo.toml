@@ -1,0 +1,16 @@
+[package]
+name = "nietzsche-dsi"
+version = "0.1.0"
+edition = "2021"
+description = "Differentiable Search Index (DSI) and Hierarchical ID indexing for NietzscheDB"
+
+[dependencies]
+nietzsche-graph    = { path = "../nietzsche-graph" }
+nietzsche-vqvae    = { path = "../nietzsche-vqvae" }
+serde              = { workspace = true }
+serde_json         = { workspace = true }
+thiserror          = { workspace = true }
+tracing            = { workspace = true }
+tokio              = { workspace = true, features = ["full"] }
+bincode            = { workspace = true }
+uuid               = { workspace = true }

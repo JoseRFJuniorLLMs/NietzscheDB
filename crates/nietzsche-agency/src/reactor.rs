@@ -99,9 +99,17 @@ pub enum AgencyIntent {
     /// Produced when: LTDDaemon detects correction_count > 0 on an edge.
     /// The server executes: `edge.weight = (edge.weight - weight_delta).max(0.0)`
     ApplyLtd {
-        edge_id: Uuid,
+        from_id: Uuid,
+        to_id: Uuid,
         weight_delta: f32,
         correction_count: u64,
+    },
+    /// Boost a node's energy due to high neural structural importance.
+    /// Produced when: NeuralProtection detected (GNN high-importance low-energy).
+    NeuralBoost {
+        node_id: Uuid,
+        importance: f32,
+        reason: String,
     },
 }
 
@@ -115,14 +123,17 @@ pub struct AgencyReactor {
     ticks_since_sleep_intent: u64,
     /// Cooldown: ticks since last lsystem intent.
     ticks_since_lsystem_intent: u64,
+    /// PPO engine for neural policy-driven evolution.
+    ppo_engine: Option<nietzsche_rl::PpoEngine>,
 }
 
 impl AgencyReactor {
-    pub fn new(bus: &AgencyEventBus) -> Self {
+    pub fn new(bus: &AgencyEventBus, ppo_engine: Option<nietzsche_rl::PpoEngine>) -> Self {
         Self {
             rx: bus.subscribe(),
             ticks_since_sleep_intent: u64::MAX / 2,    // allow immediate first trigger
             ticks_since_lsystem_intent: u64::MAX / 2,
+            ppo_engine,
         }
     }
 
@@ -143,6 +154,7 @@ impl AgencyReactor {
         let mut wake_ups = Vec::new();
         let mut redundancies: Vec<(Uuid, Vec<Uuid>)> = Vec::new();
         let mut ltd_events: Vec<(Uuid, Uuid, f32, u64)> = Vec::new(); // (from, to, delta, count)
+        let mut neural_protections: Vec<(Uuid, f32, String)> = Vec::new();
 
         loop {
             match self.rx.try_recv() {
@@ -178,6 +190,9 @@ impl AgencyReactor {
                     }
                     AgencyEvent::CorrectionAccumulated { from_id, to_id, weight_delta, correction_count } => {
                         ltd_events.push((from_id, to_id, weight_delta, correction_count));
+                    }
+                    AgencyEvent::NeuralProtection { node_id, importance, description } => {
+                        neural_protections.push((node_id, importance, description));
                     }
                 },
                 Err(broadcast::error::TryRecvError::Empty) => break,
@@ -285,11 +300,20 @@ impl AgencyReactor {
 
         // ── LTD events → emit ApplyLTD intents ─────────────────────────────
         for (from_id, to_id, weight_delta, correction_count) in ltd_events {
-            intents.push(AgencyIntent::ApplyLTD {
+            intents.push(AgencyIntent::ApplyLtd {
                 from_id,
                 to_id,
                 weight_delta,
                 correction_count,
+            });
+        }
+
+        // ── Neural protections → emit NeuralBoost intents ──────────────────
+        for (node_id, importance, reason) in neural_protections {
+            intents.push(AgencyIntent::NeuralBoost {
+                node_id,
+                importance,
+                reason,
             });
         }
 
@@ -304,12 +328,42 @@ impl AgencyReactor {
             });
 
             // L-System evolution: suggest strategy based on health
-            let strategy = RuleEvolution::suggest_strategy(&report);
+            let mut strategy = RuleEvolution::suggest_strategy(&report);
+            let mut reason_prefix = "heuristic";
+
+            if let Some(ref ppo) = self.ppo_engine {
+                // Feature vector: [mean_energy, is_fractal, gap_ratio, entropy_count/10, coherence]
+                let gap_ratio = (report.gap_count as f32 / 80.0).min(1.0);
+                let entropy_feat = (report.entropy_spike_count as f32 / 10.0).min(1.0);
+                let features = vec![
+                    report.mean_energy,
+                    if report.is_fractal { 1.0 } else { 0.0 },
+                    gap_ratio,
+                    entropy_feat,
+                    report.coherence_score as f32,
+                ];
+                let state = nietzsche_rl::GrowthState::new(features);
+                
+                let rt = tokio::runtime::Handle::current();
+                match rt.block_on(ppo.suggest_action(&state)) {
+                    Ok(action) => {
+                        strategy = match action {
+                            nietzsche_rl::GrowthAction::Balanced => crate::evolution::EvolutionStrategy::Balanced,
+                            nietzsche_rl::GrowthAction::FavorGrowth => crate::evolution::EvolutionStrategy::FavorGrowth,
+                            nietzsche_rl::GrowthAction::FavorPruning => crate::evolution::EvolutionStrategy::FavorPruning,
+                            nietzsche_rl::GrowthAction::Consolidate => crate::evolution::EvolutionStrategy::Consolidate,
+                        };
+                        reason_prefix = "ppo";
+                    }
+                    Err(e) => tracing::warn!(error = %e, "PPO suggest_action failed, falling back to heuristic"),
+                }
+            }
+
             intents.push(AgencyIntent::EvolveLSystemRules {
                 strategy,
                 reason: format!(
-                    "health: energy={:.2}, hausdorff={:.2}, gaps={}",
-                    report.mean_energy, report.global_hausdorff, report.gap_count
+                    "[{}] health: energy={:.2}, hausdorff={:.2}, gaps={}",
+                    reason_prefix, report.mean_energy, report.global_hausdorff, report.gap_count
                 ),
             });
 

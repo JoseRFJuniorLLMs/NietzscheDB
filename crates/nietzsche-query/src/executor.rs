@@ -12,6 +12,7 @@ use nietzsche_graph::{
     AdjacencyIndex, AdjEntry, Edge, GraphStorage, Node, PoincareVector,
     traversal::{diffusion_walk, DiffusionConfig},
 };
+use nietzsche_dsi::SemanticId;
 
 use crate::ast::*;
 use crate::error::QueryError;
@@ -610,6 +611,39 @@ fn execute_node_match(
     indexed_fields: &HashSet<String>,
     gas:            &mut GasTracker,
 ) -> Result<Vec<QueryResult>, QueryError> {
+    let alias = &np.alias;
+
+    // ── Fast path 0: DSI Generative Retrieval ──
+    if let Some(semantic_str) = &np.semantic_id {
+        let codes: Vec<u16> = semantic_str.split('.')
+            .map(|s| s.parse::<u16>().map_err(|_| QueryError::Execution(format!("invalid semantic ID part: {}", s))))
+            .collect::<Result<_, _>>()?;
+        let sid = SemanticId::new(codes);
+        let prefix_bytes = sid.to_prefix_bytes();
+            
+        let ids = storage.scan_nodes_by_dsi_prefix(&prefix_bytes)?;
+        let mut dsi_nodes = Vec::with_capacity(ids.len());
+        
+        for id in ids {
+            if let Some(node) = storage.get_node(&id)? {
+                gas.d_node()?;
+                // If label is specified, check it
+                if let Some(label) = &np.label {
+                    let label_lc = label.to_lowercase();
+                    if format!("{:?}", node.node_type).to_lowercase() != label_lc {
+                        continue;
+                    }
+                }
+                // Check WHERE conditions
+                let binding = vec![(alias.as_str(), &node)];
+                if eval_conditions(&query.conditions, &binding, params, storage, adjacency)? {
+                    dsi_nodes.push(QueryResult::Node(node));
+                }
+            }
+        }
+        return Ok(dsi_nodes);
+    }
+
     // ── Fast path 1: use energy secondary index for energy range queries ──
     // ── Fast path 2: use metadata secondary index for indexed field queries ──
     let nodes = if let Some((min_e, max_e)) = extract_energy_range_hint(query) {
@@ -628,12 +662,6 @@ fn execute_node_match(
     };
 
     // Gas consumption for nodes scanned
-    for _ in 0..nodes.len() {
-        gas.d_node()?;
-    }
-
-    let alias = &np.alias;
-
     // Filter by label (node_type)
     let typed: Vec<Node> = if let Some(label) = &np.label {
         let label_lc = label.to_lowercase();
