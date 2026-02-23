@@ -86,6 +86,14 @@ pub enum AgencyIntent {
         archetype_id: Uuid,
         redundant_ids: Vec<Uuid>,
     },
+
+    /// Execute an autonomous NQL query (reflex).
+    /// Produced when: ActionNode energy exceeds threshold and passes circuit breaker.
+    ExecuteNQL {
+        node_id: Uuid,
+        nql: String,
+        description: String,
+    },
 }
 
 /// Converts agency events into executable intents.

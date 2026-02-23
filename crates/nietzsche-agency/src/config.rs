@@ -57,6 +57,12 @@ pub struct AgencyConfig {
     // -- Evolution --
     /// Minimum ticks between evolution suggestions.
     pub evolution_cooldown_ticks: u64,
+
+    // -- Circuit Breaker --
+    /// Maximum number of reflexive actions that can fire in a single tick.
+    pub circuit_breaker_max_actions: usize,
+    /// Maximum global energy sum allowed before blocking reflexes.
+    pub circuit_breaker_energy_sum_threshold: f32,
 }
 
 impl Default for AgencyConfig {
@@ -81,6 +87,8 @@ impl Default for AgencyConfig {
             niilista_min_group_size: 2,
             niilista_max_scan: 200,
             evolution_cooldown_ticks: 5,
+            circuit_breaker_max_actions: 20,
+            circuit_breaker_energy_sum_threshold: 50.0,
         }
     }
 }
@@ -121,6 +129,8 @@ impl AgencyConfig {
             niilista_min_group_size:        env_usize("AGENCY_NIILISTA_MIN_GROUP", 2),
             niilista_max_scan:              env_usize("AGENCY_NIILISTA_MAX_SCAN", 200),
             evolution_cooldown_ticks:       env_u64("AGENCY_EVOLUTION_COOLDOWN", 5),
+            circuit_breaker_max_actions:    env_usize("AGENCY_CIRCUIT_BREAKER_MAX", 20),
+            circuit_breaker_energy_sum_threshold: env_f32("AGENCY_CIRCUIT_BREAKER_ENERGY", 50.0),
         }
     }
 }

@@ -1,6 +1,7 @@
 use nietzsche_graph::{AdjacencyIndex, GraphStorage};
 
 use crate::config::AgencyConfig;
+use crate::circuit_breaker::EnergyCircuitBreaker;
 use crate::daemons::{AgencyDaemon, CoherenceDaemon, DaemonReport, EntropyDaemon, GapDaemon, NiilistaGcDaemon};
 use crate::desire::{DesireEngine, DesireSignal};
 use crate::error::AgencyError;
@@ -49,6 +50,7 @@ pub struct AgencyEngine {
     desire_engine: DesireEngine,
     /// Collects gap events from daemons for the desire engine.
     gap_rx: tokio::sync::broadcast::Receiver<AgencyEvent>,
+    circuit_breaker: EnergyCircuitBreaker,
 }
 
 impl AgencyEngine {
@@ -70,6 +72,10 @@ impl AgencyEngine {
             desire_engine,
             gap_rx,
             bus,
+            circuit_breaker: EnergyCircuitBreaker {
+                max_active_reflexes: config.circuit_breaker_max_actions,
+                energy_sum_threshold: config.circuit_breaker_energy_sum_threshold,
+            },
             config,
         }
     }
@@ -132,6 +138,32 @@ impl AgencyEngine {
         if let Some(ref health) = health_report {
             if let Err(e) = ObserverIdentity::update_from_health(storage, health) {
                 tracing::warn!(error = %e, "failed to update observer identity");
+            }
+        }
+
+        // 7. Tick Code-as-Data (Reflexive Actions)
+        if let Ok(report) = crate::code_as_data::scan_activatable_actions(storage) {
+            if !report.activated.is_empty() {
+                // Check safety via circuit breaker
+                match self.circuit_breaker.check_safety(storage, report.activated.len()) {
+                    Ok(true) => {
+                        for action in report.activated {
+                            intents.push(AgencyIntent::ExecuteNQL {
+                                node_id: action.node_id,
+                                nql: action.nql,
+                                description: action.description,
+                            });
+                        }
+                    }
+                    Ok(false) => {
+                        tracing::warn!("agency tick: reflexive actions blocked by circuit breaker");
+                    }
+                    Err(e) => tracing::error!(error = ?e, "circuit breaker check failed"),
+                }
+            }
+            // Always tick cooldowns
+            if let Err(e) = crate::code_as_data::tick_cooldowns(storage) {
+                tracing::error!(error = ?e, "failed to tick reflexes cooldowns");
             }
         }
 
