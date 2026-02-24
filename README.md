@@ -193,7 +193,7 @@ Twenty-nine new crates built on top of the foundation:
 - `SparseVector` for SPLADE/sparse embeddings: sorted indices + values with O(nnz) dot product, cosine similarity, and L2 norm
 - `Edge` typed as `Association`, `LSystemGenerated`, `Hierarchical`, or `Pruned`
 - `AdjacencyIndex` using `DashMap` for lock-free concurrent access
-- `GraphStorage` over RocksDB with 10 column families: `nodes`, `embeddings`, `edges`, `adj_out`, `adj_in`, `meta`, `sensory`, `energy_idx`, `meta_idx`, `lists`
+- `GraphStorage` over RocksDB with **15 column families**: `nodes`, `embeddings`, `edges`, `adj_out`, `adj_in`, `meta`, `sensory`, `energy_idx`, `meta_idx`, `lists`, `sql_schema`, `sql_data`, `cooldowns`, `dsi_id`, `dsi_semantic`
 - Own WAL for graph operations, separate from the vector WAL
 - `NietzscheDB` dual-write: every insert goes to both RocksDB (graph) and HyperspaceDB (embedding)
 - **Traversal engine** (`traversal.rs`): energy-gated BFS (reads only NodeMeta — ~100 bytes per hop), Poincare-distance Dijkstra, shortest-path reconstruction, energy-biased `DiffusionWalk` with seeded RNG
@@ -213,6 +213,7 @@ Twenty-nine new crates built on top of the foundation:
 - **Full-text search + hybrid** (`fulltext.rs`): inverted index with BM25 scoring, plus RRF fusion with KNN vector search
 - **Schrödinger Edges** (`schrodinger.rs`): probabilistic edges with Markov transition probabilities — edges are "superpositions" that collapse at MATCH time. Context-dependent probability boost, per-tick decay, reinforcement learning. Batch collapse/decay operations
 - **Valence/Arousal** (`valence.rs`): emotional dimensions on NodeMeta — valence ∈ [-1, 1] (pleasure/displeasure) and arousal ∈ [0, 1] (intensity). Arousal amplifies `energy_bias` in `diffusion_walk()` (heat travels faster through emotional memories). Valence modulates Laplacian edge weights in spectral diffusion (matching-polarity edges boost heat conductivity). Includes `emotional_gravity()`, `decay_arousal()`, `reinforce_emotion()`
+- **Query Stability & Gas Limits**: NQL query execution is protected by a `GasTracker` to prevent infinite recursion and resource exhaustion. Each node scan, edge traversal, and condition evaluation consumes a portion of the `DEFAULT_GAS_LIMIT` (50,000 units).
 
 #### `nietzsche-hyp-ops` — Multi-Manifold Geometry Engine
 Four non-Euclidean geometry modules sharing a single Poincaré storage layer:
