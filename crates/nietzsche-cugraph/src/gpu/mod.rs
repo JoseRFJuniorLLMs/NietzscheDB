@@ -6,6 +6,7 @@
 
 pub mod ffi;
 pub mod poincare;
+pub mod poincare_batch;
 
 use std::collections::HashMap;
 use uuid::Uuid;

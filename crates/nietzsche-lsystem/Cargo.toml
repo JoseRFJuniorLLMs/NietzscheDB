@@ -4,13 +4,20 @@ version = "0.1.0"
 edition = "2021"
 description = "L-System fractal growth engine: production rules, Möbius placement, Hausdorff-based pruning"
 
+[features]
+default = []
+# GPU-accelerated Hausdorff: replaces O(n²) CPU loop with CUDA batch kNN.
+# Requires CUDA 12.x + NVRTC on the build/run host.
+cuda = ["dep:nietzsche-cugraph"]
+
 [dependencies]
-nietzsche-graph = { workspace = true }
-uuid            = { workspace = true }
-serde           = { workspace = true }
-serde_json      = "1.0"
-thiserror       = { workspace = true }
-rand            = { workspace = true }
+nietzsche-graph   = { workspace = true }
+nietzsche-cugraph = { workspace = true, optional = true, features = ["cuda"] }
+uuid              = { workspace = true }
+serde             = { workspace = true }
+serde_json        = "1.0"
+thiserror         = { workspace = true }
+rand              = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

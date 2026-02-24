@@ -28,7 +28,7 @@ use nietzsche_graph::{
     db::NietzscheDB,
 };
 
-use crate::hausdorff::{global_hausdorff, local_hausdorff, LOCAL_K};
+use crate::hausdorff::{batch_local_hausdorff, global_hausdorff, local_hausdorff, LOCAL_K};
 use crate::mobius::{spawn_child, spawn_sibling};
 use crate::rules::{check_condition, ProductionRule, RuleAction};
 
@@ -141,9 +141,12 @@ impl LSystemEngine {
         let all_nodes: Vec<Node> = db.storage().scan_nodes()?;
 
         // ── Step 2: recompute local Hausdorff ───────────────────────────
-        for node in &all_nodes {
-            let h = local_hausdorff(node, &all_nodes, LOCAL_K);
-            db.update_hausdorff(node.id, h)?;
+        // GPU path (cuda feature): batch all-pairs kNN in a single CUDA
+        // kernel launch, then box-counting per node. Falls back to
+        // sequential CPU if GPU is unavailable.
+        let hausdorff_values = batch_local_hausdorff(&all_nodes, LOCAL_K);
+        for (node, h) in all_nodes.iter().zip(hausdorff_values.iter()) {
+            db.update_hausdorff(node.id, *h)?;
         }
 
         // ── Step 3 (Phase 11): degrade sensory latents ──────────────────

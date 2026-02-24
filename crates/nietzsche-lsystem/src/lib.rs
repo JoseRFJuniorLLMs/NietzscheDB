@@ -44,7 +44,7 @@ pub use engine::{
 };
 
 // ── Hausdorff ─────────────────────────────────────────────────────────────────
-pub use hausdorff::{box_counting, global_hausdorff, local_hausdorff, LOCAL_K};
+pub use hausdorff::{batch_local_hausdorff, box_counting, global_hausdorff, local_hausdorff, LOCAL_K};
 
 // ── Möbius / geometry ─────────────────────────────────────────────────────────
 pub use mobius::{mobius_add, project_into_ball, spawn_child, spawn_sibling};

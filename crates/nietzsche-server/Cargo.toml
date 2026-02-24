@@ -15,7 +15,7 @@ default = []
 # Requires CUDA 12.x + cuVS 24.6 + libclang on the build host.
 # Build: cargo build --release --features gpu
 # Run:   NIETZSCHE_VECTOR_BACKEND=gpu ./nietzsche-server
-gpu = ["dep:nietzsche-hnsw-gpu"]
+gpu = ["dep:nietzsche-hnsw-gpu", "nietzsche-lsystem/cuda"]
 # Google TPU-accelerated vector search via PJRT C API + MHLO MLIR.
 # Requires: Cloud TPU VM (v5e / v6e Trillium / v7 Ironwood) OR local libtpu.so.
 # Build: cargo build --release --features tpu
