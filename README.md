@@ -2,6 +2,10 @@
   <img src="img/logo.jpg" alt="NietzscheDB" width="100%"/>
 </p>
 
+<p align="center">
+  <img src="img/nietzschedb.gif" alt="NietzscheDB Demo" width="480"/>
+</p>
+
 <h1 align="center">NietzscheDB</h1>
 
 <p align="center">

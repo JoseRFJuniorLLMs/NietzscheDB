@@ -1,0 +1,30 @@
+# Summary
+
+[Introduction](intro.md)
+[Evaluation & Benchmarks](benchmarks.md)
+
+# Getting Started
+- [Installation](install.md)
+- [Quick Start](quickstart.md)
+
+# User Guide
+- [Python SDK](python.md)
+- [Rust SDK](rust.md)
+- [WebAssembly (WASM)](wasm.md)
+- [Integrations (LangChain)](integrations.md)
+- [gRPC API](api.md)
+- [Server Configuration](usage.md)
+- [Embedding Service](embeddings.md)
+- [Advanced Features](features.md)
+    - [Distributed Replication](distributed.md)
+    - [Hybrid Search](hybrid.md)
+    - [Binary Quantization](quantization.md)
+    - [Security & Auth](security.md)
+    - [Data Safety & Durability](durability.md)
+
+# Architecture & Internals
+- [System Overview](architecture.md)
+- [Storage Format](storage.md)
+- [The Mathematics](math.md)
+- [Zero-Copy HNSW](hnsw.md)
+
