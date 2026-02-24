@@ -270,6 +270,25 @@ type MctsResult struct {
 	Value        float64
 }
 
+// QuantumNode represents a node in a quantum fidelity group (Bloch sphere).
+type QuantumNode struct {
+	Embedding []float64
+	Energy    float32
+}
+
+// FidelityOpts configures a CalculateFidelity request.
+type FidelityOpts struct {
+	GroupA                  []QuantumNode
+	GroupB                  []QuantumNode
+	EntanglementThreshold   float32 // optional; 0 → server default
+}
+
+// FidelityResult contains the output of a CalculateFidelity call.
+type FidelityResult struct {
+	EntanglementProxy float64
+	ThresholdCrossed  bool
+}
+
 // ── Edge result with Minkowski causality metadata ─────────────────────
 
 // EdgeResult represents a full edge with all fields including Minkowski metadata.

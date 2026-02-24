@@ -209,6 +209,20 @@ pub struct NietzscheDB<V: VectorStore> {
     indexed_fields: HashSet<String>,
     /// Optional schema validator for per-NodeType constraints.
     schema_validator: Option<SchemaValidator>,
+
+    /// Quantum purity cache: maps node_id → purity ∈ [0, 1].
+    ///
+    /// Computed from the Arousal→Purity mapping (poincare_to_bloch):
+    /// - High energy/arousal → pure quantum state (purity ≈ 1.0, laser-like)
+    /// - Low energy/arousal → mixed state (purity ≈ 0.0, center of Bloch sphere)
+    ///
+    /// Stored separately from NodeMeta to avoid bincode serialization breakage.
+    /// Updated on insert_node and update_energy.
+    pub quantum_purity_cache: Arc<Mutex<HashMap<Uuid, f64>>>,
+
+    /// Configured vector dimension for this collection.
+    /// Populated from the vector store at open time. Used by `vector_dim()`.
+    dim: usize,
 }
 
 impl<V: VectorStore> NietzscheDB<V> {
@@ -216,10 +230,12 @@ impl<V: VectorStore> NietzscheDB<V> {
 
     /// Open (or create) a NietzscheDB instance.
     ///
-    /// - `data_dir` — root directory; RocksDB lives at `data_dir/rocksdb/`
-    ///               and the WAL at `data_dir/graph.wal`.
+    /// - `data_dir`     — root directory; RocksDB lives at `data_dir/rocksdb/`
+    ///                    and the WAL at `data_dir/graph.wal`.
     /// - `vector_store` — injected vector store implementation.
-    pub fn open(data_dir: &Path, vector_store: V) -> Result<Self, GraphError> {
+    /// - `dim`          — configured vector dimension for this collection.
+    ///                    Stored on the struct so that `vector_dim()` is O(1).
+    pub fn open(data_dir: &Path, vector_store: V, dim: usize) -> Result<Self, GraphError> {
         let rocksdb_path = data_dir.join("rocksdb");
         let rocksdb_str = rocksdb_path
             .to_str()
@@ -255,6 +271,8 @@ impl<V: VectorStore> NietzscheDB<V> {
             hot_tier: Arc::new(Mutex::new(LruCache::new(std::num::NonZeroUsize::new(10000).unwrap()))),
             indexed_fields: HashSet::new(),
             schema_validator,
+            quantum_purity_cache: Arc::new(Mutex::new(HashMap::new())),
+            dim,
         };
 
         // Load persisted secondary indexes from CF_META
@@ -842,6 +860,9 @@ impl<V: VectorStore> NietzscheDB<V> {
         // 6. Vector store
         self.vector_store.delete(id)?;
 
+        // 7. Quantum purity cache
+        self.quantum_purity_cache.lock().remove(&id);
+
         Ok(())
     }
 
@@ -1188,6 +1209,52 @@ impl<V: VectorStore> NietzscheDB<V> {
     /// Current hot-tier node count.
     pub fn hot_tier_len(&self) -> usize {
         self.hot_tier.lock().len()
+    }
+
+    // ── Quantum Purity Cache ──────────────────────────────────────────────
+
+    /// Store quantum purity for a node (Arousal→Purity mapping).
+    ///
+    /// Called after `insert_node` or `update_energy` by the API layer,
+    /// which computes purity via `poincare_to_bloch(embedding, energy).purity`.
+    pub fn set_quantum_purity(&self, node_id: Uuid, purity: f64) {
+        self.quantum_purity_cache.lock().insert(node_id, purity);
+    }
+
+    /// Retrieve the cached quantum purity for a node.
+    ///
+    /// Returns `None` if the node has not had its purity computed yet
+    /// (e.g. legacy nodes inserted before this feature).
+    pub fn get_quantum_purity(&self, node_id: &Uuid) -> Option<f64> {
+        self.quantum_purity_cache.lock().get(node_id).copied()
+    }
+
+    /// Remove quantum purity entry when a node is deleted.
+    pub fn evict_quantum_purity(&self, node_id: &Uuid) {
+        self.quantum_purity_cache.lock().remove(node_id);
+    }
+
+    /// Batch-set quantum purity for multiple nodes.
+    pub fn set_quantum_purity_batch(&self, entries: &[(Uuid, f64)]) {
+        let mut guard = self.quantum_purity_cache.lock();
+        for &(id, purity) in entries {
+            guard.insert(id, purity);
+        }
+    }
+
+    /// Current quantum purity cache entry count.
+    pub fn quantum_purity_cache_len(&self) -> usize {
+        self.quantum_purity_cache.lock().len()
+    }
+
+    /// Configured vector dimension for this collection.
+    pub fn vector_dim(&self) -> usize {
+        self.dim
+    }
+
+    /// Set the vector dimension (called after opening).
+    pub fn set_vector_dim(&mut self, dim: usize) {
+        self.dim = dim;
     }
 
     /// k-nearest-neighbour search in the vector store.

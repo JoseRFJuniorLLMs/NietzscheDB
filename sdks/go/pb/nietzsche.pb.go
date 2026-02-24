@@ -8468,6 +8468,170 @@ func (x *SqlExecResult) GetMessage() string {
 	return ""
 }
 
+type QuantumNode struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Embedding     []float64              `protobuf:"fixed64,1,rep,packed,name=embedding,proto3" json:"embedding,omitempty"`
+	Energy        float32                `protobuf:"fixed32,2,opt,name=energy,proto3" json:"energy,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QuantumNode) Reset() {
+	*x = QuantumNode{}
+	mi := &file_proto_nietzsche_proto_msgTypes[137]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QuantumNode) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QuantumNode) ProtoMessage() {}
+
+func (x *QuantumNode) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_nietzsche_proto_msgTypes[137]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QuantumNode.ProtoReflect.Descriptor instead.
+func (*QuantumNode) Descriptor() ([]byte, []int) {
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{137}
+}
+
+func (x *QuantumNode) GetEmbedding() []float64 {
+	if x != nil {
+		return x.Embedding
+	}
+	return nil
+}
+
+func (x *QuantumNode) GetEnergy() float32 {
+	if x != nil {
+		return x.Energy
+	}
+	return 0
+}
+
+type QuantumFidelityRequest struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	GroupA                []*QuantumNode         `protobuf:"bytes,1,rep,name=group_a,json=groupA,proto3" json:"group_a,omitempty"`
+	GroupB                []*QuantumNode         `protobuf:"bytes,2,rep,name=group_b,json=groupB,proto3" json:"group_b,omitempty"`
+	EntanglementThreshold *float32               `protobuf:"fixed32,3,opt,name=entanglement_threshold,json=entanglementThreshold,proto3,oneof" json:"entanglement_threshold,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *QuantumFidelityRequest) Reset() {
+	*x = QuantumFidelityRequest{}
+	mi := &file_proto_nietzsche_proto_msgTypes[138]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QuantumFidelityRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QuantumFidelityRequest) ProtoMessage() {}
+
+func (x *QuantumFidelityRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_nietzsche_proto_msgTypes[138]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QuantumFidelityRequest.ProtoReflect.Descriptor instead.
+func (*QuantumFidelityRequest) Descriptor() ([]byte, []int) {
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{138}
+}
+
+func (x *QuantumFidelityRequest) GetGroupA() []*QuantumNode {
+	if x != nil {
+		return x.GroupA
+	}
+	return nil
+}
+
+func (x *QuantumFidelityRequest) GetGroupB() []*QuantumNode {
+	if x != nil {
+		return x.GroupB
+	}
+	return nil
+}
+
+func (x *QuantumFidelityRequest) GetEntanglementThreshold() float32 {
+	if x != nil && x.EntanglementThreshold != nil {
+		return *x.EntanglementThreshold
+	}
+	return 0
+}
+
+type QuantumFidelityResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	EntanglementProxy float64                `protobuf:"fixed64,1,opt,name=entanglement_proxy,json=entanglementProxy,proto3" json:"entanglement_proxy,omitempty"`
+	ThresholdCrossed  bool                   `protobuf:"varint,2,opt,name=threshold_crossed,json=thresholdCrossed,proto3" json:"threshold_crossed,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *QuantumFidelityResponse) Reset() {
+	*x = QuantumFidelityResponse{}
+	mi := &file_proto_nietzsche_proto_msgTypes[139]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QuantumFidelityResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QuantumFidelityResponse) ProtoMessage() {}
+
+func (x *QuantumFidelityResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_nietzsche_proto_msgTypes[139]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QuantumFidelityResponse.ProtoReflect.Descriptor instead.
+func (*QuantumFidelityResponse) Descriptor() ([]byte, []int) {
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{139}
+}
+
+func (x *QuantumFidelityResponse) GetEntanglementProxy() float64 {
+	if x != nil {
+		return x.EntanglementProxy
+	}
+	return 0
+}
+
+func (x *QuantumFidelityResponse) GetThresholdCrossed() bool {
+	if x != nil {
+		return x.ThresholdCrossed
+	}
+	return false
+}
+
 type CreateDaemonRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Collection    string                 `protobuf:"bytes,1,opt,name=collection,proto3" json:"collection,omitempty"`
@@ -8480,7 +8644,7 @@ type CreateDaemonRequest struct {
 
 func (x *CreateDaemonRequest) Reset() {
 	*x = CreateDaemonRequest{}
-	mi := &file_proto_nietzsche_proto_msgTypes[137]
+	mi := &file_proto_nietzsche_proto_msgTypes[140]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8492,7 +8656,7 @@ func (x *CreateDaemonRequest) String() string {
 func (*CreateDaemonRequest) ProtoMessage() {}
 
 func (x *CreateDaemonRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[137]
+	mi := &file_proto_nietzsche_proto_msgTypes[140]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8505,7 +8669,7 @@ func (x *CreateDaemonRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateDaemonRequest.ProtoReflect.Descriptor instead.
 func (*CreateDaemonRequest) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{137}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{140}
 }
 
 func (x *CreateDaemonRequest) GetCollection() string {
@@ -8545,7 +8709,7 @@ type ListDaemonsRequest struct {
 
 func (x *ListDaemonsRequest) Reset() {
 	*x = ListDaemonsRequest{}
-	mi := &file_proto_nietzsche_proto_msgTypes[138]
+	mi := &file_proto_nietzsche_proto_msgTypes[141]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8557,7 +8721,7 @@ func (x *ListDaemonsRequest) String() string {
 func (*ListDaemonsRequest) ProtoMessage() {}
 
 func (x *ListDaemonsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[138]
+	mi := &file_proto_nietzsche_proto_msgTypes[141]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8570,7 +8734,7 @@ func (x *ListDaemonsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDaemonsRequest.ProtoReflect.Descriptor instead.
 func (*ListDaemonsRequest) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{138}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{141}
 }
 
 func (x *ListDaemonsRequest) GetCollection() string {
@@ -8589,7 +8753,7 @@ type ListDaemonsResponse struct {
 
 func (x *ListDaemonsResponse) Reset() {
 	*x = ListDaemonsResponse{}
-	mi := &file_proto_nietzsche_proto_msgTypes[139]
+	mi := &file_proto_nietzsche_proto_msgTypes[142]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8601,7 +8765,7 @@ func (x *ListDaemonsResponse) String() string {
 func (*ListDaemonsResponse) ProtoMessage() {}
 
 func (x *ListDaemonsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[139]
+	mi := &file_proto_nietzsche_proto_msgTypes[142]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8614,7 +8778,7 @@ func (x *ListDaemonsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDaemonsResponse.ProtoReflect.Descriptor instead.
 func (*ListDaemonsResponse) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{139}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{142}
 }
 
 func (x *ListDaemonsResponse) GetDaemons() []*DaemonInfoProto {
@@ -8637,7 +8801,7 @@ type DaemonInfoProto struct {
 
 func (x *DaemonInfoProto) Reset() {
 	*x = DaemonInfoProto{}
-	mi := &file_proto_nietzsche_proto_msgTypes[140]
+	mi := &file_proto_nietzsche_proto_msgTypes[143]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8649,7 +8813,7 @@ func (x *DaemonInfoProto) String() string {
 func (*DaemonInfoProto) ProtoMessage() {}
 
 func (x *DaemonInfoProto) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[140]
+	mi := &file_proto_nietzsche_proto_msgTypes[143]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8662,7 +8826,7 @@ func (x *DaemonInfoProto) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DaemonInfoProto.ProtoReflect.Descriptor instead.
 func (*DaemonInfoProto) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{140}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{143}
 }
 
 func (x *DaemonInfoProto) GetLabel() string {
@@ -8710,7 +8874,7 @@ type DropDaemonRequest struct {
 
 func (x *DropDaemonRequest) Reset() {
 	*x = DropDaemonRequest{}
-	mi := &file_proto_nietzsche_proto_msgTypes[141]
+	mi := &file_proto_nietzsche_proto_msgTypes[144]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8722,7 +8886,7 @@ func (x *DropDaemonRequest) String() string {
 func (*DropDaemonRequest) ProtoMessage() {}
 
 func (x *DropDaemonRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_nietzsche_proto_msgTypes[141]
+	mi := &file_proto_nietzsche_proto_msgTypes[144]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8735,7 +8899,7 @@ func (x *DropDaemonRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DropDaemonRequest.ProtoReflect.Descriptor instead.
 func (*DropDaemonRequest) Descriptor() ([]byte, []int) {
-	return file_proto_nietzsche_proto_rawDescGZIP(), []int{141}
+	return file_proto_nietzsche_proto_rawDescGZIP(), []int{144}
 }
 
 func (x *DropDaemonRequest) GetCollection() string {
@@ -9517,7 +9681,18 @@ const file_proto_nietzsche_proto_rawDesc = "" +
 	"\rSqlExecResult\x12#\n" +
 	"\raffected_rows\x18\x01 \x01(\x04R\faffectedRows\x12\x18\n" +
 	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x03 \x01(\tR\amessage\"\x82\x01\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\"C\n" +
+	"\vQuantumNode\x12\x1c\n" +
+	"\tembedding\x18\x01 \x03(\x01R\tembedding\x12\x16\n" +
+	"\x06energy\x18\x02 \x01(\x02R\x06energy\"\xd1\x01\n" +
+	"\x16QuantumFidelityRequest\x12/\n" +
+	"\agroup_a\x18\x01 \x03(\v2\x16.nietzsche.QuantumNodeR\x06groupA\x12/\n" +
+	"\agroup_b\x18\x02 \x03(\v2\x16.nietzsche.QuantumNodeR\x06groupB\x12:\n" +
+	"\x16entanglement_threshold\x18\x03 \x01(\x02H\x00R\x15entanglementThreshold\x88\x01\x01B\x19\n" +
+	"\x17_entanglement_threshold\"u\n" +
+	"\x17QuantumFidelityResponse\x12-\n" +
+	"\x12entanglement_proxy\x18\x01 \x01(\x01R\x11entanglementProxy\x12+\n" +
+	"\x11threshold_crossed\x18\x02 \x01(\bR\x10thresholdCrossed\"\x82\x01\n" +
 	"\x13CreateDaemonRequest\x12\x1e\n" +
 	"\n" +
 	"collection\x18\x01 \x01(\tR\n" +
@@ -9541,7 +9716,7 @@ const file_proto_nietzsche_proto_rawDesc = "" +
 	"\n" +
 	"collection\x18\x01 \x01(\tR\n" +
 	"collection\x12\x14\n" +
-	"\x05label\x18\x02 \x01(\tR\x05label2\x9a,\n" +
+	"\x05label\x18\x02 \x01(\tR\x05label2\xf6,\n" +
 	"\vNietzscheDB\x12[\n" +
 	"\x10CreateCollection\x12\".nietzsche.CreateCollectionRequest\x1a#.nietzsche.CreateCollectionResponse\x12M\n" +
 	"\x0eDropCollection\x12 .nietzsche.DropCollectionRequest\x1a\x19.nietzsche.StatusResponse\x12G\n" +
@@ -9630,7 +9805,8 @@ const file_proto_nietzsche_proto_rawDesc = "" +
 	"\tDreamFrom\x12\x17.nietzsche.DreamRequest\x1a\x1c.nietzsche.DreamSessionProto\x12E\n" +
 	"\n" +
 	"ApplyDream\x12\x19.nietzsche.DreamIdRequest\x1a\x1c.nietzsche.DreamSessionProto\x12F\n" +
-	"\vRejectDream\x12\x19.nietzsche.DreamIdRequest\x1a\x1c.nietzsche.DreamSessionProtoB\x12Z\x10nietzsche-sdk/pbb\x06proto3"
+	"\vRejectDream\x12\x19.nietzsche.DreamIdRequest\x1a\x1c.nietzsche.DreamSessionProto\x12Z\n" +
+	"\x11CalculateFidelity\x12!.nietzsche.QuantumFidelityRequest\x1a\".nietzsche.QuantumFidelityResponseB\x12Z\x10nietzsche-sdk/pbb\x06proto3"
 
 var (
 	file_proto_nietzsche_proto_rawDescOnce sync.Once
@@ -9644,7 +9820,7 @@ func file_proto_nietzsche_proto_rawDescGZIP() []byte {
 	return file_proto_nietzsche_proto_rawDescData
 }
 
-var file_proto_nietzsche_proto_msgTypes = make([]protoimpl.MessageInfo, 143)
+var file_proto_nietzsche_proto_msgTypes = make([]protoimpl.MessageInfo, 146)
 var file_proto_nietzsche_proto_goTypes = []any{
 	(*LoadModelRequest)(nil),           // 0: nietzsche.LoadModelRequest
 	(*ListModelsResponse)(nil),         // 1: nietzsche.ListModelsResponse
@@ -9783,12 +9959,15 @@ var file_proto_nietzsche_proto_goTypes = []any{
 	(*SqlRow)(nil),                     // 134: nietzsche.SqlRow
 	(*SqlResultSet)(nil),               // 135: nietzsche.SqlResultSet
 	(*SqlExecResult)(nil),              // 136: nietzsche.SqlExecResult
-	(*CreateDaemonRequest)(nil),        // 137: nietzsche.CreateDaemonRequest
-	(*ListDaemonsRequest)(nil),         // 138: nietzsche.ListDaemonsRequest
-	(*ListDaemonsResponse)(nil),        // 139: nietzsche.ListDaemonsResponse
-	(*DaemonInfoProto)(nil),            // 140: nietzsche.DaemonInfoProto
-	(*DropDaemonRequest)(nil),          // 141: nietzsche.DropDaemonRequest
-	nil,                                // 142: nietzsche.QueryRequest.ParamsEntry
+	(*QuantumNode)(nil),                // 137: nietzsche.QuantumNode
+	(*QuantumFidelityRequest)(nil),     // 138: nietzsche.QuantumFidelityRequest
+	(*QuantumFidelityResponse)(nil),    // 139: nietzsche.QuantumFidelityResponse
+	(*CreateDaemonRequest)(nil),        // 140: nietzsche.CreateDaemonRequest
+	(*ListDaemonsRequest)(nil),         // 141: nietzsche.ListDaemonsRequest
+	(*ListDaemonsResponse)(nil),        // 142: nietzsche.ListDaemonsResponse
+	(*DaemonInfoProto)(nil),            // 143: nietzsche.DaemonInfoProto
+	(*DropDaemonRequest)(nil),          // 144: nietzsche.DropDaemonRequest
+	nil,                                // 145: nietzsche.QueryRequest.ParamsEntry
 }
 var file_proto_nietzsche_proto_depIdxs = []int32{
 	2,   // 0: nietzsche.ListModelsResponse.models:type_name -> nietzsche.ModelMeta
@@ -9805,7 +9984,7 @@ var file_proto_nietzsche_proto_depIdxs = []int32{
 	21,  // 11: nietzsche.BatchInsertNodesResponse.backpressure:type_name -> nietzsche.BackpressureSignal
 	26,  // 12: nietzsche.BatchInsertEdgesRequest.edges:type_name -> nietzsche.InsertEdgeRequest
 	40,  // 13: nietzsche.QueryParamValue.vec_val:type_name -> nietzsche.VectorParam
-	142, // 14: nietzsche.QueryRequest.params:type_name -> nietzsche.QueryRequest.ParamsEntry
+	145, // 14: nietzsche.QueryRequest.params:type_name -> nietzsche.QueryRequest.ParamsEntry
 	25,  // 15: nietzsche.QueryResponse.nodes:type_name -> nietzsche.NodeResponse
 	45,  // 16: nietzsche.QueryResponse.node_pairs:type_name -> nietzsche.NodePair
 	44,  // 17: nietzsche.QueryResponse.scalar_rows:type_name -> nietzsche.ScalarRow
@@ -9832,167 +10011,171 @@ var file_proto_nietzsche_proto_depIdxs = []int32{
 	125, // 38: nietzsche.CausalChainResponse.edges:type_name -> nietzsche.CausalEdge
 	133, // 39: nietzsche.SqlResultSet.columns:type_name -> nietzsche.SqlColumn
 	134, // 40: nietzsche.SqlResultSet.rows:type_name -> nietzsche.SqlRow
-	140, // 41: nietzsche.ListDaemonsResponse.daemons:type_name -> nietzsche.DaemonInfoProto
-	39,  // 42: nietzsche.QueryRequest.ParamsEntry.value:type_name -> nietzsche.QueryParamValue
-	16,  // 43: nietzsche.NietzscheDB.CreateCollection:input_type -> nietzsche.CreateCollectionRequest
-	18,  // 44: nietzsche.NietzscheDB.DropCollection:input_type -> nietzsche.DropCollectionRequest
-	13,  // 45: nietzsche.NietzscheDB.ListCollections:input_type -> nietzsche.Empty
-	22,  // 46: nietzsche.NietzscheDB.InsertNode:input_type -> nietzsche.InsertNodeRequest
-	23,  // 47: nietzsche.NietzscheDB.GetNode:input_type -> nietzsche.NodeIdRequest
-	23,  // 48: nietzsche.NietzscheDB.DeleteNode:input_type -> nietzsche.NodeIdRequest
-	24,  // 49: nietzsche.NietzscheDB.UpdateEnergy:input_type -> nietzsche.UpdateEnergyRequest
-	137, // 50: nietzsche.NietzscheDB.CreateDaemon:input_type -> nietzsche.CreateDaemonRequest
-	138, // 51: nietzsche.NietzscheDB.ListDaemons:input_type -> nietzsche.ListDaemonsRequest
-	141, // 52: nietzsche.NietzscheDB.DropDaemon:input_type -> nietzsche.DropDaemonRequest
-	26,  // 53: nietzsche.NietzscheDB.InsertEdge:input_type -> nietzsche.InsertEdgeRequest
-	28,  // 54: nietzsche.NietzscheDB.DeleteEdge:input_type -> nietzsche.EdgeIdRequest
-	29,  // 55: nietzsche.NietzscheDB.MergeNode:input_type -> nietzsche.MergeNodeRequest
-	31,  // 56: nietzsche.NietzscheDB.MergeEdge:input_type -> nietzsche.MergeEdgeRequest
-	33,  // 57: nietzsche.NietzscheDB.IncrementEdgeMeta:input_type -> nietzsche.IncrementEdgeMetaRequest
-	41,  // 58: nietzsche.NietzscheDB.Query:input_type -> nietzsche.QueryRequest
-	49,  // 59: nietzsche.NietzscheDB.KnnSearch:input_type -> nietzsche.KnnRequest
-	52,  // 60: nietzsche.NietzscheDB.Bfs:input_type -> nietzsche.TraversalRequest
-	52,  // 61: nietzsche.NietzscheDB.Dijkstra:input_type -> nietzsche.TraversalRequest
-	54,  // 62: nietzsche.NietzscheDB.Diffuse:input_type -> nietzsche.DiffusionRequest
-	57,  // 63: nietzsche.NietzscheDB.TriggerSleep:input_type -> nietzsche.SleepRequest
-	60,  // 64: nietzsche.NietzscheDB.InsertSensory:input_type -> nietzsche.InsertSensoryRequest
-	23,  // 65: nietzsche.NietzscheDB.GetSensory:input_type -> nietzsche.NodeIdRequest
-	62,  // 66: nietzsche.NietzscheDB.Reconstruct:input_type -> nietzsche.ReconstructRequest
-	23,  // 67: nietzsche.NietzscheDB.DegradeSensory:input_type -> nietzsche.NodeIdRequest
-	64,  // 68: nietzsche.NietzscheDB.InvokeZaratustra:input_type -> nietzsche.ZaratustraRequest
-	35,  // 69: nietzsche.NietzscheDB.BatchInsertNodes:input_type -> nietzsche.BatchInsertNodesRequest
-	37,  // 70: nietzsche.NietzscheDB.BatchInsertEdges:input_type -> nietzsche.BatchInsertEdgesRequest
-	66,  // 71: nietzsche.NietzscheDB.RunPageRank:input_type -> nietzsche.PageRankRequest
-	67,  // 72: nietzsche.NietzscheDB.RunLouvain:input_type -> nietzsche.LouvainRequest
-	68,  // 73: nietzsche.NietzscheDB.RunLabelProp:input_type -> nietzsche.LabelPropRequest
-	69,  // 74: nietzsche.NietzscheDB.RunBetweenness:input_type -> nietzsche.BetweennessRequest
-	70,  // 75: nietzsche.NietzscheDB.RunCloseness:input_type -> nietzsche.ClosenessRequest
-	71,  // 76: nietzsche.NietzscheDB.RunDegreeCentrality:input_type -> nietzsche.DegreeCentralityRequest
-	72,  // 77: nietzsche.NietzscheDB.RunWCC:input_type -> nietzsche.WccRequest
-	73,  // 78: nietzsche.NietzscheDB.RunSCC:input_type -> nietzsche.SccRequest
-	74,  // 79: nietzsche.NietzscheDB.RunAStar:input_type -> nietzsche.AStarRequest
-	75,  // 80: nietzsche.NietzscheDB.RunTriangleCount:input_type -> nietzsche.TriangleCountRequest
-	76,  // 81: nietzsche.NietzscheDB.RunJaccardSimilarity:input_type -> nietzsche.JaccardRequest
-	85,  // 82: nietzsche.NietzscheDB.CreateBackup:input_type -> nietzsche.CreateBackupRequest
-	13,  // 83: nietzsche.NietzscheDB.ListBackups:input_type -> nietzsche.Empty
-	89,  // 84: nietzsche.NietzscheDB.RestoreBackup:input_type -> nietzsche.RestoreBackupRequest
-	90,  // 85: nietzsche.NietzscheDB.FullTextSearch:input_type -> nietzsche.FullTextSearchRequest
-	93,  // 86: nietzsche.NietzscheDB.HybridSearch:input_type -> nietzsche.HybridSearchRequest
-	94,  // 87: nietzsche.NietzscheDB.SubscribeCDC:input_type -> nietzsche.CdcRequest
-	120, // 88: nietzsche.NietzscheDB.Synthesis:input_type -> nietzsche.SynthesisRequest
-	121, // 89: nietzsche.NietzscheDB.SynthesisMulti:input_type -> nietzsche.SynthesisMultiRequest
-	123, // 90: nietzsche.NietzscheDB.CausalNeighbors:input_type -> nietzsche.CausalNeighborsRequest
-	126, // 91: nietzsche.NietzscheDB.CausalChain:input_type -> nietzsche.CausalChainRequest
-	128, // 92: nietzsche.NietzscheDB.KleinPath:input_type -> nietzsche.KleinPathRequest
-	130, // 93: nietzsche.NietzscheDB.IsOnShortestPath:input_type -> nietzsche.ShortestPathCheckRequest
-	13,  // 94: nietzsche.NietzscheDB.GetStats:input_type -> nietzsche.Empty
-	13,  // 95: nietzsche.NietzscheDB.HealthCheck:input_type -> nietzsche.Empty
-	96,  // 96: nietzsche.NietzscheDB.ListRPush:input_type -> nietzsche.ListPushRequest
-	98,  // 97: nietzsche.NietzscheDB.ListLRange:input_type -> nietzsche.ListRangeRequest
-	100, // 98: nietzsche.NietzscheDB.ListLen:input_type -> nietzsche.ListLenRequest
-	109, // 99: nietzsche.NietzscheDB.ExchangeGossip:input_type -> nietzsche.GossipRequest
-	112, // 100: nietzsche.NietzscheDB.SetSchema:input_type -> nietzsche.SetSchemaRequest
-	113, // 101: nietzsche.NietzscheDB.GetSchema:input_type -> nietzsche.GetSchemaRequest
-	13,  // 102: nietzsche.NietzscheDB.ListSchemas:input_type -> nietzsche.Empty
-	116, // 103: nietzsche.NietzscheDB.CreateIndex:input_type -> nietzsche.CreateIndexRequest
-	117, // 104: nietzsche.NietzscheDB.DropIndex:input_type -> nietzsche.DropIndexRequest
-	118, // 105: nietzsche.NietzscheDB.ListIndexes:input_type -> nietzsche.ListIndexesRequest
-	102, // 106: nietzsche.NietzscheDB.CacheSet:input_type -> nietzsche.CacheSetRequest
-	103, // 107: nietzsche.NietzscheDB.CacheGet:input_type -> nietzsche.CacheGetRequest
-	105, // 108: nietzsche.NietzscheDB.CacheDel:input_type -> nietzsche.CacheDelRequest
-	106, // 109: nietzsche.NietzscheDB.ReapExpired:input_type -> nietzsche.ReapExpiredRequest
-	132, // 110: nietzsche.NietzscheDB.SqlQuery:input_type -> nietzsche.SqlRequest
-	132, // 111: nietzsche.NietzscheDB.SqlExec:input_type -> nietzsche.SqlRequest
-	0,   // 112: nietzsche.NietzscheDB.LoadModel:input_type -> nietzsche.LoadModelRequest
-	13,  // 113: nietzsche.NietzscheDB.ListModels:input_type -> nietzsche.Empty
-	3,   // 114: nietzsche.NietzscheDB.UnloadModel:input_type -> nietzsche.ModelNameRequest
-	4,   // 115: nietzsche.NietzscheDB.GnnInfer:input_type -> nietzsche.GnnInferRequest
-	6,   // 116: nietzsche.NietzscheDB.MctsSearch:input_type -> nietzsche.MctsRequest
-	8,   // 117: nietzsche.NietzscheDB.DreamFrom:input_type -> nietzsche.DreamRequest
-	9,   // 118: nietzsche.NietzscheDB.ApplyDream:input_type -> nietzsche.DreamIdRequest
-	9,   // 119: nietzsche.NietzscheDB.RejectDream:input_type -> nietzsche.DreamIdRequest
-	17,  // 120: nietzsche.NietzscheDB.CreateCollection:output_type -> nietzsche.CreateCollectionResponse
-	14,  // 121: nietzsche.NietzscheDB.DropCollection:output_type -> nietzsche.StatusResponse
-	20,  // 122: nietzsche.NietzscheDB.ListCollections:output_type -> nietzsche.ListCollectionsResponse
-	25,  // 123: nietzsche.NietzscheDB.InsertNode:output_type -> nietzsche.NodeResponse
-	25,  // 124: nietzsche.NietzscheDB.GetNode:output_type -> nietzsche.NodeResponse
-	14,  // 125: nietzsche.NietzscheDB.DeleteNode:output_type -> nietzsche.StatusResponse
-	14,  // 126: nietzsche.NietzscheDB.UpdateEnergy:output_type -> nietzsche.StatusResponse
-	14,  // 127: nietzsche.NietzscheDB.CreateDaemon:output_type -> nietzsche.StatusResponse
-	139, // 128: nietzsche.NietzscheDB.ListDaemons:output_type -> nietzsche.ListDaemonsResponse
-	14,  // 129: nietzsche.NietzscheDB.DropDaemon:output_type -> nietzsche.StatusResponse
-	27,  // 130: nietzsche.NietzscheDB.InsertEdge:output_type -> nietzsche.EdgeResponse
-	14,  // 131: nietzsche.NietzscheDB.DeleteEdge:output_type -> nietzsche.StatusResponse
-	30,  // 132: nietzsche.NietzscheDB.MergeNode:output_type -> nietzsche.MergeNodeResponse
-	32,  // 133: nietzsche.NietzscheDB.MergeEdge:output_type -> nietzsche.MergeEdgeResponse
-	34,  // 134: nietzsche.NietzscheDB.IncrementEdgeMeta:output_type -> nietzsche.IncrementEdgeMetaResponse
-	43,  // 135: nietzsche.NietzscheDB.Query:output_type -> nietzsche.QueryResponse
-	51,  // 136: nietzsche.NietzscheDB.KnnSearch:output_type -> nietzsche.KnnResponse
-	53,  // 137: nietzsche.NietzscheDB.Bfs:output_type -> nietzsche.TraversalResponse
-	53,  // 138: nietzsche.NietzscheDB.Dijkstra:output_type -> nietzsche.TraversalResponse
-	56,  // 139: nietzsche.NietzscheDB.Diffuse:output_type -> nietzsche.DiffusionResponse
-	58,  // 140: nietzsche.NietzscheDB.TriggerSleep:output_type -> nietzsche.SleepResponse
-	14,  // 141: nietzsche.NietzscheDB.InsertSensory:output_type -> nietzsche.StatusResponse
-	61,  // 142: nietzsche.NietzscheDB.GetSensory:output_type -> nietzsche.SensoryResponse
-	63,  // 143: nietzsche.NietzscheDB.Reconstruct:output_type -> nietzsche.ReconstructResponse
-	14,  // 144: nietzsche.NietzscheDB.DegradeSensory:output_type -> nietzsche.StatusResponse
-	65,  // 145: nietzsche.NietzscheDB.InvokeZaratustra:output_type -> nietzsche.ZaratustraResponse
-	36,  // 146: nietzsche.NietzscheDB.BatchInsertNodes:output_type -> nietzsche.BatchInsertNodesResponse
-	38,  // 147: nietzsche.NietzscheDB.BatchInsertEdges:output_type -> nietzsche.BatchInsertEdgesResponse
-	78,  // 148: nietzsche.NietzscheDB.RunPageRank:output_type -> nietzsche.AlgorithmScoreResponse
-	80,  // 149: nietzsche.NietzscheDB.RunLouvain:output_type -> nietzsche.AlgorithmCommunityResponse
-	80,  // 150: nietzsche.NietzscheDB.RunLabelProp:output_type -> nietzsche.AlgorithmCommunityResponse
-	78,  // 151: nietzsche.NietzscheDB.RunBetweenness:output_type -> nietzsche.AlgorithmScoreResponse
-	78,  // 152: nietzsche.NietzscheDB.RunCloseness:output_type -> nietzsche.AlgorithmScoreResponse
-	78,  // 153: nietzsche.NietzscheDB.RunDegreeCentrality:output_type -> nietzsche.AlgorithmScoreResponse
-	80,  // 154: nietzsche.NietzscheDB.RunWCC:output_type -> nietzsche.AlgorithmCommunityResponse
-	80,  // 155: nietzsche.NietzscheDB.RunSCC:output_type -> nietzsche.AlgorithmCommunityResponse
-	81,  // 156: nietzsche.NietzscheDB.RunAStar:output_type -> nietzsche.AStarResponse
-	82,  // 157: nietzsche.NietzscheDB.RunTriangleCount:output_type -> nietzsche.TriangleCountResponse
-	84,  // 158: nietzsche.NietzscheDB.RunJaccardSimilarity:output_type -> nietzsche.SimilarityResponse
-	87,  // 159: nietzsche.NietzscheDB.CreateBackup:output_type -> nietzsche.BackupResponse
-	88,  // 160: nietzsche.NietzscheDB.ListBackups:output_type -> nietzsche.ListBackupsResponse
-	14,  // 161: nietzsche.NietzscheDB.RestoreBackup:output_type -> nietzsche.StatusResponse
-	92,  // 162: nietzsche.NietzscheDB.FullTextSearch:output_type -> nietzsche.FullTextSearchResponse
-	51,  // 163: nietzsche.NietzscheDB.HybridSearch:output_type -> nietzsche.KnnResponse
-	95,  // 164: nietzsche.NietzscheDB.SubscribeCDC:output_type -> nietzsche.CdcEvent
-	122, // 165: nietzsche.NietzscheDB.Synthesis:output_type -> nietzsche.SynthesisResponse
-	122, // 166: nietzsche.NietzscheDB.SynthesisMulti:output_type -> nietzsche.SynthesisResponse
-	124, // 167: nietzsche.NietzscheDB.CausalNeighbors:output_type -> nietzsche.CausalNeighborsResponse
-	127, // 168: nietzsche.NietzscheDB.CausalChain:output_type -> nietzsche.CausalChainResponse
-	129, // 169: nietzsche.NietzscheDB.KleinPath:output_type -> nietzsche.KleinPathResponse
-	131, // 170: nietzsche.NietzscheDB.IsOnShortestPath:output_type -> nietzsche.ShortestPathCheckResponse
-	59,  // 171: nietzsche.NietzscheDB.GetStats:output_type -> nietzsche.StatsResponse
-	14,  // 172: nietzsche.NietzscheDB.HealthCheck:output_type -> nietzsche.StatusResponse
-	97,  // 173: nietzsche.NietzscheDB.ListRPush:output_type -> nietzsche.ListPushResponse
-	99,  // 174: nietzsche.NietzscheDB.ListLRange:output_type -> nietzsche.ListRangeResponse
-	101, // 175: nietzsche.NietzscheDB.ListLen:output_type -> nietzsche.ListLenResponse
-	110, // 176: nietzsche.NietzscheDB.ExchangeGossip:output_type -> nietzsche.GossipResponse
-	14,  // 177: nietzsche.NietzscheDB.SetSchema:output_type -> nietzsche.StatusResponse
-	114, // 178: nietzsche.NietzscheDB.GetSchema:output_type -> nietzsche.GetSchemaResponse
-	115, // 179: nietzsche.NietzscheDB.ListSchemas:output_type -> nietzsche.ListSchemasResponse
-	14,  // 180: nietzsche.NietzscheDB.CreateIndex:output_type -> nietzsche.StatusResponse
-	14,  // 181: nietzsche.NietzscheDB.DropIndex:output_type -> nietzsche.StatusResponse
-	119, // 182: nietzsche.NietzscheDB.ListIndexes:output_type -> nietzsche.ListIndexesResponse
-	14,  // 183: nietzsche.NietzscheDB.CacheSet:output_type -> nietzsche.StatusResponse
-	104, // 184: nietzsche.NietzscheDB.CacheGet:output_type -> nietzsche.CacheGetResponse
-	14,  // 185: nietzsche.NietzscheDB.CacheDel:output_type -> nietzsche.StatusResponse
-	107, // 186: nietzsche.NietzscheDB.ReapExpired:output_type -> nietzsche.ReapExpiredResponse
-	135, // 187: nietzsche.NietzscheDB.SqlQuery:output_type -> nietzsche.SqlResultSet
-	136, // 188: nietzsche.NietzscheDB.SqlExec:output_type -> nietzsche.SqlExecResult
-	14,  // 189: nietzsche.NietzscheDB.LoadModel:output_type -> nietzsche.StatusResponse
-	1,   // 190: nietzsche.NietzscheDB.ListModels:output_type -> nietzsche.ListModelsResponse
-	14,  // 191: nietzsche.NietzscheDB.UnloadModel:output_type -> nietzsche.StatusResponse
-	5,   // 192: nietzsche.NietzscheDB.GnnInfer:output_type -> nietzsche.GnnInferResponse
-	7,   // 193: nietzsche.NietzscheDB.MctsSearch:output_type -> nietzsche.MctsResponse
-	10,  // 194: nietzsche.NietzscheDB.DreamFrom:output_type -> nietzsche.DreamSessionProto
-	10,  // 195: nietzsche.NietzscheDB.ApplyDream:output_type -> nietzsche.DreamSessionProto
-	10,  // 196: nietzsche.NietzscheDB.RejectDream:output_type -> nietzsche.DreamSessionProto
-	120, // [120:197] is the sub-list for method output_type
-	43,  // [43:120] is the sub-list for method input_type
-	43,  // [43:43] is the sub-list for extension type_name
-	43,  // [43:43] is the sub-list for extension extendee
-	0,   // [0:43] is the sub-list for field type_name
+	137, // 41: nietzsche.QuantumFidelityRequest.group_a:type_name -> nietzsche.QuantumNode
+	137, // 42: nietzsche.QuantumFidelityRequest.group_b:type_name -> nietzsche.QuantumNode
+	143, // 43: nietzsche.ListDaemonsResponse.daemons:type_name -> nietzsche.DaemonInfoProto
+	39,  // 44: nietzsche.QueryRequest.ParamsEntry.value:type_name -> nietzsche.QueryParamValue
+	16,  // 45: nietzsche.NietzscheDB.CreateCollection:input_type -> nietzsche.CreateCollectionRequest
+	18,  // 46: nietzsche.NietzscheDB.DropCollection:input_type -> nietzsche.DropCollectionRequest
+	13,  // 47: nietzsche.NietzscheDB.ListCollections:input_type -> nietzsche.Empty
+	22,  // 48: nietzsche.NietzscheDB.InsertNode:input_type -> nietzsche.InsertNodeRequest
+	23,  // 49: nietzsche.NietzscheDB.GetNode:input_type -> nietzsche.NodeIdRequest
+	23,  // 50: nietzsche.NietzscheDB.DeleteNode:input_type -> nietzsche.NodeIdRequest
+	24,  // 51: nietzsche.NietzscheDB.UpdateEnergy:input_type -> nietzsche.UpdateEnergyRequest
+	140, // 52: nietzsche.NietzscheDB.CreateDaemon:input_type -> nietzsche.CreateDaemonRequest
+	141, // 53: nietzsche.NietzscheDB.ListDaemons:input_type -> nietzsche.ListDaemonsRequest
+	144, // 54: nietzsche.NietzscheDB.DropDaemon:input_type -> nietzsche.DropDaemonRequest
+	26,  // 55: nietzsche.NietzscheDB.InsertEdge:input_type -> nietzsche.InsertEdgeRequest
+	28,  // 56: nietzsche.NietzscheDB.DeleteEdge:input_type -> nietzsche.EdgeIdRequest
+	29,  // 57: nietzsche.NietzscheDB.MergeNode:input_type -> nietzsche.MergeNodeRequest
+	31,  // 58: nietzsche.NietzscheDB.MergeEdge:input_type -> nietzsche.MergeEdgeRequest
+	33,  // 59: nietzsche.NietzscheDB.IncrementEdgeMeta:input_type -> nietzsche.IncrementEdgeMetaRequest
+	41,  // 60: nietzsche.NietzscheDB.Query:input_type -> nietzsche.QueryRequest
+	49,  // 61: nietzsche.NietzscheDB.KnnSearch:input_type -> nietzsche.KnnRequest
+	52,  // 62: nietzsche.NietzscheDB.Bfs:input_type -> nietzsche.TraversalRequest
+	52,  // 63: nietzsche.NietzscheDB.Dijkstra:input_type -> nietzsche.TraversalRequest
+	54,  // 64: nietzsche.NietzscheDB.Diffuse:input_type -> nietzsche.DiffusionRequest
+	57,  // 65: nietzsche.NietzscheDB.TriggerSleep:input_type -> nietzsche.SleepRequest
+	60,  // 66: nietzsche.NietzscheDB.InsertSensory:input_type -> nietzsche.InsertSensoryRequest
+	23,  // 67: nietzsche.NietzscheDB.GetSensory:input_type -> nietzsche.NodeIdRequest
+	62,  // 68: nietzsche.NietzscheDB.Reconstruct:input_type -> nietzsche.ReconstructRequest
+	23,  // 69: nietzsche.NietzscheDB.DegradeSensory:input_type -> nietzsche.NodeIdRequest
+	64,  // 70: nietzsche.NietzscheDB.InvokeZaratustra:input_type -> nietzsche.ZaratustraRequest
+	35,  // 71: nietzsche.NietzscheDB.BatchInsertNodes:input_type -> nietzsche.BatchInsertNodesRequest
+	37,  // 72: nietzsche.NietzscheDB.BatchInsertEdges:input_type -> nietzsche.BatchInsertEdgesRequest
+	66,  // 73: nietzsche.NietzscheDB.RunPageRank:input_type -> nietzsche.PageRankRequest
+	67,  // 74: nietzsche.NietzscheDB.RunLouvain:input_type -> nietzsche.LouvainRequest
+	68,  // 75: nietzsche.NietzscheDB.RunLabelProp:input_type -> nietzsche.LabelPropRequest
+	69,  // 76: nietzsche.NietzscheDB.RunBetweenness:input_type -> nietzsche.BetweennessRequest
+	70,  // 77: nietzsche.NietzscheDB.RunCloseness:input_type -> nietzsche.ClosenessRequest
+	71,  // 78: nietzsche.NietzscheDB.RunDegreeCentrality:input_type -> nietzsche.DegreeCentralityRequest
+	72,  // 79: nietzsche.NietzscheDB.RunWCC:input_type -> nietzsche.WccRequest
+	73,  // 80: nietzsche.NietzscheDB.RunSCC:input_type -> nietzsche.SccRequest
+	74,  // 81: nietzsche.NietzscheDB.RunAStar:input_type -> nietzsche.AStarRequest
+	75,  // 82: nietzsche.NietzscheDB.RunTriangleCount:input_type -> nietzsche.TriangleCountRequest
+	76,  // 83: nietzsche.NietzscheDB.RunJaccardSimilarity:input_type -> nietzsche.JaccardRequest
+	85,  // 84: nietzsche.NietzscheDB.CreateBackup:input_type -> nietzsche.CreateBackupRequest
+	13,  // 85: nietzsche.NietzscheDB.ListBackups:input_type -> nietzsche.Empty
+	89,  // 86: nietzsche.NietzscheDB.RestoreBackup:input_type -> nietzsche.RestoreBackupRequest
+	90,  // 87: nietzsche.NietzscheDB.FullTextSearch:input_type -> nietzsche.FullTextSearchRequest
+	93,  // 88: nietzsche.NietzscheDB.HybridSearch:input_type -> nietzsche.HybridSearchRequest
+	94,  // 89: nietzsche.NietzscheDB.SubscribeCDC:input_type -> nietzsche.CdcRequest
+	120, // 90: nietzsche.NietzscheDB.Synthesis:input_type -> nietzsche.SynthesisRequest
+	121, // 91: nietzsche.NietzscheDB.SynthesisMulti:input_type -> nietzsche.SynthesisMultiRequest
+	123, // 92: nietzsche.NietzscheDB.CausalNeighbors:input_type -> nietzsche.CausalNeighborsRequest
+	126, // 93: nietzsche.NietzscheDB.CausalChain:input_type -> nietzsche.CausalChainRequest
+	128, // 94: nietzsche.NietzscheDB.KleinPath:input_type -> nietzsche.KleinPathRequest
+	130, // 95: nietzsche.NietzscheDB.IsOnShortestPath:input_type -> nietzsche.ShortestPathCheckRequest
+	13,  // 96: nietzsche.NietzscheDB.GetStats:input_type -> nietzsche.Empty
+	13,  // 97: nietzsche.NietzscheDB.HealthCheck:input_type -> nietzsche.Empty
+	96,  // 98: nietzsche.NietzscheDB.ListRPush:input_type -> nietzsche.ListPushRequest
+	98,  // 99: nietzsche.NietzscheDB.ListLRange:input_type -> nietzsche.ListRangeRequest
+	100, // 100: nietzsche.NietzscheDB.ListLen:input_type -> nietzsche.ListLenRequest
+	109, // 101: nietzsche.NietzscheDB.ExchangeGossip:input_type -> nietzsche.GossipRequest
+	112, // 102: nietzsche.NietzscheDB.SetSchema:input_type -> nietzsche.SetSchemaRequest
+	113, // 103: nietzsche.NietzscheDB.GetSchema:input_type -> nietzsche.GetSchemaRequest
+	13,  // 104: nietzsche.NietzscheDB.ListSchemas:input_type -> nietzsche.Empty
+	116, // 105: nietzsche.NietzscheDB.CreateIndex:input_type -> nietzsche.CreateIndexRequest
+	117, // 106: nietzsche.NietzscheDB.DropIndex:input_type -> nietzsche.DropIndexRequest
+	118, // 107: nietzsche.NietzscheDB.ListIndexes:input_type -> nietzsche.ListIndexesRequest
+	102, // 108: nietzsche.NietzscheDB.CacheSet:input_type -> nietzsche.CacheSetRequest
+	103, // 109: nietzsche.NietzscheDB.CacheGet:input_type -> nietzsche.CacheGetRequest
+	105, // 110: nietzsche.NietzscheDB.CacheDel:input_type -> nietzsche.CacheDelRequest
+	106, // 111: nietzsche.NietzscheDB.ReapExpired:input_type -> nietzsche.ReapExpiredRequest
+	132, // 112: nietzsche.NietzscheDB.SqlQuery:input_type -> nietzsche.SqlRequest
+	132, // 113: nietzsche.NietzscheDB.SqlExec:input_type -> nietzsche.SqlRequest
+	0,   // 114: nietzsche.NietzscheDB.LoadModel:input_type -> nietzsche.LoadModelRequest
+	13,  // 115: nietzsche.NietzscheDB.ListModels:input_type -> nietzsche.Empty
+	3,   // 116: nietzsche.NietzscheDB.UnloadModel:input_type -> nietzsche.ModelNameRequest
+	4,   // 117: nietzsche.NietzscheDB.GnnInfer:input_type -> nietzsche.GnnInferRequest
+	6,   // 118: nietzsche.NietzscheDB.MctsSearch:input_type -> nietzsche.MctsRequest
+	8,   // 119: nietzsche.NietzscheDB.DreamFrom:input_type -> nietzsche.DreamRequest
+	9,   // 120: nietzsche.NietzscheDB.ApplyDream:input_type -> nietzsche.DreamIdRequest
+	9,   // 121: nietzsche.NietzscheDB.RejectDream:input_type -> nietzsche.DreamIdRequest
+	138, // 122: nietzsche.NietzscheDB.CalculateFidelity:input_type -> nietzsche.QuantumFidelityRequest
+	17,  // 123: nietzsche.NietzscheDB.CreateCollection:output_type -> nietzsche.CreateCollectionResponse
+	14,  // 124: nietzsche.NietzscheDB.DropCollection:output_type -> nietzsche.StatusResponse
+	20,  // 125: nietzsche.NietzscheDB.ListCollections:output_type -> nietzsche.ListCollectionsResponse
+	25,  // 126: nietzsche.NietzscheDB.InsertNode:output_type -> nietzsche.NodeResponse
+	25,  // 127: nietzsche.NietzscheDB.GetNode:output_type -> nietzsche.NodeResponse
+	14,  // 128: nietzsche.NietzscheDB.DeleteNode:output_type -> nietzsche.StatusResponse
+	14,  // 129: nietzsche.NietzscheDB.UpdateEnergy:output_type -> nietzsche.StatusResponse
+	14,  // 130: nietzsche.NietzscheDB.CreateDaemon:output_type -> nietzsche.StatusResponse
+	142, // 131: nietzsche.NietzscheDB.ListDaemons:output_type -> nietzsche.ListDaemonsResponse
+	14,  // 132: nietzsche.NietzscheDB.DropDaemon:output_type -> nietzsche.StatusResponse
+	27,  // 133: nietzsche.NietzscheDB.InsertEdge:output_type -> nietzsche.EdgeResponse
+	14,  // 134: nietzsche.NietzscheDB.DeleteEdge:output_type -> nietzsche.StatusResponse
+	30,  // 135: nietzsche.NietzscheDB.MergeNode:output_type -> nietzsche.MergeNodeResponse
+	32,  // 136: nietzsche.NietzscheDB.MergeEdge:output_type -> nietzsche.MergeEdgeResponse
+	34,  // 137: nietzsche.NietzscheDB.IncrementEdgeMeta:output_type -> nietzsche.IncrementEdgeMetaResponse
+	43,  // 138: nietzsche.NietzscheDB.Query:output_type -> nietzsche.QueryResponse
+	51,  // 139: nietzsche.NietzscheDB.KnnSearch:output_type -> nietzsche.KnnResponse
+	53,  // 140: nietzsche.NietzscheDB.Bfs:output_type -> nietzsche.TraversalResponse
+	53,  // 141: nietzsche.NietzscheDB.Dijkstra:output_type -> nietzsche.TraversalResponse
+	56,  // 142: nietzsche.NietzscheDB.Diffuse:output_type -> nietzsche.DiffusionResponse
+	58,  // 143: nietzsche.NietzscheDB.TriggerSleep:output_type -> nietzsche.SleepResponse
+	14,  // 144: nietzsche.NietzscheDB.InsertSensory:output_type -> nietzsche.StatusResponse
+	61,  // 145: nietzsche.NietzscheDB.GetSensory:output_type -> nietzsche.SensoryResponse
+	63,  // 146: nietzsche.NietzscheDB.Reconstruct:output_type -> nietzsche.ReconstructResponse
+	14,  // 147: nietzsche.NietzscheDB.DegradeSensory:output_type -> nietzsche.StatusResponse
+	65,  // 148: nietzsche.NietzscheDB.InvokeZaratustra:output_type -> nietzsche.ZaratustraResponse
+	36,  // 149: nietzsche.NietzscheDB.BatchInsertNodes:output_type -> nietzsche.BatchInsertNodesResponse
+	38,  // 150: nietzsche.NietzscheDB.BatchInsertEdges:output_type -> nietzsche.BatchInsertEdgesResponse
+	78,  // 151: nietzsche.NietzscheDB.RunPageRank:output_type -> nietzsche.AlgorithmScoreResponse
+	80,  // 152: nietzsche.NietzscheDB.RunLouvain:output_type -> nietzsche.AlgorithmCommunityResponse
+	80,  // 153: nietzsche.NietzscheDB.RunLabelProp:output_type -> nietzsche.AlgorithmCommunityResponse
+	78,  // 154: nietzsche.NietzscheDB.RunBetweenness:output_type -> nietzsche.AlgorithmScoreResponse
+	78,  // 155: nietzsche.NietzscheDB.RunCloseness:output_type -> nietzsche.AlgorithmScoreResponse
+	78,  // 156: nietzsche.NietzscheDB.RunDegreeCentrality:output_type -> nietzsche.AlgorithmScoreResponse
+	80,  // 157: nietzsche.NietzscheDB.RunWCC:output_type -> nietzsche.AlgorithmCommunityResponse
+	80,  // 158: nietzsche.NietzscheDB.RunSCC:output_type -> nietzsche.AlgorithmCommunityResponse
+	81,  // 159: nietzsche.NietzscheDB.RunAStar:output_type -> nietzsche.AStarResponse
+	82,  // 160: nietzsche.NietzscheDB.RunTriangleCount:output_type -> nietzsche.TriangleCountResponse
+	84,  // 161: nietzsche.NietzscheDB.RunJaccardSimilarity:output_type -> nietzsche.SimilarityResponse
+	87,  // 162: nietzsche.NietzscheDB.CreateBackup:output_type -> nietzsche.BackupResponse
+	88,  // 163: nietzsche.NietzscheDB.ListBackups:output_type -> nietzsche.ListBackupsResponse
+	14,  // 164: nietzsche.NietzscheDB.RestoreBackup:output_type -> nietzsche.StatusResponse
+	92,  // 165: nietzsche.NietzscheDB.FullTextSearch:output_type -> nietzsche.FullTextSearchResponse
+	51,  // 166: nietzsche.NietzscheDB.HybridSearch:output_type -> nietzsche.KnnResponse
+	95,  // 167: nietzsche.NietzscheDB.SubscribeCDC:output_type -> nietzsche.CdcEvent
+	122, // 168: nietzsche.NietzscheDB.Synthesis:output_type -> nietzsche.SynthesisResponse
+	122, // 169: nietzsche.NietzscheDB.SynthesisMulti:output_type -> nietzsche.SynthesisResponse
+	124, // 170: nietzsche.NietzscheDB.CausalNeighbors:output_type -> nietzsche.CausalNeighborsResponse
+	127, // 171: nietzsche.NietzscheDB.CausalChain:output_type -> nietzsche.CausalChainResponse
+	129, // 172: nietzsche.NietzscheDB.KleinPath:output_type -> nietzsche.KleinPathResponse
+	131, // 173: nietzsche.NietzscheDB.IsOnShortestPath:output_type -> nietzsche.ShortestPathCheckResponse
+	59,  // 174: nietzsche.NietzscheDB.GetStats:output_type -> nietzsche.StatsResponse
+	14,  // 175: nietzsche.NietzscheDB.HealthCheck:output_type -> nietzsche.StatusResponse
+	97,  // 176: nietzsche.NietzscheDB.ListRPush:output_type -> nietzsche.ListPushResponse
+	99,  // 177: nietzsche.NietzscheDB.ListLRange:output_type -> nietzsche.ListRangeResponse
+	101, // 178: nietzsche.NietzscheDB.ListLen:output_type -> nietzsche.ListLenResponse
+	110, // 179: nietzsche.NietzscheDB.ExchangeGossip:output_type -> nietzsche.GossipResponse
+	14,  // 180: nietzsche.NietzscheDB.SetSchema:output_type -> nietzsche.StatusResponse
+	114, // 181: nietzsche.NietzscheDB.GetSchema:output_type -> nietzsche.GetSchemaResponse
+	115, // 182: nietzsche.NietzscheDB.ListSchemas:output_type -> nietzsche.ListSchemasResponse
+	14,  // 183: nietzsche.NietzscheDB.CreateIndex:output_type -> nietzsche.StatusResponse
+	14,  // 184: nietzsche.NietzscheDB.DropIndex:output_type -> nietzsche.StatusResponse
+	119, // 185: nietzsche.NietzscheDB.ListIndexes:output_type -> nietzsche.ListIndexesResponse
+	14,  // 186: nietzsche.NietzscheDB.CacheSet:output_type -> nietzsche.StatusResponse
+	104, // 187: nietzsche.NietzscheDB.CacheGet:output_type -> nietzsche.CacheGetResponse
+	14,  // 188: nietzsche.NietzscheDB.CacheDel:output_type -> nietzsche.StatusResponse
+	107, // 189: nietzsche.NietzscheDB.ReapExpired:output_type -> nietzsche.ReapExpiredResponse
+	135, // 190: nietzsche.NietzscheDB.SqlQuery:output_type -> nietzsche.SqlResultSet
+	136, // 191: nietzsche.NietzscheDB.SqlExec:output_type -> nietzsche.SqlExecResult
+	14,  // 192: nietzsche.NietzscheDB.LoadModel:output_type -> nietzsche.StatusResponse
+	1,   // 193: nietzsche.NietzscheDB.ListModels:output_type -> nietzsche.ListModelsResponse
+	14,  // 194: nietzsche.NietzscheDB.UnloadModel:output_type -> nietzsche.StatusResponse
+	5,   // 195: nietzsche.NietzscheDB.GnnInfer:output_type -> nietzsche.GnnInferResponse
+	7,   // 196: nietzsche.NietzscheDB.MctsSearch:output_type -> nietzsche.MctsResponse
+	10,  // 197: nietzsche.NietzscheDB.DreamFrom:output_type -> nietzsche.DreamSessionProto
+	10,  // 198: nietzsche.NietzscheDB.ApplyDream:output_type -> nietzsche.DreamSessionProto
+	10,  // 199: nietzsche.NietzscheDB.RejectDream:output_type -> nietzsche.DreamSessionProto
+	139, // 200: nietzsche.NietzscheDB.CalculateFidelity:output_type -> nietzsche.QuantumFidelityResponse
+	123, // [123:201] is the sub-list for method output_type
+	45,  // [45:123] is the sub-list for method input_type
+	45,  // [45:45] is the sub-list for extension type_name
+	45,  // [45:45] is the sub-list for extension extendee
+	0,   // [0:45] is the sub-list for field type_name
 }
 
 func init() { file_proto_nietzsche_proto_init() }
@@ -10018,13 +10201,14 @@ func file_proto_nietzsche_proto_init() {
 		(*KnnFilter_RangeFilter)(nil),
 	}
 	file_proto_nietzsche_proto_msgTypes[48].OneofWrappers = []any{}
+	file_proto_nietzsche_proto_msgTypes[138].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_nietzsche_proto_rawDesc), len(file_proto_nietzsche_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   143,
+			NumMessages:   146,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

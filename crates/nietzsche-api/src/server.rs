@@ -111,6 +111,10 @@ fn proto_filters_to_metadata_filter(filters: &[nietzsche::KnnFilter]) -> Metadat
 }
 
 fn node_to_proto(node: Node) -> nietzsche::NodeResponse {
+    node_to_proto_with_purity(node, 0.0)
+}
+
+fn node_to_proto_with_purity(node: Node, quantum_purity: f64) -> nietzsche::NodeResponse {
     let (meta, embedding) = node.into_parts();
     let content_bytes = serde_json::to_vec(&meta.content).unwrap_or_default();
     nietzsche::NodeResponse {
@@ -128,6 +132,7 @@ fn node_to_proto(node: Node) -> nietzsche::NodeResponse {
         node_type:       format!("{:?}", meta.node_type),
         expires_at:      meta.expires_at.unwrap_or(0),
         backpressure:    None, // populated only by write RPCs
+        quantum_purity,
     }
 }
 
@@ -340,13 +345,23 @@ impl NietzscheDb for NietzscheServer {
 
         let id = if r.id.is_empty() { Uuid::new_v4() } else { parse_uuid(&r.id, "id")? };
 
-        let emb_proto = r.embedding.ok_or_else(|| {
-            Status::invalid_argument("embedding is required")
-        })?;
-        validate_embedding(&emb_proto)?;
+        // Embedding is optional: if absent, generate a zero-vector at the
+        // collection's configured dimension. This allows content-only inserts
+        // (e.g. from the Go integration test) without requiring callers to
+        // pre-compute hyperbolic coordinates.
+        let embedding = if let Some(emb_proto) = r.embedding {
+            validate_embedding(&emb_proto)?;
+            PoincareVector::from_f64(emb_proto.coords)
+        } else {
+            // Read the collection's dim to build a correct zero-vector.
+            let col_dim: usize = {
+                let shared_r = get_col!(self.cm, &r.collection);
+                let guard = shared_r.read().await;
+                guard.vector_dim()
+            };
+            PoincareVector::origin(col_dim)
+        };
         if r.energy != 0.0 { validate_energy(r.energy)?; }
-
-        let embedding = PoincareVector::from_f64(emb_proto.coords);
         let content: serde_json::Value = if r.content.is_empty() {
             serde_json::Value::Null
         } else {
@@ -363,9 +378,17 @@ impl NietzscheDb for NietzscheServer {
         let mut db = shared.write().await;
         db.insert_node(node.clone()).map_err(graph_err)?;
         let bp = db.check_backpressure();
+
+        // ── Arousal→Purity mapping: compute quantum purity from Bloch sphere ──
+        let bloch = nietzsche_agency::quantum::poincare_to_bloch(
+            &node.embedding.coords_f64(),
+            node.energy,
+        );
+        db.set_quantum_purity(id, bloch.purity);
+
         self.cdc.publish(CdcEventType::InsertNode, id, col(&r.collection));
 
-        let mut resp = node_to_proto(node);
+        let mut resp = node_to_proto_with_purity(node, bloch.purity);
         resp.backpressure = Some(bp_to_proto(&bp));
         Ok(Response::new(resp))
     }
@@ -380,7 +403,10 @@ impl NietzscheDb for NietzscheServer {
         let shared = get_col!(self.cm, &r.collection);
         let db = shared.read().await;
         match db.get_node(id).map_err(graph_err)? {
-            Some(node) => Ok(Response::new(node_to_proto(node))),
+            Some(node) => {
+                let purity = db.get_quantum_purity(&id).unwrap_or(0.0);
+                Ok(Response::new(node_to_proto_with_purity(node, purity)))
+            }
             None       => Ok(Response::new(not_found())),
         }
     }
@@ -416,6 +442,13 @@ impl NietzscheDb for NietzscheServer {
         let shared = get_col!(self.cm, &r.collection);
         let mut db = shared.write().await;
         db.update_energy(id, r.energy).map_err(graph_err)?;
+
+        // ── Arousal→Purity mapping: recompute quantum purity after energy change ──
+        // Purity = energy clamped to [0, 1] (the Bloch sphere radial component).
+        // No need to read the full embedding — purity depends only on energy.
+        let purity = (r.energy as f64).clamp(0.0, 1.0);
+        db.set_quantum_purity(id, purity);
+
         self.cdc.publish(CdcEventType::UpdateNode, id, col(&r.collection));
         Ok(Response::new(ok_status()))
     }
@@ -543,12 +576,20 @@ impl NietzscheDb for NietzscheServer {
                 if r.energy > 0.0 { node.energy = r.energy; }
 
                 db.insert_node(node.clone()).map_err(graph_err)?;
+
+                // ── Arousal→Purity mapping for newly created merge node ──
+                let bloch = nietzsche_agency::quantum::poincare_to_bloch(
+                    &node.embedding.coords_f64(),
+                    node.energy,
+                );
+                db.set_quantum_purity(id, bloch.purity);
+
                 debug!(node_id = %id, collection = %col(&r.collection), "MergeNode: created new");
 
                 Ok(Response::new(nietzsche::MergeNodeResponse {
                     created: true,
                     node_id: id.to_string(),
-                    node:    Some(node_to_proto(node)),
+                    node:    Some(node_to_proto_with_purity(node, bloch.purity)),
                 }))
             }
         }
@@ -756,7 +797,15 @@ impl NietzscheDb for NietzscheServer {
                             let mut node = Node::new(Uuid::new_v4(), embedding, content);
                             node.node_type = nt;
                             db_w.insert_node(node.clone()).map_err(graph_err)?;
-                            nodes.push(node_to_proto(node));
+
+                            // ── Arousal→Purity mapping for NQL MERGE (create) ──
+                            let bloch = nietzsche_agency::quantum::poincare_to_bloch(
+                                &node.embedding.coords_f64(),
+                                node.energy,
+                            );
+                            db_w.set_quantum_purity(node.id, bloch.purity);
+
+                            nodes.push(node_to_proto_with_purity(node, bloch.purity));
                         }
                     }
                     drop(db_w);
@@ -833,7 +882,15 @@ impl NietzscheDb for NietzscheServer {
                         node.expires_at = Some((now + ttl as u64) as i64);
                     }
                     db_w.insert_node(node.clone()).map_err(graph_err)?;
-                    nodes.push(node_to_proto(node));
+
+                    // ── Arousal→Purity mapping for NQL CREATE ──
+                    let bloch = nietzsche_agency::quantum::poincare_to_bloch(
+                        &node.embedding.coords_f64(),
+                        node.energy,
+                    );
+                    db_w.set_quantum_purity(node.id, bloch.purity);
+
+                    nodes.push(node_to_proto_with_purity(node, bloch.purity));
                     drop(db_w);
                     db = shared.read().await;
                 }
@@ -1424,8 +1481,21 @@ impl NietzscheDb for NietzscheServer {
             nodes_vec.push(node);
         }
 
+        // ── Arousal→Purity mapping: pre-compute quantum purities for the batch ──
+        let purity_entries: Vec<(Uuid, f64)> = nodes_vec.iter().map(|n| {
+            let bloch = nietzsche_agency::quantum::poincare_to_bloch(
+                &n.embedding.coords_f64(),
+                n.energy,
+            );
+            (n.id, bloch.purity)
+        }).collect();
+
         let count = ids.len() as u32;
         db.insert_nodes_bulk(nodes_vec).map_err(graph_err)?;
+
+        // Store quantum purities after successful insertion
+        db.set_quantum_purity_batch(&purity_entries);
+
         let bp = db.check_backpressure();
         self.cdc.publish(
             CdcEventType::BatchInsertNodes { count },
@@ -3316,6 +3386,36 @@ impl NietzscheDb for NietzscheServer {
     ) -> Result<Response<nietzsche::StatusResponse>, Status> {
         // Placeholder for Phase 8
         Err(Status::unimplemented("DropDaemon is not yet implemented (Phase 8)"))
+    }
+
+    // ── Quantum Fidelity (Bloch Sphere) ──────────────────────────────────
+
+    async fn calculate_fidelity(
+        &self,
+        request: Request<nietzsche::QuantumFidelityRequest>,
+    ) -> Result<Response<nietzsche::QuantumFidelityResponse>, Status> {
+        let req = request.into_inner();
+
+        let states_a: Vec<_> = req.group_a.iter()
+            .map(|n| nietzsche_agency::quantum::poincare_to_bloch(&n.embedding, n.energy))
+            .collect();
+
+        let states_b: Vec<_> = req.group_b.iter()
+            .map(|n| nietzsche_agency::quantum::poincare_to_bloch(&n.embedding, n.energy))
+            .collect();
+
+        let entanglement = nietzsche_agency::quantum::entanglement_proxy(&states_a, &states_b);
+
+        let quantum_cfg = nietzsche_agency::QuantumConfig::from_env();
+        let threshold = req.entanglement_threshold
+            .map(|t| t as f64)
+            .unwrap_or(quantum_cfg.default_entanglement_threshold);
+        let threshold_crossed = entanglement > threshold;
+
+        Ok(Response::new(nietzsche::QuantumFidelityResponse {
+            entanglement_proxy: entanglement,
+            threshold_crossed,
+        }))
     }
 }
 

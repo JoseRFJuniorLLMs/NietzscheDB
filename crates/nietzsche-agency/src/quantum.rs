@@ -26,6 +26,89 @@
 
 use std::f64::consts::PI;
 
+// ── Configurable Entanglement Thresholds ────────────────────────────────────
+
+/// Configuration for quantum entanglement thresholds.
+///
+/// Controls when the entanglement proxy triggers forced edge materialisation
+/// in Schrödinger collapse. Different clinical/operational contexts may
+/// require stricter or more relaxed coupling thresholds.
+///
+/// # Examples
+///
+/// ```
+/// use nietzsche_agency::quantum::QuantumConfig;
+///
+/// // Default: 0.85 (general purpose)
+/// let cfg = QuantumConfig::default();
+/// assert!((cfg.default_entanglement_threshold - 0.85).abs() < 1e-9);
+///
+/// // Strict mode for medication dosage (fewer false positives)
+/// assert!(cfg.strict_threshold > cfg.default_entanglement_threshold);
+///
+/// // Relaxed mode for psychological support (more associative recall)
+/// assert!(cfg.relaxed_threshold < cfg.default_entanglement_threshold);
+/// ```
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct QuantumConfig {
+    /// Default entanglement threshold for general-purpose collapse.
+    /// Fidelity above this value forces edge materialisation.
+    pub default_entanglement_threshold: f64,
+
+    /// Strict threshold for safety-critical contexts (e.g. medication dosage).
+    /// Higher value = fewer forced materialisations = fewer false positives.
+    pub strict_threshold: f64,
+
+    /// Relaxed threshold for exploratory contexts (e.g. psychological support).
+    /// Lower value = more associative recall = broader semantic connections.
+    pub relaxed_threshold: f64,
+}
+
+impl Default for QuantumConfig {
+    fn default() -> Self {
+        Self {
+            default_entanglement_threshold: 0.85,
+            strict_threshold: 0.90,
+            relaxed_threshold: 0.65,
+        }
+    }
+}
+
+impl QuantumConfig {
+    /// Build from environment variables, falling back to defaults.
+    ///
+    /// Reads:
+    /// - `QUANTUM_ENTANGLEMENT_THRESHOLD` (default: 0.85)
+    /// - `QUANTUM_STRICT_THRESHOLD` (default: 0.90)
+    /// - `QUANTUM_RELAXED_THRESHOLD` (default: 0.65)
+    pub fn from_env() -> Self {
+        fn env_f64(key: &str, default: f64) -> f64 {
+            std::env::var(key)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default)
+        }
+        Self {
+            default_entanglement_threshold: env_f64("QUANTUM_ENTANGLEMENT_THRESHOLD", 0.85),
+            strict_threshold:              env_f64("QUANTUM_STRICT_THRESHOLD", 0.90),
+            relaxed_threshold:             env_f64("QUANTUM_RELAXED_THRESHOLD", 0.65),
+        }
+    }
+
+    /// Select the appropriate threshold for a given context.
+    ///
+    /// - `"strict"` → `strict_threshold` (0.90)
+    /// - `"relaxed"` → `relaxed_threshold` (0.65)
+    /// - anything else → `default_entanglement_threshold` (0.85)
+    pub fn threshold_for_context(&self, context: &str) -> f64 {
+        match context {
+            "strict" => self.strict_threshold,
+            "relaxed" => self.relaxed_threshold,
+            _ => self.default_entanglement_threshold,
+        }
+    }
+}
+
 /// A quantum state on the Bloch sphere.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BlochState {

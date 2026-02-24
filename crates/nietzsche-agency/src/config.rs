@@ -1,3 +1,5 @@
+use crate::quantum::QuantumConfig;
+
 /// Configuration for the agency engine and its daemons.
 #[derive(Debug, Clone)]
 pub struct AgencyConfig {
@@ -76,6 +78,11 @@ pub struct AgencyConfig {
     /// Model name for MCTS search (e.g. "policy_v1").
     pub mcts_model_name: String,
     pub ppo_model_name: String,
+
+    // -- Quantum Entanglement --
+    /// Configurable thresholds for quantum entanglement-based edge collapse.
+    /// Controls when fidelity between Bloch states forces edge materialisation.
+    pub quantum: QuantumConfig,
 }
 
 impl Default for AgencyConfig {
@@ -107,6 +114,7 @@ impl Default for AgencyConfig {
             gnn_model_name: "gnn_v1".to_string(),
             mcts_model_name: "mcts_v1".to_string(),
             ppo_model_name: "ppo_growth_v1".to_string(),
+            quantum: QuantumConfig::default(),
         }
     }
 }
@@ -158,6 +166,7 @@ impl AgencyConfig {
             gnn_model_name: std::env::var("AGENCY_GNN_MODEL").unwrap_or_else(|_| "gnn_v1".into()),
             mcts_model_name: std::env::var("AGENCY_MCTS_MODEL").unwrap_or_else(|_| "mcts_v1".into()),
             ppo_model_name: std::env::var("AGENCY_PPO_MODEL").unwrap_or_else(|_| "ppo_growth_v1".into()),
+            quantum: QuantumConfig::from_env(),
         }
     }
 }

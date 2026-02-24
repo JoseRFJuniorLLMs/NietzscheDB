@@ -20,16 +20,35 @@ class NietzscheGraphDataset(Dataset):
     """
     Dataset representing graph nodes and their 'future' energy states.
     Attempts to load real data from clinical_dataset.pt, falls back to mock.
+
+    When distilled data is available (via json_to_pt.py from the Go distiller),
+    the target_diffusion field contains the ground truth from the classical
+    Chebyshev heat kernel — the "Professor" that teaches the GNN "Student".
     """
     def __init__(self, num_samples=1000, node_dim=3072, data_path="../../checkpoints/clinical_dataset.pt"):
         if os.path.exists(data_path):
             print(f"[DATASET] Loading real clinical data from {data_path}")
-            data = torch.load(data_path)
+            data = torch.load(data_path, weights_only=False)
             self.node_features = data["embeddings"]
             self.importance_labels = data["labels"]
-            # Target is the 'relaxed' or 'stable' embedding (self-supervised diffusion)
-            # For training, we simulate a slight diffusion shift from the original
-            self.target_features = self.node_features + torch.randn_like(self.node_features) * 0.05
+
+            # Check if the Professor (Chebyshev distiller) provided real targets
+            if "target_diffusion" in data:
+                print(f"[DATASET] Professor targets found! Shape: {data['target_diffusion'].shape}")
+                print(f"[DATASET] Training with REAL Chebyshev diffusion labels (zero-data method)")
+                # Expand target_diffusion (128D) to match node_dim (3072D)
+                # by padding with the original embedding (the diffusion refines, not replaces)
+                td = data["target_diffusion"]  # [N, 128]
+                pad_dim = node_dim - td.shape[1]
+                if pad_dim > 0:
+                    # First 128D = diffusion targets, rest = original embedding (subtle shift)
+                    self.target_features = self.node_features.clone()
+                    self.target_features[:, :td.shape[1]] = td
+                else:
+                    self.target_features = td[:, :node_dim]
+            else:
+                print(f"[DATASET] No distilled targets — using self-supervised diffusion shift")
+                self.target_features = self.node_features + torch.randn_like(self.node_features) * 0.05
         else:
             print(f"[DATASET] No real data found at {data_path}. Using mock manifolds.")
             self.node_features = torch.randn(num_samples, node_dim) * 0.5

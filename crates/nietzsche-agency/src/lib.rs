@@ -60,7 +60,7 @@ pub use event_bus::{AgencyEvent, AgencyEventBus, SectorId, WakeUpReason};
 pub use evolution::{EvolutionStrategy, EvolvedRule, EvolvedRuleType, RuleEvolution, EvolutionState};
 pub use identity::ObserverIdentity;
 pub use observer::{HealthReport, EnergyPercentiles, MetaObserver};
-pub use quantum::{BlochState, QuantumGate, poincare_to_bloch, bloch_to_poincare, batch_poincare_to_bloch, entanglement_proxy};
+pub use quantum::{BlochState, QuantumConfig, QuantumGate, poincare_to_bloch, bloch_to_poincare, batch_poincare_to_bloch, entanglement_proxy};
 pub use reactor::{AgencyIntent, AgencyReactor};
 pub use code_as_data::{ActionNode, ActionScanReport, create_action_node, scan_activatable_actions, record_firing, tick_cooldowns};
 pub use dialectic::{DialecticConfig, DialecticReport, Contradiction, Synthesis, run_dialectic_cycle};

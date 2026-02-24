@@ -152,6 +152,9 @@ service NietzscheDB {
   rpc DreamFrom    (DreamRequest)        returns (DreamSessionProto);
   rpc ApplyDream   (DreamIdRequest)      returns (DreamSessionProto);
   rpc RejectDream  (DreamIdRequest)      returns (DreamSessionProto);
+
+  // ── Quantum Fidelity (Bloch Sphere) ────────────────────────────────
+  rpc CalculateFidelity (QuantumFidelityRequest) returns (QuantumFidelityResponse);
 }
 
 // ── Neural messages ────────────────────────────────────────────────────────
@@ -331,6 +334,11 @@ message NodeResponse {
   int64          expires_at      = 10; // TTL: Unix seconds; 0 = never expires
   // Populated only on write RPCs (InsertNode). Absent on reads.
   BackpressureSignal backpressure = 11;
+  // Quantum purity ∈ [0.0, 1.0] derived from the Arousal→Purity mapping.
+  // 1.0 = pure quantum state (high energy, laser-like focus)
+  // 0.0 = maximally mixed state (low energy, free association)
+  // Computed via poincare_to_bloch(embedding, energy).purity on insert/energy update.
+  double         quantum_purity  = 12;
 }
 
 // ── Edge messages ──────────────────────────────────────────────────────────
@@ -1085,6 +1093,24 @@ message SqlExecResult {
   string message       = 3;  // optional message
 }
  
+// === Quantum Fidelity (Bloch Sphere) ===
+
+message QuantumNode {
+  repeated double embedding = 1;
+  float energy = 2;
+}
+
+message QuantumFidelityRequest {
+  repeated QuantumNode group_a = 1;
+  repeated QuantumNode group_b = 2;
+  optional float entanglement_threshold = 3;
+}
+
+message QuantumFidelityResponse {
+  double entanglement_proxy = 1;
+  bool threshold_crossed = 2;
+}
+
 // ── Wiederkehr Daemons (Phase 8) ──────────────────────────────────────────
  
 message CreateDaemonRequest {
