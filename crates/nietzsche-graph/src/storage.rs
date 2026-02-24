@@ -6,7 +6,7 @@ use rocksdb::{
     ReadOptions, SliceTransform,
 };
 use serde::{Deserialize, Serialize};
-use tracing::warn;
+use tracing::{error, warn};
 use uuid::Uuid;
 
 use crate::adjacency::AdjacencyIndex;
@@ -771,7 +771,10 @@ impl GraphStorage {
         }
 
         self.db.write(batch)
-            .map_err(|e| GraphError::Storage(e.to_string()))
+            .map_err(|e| {
+                error!("RocksDB write failure in put_node_atomic: {}", e);
+                GraphError::Storage(e.to_string())
+            })
     }
 
     /// Persist only `NodeMeta` (no embedding write).
