@@ -22,6 +22,11 @@ impl GnnEngine {
         Self { model_name: model_name.to_string() }
     }
 
+    /// Returns true if the underlying ONNX model is available in the registry.
+    pub fn is_loaded(&self) -> bool {
+        REGISTRY.get_session(&self.model_name).is_ok()
+    }
+
     pub async fn predict(&self, subgraph: &SampledSubgraph) -> Result<Vec<GnnPrediction>> {
         let session = REGISTRY.get_session(&self.model_name)
             .map_err(|e| GnnError::NeuralError(e))?;
