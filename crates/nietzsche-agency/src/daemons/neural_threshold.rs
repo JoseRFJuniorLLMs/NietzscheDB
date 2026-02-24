@@ -58,22 +58,35 @@ impl AgencyDaemon for NeuralThresholdDaemon {
             }
         }
 
-        // 3. Perform inference
+        // 3. Perform inference (only if model is loaded)
+        if !engine.is_loaded() {
+            return Ok(DaemonReport {
+                daemon_name: self.name().to_string(),
+                events_emitted: 0,
+                nodes_scanned,
+                duration_us: start.elapsed().as_micros() as u64,
+                details: vec![format!("No GNN model loaded — skipping neural threshold evaluation")],
+            });
+        }
+
         for id in candidates {
             if let Ok(subgraph) = sampler.sample_k_hop(id, 2) {
-                // prediction is async, but we are in a sync trait method.
-                // We need to bridge async to sync here, or change the trait.
-                // Since this runs in a background thread of the server, 
-                // we can use a block_on or run it in a tokio task.
-                
-                // For now, let's assume we can block_on (common in these server daemons handle loops).
-                let rt = tokio::runtime::Handle::current();
-                let predictions = rt.block_on(engine.predict(&subgraph))
-                    .map_err(|e| AgencyError::Internal(e.to_string()))?;
-                
+                // Use spawn_blocking to avoid block_on panic inside tokio runtime
+                let engine_ref = &engine;
+                let subgraph_clone = subgraph.clone();
+                let predictions = std::thread::scope(|s| {
+                    s.spawn(move || {
+                        let rt = tokio::runtime::Runtime::new().unwrap();
+                        rt.block_on(engine_ref.predict(&subgraph_clone))
+                    }).join()
+                });
+
+                let predictions = match predictions {
+                    Ok(Ok(p)) => p,
+                    _ => continue, // skip on error
+                };
+
                 if let Some(best) = predictions.first() {
-                    // If GNN importance is high (> 0.7) but energy is low, 
-                    // we signal a "NeuralProtection" event.
                     if best.score > 0.7 {
                         bus.publish(AgencyEvent::NeuralProtection {
                             node_id: id,
