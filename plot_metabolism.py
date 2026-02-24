@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """
-NietzscheDB — Autopsia do Metabolismo Cognitivo
+NietzscheDB — Protocolo Experimental: Termodinamica do Esquecimento
 
-Generates a 4-quadrant clinical dashboard from the Nezhmetdinov
-Forgetting Engine simulation telemetry.
+Compares 3 experimental variations:
+  A: DELETE_ONLY   (control — pure catabolism)
+  B: LOW_GEN       (~30% void-seeded generation)
+  C: MATCHED_GEN   (~100% void-seeded generation)
 
-Usage:
-    cargo run --release --bin simulate_forgetting
-    python plot_metabolism.py
-
-Input:  forgetting_telemetry.csv
-Output: metabolism_report.png (300 DPI)
+Input:  telemetry_A_delete_only.csv, telemetry_B_low_gen.csv, telemetry_C_matched_gen.csv
+Output: metabolism_report.png (300 DPI, 4-quadrant x 3 overlaid)
 """
 
 import pandas as pd
@@ -19,146 +17,155 @@ import matplotlib
 import sys
 import os
 
-# Use non-interactive backend if no display
 if os.environ.get("DISPLAY") is None and sys.platform != "win32":
     matplotlib.use("Agg")
 
-# Clinical visual style
 plt.rcParams.update({
-    "figure.figsize": (14, 10),
+    "figure.figsize": (16, 12),
     "axes.grid": True,
     "grid.alpha": 0.3,
     "font.size": 11,
-    "axes.titlesize": 13,
+    "axes.titlesize": 14,
     "axes.titleweight": "bold",
 })
 
+COLORS = {
+    "A": "#F44336",  # Red — delete only
+    "B": "#2196F3",  # Blue — low gen
+    "C": "#4CAF50",  # Green — matched gen
+}
+
+
+def load_data():
+    files = {
+        "A": "telemetry_A_delete_only.csv",
+        "B": "telemetry_B_low_gen.csv",
+        "C": "telemetry_C_matched_gen.csv",
+    }
+    data = {}
+    for key, path in files.items():
+        try:
+            data[key] = pd.read_csv(path)
+            print(f"  [{key}] {path}: {len(data[key])} ciclos")
+        except FileNotFoundError:
+            print(f"  [{key}] {path}: NAO ENCONTRADO")
+    return data
+
 
 def plot_metabolism():
-    print("=" * 60)
-    print("  NietzscheDB: Autopsia do Metabolismo Cognitivo")
-    print("=" * 60)
+    print("=" * 64)
+    print("  NietzscheDB: Protocolo Experimental (3 Variacoes)")
+    print("=" * 64)
     print()
 
-    csv_path = "forgetting_telemetry.csv"
-    print(f"Lendo {csv_path}...")
-
-    try:
-        df = pd.read_csv(csv_path)
-    except FileNotFoundError:
-        print(f"Erro: {csv_path} nao encontrado.")
-        print("Rode primeiro: cargo run --release --bin simulate_forgetting")
+    data = load_data()
+    if not data:
+        print("Nenhum CSV encontrado. Rode o simulador Rust primeiro.")
         return
-
-    print(f"  Ciclos: {len(df)}")
-    print(f"  Colunas: {list(df.columns)}")
-    print()
 
     fig, axes = plt.subplots(2, 2)
     fig.suptitle(
-        "NietzscheDB: Autopsia do Metabolismo Cognitivo (500 Ciclos)",
+        "Termodinamica do Esquecimento Ativo (500 Ciclos x 3 Experimentos)",
         fontsize=16,
         fontweight="bold",
     )
 
-    # ── Q1: TGC (Topological Generative Capacity) ──
-    ax1 = axes[0, 0]
-    ax1.plot(df["cycle"], df["tgc"], color="#2196F3", linewidth=2)
-    if len(df) > 0:
-        baseline = df["tgc"].iloc[0]
-        ax1.axhline(y=baseline, color="red", linestyle="--", alpha=0.5, label=f"Baseline={baseline:.3f}")
-    ax1.set_title("TGC (Capacidade Generativa Topologica)")
-    ax1.set_ylabel("Score TGC")
-    ax1.set_xlabel("Ciclo")
-    ax1.legend()
+    labels = {
+        "A": "A: Delete Only",
+        "B": "B: Low Gen (30%)",
+        "C": "C: Matched Gen (100%)",
+    }
 
-    # ── Q2: Vitality Variance (Cognitive Health) ──
+    # ── Q1: TGC ──
+    ax1 = axes[0, 0]
+    for key, df in data.items():
+        ax1.plot(df["cycle"], df["tgc"], color=COLORS[key], linewidth=1.8,
+                 label=labels[key], alpha=0.9)
+    ax1.set_title("TGC (Capacidade Generativa Topologica)")
+    ax1.set_ylabel("Score TGC (EMA)")
+    ax1.set_xlabel("Ciclo")
+    ax1.legend(fontsize=9)
+
+    # ── Q2: Var(V) ──
     ax2 = axes[0, 1]
-    ax2.plot(df["cycle"], df["variance_vitality"], color="#9C27B0", linewidth=2)
-    ax2.axhline(y=0.05, color="red", linestyle=":", alpha=0.5, label="Risco Monocultura (0.05)")
-    ax2.axhline(y=0.25, color="orange", linestyle=":", alpha=0.5, label="Risco Caos (0.25)")
+    for key, df in data.items():
+        ax2.plot(df["cycle"], df["variance_vitality"], color=COLORS[key],
+                 linewidth=1.8, label=labels[key], alpha=0.9)
+    ax2.axhline(y=0.05, color="black", linestyle=":", alpha=0.4, label="Monocultura (0.05)")
+    ax2.axhline(y=0.25, color="black", linestyle="--", alpha=0.4, label="Caos (0.25)")
     ax2.set_title("Var(V) - Variancia de Vitalidade")
     ax2.set_ylabel("Variancia")
     ax2.set_xlabel("Ciclo")
-    ax2.legend(fontsize=9)
+    ax2.legend(fontsize=8)
 
-    # ── Q3: Elite Drift (Identity Preservation) ──
+    # ── Q3: Elite Drift ──
     ax3 = axes[1, 0]
-    ax3.plot(df["cycle"], df["elite_drift"], color="#FF9800", linewidth=2)
-    ax3.axhline(y=0.1, color="red", linestyle="--", alpha=0.5, label="Limiar Identidade (0.1)")
+    for key, df in data.items():
+        ax3.plot(df["cycle"], df["elite_drift"], color=COLORS[key],
+                 linewidth=1.8, label=labels[key], alpha=0.9)
+    ax3.axhline(y=0.1, color="black", linestyle="--", alpha=0.4, label="Limiar (0.1)")
     ax3.set_title("Elite Drift (Desvio de Identidade)")
     ax3.set_ylabel("Distancia Euclidiana")
     ax3.set_xlabel("Ciclo")
-    ax3.legend()
+    ax3.legend(fontsize=9)
 
-    # ── Q4: Sacrifices per Cycle (The Guillotine) ──
+    # ── Q4: Sacrifices per Cycle ──
     ax4 = axes[1, 1]
-    ax4.bar(df["cycle"], df["sacrificed"], color="#F44336", alpha=0.7, width=1.0)
+    for key, df in data.items():
+        ax4.plot(df["cycle"], df["sacrificed"], color=COLORS[key],
+                 linewidth=1.2, label=labels[key], alpha=0.7)
     ax4.set_title("Sacrificios por Ciclo (Hard Deletes)")
     ax4.set_ylabel("Nos Deletados")
     ax4.set_xlabel("Ciclo")
+    ax4.legend(fontsize=9)
 
     plt.tight_layout()
     output_path = "metabolism_report.png"
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print()
     print(f"Dashboard gerado: {output_path}")
     print()
 
-    # ── Clinical Summary ──
-    print("=" * 60)
-    print("  AVALIACAO CLINICA")
-    print("=" * 60)
+    # ── Raw Summary Table ──
+    print("=" * 64)
+    print("  COMPARACAO: MEDIA DOS ULTIMOS 100 CICLOS")
+    print("=" * 64)
+    header = f"{'Metrica':<20} {'A:DelOnly':>12} {'B:LowGen':>12} {'C:Matched':>12}"
+    print(header)
+    print("-" * len(header))
 
-    # 1. TGC trend
-    if len(df) > 10:
-        tgc_start = df["tgc"].iloc[:10].mean()
-        tgc_end = df["tgc"].iloc[-10:].mean()
-        if tgc_end > tgc_start:
-            print(f"  [OK] TGC SUBIU: {tgc_start:.4f} -> {tgc_end:.4f} (fertilidade estrutural)")
-        else:
-            print(f"  [!!] TGC DESCEU: {tgc_start:.4f} -> {tgc_end:.4f} (sistema empobreceu)")
+    metrics = [
+        ("avg_TGC", "tgc"),
+        ("avg_Var(V)", "variance_vitality"),
+        ("avg_Elite_Drift", "elite_drift"),
+        ("avg_Sacrificed", "sacrificed"),
+        ("avg_Created", "nodes_created"),
+        ("avg_Mean_V", "mean_vitality"),
+        ("avg_Mean_E", "mean_energy"),
+        ("avg_Nodes", "total_nodes"),
+    ]
 
-    # 2. Variance plateau
-    if len(df) > 10:
-        var_end = df["variance_vitality"].iloc[-10:].mean()
-        if var_end < 0.001:
-            print(f"  [!!] Var(V) ESMAGOU em zero ({var_end:.6f}): COLAPSO ELITISTA")
-        elif var_end < 0.05:
-            print(f"  [OK] Var(V) baixa mas estavel ({var_end:.4f}): monocultura controlada")
-        else:
-            print(f"  [OK] Var(V) saudavel ({var_end:.4f}): diversidade cognitiva mantida")
+    for label, col in metrics:
+        vals = []
+        for key in ["A", "B", "C"]:
+            if key in data and col in data[key].columns:
+                last100 = data[key][col].iloc[-100:]
+                vals.append(f"{last100.mean():.4f}")
+            else:
+                vals.append("N/A")
+        print(f"  {label:<18} {vals[0]:>12} {vals[1]:>12} {vals[2]:>12}")
 
-    # 3. Elite drift
-    if len(df) > 0:
-        drift_final = df["elite_drift"].iloc[-1]
-        if drift_final < 0.05:
-            print(f"  [OK] Elite Drift minimo ({drift_final:.4f}): identidade preservada")
-        elif drift_final < 0.1:
-            print(f"  [OK] Elite Drift aceitavel ({drift_final:.4f}): identidade estavel")
+    # FP row
+    fp_vals = []
+    for key in ["A", "B", "C"]:
+        if key in data:
+            fp_vals.append(str(int(data[key]["signal_killed"].iloc[-1])))
         else:
-            print(f"  [!!] Elite Drift alto ({drift_final:.4f}): identidade comprometida")
-
-    # 4. Sacrifice convergence
-    if len(df) > 20:
-        early_sacr = df["sacrificed"].iloc[:20].mean()
-        late_sacr = df["sacrificed"].iloc[-20:].mean()
-        if late_sacr < early_sacr * 0.1:
-            print(f"  [OK] Sacrificios convergem a zero: {early_sacr:.0f}/ciclo -> {late_sacr:.0f}/ciclo")
-        elif late_sacr < early_sacr * 0.5:
-            print(f"  [OK] Sacrificios diminuiram: {early_sacr:.0f}/ciclo -> {late_sacr:.0f}/ciclo")
-        else:
-            print(f"  [!!] Sacrificios NAO convergiram: {early_sacr:.0f}/ciclo -> {late_sacr:.0f}/ciclo")
-
-    # 5. False positives
-    if len(df) > 0:
-        fp = df["signal_killed"].iloc[-1]
-        if fp == 0:
-            print("  [OK] ZERO falsos positivos: elites 100% preservadas")
-        else:
-            print(f"  [!!] {fp} falsos positivos: elites danificadas")
+            fp_vals.append("N/A")
+    print(f"  {'total_FP':<18} {fp_vals[0]:>12} {fp_vals[1]:>12} {fp_vals[2]:>12}")
 
     print()
-    print("=" * 60)
+    print("=" * 64)
 
 
 if __name__ == "__main__":
