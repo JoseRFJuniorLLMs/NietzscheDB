@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-NietzscheDB — Protocolo Experimental: O Sistema Sabe Nascer?
+NietzscheDB — Benchmark: Real Graph Topology + Structural Metrics
 
-Compares 3 birth modes (isolated variable):
-  D: FOAM          (void-born orphans, kappa=0 — structural foam baseline)
-  E: ANCHORED      (elite-parented, kappa=2, no polarization)
-  F: DIALECTICAL   (elite-parented, kappa=2, entropy polarization)
+Compares 3 birth modes on real graph (10k nodes, ~50k edges):
+  D: FOAM          (void-born orphans, degree=0)
+  E: ANCHORED      (elite-parented, degree=2, no polarization)
+  F: DIALECTICAL   (elite-parented, degree=2, entropy polarization)
 
 Input:  telemetry_D_foam.csv, telemetry_E_anchored.csv, telemetry_F_dialectical.csv
-Output: metabolism_report.png (300 DPI, 6-panel dashboard)
+Output: metabolism_report.png (300 DPI, 8-panel dashboard)
 """
 
 import pandas as pd
@@ -21,18 +21,18 @@ if os.environ.get("DISPLAY") is None and sys.platform != "win32":
     matplotlib.use("Agg")
 
 plt.rcParams.update({
-    "figure.figsize": (18, 14),
+    "figure.figsize": (20, 18),
     "axes.grid": True,
     "grid.alpha": 0.3,
     "font.size": 11,
-    "axes.titlesize": 14,
+    "axes.titlesize": 13,
     "axes.titleweight": "bold",
 })
 
 COLORS = {
-    "D": "#F44336",  # Red — foam baseline
-    "E": "#2196F3",  # Blue — anchored only
-    "F": "#4CAF50",  # Green — dialectical (full Option A)
+    "D": "#F44336",
+    "E": "#2196F3",
+    "F": "#4CAF50",
 }
 
 
@@ -54,92 +54,110 @@ def load_data():
 
 def plot_metabolism():
     print("=" * 64)
-    print("  NietzscheDB: O Sistema Sabe Nascer? (3 Birth Modes)")
+    print("  NietzscheDB: Real Graph Benchmark (3 Birth Modes)")
     print("=" * 64)
     print()
 
     data = load_data()
     if not data:
-        print("Nenhum CSV encontrado. Rode o simulador Rust primeiro.")
+        print("Nenhum CSV encontrado.")
         return
 
-    fig, axes = plt.subplots(3, 2)
+    fig, axes = plt.subplots(4, 2)
     fig.suptitle(
-        "O Sistema Sabe Nascer? — 500 Ciclos x 3 Modos de Nascimento",
-        fontsize=16,
+        "Real Graph Benchmark — 10k nodes, ~50k edges, 100 cycles\n"
+        "TGC = intensity * quality * (1 + 2*dH) * (1 + 3*dE)",
+        fontsize=15,
         fontweight="bold",
     )
 
     labels = {
-        "D": "D: Foam (orphans, k=0)",
-        "E": "E: Anchored (k=2, no pol.)",
-        "F": "F: Dialectical (k=2 + pol.)",
+        "D": "D: Foam (orphans, deg=0)",
+        "E": "E: Anchored (deg=2, no pol.)",
+        "F": "F: Dialectical (deg=2 + pol.)",
     }
 
-    # ── Q1: TGC ──
-    ax1 = axes[0, 0]
+    # ── Q1: Structural Entropy Hs ──
+    ax = axes[0, 0]
     for key, df in data.items():
-        ax1.plot(df["cycle"], df["tgc"], color=COLORS[key], linewidth=1.8,
-                 label=labels[key], alpha=0.9)
-    ax1.set_title("TGC (Capacidade Generativa Topologica)")
-    ax1.set_ylabel("Score TGC (EMA)")
-    ax1.set_xlabel("Ciclo")
-    ax1.legend(fontsize=9)
+        ax.plot(df["cycle"], df["structural_entropy"], color=COLORS[key],
+                linewidth=1.8, label=labels[key], alpha=0.9)
+    ax.set_title("Structural Entropy (Hs)")
+    ax.set_ylabel("Shannon Entropy")
+    ax.set_xlabel("Ciclo")
+    ax.legend(fontsize=8)
 
-    # ── Q2: Var(V) ──
-    ax2 = axes[0, 1]
+    # ── Q2: Global Efficiency Eg ──
+    ax = axes[0, 1]
     for key, df in data.items():
-        ax2.plot(df["cycle"], df["variance_vitality"], color=COLORS[key],
-                 linewidth=1.8, label=labels[key], alpha=0.9)
-    ax2.axhline(y=0.05, color="black", linestyle=":", alpha=0.4, label="Monocultura (0.05)")
-    ax2.axhline(y=0.25, color="black", linestyle="--", alpha=0.4, label="Caos (0.25)")
-    ax2.set_title("Var(V) — Variancia de Vitalidade")
-    ax2.set_ylabel("Variancia")
-    ax2.set_xlabel("Ciclo")
-    ax2.legend(fontsize=8)
+        ax.plot(df["cycle"], df["global_efficiency"], color=COLORS[key],
+                linewidth=1.8, label=labels[key], alpha=0.9)
+    ax.set_title("Global Efficiency (Eg) — sampled BFS")
+    ax.set_ylabel("Avg 1/d")
+    ax.set_xlabel("Ciclo")
+    ax.legend(fontsize=8)
 
-    # ── Q3: Elite Drift ──
-    ax3 = axes[1, 0]
+    # ── Q3: TGC Raw ──
+    ax = axes[1, 0]
     for key, df in data.items():
-        ax3.plot(df["cycle"], df["elite_drift"], color=COLORS[key],
-                 linewidth=1.8, label=labels[key], alpha=0.9)
-    ax3.axhline(y=0.1, color="black", linestyle="--", alpha=0.4, label="Limiar (0.1)")
-    ax3.set_title("Elite Drift (Desvio de Identidade)")
-    ax3.set_ylabel("Distancia Euclidiana")
-    ax3.set_xlabel("Ciclo")
-    ax3.legend(fontsize=9)
+        ax.plot(df["cycle"], df["tgc_raw"], color=COLORS[key],
+                linewidth=1.8, label=labels[key], alpha=0.9)
+    ax.set_title("TGC Raw (dH * dE formula)")
+    ax.set_ylabel("TGC")
+    ax.set_xlabel("Ciclo")
+    ax.legend(fontsize=8)
 
-    # ── Q4: Sacrifices per Cycle ──
-    ax4 = axes[1, 1]
+    # ── Q4: TGC EMA ──
+    ax = axes[1, 1]
     for key, df in data.items():
-        ax4.plot(df["cycle"], df["sacrificed"], color=COLORS[key],
-                 linewidth=1.2, label=labels[key], alpha=0.7)
-    ax4.set_title("Sacrificios por Ciclo (Hard Deletes)")
-    ax4.set_ylabel("Nos Deletados")
-    ax4.set_xlabel("Ciclo")
-    ax4.legend(fontsize=9)
+        ax.plot(df["cycle"], df["tgc_ema"], color=COLORS[key],
+                linewidth=1.8, label=labels[key], alpha=0.9)
+    ax.set_title("TGC EMA (smoothed)")
+    ax.set_ylabel("TGC EMA")
+    ax.set_xlabel("Ciclo")
+    ax.legend(fontsize=8)
 
-    # ── Q5: Newborn Survival Rate (5th vital sign) ──
-    ax5 = axes[2, 0]
+    # ── Q5: Elite Drift ──
+    ax = axes[2, 0]
     for key, df in data.items():
-        ax5.plot(df["cycle"], df["newborn_survival"], color=COLORS[key],
-                 linewidth=1.8, label=labels[key], alpha=0.9)
-    ax5.axhline(y=0.5, color="black", linestyle=":", alpha=0.4, label="50% survival")
-    ax5.set_title("Newborn Survival Rate (Sobrevivencia Neonatal)")
-    ax5.set_ylabel("Fracao sobrevivente")
-    ax5.set_xlabel("Ciclo")
-    ax5.set_ylim(-0.05, 1.10)
-    ax5.legend(fontsize=9)
+        ax.plot(df["cycle"], df["elite_drift"], color=COLORS[key],
+                linewidth=1.8, label=labels[key], alpha=0.9)
+    ax.axhline(y=0.1, color="black", linestyle="--", alpha=0.4, label="Limiar (0.1)")
+    ax.set_title("Elite Drift (Desvio de Identidade)")
+    ax.set_ylabel("Distancia")
+    ax.set_xlabel("Ciclo")
+    ax.legend(fontsize=8)
 
-    # ── Q6: Mean Energy ──
-    ax6 = axes[2, 1]
+    # ── Q6: Var(V) ──
+    ax = axes[2, 1]
     for key, df in data.items():
-        ax6.plot(df["cycle"], df["mean_energy"], color=COLORS[key],
-                 linewidth=1.8, label=labels[key], alpha=0.9)
-    ax6.set_title("Energia Media (Reserva Metabolica)")
-    ax6.set_ylabel("Mean Energy")
-    ax6.set_xlabel("Ciclo")
-    ax6.legend(fontsize=9)
+        ax.plot(df["cycle"], df["variance_vitality"], color=COLORS[key],
+                linewidth=1.8, label=labels[key], alpha=0.9)
+    ax.axhline(y=0.05, color="black", linestyle=":", alpha=0.4, label="Monocultura (0.05)")
+    ax.set_title("Var(V) — Variancia de Vitalidade")
+    ax.set_ylabel("Variancia")
+    ax.set_xlabel("Ciclo")
+    ax.legend(fontsize=8)
+
+    # ── Q7: Edges over time ──
+    ax = axes[3, 0]
+    for key, df in data.items():
+        ax.plot(df["cycle"], df["total_edges"], color=COLORS[key],
+                linewidth=1.8, label=labels[key], alpha=0.9)
+    ax.set_title("Total Edges (Graph Connectivity)")
+    ax.set_ylabel("Edges")
+    ax.set_xlabel("Ciclo")
+    ax.legend(fontsize=8)
+
+    # ── Q8: ms/cycle (Performance) ──
+    ax = axes[3, 1]
+    for key, df in data.items():
+        ax.plot(df["cycle"], df["ms_per_cycle"], color=COLORS[key],
+                linewidth=1.2, label=labels[key], alpha=0.7)
+    ax.set_title("Performance (ms/cycle)")
+    ax.set_ylabel("Milliseconds")
+    ax.set_xlabel("Ciclo")
+    ax.legend(fontsize=8)
 
     plt.tight_layout()
     output_path = "metabolism_report.png"
@@ -148,56 +166,52 @@ def plot_metabolism():
     print(f"Dashboard gerado: {output_path}")
     print()
 
-    # ── Raw Summary Table ──
-    print("=" * 64)
-    print("  COMPARACAO: MEDIA DOS ULTIMOS 100 CICLOS")
-    print("=" * 64)
-    header = f"{'Metrica':<22} {'D:Foam':>12} {'E:Anchored':>12} {'F:Dialect.':>12}"
+    # ── Summary Table ──
+    print("=" * 72)
+    print("  COMPARACAO: MEDIA COMPLETA (ALL CYCLES)")
+    print("=" * 72)
+    header = f"{'Metrica':<24} {'D:Foam':>14} {'E:Anchored':>14} {'F:Dialect.':>14}"
     print(header)
     print("-" * len(header))
 
     metrics = [
-        ("avg_TGC", "tgc"),
-        ("avg_Var(V)", "variance_vitality"),
+        ("avg_Hs", "structural_entropy"),
+        ("avg_Eg", "global_efficiency"),
+        ("avg_TGC_raw", "tgc_raw"),
+        ("avg_TGC_ema", "tgc_ema"),
         ("avg_Elite_Drift", "elite_drift"),
+        ("avg_Var(V)", "variance_vitality"),
         ("avg_Sacrificed", "sacrificed"),
         ("avg_Created", "nodes_created"),
         ("avg_Newborn_Surv", "newborn_survival"),
         ("avg_Mean_V", "mean_vitality"),
         ("avg_Mean_E", "mean_energy"),
         ("avg_Nodes", "total_nodes"),
+        ("avg_Edges", "total_edges"),
+        ("avg_ms/cycle", "ms_per_cycle"),
     ]
 
     for label, col in metrics:
         vals = []
         for key in ["D", "E", "F"]:
             if key in data and col in data[key].columns:
-                last100 = data[key][col].iloc[-100:]
-                vals.append(f"{last100.mean():.4f}")
+                vals.append(f"{data[key][col].mean():.4f}")
             else:
                 vals.append("N/A")
-        print(f"  {label:<20} {vals[0]:>12} {vals[1]:>12} {vals[2]:>12}")
+        print(f"  {label:<22} {vals[0]:>14} {vals[1]:>14} {vals[2]:>14}")
 
-    # FP row
-    fp_vals = []
-    for key in ["D", "E", "F"]:
-        if key in data:
-            fp_vals.append(str(int(data[key]["signal_killed"].iloc[-1])))
-        else:
-            fp_vals.append("N/A")
-    print(f"  {'total_FP':<20} {fp_vals[0]:>12} {fp_vals[1]:>12} {fp_vals[2]:>12}")
-
-    # Noise killed
-    nk_vals = []
-    for key in ["D", "E", "F"]:
-        if key in data:
-            nk_vals.append(str(int(data[key]["noise_killed"].iloc[-1])))
-        else:
-            nk_vals.append("N/A")
-    print(f"  {'total_noise_del':<20} {nk_vals[0]:>12} {nk_vals[1]:>12} {nk_vals[2]:>12}")
+    # FP + noise
+    for metric, col in [("total_FP", "signal_killed"), ("total_noise_del", "noise_killed")]:
+        vals = []
+        for key in ["D", "E", "F"]:
+            if key in data:
+                vals.append(str(int(data[key][col].iloc[-1])))
+            else:
+                vals.append("N/A")
+        print(f"  {metric:<22} {vals[0]:>14} {vals[1]:>14} {vals[2]:>14}")
 
     print()
-    print("=" * 64)
+    print("=" * 72)
 
 
 if __name__ == "__main__":

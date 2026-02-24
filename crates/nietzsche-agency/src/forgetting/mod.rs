@@ -18,12 +18,14 @@
 pub mod anti_gaming;
 pub mod bounds;
 pub mod causal_immunity;
+pub mod cycle_engine;
 pub mod elite_drift;
 pub mod friction;
 pub mod judgment;
 pub mod ledger;
 pub mod ricci;
 pub mod stability;
+pub mod structural_metrics;
 pub mod telemetry;
 pub mod tgc;
 pub mod vitality;
@@ -46,10 +48,16 @@ pub use ledger::{DeletionLedger, DeletionReceipt, StructuralHash, InclusionProof
 pub use void_tracker::{VoidCoordinate, VoidTracker};
 
 // CAMADA 4: Saúde Global
-pub use tgc::{TgcCalculator, TgcSnapshot};
+pub use tgc::{TgcCalculator, TgcSnapshot, TgcMonitor};
 pub use elite_drift::{EliteDriftTracker, EliteCentroid};
 pub use anti_gaming::{AntiGamingMonitor, AntiGamingReport, GamingViolation};
 pub use stability::{StabilityMonitor, StabilityConfig, CollapseType, CollapseAlert, ThermalPerturbation};
+
+// Structural Metrics
+pub use structural_metrics::{structural_entropy, global_efficiency, degree_distribution};
+
+// Cycle Engine
+pub use cycle_engine::{CycleEngine, CycleConfig, CycleReport};
 
 // Telemetry
 pub use telemetry::{CycleTelemetry, TelemetryWriter, format_cycle_summary};
