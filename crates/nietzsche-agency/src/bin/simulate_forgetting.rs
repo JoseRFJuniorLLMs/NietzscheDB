@@ -261,8 +261,58 @@ impl ForgettingSimulator {
         sigmoid(z)
     }
 
+    /// Apply energy decay and inject new noise (simulating a living system).
+    fn evolve_universe(&mut self, cycle_id: usize) {
+        // Deterministic RNG per cycle
+        let mut seed: u64 = 42u64.wrapping_mul(cycle_id as u64 + 7919);
+        let mut next_f32 = |lo: f32, hi: f32| -> f32 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let t = ((seed >> 33) as f32) / (u32::MAX as f32);
+            lo + t * (hi - lo)
+        };
+
+        // 1. Energy decay: all nodes lose 0.5-2% energy per cycle (entropy drift)
+        for node in &mut self.graph {
+            let decay = next_f32(0.005, 0.02);
+            node.energy = (node.energy - decay).max(0.0);
+            // Toxicity slowly increases for isolated nodes
+            if node.causal_edges == 0 {
+                node.toxicity = (node.toxicity + next_f32(0.001, 0.01)).min(1.0);
+            }
+        }
+
+        // 2. Signal nodes recover energy (Zaratustra Will-to-Power effect)
+        for node in &mut self.graph {
+            if node.is_signal && node.causal_edges > 0 {
+                let recovery = next_f32(0.005, 0.015);
+                node.energy = (node.energy + recovery).min(1.0);
+            }
+        }
+
+        // 3. Inject new noise nodes (simulating real-world data ingestion)
+        // Rate decreases over time as the system "matures"
+        let injection_rate = if cycle_id < 50 { 20 } else if cycle_id < 200 { 10 } else { 5 };
+        for _ in 0..injection_rate {
+            self.graph.push(SimNode {
+                _id: Uuid::new_v4(),
+                energy: next_f32(0.0, 0.20),
+                hausdorff: next_f32(0.05, 0.25),
+                entropy_delta: next_f32(0.5, 1.0),
+                elite_proximity: next_f32(0.7, 1.0),
+                causal_edges: 0,
+                toxicity: next_f32(0.3, 0.8),
+                is_signal: false,
+                px: next_f32(-0.9, 0.9),
+                py: next_f32(-0.9, 0.9),
+            });
+        }
+    }
+
     /// Run one Zaratustra cycle with full telemetry.
     fn run_cycle(&mut self, cycle_id: usize) -> CycleTelemetry {
+        // First, evolve the universe (energy decay + noise injection)
+        self.evolve_universe(cycle_id);
+
         let mut sacrificed = 0usize;
         let mut vitalities = Vec::with_capacity(self.graph.len());
         let mut surviving = Vec::with_capacity(self.graph.len());
