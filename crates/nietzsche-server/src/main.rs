@@ -837,6 +837,32 @@ async fn main() -> anyhow::Result<()> {
                                                 }
                                             }
                                         }
+                                        nietzsche_agency::AgencyIntent::HardDelete { node_id, vitality, reason } => {
+                                            info!(
+                                                collection = %col_name,
+                                                node_id    = %node_id,
+                                                vitality   = vitality,
+                                                reason     = %reason,
+                                                "agency: HardDelete — Nezhmetdinov condemned node"
+                                            );
+                                            drop(db);
+                                            let mut db_w = shared.write().await;
+                                            if let Err(e) = db_w.delete_node(node_id) {
+                                                warn!(node_id = %node_id, error = %e, "agency: HardDelete failed");
+                                            } else {
+                                                info!(node_id = %node_id, "agency: HardDelete completed");
+                                            }
+                                            break;
+                                        }
+                                        nietzsche_agency::AgencyIntent::RecordDeletion { node_id, cycle, structural_hash } => {
+                                            info!(
+                                                collection       = %col_name,
+                                                node_id          = %node_id,
+                                                cycle            = cycle,
+                                                structural_hash  = %structural_hash,
+                                                "agency: RecordDeletion — audit ledger entry"
+                                            );
+                                        }
                                     }
                                 }
 
