@@ -287,6 +287,6 @@ impl CollectionManager {
     fn open_db(dir: &Path, cfg: &CollectionConfig) -> Result<NietzscheDB<AnyVectorStore>, GraphError> {
         let vs = AnyVectorStore::for_collection(dir, cfg.dim, cfg.vector_metric())
             .map_err(|e| GraphError::Storage(format!("vector store: {e}")))?;
-        NietzscheDB::open(dir, vs)
+        NietzscheDB::open(dir, vs, cfg.dim)
     }
 }

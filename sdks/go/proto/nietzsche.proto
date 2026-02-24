@@ -154,6 +154,9 @@ service NietzscheDB {
   rpc DreamFrom    (DreamRequest)        returns (DreamSessionProto);
   rpc ApplyDream   (DreamIdRequest)      returns (DreamSessionProto);
   rpc RejectDream  (DreamIdRequest)      returns (DreamSessionProto);
+
+  // ── Quantum Fidelity (Bloch Sphere) ────────────────────────────────
+  rpc CalculateFidelity (QuantumFidelityRequest) returns (QuantumFidelityResponse);
 }
 
 // ── Neural messages ────────────────────────────────────────────────────────
@@ -1086,7 +1089,25 @@ message SqlExecResult {
   bool   success       = 2;  // true if statement succeeded
   string message       = 3;  // optional message
 }
- 
+
+// === Quantum Fidelity (Bloch Sphere) ===
+
+message QuantumNode {
+  repeated double embedding = 1;
+  float energy = 2;
+}
+
+message QuantumFidelityRequest {
+  repeated QuantumNode group_a = 1;
+  repeated QuantumNode group_b = 2;
+  optional float entanglement_threshold = 3;
+}
+
+message QuantumFidelityResponse {
+  double entanglement_proxy = 1;
+  bool threshold_crossed = 2;
+}
+
 // ── Wiederkehr Daemons (Phase 8) ──────────────────────────────────────────
  
 message CreateDaemonRequest {

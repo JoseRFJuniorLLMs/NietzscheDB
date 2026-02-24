@@ -96,6 +96,7 @@ const (
 	NietzscheDB_DreamFrom_FullMethodName            = "/nietzsche.NietzscheDB/DreamFrom"
 	NietzscheDB_ApplyDream_FullMethodName           = "/nietzsche.NietzscheDB/ApplyDream"
 	NietzscheDB_RejectDream_FullMethodName          = "/nietzsche.NietzscheDB/RejectDream"
+	NietzscheDB_CalculateFidelity_FullMethodName    = "/nietzsche.NietzscheDB/CalculateFidelity"
 )
 
 // NietzscheDBClient is the client API for NietzscheDB service.
@@ -207,6 +208,8 @@ type NietzscheDBClient interface {
 	DreamFrom(ctx context.Context, in *DreamRequest, opts ...grpc.CallOption) (*DreamSessionProto, error)
 	ApplyDream(ctx context.Context, in *DreamIdRequest, opts ...grpc.CallOption) (*DreamSessionProto, error)
 	RejectDream(ctx context.Context, in *DreamIdRequest, opts ...grpc.CallOption) (*DreamSessionProto, error)
+	// ── Quantum Fidelity (Bloch Sphere) ────────────────────────────────
+	CalculateFidelity(ctx context.Context, in *QuantumFidelityRequest, opts ...grpc.CallOption) (*QuantumFidelityResponse, error)
 }
 
 type nietzscheDBClient struct {
@@ -996,6 +999,16 @@ func (c *nietzscheDBClient) RejectDream(ctx context.Context, in *DreamIdRequest,
 	return out, nil
 }
 
+func (c *nietzscheDBClient) CalculateFidelity(ctx context.Context, in *QuantumFidelityRequest, opts ...grpc.CallOption) (*QuantumFidelityResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QuantumFidelityResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_CalculateFidelity_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NietzscheDBServer is the server API for NietzscheDB service.
 // All implementations must embed UnimplementedNietzscheDBServer
 // for forward compatibility.
@@ -1105,6 +1118,8 @@ type NietzscheDBServer interface {
 	DreamFrom(context.Context, *DreamRequest) (*DreamSessionProto, error)
 	ApplyDream(context.Context, *DreamIdRequest) (*DreamSessionProto, error)
 	RejectDream(context.Context, *DreamIdRequest) (*DreamSessionProto, error)
+	// ── Quantum Fidelity (Bloch Sphere) ────────────────────────────────
+	CalculateFidelity(context.Context, *QuantumFidelityRequest) (*QuantumFidelityResponse, error)
 	mustEmbedUnimplementedNietzscheDBServer()
 }
 
@@ -1345,6 +1360,9 @@ func (UnimplementedNietzscheDBServer) ApplyDream(context.Context, *DreamIdReques
 }
 func (UnimplementedNietzscheDBServer) RejectDream(context.Context, *DreamIdRequest) (*DreamSessionProto, error) {
 	return nil, status.Error(codes.Unimplemented, "method RejectDream not implemented")
+}
+func (UnimplementedNietzscheDBServer) CalculateFidelity(context.Context, *QuantumFidelityRequest) (*QuantumFidelityResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CalculateFidelity not implemented")
 }
 func (UnimplementedNietzscheDBServer) mustEmbedUnimplementedNietzscheDBServer() {}
 func (UnimplementedNietzscheDBServer) testEmbeddedByValue()                     {}
@@ -2746,6 +2764,24 @@ func _NietzscheDB_RejectDream_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NietzscheDB_CalculateFidelity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QuantumFidelityRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).CalculateFidelity(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_CalculateFidelity_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).CalculateFidelity(ctx, req.(*QuantumFidelityRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NietzscheDB_ServiceDesc is the grpc.ServiceDesc for NietzscheDB service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -3056,6 +3092,10 @@ var NietzscheDB_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RejectDream",
 			Handler:    _NietzscheDB_RejectDream_Handler,
+		},
+		{
+			MethodName: "CalculateFidelity",
+			Handler:    _NietzscheDB_CalculateFidelity_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

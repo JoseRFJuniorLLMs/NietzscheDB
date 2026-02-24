@@ -26,6 +26,82 @@ use uuid::Uuid;
 use crate::model::Edge;
 
 // ─────────────────────────────────────────────
+// Bloch state (local copy — avoids circular dep on nietzsche-agency)
+// ─────────────────────────────────────────────
+
+/// Quantum state on the Bloch sphere.
+///
+/// This is a lightweight, local definition compatible with
+/// `nietzsche_agency::quantum::BlochState`. We duplicate it here because
+/// `nietzsche-agency` already depends on `nietzsche-graph`, so adding the
+/// reverse dependency would create a cycle.
+#[derive(Debug, Clone)]
+pub struct BlochState {
+    /// Polar angle theta in [0, pi].
+    pub theta: f64,
+    /// Azimuthal angle phi in [0, 2*pi).
+    pub phi: f64,
+    /// State purity in [0, 1] (1 = pure, 0 = maximally mixed).
+    pub purity: f64,
+    /// Bloch vector (x, y, z) with ||v|| = purity.
+    pub vector: [f64; 3],
+}
+
+impl BlochState {
+    /// Create from polar coordinates + purity.
+    pub fn new(theta: f64, phi: f64, purity: f64) -> Self {
+        let p = purity.clamp(0.0, 1.0);
+        let vector = [
+            p * theta.sin() * phi.cos(),
+            p * theta.sin() * phi.sin(),
+            p * theta.cos(),
+        ];
+        Self { theta, phi, purity: p, vector }
+    }
+
+    /// Quantum fidelity between two states.
+    /// For pure states: F = cos^2(alpha/2) where alpha is the Bloch vector angle.
+    pub fn fidelity(&self, other: &BlochState) -> f64 {
+        let dot = self.vector[0] * other.vector[0]
+            + self.vector[1] * other.vector[1]
+            + self.vector[2] * other.vector[2];
+        let norm_a = bloch_vec_norm(&self.vector);
+        let norm_b = bloch_vec_norm(&other.vector);
+
+        if norm_a < 1e-12 || norm_b < 1e-12 {
+            return 0.5; // Maximally mixed
+        }
+
+        let cos_angle = (dot / (norm_a * norm_b)).clamp(-1.0, 1.0);
+        (1.0 + cos_angle) / 2.0
+    }
+}
+
+fn bloch_vec_norm(v: &[f64; 3]) -> f64 {
+    (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt()
+}
+
+/// Entanglement proxy: average fidelity between two groups of Bloch states.
+/// High fidelity means strong coupling between groups.
+///
+/// This is a local copy of `nietzsche_agency::quantum::entanglement_proxy`
+/// to avoid a circular crate dependency.
+pub fn entanglement_proxy(group_a: &[BlochState], group_b: &[BlochState]) -> f64 {
+    if group_a.is_empty() || group_b.is_empty() {
+        return 0.0;
+    }
+    let mut total = 0.0;
+    let mut count = 0u64;
+    for a in group_a {
+        for b in group_b {
+            total += a.fidelity(b);
+            count += 1;
+        }
+    }
+    if count == 0 { 0.0 } else { total / count as f64 }
+}
+
+// ─────────────────────────────────────────────
 // Schrödinger Edge
 // ─────────────────────────────────────────────
 
@@ -105,6 +181,34 @@ impl SchrodingerEdge {
         self.probability = (self.probability + amount).min(1.0);
     }
 
+    /// Quantum-enhanced collapse using the entanglement proxy.
+    ///
+    /// If context `BlochState`s are highly entangled (high fidelity) with the
+    /// target state, the edge is forced to materialise -- analogous to
+    /// observing one half of an entangled pair forcing the other to collapse.
+    ///
+    /// When entanglement is below the threshold the method falls back to the
+    /// classical probabilistic collapse with the given context string and rng.
+    pub fn collapse_with_entanglement(
+        &self,
+        context_states: &[BlochState],
+        target_state: &BlochState,
+        entanglement_threshold: f64,
+        context: Option<&str>,
+        rng: &mut impl Rng,
+    ) -> bool {
+        let target_group = [target_state.clone()];
+        let entanglement = entanglement_proxy(context_states, &target_group);
+
+        if entanglement > entanglement_threshold {
+            // Quantum physics dictates: observing one forces the other to materialise
+            true
+        } else {
+            // Fall back to classical probabilistic collapse
+            self.collapse(context, rng)
+        }
+    }
+
     /// Write the probabilistic state back into the edge's metadata.
     pub fn write_to_edge(&self) -> Edge {
         let mut edge = self.edge.clone();
@@ -149,6 +253,45 @@ pub fn collapse_edges(
             se.collapse(context, rng)
         })
         .cloned()
+        .collect()
+}
+
+/// Batch entanglement-aware collapse: for each edge, check whether the
+/// corresponding target state is entangled with the query context states.
+///
+/// `edges` and `target_states` must be the same length — each edge is paired
+/// with its target node's `BlochState`. Edges whose target is highly
+/// entangled with the context are forced to materialise; the rest fall back
+/// to classical probabilistic collapse.
+///
+/// Returns a `Vec<bool>` aligned with `edges` (true = edge exists).
+pub fn collapse_edges_with_entanglement(
+    edges: &[Edge],
+    context_states: &[BlochState],
+    target_states: &[BlochState],
+    entanglement_threshold: f64,
+    context: Option<&str>,
+    rng: &mut impl Rng,
+) -> Vec<bool> {
+    assert_eq!(
+        edges.len(),
+        target_states.len(),
+        "edges and target_states must have the same length"
+    );
+
+    edges
+        .iter()
+        .zip(target_states.iter())
+        .map(|(edge, target)| {
+            let se = SchrodingerEdge::from_edge(edge);
+            se.collapse_with_entanglement(
+                context_states,
+                target,
+                entanglement_threshold,
+                context,
+                rng,
+            )
+        })
         .collect()
 }
 
@@ -343,5 +486,166 @@ mod tests {
         assert!((se.probability - 0.7).abs() < 1e-6);
         assert!((se.decay_rate - 0.02).abs() < 1e-6);
         assert_eq!(se.context_boost.as_deref(), Some("science"));
+    }
+
+    // ── Entanglement-based collapse tests ───────────────────────────
+
+    #[test]
+    fn bloch_fidelity_same_state_is_one() {
+        let s = BlochState::new(1.0, 0.5, 1.0);
+        assert!((s.fidelity(&s) - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn bloch_fidelity_opposite_poles_near_zero() {
+        let zero = BlochState::new(0.0, 0.0, 1.0); // north pole
+        let one = BlochState::new(std::f64::consts::PI, 0.0, 1.0); // south pole
+        assert!(zero.fidelity(&one) < 0.01, "opposite poles should have fidelity ~0");
+    }
+
+    #[test]
+    fn entanglement_proxy_identical_groups_high() {
+        let states = vec![
+            BlochState::new(0.5, 0.5, 1.0),
+            BlochState::new(0.6, 0.5, 1.0),
+        ];
+        let e = entanglement_proxy(&states, &states);
+        assert!(e > 0.8, "identical groups should be highly entangled, got {e}");
+    }
+
+    #[test]
+    fn entanglement_proxy_empty_is_zero() {
+        let states = vec![BlochState::new(0.5, 0.5, 1.0)];
+        assert_eq!(entanglement_proxy(&[], &states), 0.0);
+        assert_eq!(entanglement_proxy(&states, &[]), 0.0);
+    }
+
+    #[test]
+    fn entanglement_proxy_orthogonal_groups_low() {
+        let group_a = vec![BlochState::new(0.0, 0.0, 1.0)]; // north pole
+        let group_b = vec![BlochState::new(std::f64::consts::PI, 0.0, 1.0)]; // south pole
+        let e = entanglement_proxy(&group_a, &group_b);
+        assert!(e < 0.1, "orthogonal groups should have low entanglement, got {e}");
+    }
+
+    #[test]
+    fn collapse_with_entanglement_forces_true_when_entangled() {
+        // Edge with p=0.0 should NEVER collapse classically
+        let edge = test_edge(0.0);
+        let se = SchrodingerEdge::from_edge(&edge);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(99);
+
+        // Context and target are the same state → fidelity = 1.0
+        let context = vec![BlochState::new(0.5, 1.0, 1.0)];
+        let target = BlochState::new(0.5, 1.0, 1.0);
+
+        for _ in 0..50 {
+            assert!(
+                se.collapse_with_entanglement(&context, &target, 0.5, None, &mut rng),
+                "high entanglement should force collapse even with p=0.0"
+            );
+        }
+    }
+
+    #[test]
+    fn collapse_with_entanglement_falls_back_when_low() {
+        // Edge with p=0.0 should never collapse when entanglement is also low
+        let edge = test_edge(0.0);
+        let se = SchrodingerEdge::from_edge(&edge);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(99);
+
+        // North pole vs south pole → fidelity ~0
+        let context = vec![BlochState::new(0.0, 0.0, 1.0)];
+        let target = BlochState::new(std::f64::consts::PI, 0.0, 1.0);
+
+        for _ in 0..50 {
+            assert!(
+                !se.collapse_with_entanglement(&context, &target, 0.5, None, &mut rng),
+                "low entanglement + p=0 should never collapse"
+            );
+        }
+    }
+
+    #[test]
+    fn collapse_with_entanglement_respects_threshold() {
+        let edge = test_edge(0.0);
+        let se = SchrodingerEdge::from_edge(&edge);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        // Two nearby states — fidelity is high but less than 1.0
+        let context = vec![BlochState::new(0.5, 1.0, 1.0)];
+        let target = BlochState::new(0.6, 1.0, 1.0);
+
+        let entanglement = entanglement_proxy(&context, &[target.clone()]);
+
+        // With a threshold above the actual entanglement → should NOT force collapse
+        let high_threshold = entanglement + 0.1;
+        assert!(
+            !se.collapse_with_entanglement(&context, &target, high_threshold, None, &mut rng),
+            "threshold above entanglement should fall back to classical (p=0)"
+        );
+
+        // With a threshold below the actual entanglement → should force collapse
+        let low_threshold = entanglement - 0.1;
+        assert!(
+            se.collapse_with_entanglement(&context, &target, low_threshold, None, &mut rng),
+            "threshold below entanglement should force collapse"
+        );
+    }
+
+    #[test]
+    fn batch_collapse_with_entanglement_forces_entangled() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        // All edges have p=0 (would never collapse classically)
+        let edges: Vec<Edge> = (0..3).map(|_| test_edge(0.0)).collect();
+
+        // Same state for context and all targets → entanglement = 1.0
+        let context = vec![BlochState::new(0.5, 1.0, 1.0)];
+        let targets = vec![
+            BlochState::new(0.5, 1.0, 1.0),
+            BlochState::new(0.5, 1.0, 1.0),
+            BlochState::new(0.5, 1.0, 1.0),
+        ];
+
+        let results = collapse_edges_with_entanglement(
+            &edges, &context, &targets, 0.5, None, &mut rng,
+        );
+
+        assert_eq!(results.len(), 3);
+        assert!(results.iter().all(|&r| r), "all edges should be forced to collapse");
+    }
+
+    #[test]
+    fn batch_collapse_mixed_entanglement() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        // p=0 edges
+        let edges: Vec<Edge> = (0..2).map(|_| test_edge(0.0)).collect();
+
+        let context = vec![BlochState::new(0.5, 1.0, 1.0)];
+        let targets = vec![
+            BlochState::new(0.5, 1.0, 1.0),                             // high entanglement
+            BlochState::new(std::f64::consts::PI, 0.0, 1.0),            // low entanglement (opposite pole)
+        ];
+
+        let results = collapse_edges_with_entanglement(
+            &edges, &context, &targets, 0.5, None, &mut rng,
+        );
+
+        assert_eq!(results.len(), 2);
+        assert!(results[0], "first edge should collapse (high entanglement)");
+        assert!(!results[1], "second edge should NOT collapse (low entanglement + p=0)");
+    }
+
+    #[test]
+    #[should_panic(expected = "edges and target_states must have the same length")]
+    fn batch_collapse_panics_on_mismatched_lengths() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+        let edges: Vec<Edge> = (0..3).map(|_| test_edge(0.5)).collect();
+        let context = vec![BlochState::new(0.5, 1.0, 1.0)];
+        let targets = vec![BlochState::new(0.5, 1.0, 1.0)]; // only 1, but 3 edges
+
+        collapse_edges_with_entanglement(&edges, &context, &targets, 0.5, None, &mut rng);
     }
 }

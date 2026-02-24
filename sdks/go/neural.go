@@ -50,3 +50,33 @@ func (c *NietzscheClient) MctsSearch(ctx context.Context, opts MctsOpts) (MctsRe
 		Value:        resp.Value,
 	}, nil
 }
+
+// CalculateFidelity computes quantum fidelity (Bloch sphere entanglement proxy) between two groups of nodes.
+func (c *NietzscheClient) CalculateFidelity(ctx context.Context, opts FidelityOpts) (FidelityResult, error) {
+	groupA := make([]*pb.QuantumNode, len(opts.GroupA))
+	for i, n := range opts.GroupA {
+		groupA[i] = &pb.QuantumNode{Embedding: n.Embedding, Energy: n.Energy}
+	}
+	groupB := make([]*pb.QuantumNode, len(opts.GroupB))
+	for i, n := range opts.GroupB {
+		groupB[i] = &pb.QuantumNode{Embedding: n.Embedding, Energy: n.Energy}
+	}
+
+	req := &pb.QuantumFidelityRequest{
+		GroupA: groupA,
+		GroupB: groupB,
+	}
+	if opts.EntanglementThreshold > 0 {
+		req.EntanglementThreshold = &opts.EntanglementThreshold
+	}
+
+	resp, err := c.stub.CalculateFidelity(ctx, req)
+	if err != nil {
+		return FidelityResult{}, fmt.Errorf("nietzsche: CalculateFidelity failed: %w", err)
+	}
+
+	return FidelityResult{
+		EntanglementProxy: resp.EntanglementProxy,
+		ThresholdCrossed:  resp.ThresholdCrossed,
+	}, nil
+}

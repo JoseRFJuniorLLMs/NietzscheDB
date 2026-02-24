@@ -67,7 +67,10 @@ pub use backup::{BackupManager, BackupInfo};
 pub use encryption::EncryptionConfig;
 pub use fulltext::{FullTextIndex, FtsResult};
 pub use schema::{SchemaValidator, SchemaConstraint, FieldType};
-pub use schrodinger::{SchrodingerEdge, collapse_edges, decay_all_edges, create_probabilistic_edge};
+pub use schrodinger::{
+    SchrodingerEdge, BlochState, collapse_edges, collapse_edges_with_entanglement,
+    decay_all_edges, create_probabilistic_edge, entanglement_proxy,
+};
 pub use valence::{
     arousal_modulated_bias, clamp_arousal, clamp_valence, decay_arousal,
     emotional_gravity, reinforce_emotion, set_emotion, valence_edge_modifier,
