@@ -85,6 +85,18 @@ NietzscheDB doesn't just store data; it projects it across four distinct manifol
 
 ---
 
+## 🧠 Neuro-Symbolic Intelligence: Beyond Vectors
+
+NietzscheDB is a **Neuro-Symbolic** engine. It bridges the gap between neural perception (embeddings/GNNs) and symbolic reasoning (graph topology/Manifolds).
+
+### Integrated ML Models:
+- 🕸️ **Neural Foundation (GNN)**: A native Graph Neural Network that learns node representations directly on the hyperbolic manifold, optimized for high-dimensional hierarchical relationships.
+- 🎯 **Value Network**: A predictive model that estimates the "Energy" and "Will to Power" of nodes, identifying elite concepts and guiding the autonomous pruning process.
+- 🧪 **Zero-Data Pipeline**: Built-in orchestration to generate synthetic clinical data, distill it through classical algorithms, and train the neural core without external data dependencies.
+- 🌫️ **Diffusion Engine**: Real-time Pregel-like heat kernel propagation that simulates neural activation across the graph, modulated by emotional valence and arousal.
+
+---
+
 - Abstract concepts naturally live near the center of the Poincaré ball
 - Specific memories live near the boundary
 - Hierarchical distance is intrinsic — not encoded, but *geometric*
