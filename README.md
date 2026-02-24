@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/JoseRFJuniorLLMs/perspektive.js/main/img/logo.gif" alt="NietzscheDB Visual Cortex" width="100%"/>
+  <img src="img/logo.jpg" alt="NietzscheDB" width="100%"/>
 </p>
 
 <h1 align="center">NietzscheDB</h1>
@@ -34,9 +34,11 @@ NietzscheDB implements **Perspektivismus** (Perspectivism) as a database primiti
 
 ---
 
-## 👁️ The Visual Cortex: Perspektive.js
-
 NietzscheDB is powered by **[perspektive.js](https://github.com/JoseRFJuniorLLMs/perspektive.js)**, the world's most advanced multi-manifold graph renderer. It serves as the AGI's "retina," allowing you to audit, debug, and explore the internal manifolds of the database at 60fps.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/JoseRFJuniorLLMs/perspektive.js/main/img/logo.gif" alt="Visual Cortex" width="600px"/>
+</p>
 
 ### Advanced Auditing Tools:
 - ⏳ **Causal Scrubber (Minkowski Time Machine)**: Scrub through the database history. Watch nodes dissolve and reform as you rewind the chain of causal reasoning.
@@ -1407,7 +1409,7 @@ Developed as the memory core for the **EVA AGI System**.
 ---
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/JoseRFJuniorLLMs/perspektive.js/main/img/logo.gif" alt="NietzscheDB Retina" width="120px" /><br>
+  <img src="img/logo.jpg" alt="NietzscheDB" width="120px" /><br>
   <em>"He who has a why to live can bear almost any how."</em><br>
   — <strong>Friedrich Nietzsche</strong>
 </p>
