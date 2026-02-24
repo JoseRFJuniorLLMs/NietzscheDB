@@ -97,6 +97,36 @@ pub enum AgencyEvent {
         importance: f32,
         description: String,
     },
+
+    // ── Nezhmetdinov Forgetting Engine Events ─────────────────────
+
+    /// NezhmetdinovDaemon evaluated a node and condemned it for hard delete.
+    /// Emitted for each node that failed the Triple Condition.
+    ForgettingCondemned {
+        /// The condemned node.
+        node_id: Uuid,
+        /// Vitality score at time of condemnation.
+        vitality: f32,
+        /// Energy at time of condemnation.
+        energy: f32,
+        /// Reason string.
+        reason: String,
+    },
+
+    /// NezhmetdinovDaemon completed a full evaluation cycle.
+    /// Contains aggregate statistics from the Mikhail Thall Report.
+    ForgettingCycleComplete {
+        /// Total nodes evaluated.
+        nodes_evaluated: usize,
+        /// Nodes condemned for deletion.
+        condemned_count: usize,
+        /// Nodes saved by Ricci curvature veto.
+        ricci_shielded_count: usize,
+        /// Mean vitality across all evaluated nodes.
+        mean_vitality: f32,
+        /// Vitality variance (cognitive diversity metric).
+        vitality_variance: f32,
+    },
 }
 
 /// Internal pub/sub bus for inter-daemon communication.

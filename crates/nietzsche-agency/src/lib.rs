@@ -44,6 +44,7 @@ pub mod engine;
 pub mod error;
 pub mod event_bus;
 pub mod evolution;
+pub mod forgetting;
 pub mod identity;
 pub mod observer;
 pub mod quantum;
@@ -52,12 +53,17 @@ pub mod store;
 
 pub use config::AgencyConfig;
 pub use counterfactual::{CounterfactualEngine, CounterfactualOp, CounterfactualResult};
-pub use daemons::{AgencyDaemon, DaemonReport, NiilistaGcDaemon, LTDDaemon};
+pub use daemons::{AgencyDaemon, DaemonReport, NiilistaGcDaemon, LTDDaemon, NezhmetdinovDaemon};
 pub use desire::{DesireEngine, DesireSignal, list_pending_desires, fulfill_desire};
 pub use engine::{AgencyEngine, AgencyTickReport};
 pub use error::AgencyError;
 pub use event_bus::{AgencyEvent, AgencyEventBus, SectorId, WakeUpReason};
 pub use evolution::{EvolutionStrategy, EvolvedRule, EvolvedRuleType, RuleEvolution, EvolutionState};
+pub use forgetting::{
+    NezhmetdinovConfig, HardBounds, VitalityWeights, Verdict, ForgetteringJudgment,
+    MikhailThallReport, DeletionLedger, VoidTracker, TgcCalculator, EliteDriftTracker,
+    StabilityMonitor, AntiGamingMonitor, nezhmetdinov_vitality,
+};
 pub use identity::ObserverIdentity;
 pub use observer::{HealthReport, EnergyPercentiles, MetaObserver};
 pub use quantum::{BlochState, QuantumConfig, QuantumGate, poincare_to_bloch, bloch_to_poincare, batch_poincare_to_bloch, entanglement_proxy};

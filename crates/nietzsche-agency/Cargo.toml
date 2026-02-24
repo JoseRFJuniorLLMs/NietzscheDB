@@ -19,5 +19,9 @@ tracing           = { workspace = true }
 tokio             = { workspace = true, features = ["sync"] }
 rand              = { workspace = true }
 
+[[bin]]
+name = "simulate_forgetting"
+path = "src/bin/simulate_forgetting.rs"
+
 [dev-dependencies]
 tempfile = "3"

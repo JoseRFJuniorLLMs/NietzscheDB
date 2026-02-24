@@ -57,7 +57,26 @@ crates/nietzsche-agency/
     │   ├── mod.rs         # AgencyDaemon trait + DaemonReport
     │   ├── entropy.rs     # EntropyDaemon — Hausdorff variance detection
     │   ├── coherence.rs   # CoherenceDaemon — multi-scale diffusion overlap
-    │   └── gap.rs         # GapDaemon — sparse sector detection
+    │   ├── gap.rs         # GapDaemon — sparse sector detection
+    │   ├── ltd_daemon.rs  # LtdDaemon — link topology decay
+    │   └── nezhmetdinov.rs # NezhmetdinovDaemon — Active Forgetting Engine
+    ├── forgetting/        # *** NEZHMETDINOV ACTIVE FORGETTING SYSTEM ***
+    │   ├── mod.rs         # Module root + re-exports (4 Camadas)
+    │   ├── vitality.rs    # CAMADA 1: V(n) sigmoid vitality function
+    │   ├── judgment.rs    # CAMADA 1: Verdict enum + MikhailThallReport
+    │   ├── bounds.rs      # CAMADA 1: HardBounds + NezhmetdinovConfig
+    │   ├── ricci.rs       # CAMADA 1: Ricci curvature shield (degree-variance proxy)
+    │   ├── causal_immunity.rs # CAMADA 1: Minkowski causal classification
+    │   ├── ledger.rs      # CAMADA 2: Merkle Tree deletion receipts
+    │   ├── void_tracker.rs # CAMADA 3: Poincaré void coordinate seeds
+    │   ├── tgc.rs         # CAMADA 4: Topological Generative Capacity
+    │   ├── elite_drift.rs # CAMADA 4: Elite centroid drift tracking
+    │   ├── anti_gaming.rs # CAMADA 4: Goodhart anti-gaming monitor
+    │   ├── stability.rs   # CAMADA 4: Collapse detection (3 pathologies)
+    │   ├── vitality_variance.rs # CAMADA 4: Cognitive health classification
+    │   ├── friction.rs    # CAMADA 4: Forgetting friction (Ricci vetoes/cycle)
+    │   ├── zaratustra_cycle.rs  # Master orchestrator (all 4 Camadas)
+    │   └── telemetry.rs   # CSV telemetry writer
     ├── observer.rs        # MetaObserver (HealthReport + wake-ups)
     ├── reactor.rs         # AgencyReactor (events → intents)
     ├── desire.rs          # DesireEngine (Motor de Desejo)
@@ -69,7 +88,9 @@ crates/nietzsche-agency/
     │   ├── mod.rs         # CounterfactualEngine public API
     │   ├── shadow.rs      # ShadowGraph (lightweight copy)
     │   └── simulator.rs   # BFS impact propagation
-    └── engine.rs          # AgencyEngine (top-level tick orchestrator)
+    ├── engine.rs          # AgencyEngine (top-level tick orchestrator)
+    └── bin/
+        └── simulate_forgetting.rs  # 5000-node × 500-cycle simulation binary
 ```
 
 ## Components
@@ -81,6 +102,8 @@ crates/nietzsche-agency/
 | **EntropyDaemon** | Hausdorff variance spikes per region | O(N) | `EntropySpike` |
 | **GapDaemon** | Sparse sectors in the Poincare ball | O(N) | `KnowledgeGap` |
 | **CoherenceDaemon** | Diffusion overlap across scales | O(probes * Laplacian) | `CoherenceDrop` |
+| **LtdDaemon** | Link topology decay (edge staleness) | O(E) | `LinkDecay` |
+| **NezhmetdinovDaemon** | Active forgetting — node vitality evaluation | O(N) | `ForgettingCondemned` |
 
 All daemons use UUID hash for angular binning (avoids loading 12KB embeddings).
 
@@ -99,6 +122,9 @@ The reactor converts agency events into declarative `AgencyIntent`s:
 | `HealthReport` | `ModulateZaratustra` | Adjust alpha/decay based on energy |
 | `HealthReport` | `EvolveLSystemRules` | Evolve production rules based on health |
 | `HealthReport` | `GenerateNarrative` | Generate self-description of graph state |
+| `ForgettingCondemned` | `HardDelete` | Delete condemned node from graph |
+| `ForgettingCondemned` | `RecordDeletion` | Write Merkle receipt to deletion ledger |
+| `ForgettingCycleComplete` | `PersistHealthReport` | Store forgetting metrics for auditing |
 | High-priority desire | `TriggerDream` | Directed dream from seed node near gap |
 
 Cooldown: configurable minimum ticks between repeated intents (default: 3).
@@ -200,6 +226,140 @@ Maps points in the hyperbolic Poincare ball to quantum states on the Bloch spher
 - Fidelity-based similarity: quantum fidelity as alternative distance metric
 - Entanglement proxy: cross-cluster fidelity as inter-group coupling measure
 
+## Nezhmetdinov Active Forgetting Engine
+
+> *"Named after Rashid Nezhmetdinov, the chess grandmaster famous for brilliant sacrifices.
+> This engine sacrifices data persistence for topological clarity — proving that intelligent
+> forgetting creates a more lucid mind."*
+
+The Forgetting Engine is a **four-layer architecture** (4 Camadas) for intelligent data deletion,
+implementing the Protocolo Niilista, TGC Integrada, Defesa de Identidade, and Auditabilidade.
+
+### Architecture Overview
+
+```
+                    ┌──────────────────────────────────┐
+                    │     ZARATUSTRA CYCLE              │
+                    │  (Master Orchestrator per tick)   │
+                    └─────────────┬────────────────────┘
+                                  │
+        ┌─────────────────────────┼─────────────────────────┐
+        │                         │                         │
+        ▼                         ▼                         ▼
+  CAMADA 1               CAMADA 2 + 3              CAMADA 4
+  Julgamento Local       Registro + Metabolismo    Saude Global
+  ┌──────────────┐       ┌────────────────┐       ┌───────────────┐
+  │ Vitality V(n)│       │ Deletion Ledger│       │ TGC Calculator│
+  │ Triple Cond. │       │ (Merkle Tree)  │       │ Elite Drift   │
+  │ Ricci Shield │       │ Void Tracker   │       │ Anti-Gaming   │
+  │ Causal Immun.│       │ (Poincare seed)│       │ Stability Mon.│
+  │ Bounds Check │       │                │       │ Var(V) Health │
+  └──────┬───────┘       └───────┬────────┘       └───────┬───────┘
+         │                       │                         │
+         └───────────── Events ──┴────── Telemetry ────────┘
+                         │
+                    ForgettingCondemned
+                    ForgettingCycleComplete
+```
+
+### CAMADA 1 — O Julgamento Local
+
+**Vitality Function**: `V(n) = sigma(w1*e + w2*H - w3*xi + w4*pi + w5*kappa - w6*tau)`
+
+| Weight | Default | Signal |
+|--------|---------|--------|
+| `w1_energy` | 1.0 | Node energy `e in [0,1]` |
+| `w2_hausdorff` | 0.8 | Local fractal dimension `H` |
+| `w3_entropy` | 1.2 | Entropy delta `xi` (negative = protective) |
+| `w4_elite_prox` | 1.5 | Proximity to elite centroid `pi` |
+| `w5_causal` | **2.0** | Causal centrality `kappa` (strongest protector) |
+| `w6_toxicity` | 1.0 | Emotional toxicity `tau = max(0,-valence)*arousal` |
+
+**Triple Condition (Regra de Ouro)** — ALL three must hold for condemnation:
+1. `V(n) < theta_vitality` (default 0.25)
+2. `e(n) < theta_energy` (default 0.10)
+3. `kappa(n) = 0` (zero timelike/lightlike Minkowski edges)
+
+**Ricci Curvature Shield**: Degree-variance proxy `kappa_proxy(v) = 1 - Var(deg(N(v))) / E[deg(N(v))]^2`.
+Removing a hub node with high local curvature (>0.5) and many edges (>5) triggers veto.
+
+**Causal Immunity**: Nodes connected by Minkowski timelike/lightlike edges are immune to deletion.
+Causal classification via `ds^2 = -c^2*dt^2 + ||dx||^2`.
+
+### CAMADA 2 — Registro Historico
+
+**Deletion Ledger**: Merkle Tree-based cryptographic receipts for tamper-proof auditing.
+- Each deletion produces a `DeletionReceipt` with node_id, cycle, vitality, reason, structural_hash
+- Merkle root computed via `DefaultHasher` double-hash over all receipts
+- `InclusionProof` with sibling hashes for verification
+- Full audit trail: `verify_receipt()` validates any receipt against the Merkle root
+
+### CAMADA 3 — Metabolismo Generativo
+
+**Void Tracker**: Captures Poincare coordinates of deleted nodes as generation seeds.
+- `VoidCoordinate { coordinates, energy_at_death, depth, cycle_deleted }`
+- Plausibility scoring: `score = 1.0 - energy * 0.5 - depth * 0.3`
+- Seeds sorted by plausibility for directed dream generation
+- Configurable capacity with LRU-style eviction
+
+### CAMADA 4 — Saude Global (4 Vital Signs)
+
+| Vital Sign | Module | Monitors | Alert Condition |
+|------------|--------|----------|-----------------|
+| **TGC** | `tgc.rs` | Topological Generative Capacity | TGC declining over window |
+| **Var(V)** | `vitality_variance.rs` | Vitality distribution health | Monoculture (<0.05) or Chaotic (>0.25) |
+| **Elite Drift** | `elite_drift.rs` | Identity preservation | Drift > threshold (identity lost) |
+| **Anti-Gaming** | `anti_gaming.rs` | Goodhart violations | 5 violation types with 50% TGC penalty |
+
+**TGC Formula**: `TGC(t) = (G_t / V_t) * Quality` with EMA smoothing (alpha=0.3).
+Measures whether forgetting creates structural fertility or just destroys data.
+
+**Cognitive Health Classes** (from Var(V)):
+- `Diverse`: 0.05 <= Var(V) < 0.25 (healthy heterogeneity)
+- `Monoculture`: Var(V) < 0.05 (elitist collapse risk)
+- `Chaotic`: Var(V) >= 0.25 (no stable identity)
+- `Exhausted`: mean(V) < 0.2 (minimalist collapse risk)
+
+**Stability Monitor** — detects 3 pathological collapses:
+1. `Elitist`: High elite%, low vitality variance (only elites survive)
+2. `Minimalist`: Universe below min_size (too aggressive pruning)
+3. `Stationary`: Zero deletions for N consecutive cycles (engine stalled)
+
+**Anti-Gaming** — 5 Goodhart violation types:
+1. `EnergyPumping`: Mean energy > 0.95 (artificial inflation)
+2. `CausalSpam`: >50% nodes with causal edges (fake immunity)
+3. `EliteMonoculture`: >80% nodes are elite (meaningless elites)
+4. `ZeroForgetting`: 0 deletions in cycle (engine disabled)
+5. `MassExtinction`: >30% nodes killed in single cycle
+
+### Verdict Classification
+
+| Verdict | Meaning | Action |
+|---------|---------|--------|
+| `Sacred` | V(n) > sacred_threshold OR kappa >= sacred_causal | Protected forever |
+| `Dormant` | Doesn't meet any condition | Survives this cycle |
+| `Condemned` | Triple condition met, no Ricci veto | Hard delete + ledger receipt |
+| `Toxic` | High toxicity + no causal protection | Hard delete (fast-track) |
+| `RicciShielded` | Triple condition met, but Ricci veto saved | Survives (topology critical) |
+
+### HardBounds (Immutable Deployment Parameters)
+
+These CANNOT be overridden by any Zaratustra cycle:
+
+| Bound | Default | Purpose |
+|-------|---------|---------|
+| `min_universe_size` | 100 | Absolute floor — stops all deletion below this |
+| `max_deletion_rate` | 0.10 | Max 10% of universe per cycle |
+| `sacred_causal_threshold` | 3 | Nodes with >= 3 causal edges are auto-sacred |
+
+### Simulation Binary
+
+`cargo run --release --bin simulate_forgetting` runs a standalone simulation:
+- 5,000 synthetic nodes (1,000 Signal + 4,000 Noise)
+- 500 accelerated Zaratustra cycles
+- CSV output: `forgetting_telemetry.csv` with all 4 vital signs
+- Validates: zero false positives (no signal nodes killed), noise convergence to zero
+
 ## Configuration
 
 All via environment variables:
@@ -222,6 +382,13 @@ All via environment variables:
 | `AGENCY_DESIRE_DREAM_THRESHOLD` | `0.6` | Min desire priority for auto-dream |
 | `AGENCY_DESIRE_DREAM_DEPTH` | `5` | BFS depth for desire-triggered dreams |
 | `AGENCY_EVOLUTION_COOLDOWN` | `5` | Min ticks between evolution suggestions |
+| `NEZHMETDINOV_ENABLED` | `true` | Enable/disable the forgetting engine |
+| `NEZHMETDINOV_VITALITY_THRESHOLD` | `0.25` | V(n) below this = candidate for deletion |
+| `NEZHMETDINOV_ENERGY_THRESHOLD` | `0.10` | Energy below this = candidate for deletion |
+| `NEZHMETDINOV_RICCI_EPSILON` | `0.15` | Ricci curvature veto sensitivity |
+| `NEZHMETDINOV_TOXICITY_THRESHOLD` | `0.80` | Toxicity above this = fast-track deletion |
+| `NEZHMETDINOV_SACRED_VITALITY` | `0.80` | V(n) above this = auto-sacred |
+| `NEZHMETDINOV_MAX_SCAN` | `5000` | Max nodes scanned per tick |
 
 ## REST API Endpoints (Dashboard)
 
@@ -280,8 +447,9 @@ The HTML dashboard includes a dedicated **Agency** tab with real-time panels:
 ```
 AgencyEngine::tick()
   │
-  ├── 1. Tick daemons (EntropyDaemon, GapDaemon, CoherenceDaemon)
-  │      └── Emit: EntropySpike, KnowledgeGap, CoherenceDrop events
+  ├── 1. Tick daemons (Entropy, Gap, Coherence, Ltd, Nezhmetdinov + more)
+  │      └── Emit: EntropySpike, KnowledgeGap, CoherenceDrop,
+  │                ForgettingCondemned events
   │
   ├── 2. Tick observer (MetaObserver)
   │      └── Emit: HealthReport + DaemonWakeUp events (every N ticks)
@@ -290,6 +458,7 @@ AgencyEngine::tick()
   │      └── Produce: TriggerSleepCycle, TriggerLSystemGrowth,
   │                    ModulateZaratustra, EvolveLSystemRules,
   │                    GenerateNarrative, PersistHealthReport,
+  │                    HardDelete, RecordDeletion,
   │                    SignalKnowledgeGap intents
   │
   ├── 4. Process gaps through Motor de Desejo
@@ -305,17 +474,36 @@ AgencyEngine::tick()
 
 ## Test Coverage
 
-68 unit tests covering all components:
+155 unit tests covering all components (72 new forgetting tests):
+
+**Core Agency (83 tests):**
 - Event bus: publish/subscribe, multiple subscribers, no-op on empty
 - EntropyDaemon: uniform (no spike), mixed (detects spike), empty graph
 - GapDaemon: uniform (few gaps), sparse (many gaps), empty graph
 - CoherenceDaemon: chain graph, too few nodes
 - Observer: report intervals, wake-up triggers, energy percentiles
-- Reactor: entropy->sleep, coherence->lsystem, cooldown, wake-up handling, zaratustra modulation, evolution trigger, narrative trigger, param calculation (healthy + inflated)
+- Reactor: entropy->sleep, coherence->lsystem, cooldown, wake-up handling, zaratustra modulation, evolution trigger, narrative trigger, param calculation (healthy + inflated), forgetting condemned->hard delete
 - Desire: generation, persistence, fulfillment, priority ordering
 - Identity: create/retrieve, health update, is_observer check, low health
 - Store: persist, retrieve, sort by tick, prune old entries
 - Counterfactual: shadow snapshot, remove hub/leaf, add node
-- Engine: full tick, health report interval, low energy intent, observer identity, empty graph
+- Engine: full tick, health report interval, low energy intent, observer identity, empty graph, 8 daemons registered
 - Evolution: strategy suggestions (balanced, growth, pruning, consolidate), rule thresholds, fitness scoring, state persistence
 - Quantum: origin->north pole, boundary->equator, round-trip preservation, fidelity (same/orthogonal), Hadamard gate, RotZ, mixed states, entanglement proxy, trace distance, batch mapping
+
+**Forgetting Engine (72 tests):**
+- Vitality: sigmoid, weighted calculation, batch statistics, edge cases, input clamping
+- Judgment: verdict classification, MikhailThallReport aggregation, death sentence detection
+- Bounds: HardBounds immutability, NezhmetdinovConfig enforce_bounds, from_env parsing
+- Ricci: star graph hub veto, leaf removal safe, isolated node safe, curvature proxy
+- Causal Immunity: timelike/lightlike/spacelike classification, interval computation
+- Ledger: receipt creation, Merkle root computation, inclusion proof verification, multi-receipt
+- Void Tracker: coordinate capture, plausibility scoring, capacity limits, seed retrieval
+- TGC: computation, EMA smoothing, declining detection, snapshot history
+- Elite Drift: centroid tracking, drift computation, threshold alerting
+- Anti-Gaming: 5 violation types, penalty calculation, report generation
+- Stability: elitist/minimalist/stationary collapse detection, thermal perturbation
+- Vitality Variance: cognitive health classification (diverse/monoculture/chaotic/exhausted)
+- Friction: per-cycle friction scoring, Ricci veto rate tracking
+- Zaratustra Cycle: full orchestration, ledger accumulation, multi-cycle execution
+- NezhmetdinovDaemon: empty graph, high-energy sacred nodes, low-energy condemned nodes

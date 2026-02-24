@@ -458,17 +458,20 @@ Cross-collection archetype sharing via gossip protocol:
 - 4 unit tests
 
 #### `nietzsche-agency` — Autonomous Agency Engine
-Graph-level autonomous intelligence with counterfactual reasoning:
-- **AgencyEngine** tick loop: runs 3 built-in daemons (Entropy, Gap, Coherence) + MetaObserver
+Graph-level autonomous intelligence with counterfactual reasoning and active forgetting:
+- **AgencyEngine** tick loop: runs 8 built-in daemons (Entropy, Gap, Coherence, Ltd, Nezhmetdinov + more) + MetaObserver
 - **EntropyDaemon**: detects Hausdorff variance spikes across angular regions
-- **GapDaemon**: identifies knowledge gaps in depth×angle sectors
+- **GapDaemon**: identifies knowledge gaps in depth x angle sectors
 - **CoherenceDaemon**: measures multi-scale diffusion overlap (Chebyshev heat kernel)
+- **NezhmetdinovDaemon**: Active Forgetting Engine — evaluates node vitality V(n) via sigmoid function, applies Triple Condition (vitality + energy + causal), Ricci curvature veto, and emits ForgettingCondemned events for hard deletion
+- **Forgetting Module** (15 submodules, 4 Camadas): vitality function, judgment/verdict system, Merkle Tree deletion ledger, Poincare void tracker, TGC calculator, elite drift tracker, anti-gaming monitor, stability monitor, causal immunity, vitality variance health, friction scoring, Zaratustra cycle orchestrator, telemetry writer
 - **MetaObserver**: produces HealthReports with energy percentiles, fractal status, wake-up triggers
 - **CounterfactualEngine**: what-if simulations via ShadowGraph (remove/add nodes without mutating real graph)
 - **AgencyEventBus**: tokio broadcast channel for cross-system event propagation
-- **Hegelian Dialectic Engine** (`dialectic.rs`): AGI-2 module — detects contradictions between nodes with opposing polarity, creates Tension nodes at embedding midpoints, synthesizes resolutions during sleep by pulling toward center and creating Semantic synthesis nodes. Full detect → tension → synthesize pipeline
+- **Hegelian Dialectic Engine** (`dialectic.rs`): AGI-2 module — detects contradictions between nodes with opposing polarity, creates Tension nodes at embedding midpoints, synthesizes resolutions during sleep by pulling toward center and creating Semantic synthesis nodes. Full detect -> tension -> synthesize pipeline
 - **Code-as-Data** (`code_as_data.rs`): AGI-4 module — NQL queries stored as activatable graph nodes. When a node's energy exceeds its `activation_threshold` (via heat diffusion / Will-to-Power), the stored query is extracted and can be executed. Includes cooldown, max firings, and exhaustion tracking. Transforms the database into a Turing-complete reactive rule engine
-- 30+ unit tests (event_bus, engine, observer, daemons, shadow, simulator, dialectic, code_as_data)
+- **Simulate Forgetting** binary: 5000-node x 500-cycle standalone simulation with CSV telemetry
+- 155 unit tests (event_bus, engine, observer, daemons, shadow, simulator, dialectic, code_as_data, forgetting: 72 tests across all 15 submodules)
 
 #### `nietzsche-sleep` — Reconsolidation Sleep Cycle
 EVA sleeps. During sleep:
@@ -968,6 +971,27 @@ MM-4  Manifold normalization layer         ✅ COMPLETE  (health checks, safe ro
 MM-5  Edge causality metadata              ✅ COMPLETE  (CausalType enum, minkowski_interval on Edge)
 MM-6  6 new gRPC RPCs                      ✅ COMPLETE  (Synthesis, SynthesisMulti, CausalNeighbors, CausalChain, KleinPath, IsOnShortestPath)
 MM-7  Go SDK manifold methods              ✅ COMPLETE  (6 methods + types + proto sync)
+
+── Nezhmetdinov Forgetting Engine (2026-02-24) ──────────
+NZH-1  Vitality sigmoid function           ✅ COMPLETE  (V(n) = σ(w₁e+w₂H-w₃ξ+w₄π+w₅κ-w₆τ), batch, 8 tests)
+NZH-2  Judgment/Verdict system             ✅ COMPLETE  (5 verdicts, MikhailThallReport, 6 tests)
+NZH-3  HardBounds + NezhmetdinovConfig     ✅ COMPLETE  (immutable bounds, from_env, enforce, 7 tests)
+NZH-4  Ricci curvature shield              ✅ COMPLETE  (degree-variance proxy, quick_veto, simulate, 5 tests)
+NZH-5  Causal immunity (Minkowski)         ✅ COMPLETE  (timelike/lightlike/spacelike classify, 4 tests)
+NZH-6  Deletion ledger (Merkle Tree)       ✅ COMPLETE  (receipts, root, inclusion proofs, 6 tests)
+NZH-7  Void tracker (Poincaré seeds)       ✅ COMPLETE  (coordinate capture, plausibility, capacity, 5 tests)
+NZH-8  TGC calculator                      ✅ COMPLETE  (EMA smoothing, declining detection, 5 tests)
+NZH-9  Elite drift tracker                 ✅ COMPLETE  (centroid tracking, drift threshold, 4 tests)
+NZH-10 Anti-gaming (Goodhart)              ✅ COMPLETE  (5 violation types, 50% penalty, 5 tests)
+NZH-11 Stability monitor                   ✅ COMPLETE  (3 collapses: elitist/minimalist/stationary, 5 tests)
+NZH-12 Vitality variance health            ✅ COMPLETE  (4 classes: diverse/mono/chaotic/exhausted, 4 tests)
+NZH-13 Friction calculator                 ✅ COMPLETE  (per-cycle friction scoring, 3 tests)
+NZH-14 Zaratustra cycle orchestrator       ✅ COMPLETE  (master 4-Camada orchestration, 5 tests)
+NZH-15 Telemetry writer (CSV)              ✅ COMPLETE  (format_cycle_summary, CycleTelemetry, 3 tests)
+NZH-16 NezhmetdinovDaemon                  ✅ COMPLETE  (AgencyDaemon trait, full pipeline, 3 tests)
+NZH-17 Reactor integration                 ✅ COMPLETE  (HardDelete + RecordDeletion intents)
+NZH-18 Simulation binary                   ✅ COMPLETE  (5000 nodes × 500 cycles, CSV output)
+       Total: 18 new files, 15 submodules, 72 forgetting tests, 155 total agency tests
 ```
 
 ---

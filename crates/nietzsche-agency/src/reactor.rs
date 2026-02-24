@@ -111,6 +111,24 @@ pub enum AgencyIntent {
         importance: f32,
         reason: String,
     },
+
+    // ── Nezhmetdinov Forgetting Engine Intents ────────────────────
+
+    /// Hard-delete a node from the graph (irreversible).
+    /// Produced when: NezhmetdinovDaemon condemns a node via Triple Condition.
+    HardDelete {
+        node_id: Uuid,
+        vitality: f32,
+        reason: String,
+    },
+
+    /// Record a deletion in the Merkle-based audit ledger.
+    /// Produced alongside each HardDelete for auditability.
+    RecordDeletion {
+        node_id: Uuid,
+        cycle: u64,
+        structural_hash: String,
+    },
 }
 
 /// Converts agency events into executable intents.
@@ -193,6 +211,17 @@ impl AgencyReactor {
                     }
                     AgencyEvent::NeuralProtection { node_id, importance, description } => {
                         neural_protections.push((node_id, importance, description));
+                    }
+                    // ── Nezhmetdinov Forgetting Engine events ─────────────
+                    AgencyEvent::ForgettingCondemned { node_id, vitality, reason, .. } => {
+                        intents.push(AgencyIntent::HardDelete {
+                            node_id,
+                            vitality,
+                            reason,
+                        });
+                    }
+                    AgencyEvent::ForgettingCycleComplete { .. } => {
+                        // Logged for telemetry; no intent needed.
                     }
                 },
                 Err(broadcast::error::TryRecvError::Empty) => break,
@@ -433,7 +462,7 @@ mod tests {
     fn entropy_spike_triggers_sleep() {
         let bus = AgencyEventBus::new(64);
         let config = AgencyConfig::default();
-        let mut reactor = AgencyReactor::new(&bus);
+        let mut reactor = AgencyReactor::new(&bus, None);
 
         bus.publish(AgencyEvent::EntropySpike {
             region_id: 0,
@@ -449,7 +478,7 @@ mod tests {
     fn coherence_drop_triggers_lsystem() {
         let bus = AgencyEventBus::new(64);
         let config = AgencyConfig::default();
-        let mut reactor = AgencyReactor::new(&bus);
+        let mut reactor = AgencyReactor::new(&bus, None);
 
         bus.publish(AgencyEvent::CoherenceDrop {
             overlap_01_10: 0.85,
@@ -464,7 +493,7 @@ mod tests {
     fn knowledge_gap_signals() {
         let bus = AgencyEventBus::new(64);
         let config = AgencyConfig::default();
-        let mut reactor = AgencyReactor::new(&bus);
+        let mut reactor = AgencyReactor::new(&bus, None);
 
         bus.publish(AgencyEvent::KnowledgeGap {
             sector: SectorId { depth_bin: 2, angular_bin: 5 },
@@ -483,7 +512,7 @@ mod tests {
             reactor_cooldown_ticks: 3,
             ..AgencyConfig::default()
         };
-        let mut reactor = AgencyReactor::new(&bus);
+        let mut reactor = AgencyReactor::new(&bus, None);
 
         // First spike → intent
         bus.publish(AgencyEvent::EntropySpike {
@@ -520,7 +549,7 @@ mod tests {
     fn health_report_always_persisted() {
         let bus = AgencyEventBus::new(64);
         let config = AgencyConfig::default();
-        let mut reactor = AgencyReactor::new(&bus);
+        let mut reactor = AgencyReactor::new(&bus, None);
 
         let report = HealthReport::default();
         bus.publish(AgencyEvent::HealthReport(Box::new(report)));
@@ -533,7 +562,7 @@ mod tests {
     fn wake_up_low_energy_triggers_sleep() {
         let bus = AgencyEventBus::new(64);
         let config = AgencyConfig::default();
-        let mut reactor = AgencyReactor::new(&bus);
+        let mut reactor = AgencyReactor::new(&bus, None);
 
         bus.publish(AgencyEvent::DaemonWakeUp {
             reason: WakeUpReason::MeanEnergyBelow(0.15),
@@ -547,7 +576,7 @@ mod tests {
     fn health_report_triggers_zaratustra_modulation() {
         let bus = AgencyEventBus::new(64);
         let config = AgencyConfig::default();
-        let mut reactor = AgencyReactor::new(&bus);
+        let mut reactor = AgencyReactor::new(&bus, None);
 
         let report = HealthReport {
             mean_energy: 0.15, // Very low
@@ -568,7 +597,7 @@ mod tests {
     fn health_report_triggers_evolution() {
         let bus = AgencyEventBus::new(64);
         let config = AgencyConfig::default();
-        let mut reactor = AgencyReactor::new(&bus);
+        let mut reactor = AgencyReactor::new(&bus, None);
 
         let report = HealthReport {
             mean_energy: 0.6,
@@ -590,7 +619,7 @@ mod tests {
     fn health_report_triggers_narrative() {
         let bus = AgencyEventBus::new(64);
         let config = AgencyConfig::default();
-        let mut reactor = AgencyReactor::new(&bus);
+        let mut reactor = AgencyReactor::new(&bus, None);
 
         bus.publish(AgencyEvent::HealthReport(Box::new(HealthReport::default())));
 
