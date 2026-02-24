@@ -1,24 +1,44 @@
+# ── Build ──
 /target/
 **/target/
+
+# ── Environment ──
 .env
 *.env
+
+# ── Python ──
 sdks/python/venv
 __pycache__
 **/*.pyc
-.DS_Store
-Cargo.lock
-# Data files (Exclude everywhere)
-**/*.hyp
-**/*.snap
-**/*.log
-**/*.bin
-**/*.tar.gz
-**/TODO*.md
-# Directories
 **/venv/
 venv/
+
+# ── OS ──
+.DS_Store
+nul
+
+# ── Cargo ──
+Cargo.lock
+
+# ── Data files ──
+**/*.hyp
+**/*.snap
+**/*.bin
+**/*.tar.gz
+
+# ── Logs (tracked in logs/ for reference, but ignore new ones at root) ──
+*.log
+*.log.*
+
+# ── Generated experiment artifacts ──
+experiments/*.csv
+experiments/*.png
+
+# ── Directories ──
 data/
-docs/book/
 node_modules/
 dist/
+
+# ── Other ──
+**/TODO*.md
 package-lock.json

@@ -7,8 +7,10 @@ Compares 3 birth modes on real graph (10k nodes, ~50k edges):
   E: ANCHORED      (elite-parented, degree=2, no polarization)
   F: DIALECTICAL   (elite-parented, degree=2, entropy polarization)
 
-Input:  telemetry_D_foam.csv, telemetry_E_anchored.csv, telemetry_F_dialectical.csv
-Output: metabolism_report.png (300 DPI, 8-panel dashboard)
+Input:  experiments/telemetry_D_foam.csv, etc.
+Output: experiments/metabolism_report.png (300 DPI, 8-panel dashboard)
+
+Run from project root:  py -3 experiments/plot_metabolism.py
 """
 
 import pandas as pd
@@ -16,6 +18,11 @@ import matplotlib.pyplot as plt
 import matplotlib
 import sys
 import os
+
+# Resolve paths relative to project root (not script location)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+EXPERIMENTS_DIR = os.path.join(PROJECT_ROOT, "experiments")
 
 if os.environ.get("DISPLAY") is None and sys.platform != "win32":
     matplotlib.use("Agg")
@@ -38,17 +45,17 @@ COLORS = {
 
 def load_data():
     files = {
-        "D": "telemetry_D_foam.csv",
-        "E": "telemetry_E_anchored.csv",
-        "F": "telemetry_F_dialectical.csv",
+        "D": os.path.join(EXPERIMENTS_DIR, "telemetry_D_foam.csv"),
+        "E": os.path.join(EXPERIMENTS_DIR, "telemetry_E_anchored.csv"),
+        "F": os.path.join(EXPERIMENTS_DIR, "telemetry_F_dialectical.csv"),
     }
     data = {}
     for key, path in files.items():
         try:
             data[key] = pd.read_csv(path)
-            print(f"  [{key}] {path}: {len(data[key])} ciclos")
+            print(f"  [{key}] {os.path.basename(path)}: {len(data[key])} ciclos")
         except FileNotFoundError:
-            print(f"  [{key}] {path}: NAO ENCONTRADO")
+            print(f"  [{key}] {os.path.basename(path)}: NAO ENCONTRADO")
     return data
 
 
@@ -160,7 +167,7 @@ def plot_metabolism():
     ax.legend(fontsize=8)
 
     plt.tight_layout()
-    output_path = "metabolism_report.png"
+    output_path = os.path.join(EXPERIMENTS_DIR, "metabolism_report.png")
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print()
     print(f"Dashboard gerado: {output_path}")

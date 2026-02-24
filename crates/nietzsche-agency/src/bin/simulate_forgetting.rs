@@ -809,7 +809,9 @@ impl Sim {
 
 fn run(mode: BirthMode, cycles: usize) -> Vec<CycleTelemetry> {
     let label = mode.label();
-    let csv = format!("telemetry_{}.csv", label);
+    // Output to experiments/ directory
+    let _ = std::fs::create_dir_all("experiments");
+    let csv = format!("experiments/telemetry_{}.csv", label);
 
     let mut s = Sim::new(mode);
     s.seed();
