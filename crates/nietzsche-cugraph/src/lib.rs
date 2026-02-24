@@ -123,6 +123,23 @@ impl CuGraphIndex {
         gpu::poincare::poincare_knn(self, query, k, db_embeddings)
     }
 
+    /// **GPU batch** Poincaré kNN for ALL nodes simultaneously.
+    ///
+    /// Computes the full N×N pairwise distance matrix on GPU in a single
+    /// kernel launch, then extracts top-k neighbours for each node.
+    ///
+    /// This is the L-System accelerator: replaces the O(n²) sequential
+    /// Hausdorff loop with a single GPU burst.
+    #[cfg(feature = "cuda")]
+    pub fn poincare_batch_knn(
+        embeddings: &[f32],
+        n: usize,
+        dim: usize,
+        k: usize,
+    ) -> Result<gpu::poincare_batch::BatchKnnResult, CuGraphError> {
+        gpu::poincare_batch::poincare_batch_knn(embeddings, n, dim, k)
+    }
+
     /// Number of vertices in the index.
     pub fn vertex_count(&self) -> usize {
         self.csr.vertex_count()

@@ -144,17 +144,18 @@ It is a fork of **[YARlabs/hyperspace-db](https://github.com/YARlabs/hyperspace-
 
 ## Architecture
 
-NietzscheDB is built as a **Rust nightly workspace** with 38 crates in two layers:
+NietzscheDB is built as a **Rust nightly workspace** with 41 crates in two layers:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                         NietzscheDB Layer (29 crates)                        │
+│                         NietzscheDB Layer (32 crates)                        │
 │                                                                              │
 │  Engine:     nietzsche-graph    nietzsche-query     nietzsche-hyp-ops        │
 │  Growth:     nietzsche-lsystem  nietzsche-pregel    nietzsche-sleep          │
 │  Evolution:  nietzsche-zaratustra                                            │
 │  Analytics:  nietzsche-algo     nietzsche-sensory                            │
 │  Visionary:  nietzsche-dream    nietzsche-narrative  nietzsche-agency        │
+│  Neural:     nietzsche-rl       nietzsche-neural    nietzsche-gnn            │
 │  Wiederkehr: nietzsche-wiederkehr                                            │
 │  Infra:      nietzsche-api      nietzsche-server    nietzsche-cluster        │
 │  SDKs:       nietzsche-sdk      nietzsche-mcp                                │
@@ -189,7 +190,7 @@ The storage and indexing foundation, inheriting all of HyperspaceDB v2.0:
 
 ### NietzscheDB Extensions
 
-Twenty-nine new crates built on top of the foundation:
+Thirty-two new crates built on top of the foundation:
 
 #### `nietzsche-graph` — Multi-Manifold Graph Engine
 - `Node` = `NodeMeta` (~108 bytes: id, depth, energy, node_type, hausdorff_local, valence, arousal, content) + `PoincareVector` (embedding, stored separately for 10-25x traversal speedup)
@@ -475,7 +476,66 @@ Graph-level autonomous intelligence with counterfactual reasoning and active for
 - **Hegelian Dialectic Engine** (`dialectic.rs`): AGI-2 module — detects contradictions between nodes with opposing polarity, creates Tension nodes at embedding midpoints, synthesizes resolutions during sleep by pulling toward center and creating Semantic synthesis nodes. Full detect -> tension -> synthesize pipeline
 - **Code-as-Data** (`code_as_data.rs`): AGI-4 module — NQL queries stored as activatable graph nodes. When a node's energy exceeds its `activation_threshold` (via heat diffusion / Will-to-Power), the stored query is extracted and can be executed. Includes cooldown, max firings, and exhaustion tracking. Transforms the database into a Turing-complete reactive rule engine
 - **Simulate Forgetting** binary: 5000-node x 500-cycle standalone simulation with CSV telemetry
+- **Motor de Desejo** (`desire.rs`): Transforms knowledge gaps into structured missions. `DesireSignal` with sector, depth_range, priority, and suggested_query. Priority = 0.4×depth_weight + 0.6×density_weight. Desires above `desire_dream_threshold=0.6` auto-trigger `TriggerDream` intents, creating a closed Desire→Dream→Generation loop
+- **Quantum Fidelity** (`quantum.rs`): Bloch sphere state representation for epistemic confidence. Three thresholds: default (0.85), strict (0.90, safety-critical), relaxed (0.65, exploratory). `BlochState::fidelity()` for quantum state similarity, `trace_distance()` for confidence bounds
 - 155 unit tests (event_bus, engine, observer, daemons, shadow, simulator, dialectic, code_as_data, forgetting: 72 tests across all 15 submodules)
+
+#### `nietzsche-agency` — TGC: Topological Generative Capacity
+
+The **master health metric** for autonomous cognition. Formally implemented in `forgetting/tgc.rs` with complete mathematical specification:
+
+```
+TGC(t) = intensity × mean_quality × (1 + α·ΔH_s) × (1 + β·ΔE_g)
+
+Where:
+  intensity      = nodes_created / active_nodes
+  mean_quality   = mean vitality of generated nodes ∈ [0, 1]
+  ΔH_s           = structural_entropy(t) - structural_entropy(t-1)   (Shannon degree distribution)
+  ΔE_g           = global_efficiency(t) - global_efficiency(t-1)     (Latora-Marchiori, BFS-sampled)
+  α              = 2.0  (entropy amplifier)
+  β              = 3.0  (efficiency amplifier, β/α = 1.5)
+```
+
+| Metric | Formula | File |
+|---|---|---|
+| Structural Entropy (H_s) | `-Σ p(k)·ln(p(k))` | `forgetting/structural_metrics.rs` |
+| Global Efficiency (E_g) | `(1/\|S\|·(N-1)) Σ 1/d(s,t)` | `forgetting/structural_metrics.rs` |
+| Phase Rupture | `TGC > 1.5` triggers regime alert | `forgetting/tgc.rs` |
+| EMA Smoothing | `γ=0.2, τ≈4.48 cycles` | `forgetting/tgc.rs` |
+| Anti-Gaming | 5 Goodhart violations with 50% penalty | `forgetting/anti_gaming.rs` |
+| 3 Pathological Attractors | Elitist / Minimalist / Stationary | `forgetting/stability.rs` |
+| Telemetry | 17-field CSV per cycle | `forgetting/telemetry.rs` |
+
+**4-Camada Forgetting Architecture** (Nezhmetdinov Engine):
+1. **Camada 1** — Local Judgment: `V(n) = σ(w₁e + w₂H − w₃ξ + w₄π + w₅κ − w₆τ)` with Triple Condition + Ricci veto + Causal immunity
+2. **Camada 2** — Deletion Ledger: Merkle Tree cryptographic receipts with inclusion proofs
+3. **Camada 3** — Generative Metabolism: Void Tracker captures Poincaré coordinates as dream seeds
+4. **Camada 4** — Global Health: TGC + Var(V) + Elite Drift + Anti-Gaming (4 vital signs)
+
+Full mathematical specification: `docs/articles/NietzscheDB-Topological-Generative-Capacity.md` (8 parts, 7 canonical equations).
+
+#### `nietzsche-rl` — Reinforcement Learning Engine
+PPO (Proximal Policy Optimization) for autonomous growth strategy selection:
+- **PpoEngine**: ONNX-based neural policy inference at runtime
+- **4 growth strategies**: `Balanced`, `FavorGrowth`, `FavorPruning`, `Consolidate`
+- **State representation** (`GrowthState`): derived from graph health metrics (energy, Hausdorff, gaps, entropy)
+- **Reward function**: +1.0 if Hausdorff preserved AND query-speed improves, -1.0 if Hausdorff degrades
+- Training: `scripts/models/train_ppo.py` (Actor-Critic architecture with LayerNorm + GELU)
+- Export: ONNX model `ppo_growth_v1` for runtime inference
+
+#### `nietzsche-neural` — Neural Model Registry
+ONNX model lifecycle management for all neural components:
+- `ModelRegistry` with `load_model()` / `get_session()` for inference
+- Manages PPO, GNN, and Value Network ONNX sessions
+- Thread-safe model loading with `Arc<Mutex>`
+
+#### `nietzsche-gnn` — Graph Neural Network Engine
+GNN inference for topology-aware node evaluation:
+- `GnnEngine::predict()`: feeds node features + adjacency to ONNX session
+- **Zero-data learning**: Classical heat kernel (Chebyshev) distills knowledge to GNN
+- Dual loss: MSE (embeddings) + BCE (node importance classification)
+- Integrates with `NeuralThresholdDaemon`: GNN score > 0.7 triggers node protection
+- Training: `scripts/models/train_gnn.py`
 
 #### `nietzsche-sleep` — Reconsolidation Sleep Cycle
 EVA sleeps. During sleep:
@@ -976,6 +1036,12 @@ MM-5  Edge causality metadata              ✅ COMPLETE  (CausalType enum, minko
 MM-6  6 new gRPC RPCs                      ✅ COMPLETE  (Synthesis, SynthesisMulti, CausalNeighbors, CausalChain, KleinPath, IsOnShortestPath)
 MM-7  Go SDK manifold methods              ✅ COMPLETE  (6 methods + types + proto sync)
 
+── Neural & RL Stack (2026-02-24) ──────────
+NRL-1  PPO Engine (ONNX inference)          ✅ COMPLETE  (4 strategies, GrowthState, GrowthAction)
+NRL-2  Neural Model Registry                ✅ COMPLETE  (load/get ONNX sessions, thread-safe)
+NRL-3  GNN Engine (node importance)         ✅ COMPLETE  (predict, dual loss, zero-data distillation)
+NRL-4  Training scripts (Python)            ✅ COMPLETE  (train_ppo.py, train_gnn.py, train_value_network.py)
+
 ── Nezhmetdinov Forgetting Engine (2026-02-24) ──────────
 NZH-1  Vitality sigmoid function           ✅ COMPLETE  (V(n) = σ(w₁e+w₂H-w₃ξ+w₄π+w₅κ-w₆τ), batch, 8 tests)
 NZH-2  Judgment/Verdict system             ✅ COMPLETE  (5 verdicts, MikhailThallReport, 6 tests)
@@ -1030,6 +1096,50 @@ Individual suites:
 | `riemannian/adam_10_steps` | dim=64 | ~6.2 us |
 | `chebyshev/apply_heat_kernel` | ring-40 | ~210 us |
 | `chebyshev/laplacian_build` | ring-50 | ~390 us |
+
+### Hyperbolic Math Benchmarks (`nietzsche-hyp-ops`)
+
+| Benchmark | Dimension | Operations |
+|---|---|---|
+| `exp_map_zero` | 64d, 256d | Euclidean → Poincaré projection |
+| `log_map_zero` | 64d | Poincaré → tangent space |
+| `mobius_add` | 64d | Gyrovector addition |
+| `poincare_distance` | 64d | Hyperbolic geodesic distance |
+| `gyromidpoint` | 3×256d | Fréchet mean (multimodal fusion) |
+
+### Cognitive Simulation: Forgetting Engine
+
+Standalone binary `simulate_forgetting` runs a full 4-Camada Zaratustra cycle at scale:
+
+| Parameter | Value |
+|---|---|
+| **Nodes** | 10,000 (1,000 signal + 9,000 noise) |
+| **Edges** | ~50,000 undirected |
+| **Cycles** | 100+ accelerated |
+| **Metrics per cycle** | TGC (raw + EMA), H_s, E_g, Var(V), elite drift, deletion rate |
+| **Output** | CSV telemetry with all 4 vital signs |
+| **Validation** | Zero false positives (no signal nodes killed), noise converges to zero |
+
+Three telemetry profiles: `D_foam` (void-born orphans), `E_anchored` (elite-parented), `F_dialectical` (elite + entropy polarization).
+
+### Test Coverage
+
+| Module | Tests | Key areas |
+|---|---|---|
+| `nietzsche-agency` | 155 | Event bus, 8 daemons, observer, reactor, desire, identity, counterfactual, dialectic, code-as-data |
+| `nietzsche-agency/forgetting` | 72 | Vitality, judgment, bounds, Ricci, causal immunity, ledger, TGC, elite drift, anti-gaming, stability, variance, friction, Zaratustra cycle |
+| `nietzsche-hyp-ops` | 40+ | All 4 geometries, manifold roundtrips, synthesis, Minkowski causality |
+| `nietzsche-query` | 113+ | NQL parser, executor, all statement types |
+| `nietzsche-graph` | 50+ | Storage, traversal, merge, fulltext, schrodinger |
+| **Total workspace** | 800+ | All 41 crates with unit + integration tests |
+
+### Cross-Database Benchmark Suite (`benchmarks/`)
+
+Modular plugin-based runner comparing NietzscheDB against Milvus, Qdrant, and ChromaDB:
+- Throughput (Insert/Search QPS), Latency (P50/P95/P99)
+- Recall@10, MRR@10, NDCG@10
+- System Recall@10 (vs exact brute-force)
+- Concurrency profile (C1/C10/C30)
 
 ---
 
@@ -1322,7 +1432,7 @@ CPU-only build (default) compiles and runs correctly — GPU/TPU paths simply no
 
 ```
 NietzscheDB/
-├── Cargo.toml                ← unified Rust workspace (38 crates)
+├── Cargo.toml                ← unified Rust workspace (41 crates)
 ├── rust-toolchain.toml       ← nightly channel
 ├── Dockerfile                ← multi-stage production image
 ├── docker-compose.yaml       ← nietzsche + hyperspace + prometheus + grafana
@@ -1350,7 +1460,10 @@ NietzscheDB/
 │   ├── nietzsche-wiederkehr/ ← DAEMON agents + Will to Power scheduler
 │   ├── nietzsche-dream/      ← dream queries (speculative exploration)
 │   ├── nietzsche-narrative/  ← narrative engine (story arc detection)
-│   ├── nietzsche-agency/     ← autonomous agency + counterfactual engine
+│   ├── nietzsche-agency/     ← autonomous agency + counterfactual engine + TGC
+│   ├── nietzsche-rl/         ← PPO reinforcement learning (ONNX inference)
+│   ├── nietzsche-neural/     ← neural model registry (ONNX lifecycle)
+│   ├── nietzsche-gnn/        ← graph neural network engine
 │   ├── nietzsche-mcp/        ← MCP server for AI assistants (19 tools)
 │   ├── nietzsche-metrics/    ← Prometheus/OpenTelemetry metrics export
 │   ├── nietzsche-filtered-knn/ ← filtered KNN with Roaring Bitmaps
@@ -1418,6 +1531,49 @@ NietzscheDB closes gaps that no existing database fills. It is built on the real
 - **Autonomous Metabolism**: NietzscheDB implements a formal **Sleep/Reconsolidation Cycle**. It doesn't just store data; it organizes it during downtime using Riemannian optimization and Hausdorff identity verification.
 - **Dialectical Reasoning**: The built-in **Hegelian Dialectic Engine** allows the database to resolve contradictions by synthesizing opposites into abstract "synthesis" nodes.
 - **Emotional Physics**: Valence and arousal fields on nodes alter heat diffusion propagation. Knowledge that "matters" (high arousal) spreads faster through the memory, mirroring biological cognitive priority.
+
+---
+
+## 🔗 LLM Integration Ecosystem
+
+NietzscheDB provides a multi-layer integration stack for external AI models:
+
+### Model Context Protocol (MCP)
+AI assistants (Claude, GPT, Cursor, Windsurf) interact with NietzscheDB as a discoverable tool via JSON-RPC 2.0 (`nietzsche-mcp`). 19 tools exposed: graph CRUD, NQL query, KNN search, traversal, algorithms, diffusion, stats.
+
+### Framework Integrations
+
+| Framework | Module | Capabilities |
+|---|---|---|
+| **LangChain** | `sdks/python/nietzschedb/langchain.py` | `NietzscheVectorStore` — full VectorStore interface, `similarity_search_with_score()`, RAG pipelines with GPT-4/Claude |
+| **LangGraph** | `sdks/python/nietzschedb/langgraph.py` | `NietzscheCheckpointer` — persistent agent state, thread-based conversation history. `NietzscheMemoryStore` — long-term agent memory with TTL and namespace isolation |
+| **DSPy** | `sdks/python/nietzschedb/dspy.py` | `NietzscheRM` — hybrid BM25 + vector KNN retrieval module |
+| **LlamaIndex** | `integrations/` | Vector store integration |
+
+### Embedding Providers
+
+| Provider | Class | Model |
+|---|---|---|
+| OpenAI | `OpenAIEmbedder` | text-embedding-3-small |
+| Cohere | `CohereEmbedder` | embed-english-v3.0 |
+| Voyage AI | `VoyageEmbedder` | voyage models |
+| Google | `GoogleEmbedder` | Gemini embedding |
+| HuggingFace | `SentenceTransformerEmbedder` | BAAI/bge-m3 (local) |
+| OpenRouter | `OpenRouterEmbedder` | OpenAI-compatible API |
+
+### Code-as-Data (NQL as Executable LLM Output)
+LLM-generated NQL queries can be stored as `ActionNode` graph nodes. When a node's energy exceeds its `activation_threshold` (via heat diffusion / Will-to-Power), the stored query auto-executes. This transforms the database into a reactive rule engine where LLMs teach the graph autonomous behaviors.
+
+### Adaptive Learning Pipeline
+```
+Health Metrics → PPO Policy (ONNX) → Growth Strategy → Evolution → Parameter Adjustment
+         ↑                                                              │
+         └──────────────────── Feedback Loop ───────────────────────────┘
+```
+
+- **Inference at runtime**: Pre-trained PPO and GNN models run via ONNX for real-time decisions
+- **Offline training**: `scripts/models/train_ppo.py`, `train_gnn.py`, `train_value_network.py`
+- **15 adaptive mechanisms**: RiemannianAdam, PPO, GNN, AutoTuner, adaptive thresholds, L-System evolution, Will-to-Power, neural threshold daemon, dream engine, reactor, evolution daemon, LTD, thermal perturbation, sensory consolidation, MCTS-based energy boost
 
 ### Key References & Inspiration
 - **Hyperbolic Geometry of Complex Networks** (Krioukov et al., 2010)

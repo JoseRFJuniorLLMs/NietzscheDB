@@ -8,8 +8,14 @@
 //! 4. The slope `D` is the box-counting dimension.
 //!
 //! **Local** variant: use the `k` nearest neighbours as the point set.
+//!
+//! ## GPU acceleration (`cuda` feature)
+//! When compiled with `--features cuda`, the expensive kNN step is offloaded
+//! to the NVIDIA GPU via `nietzsche-cugraph::poincare_batch_knn`. This
+//! computes ALL pairwise Poincaré distances in a single CUDA kernel launch,
+//! replacing the O(n²) sequential CPU loop.
 
-use nietzsche_graph::{Node, PoincareVector};
+use nietzsche_graph::Node;
 use std::collections::HashSet;
 
 /// Scales used for the multi-scale box count.
@@ -62,6 +68,87 @@ pub fn local_hausdorff(center: &Node, all_nodes: &[Node], k: usize) -> f32 {
     }
 
     box_counting(&k_neighbours)
+}
+
+// ─────────────────────────────────────────────
+// GPU-accelerated batch Hausdorff
+// ─────────────────────────────────────────────
+
+/// Compute local Hausdorff dimension for **ALL** nodes simultaneously.
+///
+/// With the `cuda` feature: offloads kNN to GPU, computing all N×N Poincaré
+/// distances in a single kernel launch. Returns `Vec<f32>` where result[i]
+/// is the local Hausdorff dimension for `nodes[i]`.
+///
+/// Without `cuda`: falls back to sequential CPU computation (same as calling
+/// `local_hausdorff` in a loop).
+pub fn batch_local_hausdorff(nodes: &[Node], k: usize) -> Vec<f32> {
+    if nodes.len() < 3 {
+        return vec![1.0; nodes.len()];
+    }
+
+    // Try GPU path first
+    #[cfg(feature = "cuda")]
+    {
+        match gpu_batch_hausdorff(nodes, k) {
+            Ok(results) => return results,
+            Err(e) => {
+                // GPU failed — fall back to CPU with a warning
+                #[cfg(feature = "tracing")]
+                tracing::warn!("GPU batch Hausdorff failed, falling back to CPU: {e}");
+                eprintln!("[L-System] GPU batch Hausdorff failed: {e} — falling back to CPU");
+            }
+        }
+    }
+
+    // CPU fallback: sequential (original path)
+    cpu_batch_hausdorff(nodes, k)
+}
+
+/// CPU fallback: compute local Hausdorff for each node sequentially.
+fn cpu_batch_hausdorff(nodes: &[Node], k: usize) -> Vec<f32> {
+    nodes.iter().map(|node| local_hausdorff(node, nodes, k)).collect()
+}
+
+/// GPU path: batch all-pairs kNN via CUDA, then box-counting per node.
+#[cfg(feature = "cuda")]
+fn gpu_batch_hausdorff(nodes: &[Node], k: usize) -> Result<Vec<f32>, String> {
+    let n = nodes.len();
+    let dim = nodes[0].embedding.coords.len();
+
+    // Flatten all embeddings into contiguous [N, dim] f32 array
+    let mut flat_embeddings: Vec<f32> = Vec::with_capacity(n * dim);
+    for node in nodes {
+        let coords = &node.embedding.coords;
+        if coords.len() == dim {
+            flat_embeddings.extend_from_slice(coords);
+        } else {
+            // Pad/truncate to uniform dim
+            flat_embeddings.extend_from_slice(&coords[..coords.len().min(dim)]);
+            flat_embeddings.resize(flat_embeddings.len() + dim.saturating_sub(coords.len()), 0.0);
+        }
+    }
+
+    // Launch GPU batch kNN
+    let result = nietzsche_cugraph::gpu::poincare_batch::poincare_batch_knn(
+        &flat_embeddings, n, dim, k,
+    ).map_err(|e| format!("{e}"))?;
+
+    // Compute box-counting dimension for each node's k neighbours
+    let hausdorff_values: Vec<f32> = result.neighbours.iter().enumerate().map(|(q, neighbour_indices)| {
+        let k_coords: Vec<&Vec<f32>> = neighbour_indices
+            .iter()
+            .map(|&i| &nodes[i].embedding.coords)
+            .collect();
+
+        if k_coords.len() < 3 {
+            1.0
+        } else {
+            box_counting(&k_coords)
+        }
+    }).collect();
+
+    Ok(hausdorff_values)
 }
 
 // ─────────────────────────────────────────────
