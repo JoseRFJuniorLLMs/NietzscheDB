@@ -113,6 +113,20 @@ RETURN <return_clause>
 [ORDER BY <expr> [ASC | DESC]]
 [LIMIT <n>]
 [SKIP <n>]
+
+### DSI — Generative Retrieval
+
+NietzscheDB supports **Generative Retrieval** via a DSI (Differentiable Search Index). You can query nodes by their semantic hierarchical codes using the `semantic_id` filter directly in the node pattern.
+
+```sql
+-- Find nodes matching a semantic prefix (e.g., all under concept 1.25)
+MATCH (n {semantic_id: "1.25.*"})
+RETURN n
+
+-- Exact semantic ID match
+MATCH (n {semantic_id: "1.25.4"})
+RETURN n
+```
 ```
 
 ### Patterns
@@ -698,6 +712,27 @@ EXPLAIN DIFFUSE FROM $seed WITH t = [1.0] MAX_HOPS 5 RETURN path
   "limit": 10,
   "estimated_cost": "O(log n)"
 }
+```
+
+---
+
+## Gas Limits & Safety
+
+To prevent infinite recursion in graph traversals and protect resources from malformed queries, NQL implements a **Gas Limit** system.
+
+Each query starts with a fixed gas budget (default: **50,000 units**). As the query executes, it consumes gas for every operation:
+- **Node scan/read**: 1 gas
+- **Edge scan/read**: 2 gas
+- **Condition evaluation**: 1 gas
+
+If the budget is exhausted, the query is terminated with a `gas limit exceeded` error.
+
+### Custom Gas Limits
+Privileged callers can specify custom gas limits for complex agency queries.
+
+```rust
+// Execute with 5x default budget
+let results = execute_with_gas_limit(&query, storage, adj, params, 250_000)?;
 ```
 
 ---
