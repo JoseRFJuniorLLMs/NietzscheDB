@@ -261,6 +261,14 @@ impl<V: VectorStore> NietzscheDB<V> {
         }
 
         let wal       = GraphWal::open(data_dir)?;
+
+        // ── One-time edge migration (pre-Minkowski → current format) ──
+        match storage.repair_legacy_edges() {
+            Ok(0) => {} // nothing to repair
+            Ok(n) => tracing::info!(repaired = n, "migrated legacy edges to current format"),
+            Err(e) => tracing::warn!(error = %e, "edge migration failed (non-fatal, edges will be repaired on access)"),
+        }
+
         let adjacency = storage.rebuild_adjacency()?;
 
         // Load persisted schema constraints if any exist

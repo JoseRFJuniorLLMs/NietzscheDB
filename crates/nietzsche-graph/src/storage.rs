@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::adjacency::AdjacencyIndex;
 use crate::error::GraphError;
-use crate::model::{Edge, Node, NodeMeta, NodeType, PoincareVector};
+use crate::model::{CausalType, Edge, EdgeType, Node, NodeMeta, NodeType, PoincareVector};
 
 // ─────────────────────────────────────────────
 // Legacy data format migration support
@@ -42,6 +42,52 @@ mod as_json_string_legacy {
     where T: for<'a> Deserialize<'a>, D: Deserializer<'de> {
         let s = String::deserialize(de)?;
         serde_json::from_str(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+// ── Legacy Edge format (pre-Minkowski, before 2026-02-22) ──
+// Missing: minkowski_interval, causal_type
+// #[serde(default)] has NO effect in bincode, so we need a separate struct.
+
+#[derive(Debug, Deserialize)]
+struct EdgeLegacy {
+    pub id: Uuid,
+    pub from: Uuid,
+    pub to: Uuid,
+    pub edge_type: EdgeType,
+    pub weight: f32,
+    pub lsystem_rule: Option<String>,
+    pub created_at: i64,
+    #[serde(with = "as_json_string_legacy")]
+    pub metadata: HashMap<String, serde_json::Value>,
+}
+
+impl From<EdgeLegacy> for Edge {
+    fn from(old: EdgeLegacy) -> Self {
+        Edge {
+            id: old.id,
+            from: old.from,
+            to: old.to,
+            edge_type: old.edge_type,
+            weight: old.weight,
+            lsystem_rule: old.lsystem_rule,
+            created_at: old.created_at,
+            metadata: old.metadata,
+            minkowski_interval: 0.0,
+            causal_type: CausalType::Unknown,
+        }
+    }
+}
+
+/// Try deserializing edge bytes in current format, then legacy format.
+/// Returns `(edge, needs_repair)` on success.
+fn deserialize_edge_compat(bytes: &[u8]) -> Result<(Edge, bool), bincode::Error> {
+    match bincode::deserialize::<Edge>(bytes) {
+        Ok(edge) => Ok((edge, false)),
+        Err(_) => {
+            let legacy = bincode::deserialize::<EdgeLegacy>(bytes)?;
+            Ok((Edge::from(legacy), true))
+        }
     }
 }
 
@@ -1443,12 +1489,20 @@ impl GraphStorage {
     }
 
     /// Retrieve an edge by ID. Returns `None` if not found.
+    /// Uses compat deserializer to handle legacy (pre-Minkowski) edges.
     #[inline]
     pub fn get_edge(&self, id: &Uuid) -> Result<Option<Edge>, GraphError> {
         match self.db.get_cf(&self.cf_edges(), id.as_bytes())
             .map_err(|e| GraphError::Storage(e.to_string()))?
         {
-            Some(bytes) => Ok(Some(bincode::deserialize(&bytes)?)),
+            Some(bytes) => {
+                let (edge, needs_repair) = deserialize_edge_compat(&bytes)?;
+                if needs_repair {
+                    // Write back in current format so next read is fast
+                    let _ = self.update_edge_only(&edge);
+                }
+                Ok(Some(edge))
+            }
             None => Ok(None),
         }
     }
@@ -1540,6 +1594,52 @@ impl GraphStorage {
             index.add_edge(edge);
         }
         Ok(index)
+    }
+
+    /// One-time migration: scan all edges, re-serialize any that were stored
+    /// in the legacy (pre-Minkowski) format so they deserialize cleanly on
+    /// subsequent restarts. Returns the number of repaired edges.
+    pub fn repair_legacy_edges(&self) -> Result<usize, GraphError> {
+        let cf = self.cf_edges();
+        let mut repaired = 0usize;
+        let mut batch = rocksdb::WriteBatch::default();
+
+        for item in self.db.iterator_cf(&cf, rocksdb::IteratorMode::Start) {
+            let (key, value) = item.map_err(|e| GraphError::Storage(e.to_string()))?;
+            // Only re-write edges that fail the current format
+            if bincode::deserialize::<Edge>(&value).is_ok() {
+                continue;
+            }
+            match bincode::deserialize::<EdgeLegacy>(&value) {
+                Ok(legacy) => {
+                    let edge = Edge::from(legacy);
+                    let new_bytes = bincode::serialize(&edge)?;
+                    batch.put_cf(&cf, &key, &new_bytes);
+                    repaired += 1;
+                    // Flush in chunks to avoid huge memory use
+                    if repaired % 10_000 == 0 {
+                        self.db.write(std::mem::take(&mut batch))
+                            .map_err(|e| GraphError::Storage(e.to_string()))?;
+                        tracing::info!(repaired, "edge migration progress...");
+                    }
+                }
+                Err(e) => {
+                    let id_hex = if key.len() >= 16 {
+                        Uuid::from_slice(&key).map(|u| u.to_string()).unwrap_or_else(|_| format!("{:?}", &key[..16]))
+                    } else {
+                        format!("{:?}", &*key)
+                    };
+                    warn!(edge_id = %id_hex, error = %e, "unrecoverable corrupt edge");
+                }
+            }
+        }
+
+        if !batch.is_empty() {
+            self.db.write(batch)
+                .map_err(|e| GraphError::Storage(e.to_string()))?;
+        }
+
+        Ok(repaired)
     }
 
     /// Total number of persisted nodes (fast: uses RocksDB estimate).
@@ -1941,6 +2041,7 @@ impl<'a> Iterator for NodeIterator<'a> {
 }
 
 /// Lazy iterator over edges in RocksDB.
+/// Uses `deserialize_edge_compat` to handle legacy (pre-Minkowski) edge format.
 pub struct EdgeIterator<'a> {
     inner: rocksdb::DBIteratorWithThreadMode<'a, DB>,
 }
@@ -1955,15 +2056,15 @@ impl<'a> Iterator for EdgeIterator<'a> {
                 Ok(kv) => kv,
                 Err(e) => return Some(Err(GraphError::Storage(e.to_string()))),
             };
-            match bincode::deserialize::<Edge>(&value) {
-                Ok(edge) => return Some(Ok(edge)),
+            match deserialize_edge_compat(&value) {
+                Ok((edge, _needs_repair)) => return Some(Ok(edge)),
                 Err(e) => {
                     let id_hex = if key.len() >= 16 {
                         Uuid::from_slice(&key).map(|u| u.to_string()).unwrap_or_else(|_| format!("{:?}", &key[..16]))
                     } else {
                         format!("{:?}", &*key)
                     };
-                    warn!(edge_id = %id_hex, error = %e, "skipping corrupt edge (bincode deserialize failed)");
+                    warn!(edge_id = %id_hex, error = %e, "skipping corrupt edge (bincode deserialize failed in all formats)");
                     continue;
                 }
             }

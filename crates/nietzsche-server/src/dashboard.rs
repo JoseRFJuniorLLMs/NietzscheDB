@@ -237,14 +237,14 @@ pub async fn serve(
         .route("/api/cluster/status", get(cluster_status))
         .route("/api/cluster/ring", get(cluster_ring))
         .layer(Extension(cluster))
-        .layer(Extension(auth))
         .layer(middleware::from_fn(auth_middleware))
+        .layer(Extension(auth))
         .layer(
             CorsLayer::new()
                 .allow_origin(AllowOrigin::predicate(|origin, _| {
                     // Allow localhost origins for development
                     let o = origin.as_bytes();
-                    o.starts_with(b"http://localhost") || o.starts_with(b"http://127.0.0.1")
+                    o.starts_with(b"http://localhost") || o.starts_with(b"http://127.0.0.1") || o.starts_with(b"https://34.123.223.50")
                 }))
                 .allow_methods(tower_http::cors::Any)
                 .allow_headers(tower_http::cors::Any),
