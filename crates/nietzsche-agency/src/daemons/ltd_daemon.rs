@@ -126,23 +126,13 @@ mod tests {
     }
 
     fn make_edge_with_correction(from: Uuid, to: Uuid, weight: f32, count: u64) -> Edge {
-        Edge {
-            from,
-            to,
-            edge_type: EdgeType::Semantic,
-            weight,
-            metadata: serde_json::json!({ "correction_count": count }),
-        }
+        let mut edge = Edge::new(from, to, EdgeType::Association, weight);
+        edge.metadata.insert("correction_count".into(), serde_json::json!(count));
+        edge
     }
 
     fn make_edge_clean(from: Uuid, to: Uuid) -> Edge {
-        Edge {
-            from,
-            to,
-            edge_type: EdgeType::Semantic,
-            weight: 0.8,
-            metadata: serde_json::json!({}),
-        }
+        Edge::new(from, to, EdgeType::Association, 0.8)
     }
 
     #[test]

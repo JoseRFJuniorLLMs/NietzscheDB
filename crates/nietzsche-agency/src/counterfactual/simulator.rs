@@ -269,6 +269,8 @@ mod tests {
             created_at: 0,
             expires_at: None,
             metadata: std::collections::HashMap::new(),
+            valence: 0.0,
+            arousal: 0.0,
             is_phantom: false,
         };
 
