@@ -35,7 +35,9 @@
     "react-router-dom": "^7.13.0",
     "recharts": "^3.7.0",
     "tailwind-merge": "^3.4.0",
-    "three": "^0.183.1"
+    "three": "^0.183.1",
+    "zustand": "^5.0.11",
+    "flatbuffers": "^25.9.23"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
@@ -55,6 +57,9 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.2.4",
-    "vite-plugin-singlefile": "^2.0.0"
+    "vite-plugin-singlefile": "^2.0.0",
+    "vite-plugin-wasm": "^3.5.0",
+    "vite-plugin-top-level-await": "^1.6.0",
+    "@webgpu/types": "^0.1.69"
   }
 }
