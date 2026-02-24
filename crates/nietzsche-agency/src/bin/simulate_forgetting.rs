@@ -1,15 +1,15 @@
-//! Protocolo Experimental: Termodinamica do Esquecimento Ativo
+//! Protocolo Experimental: O Sistema Sabe Nascer?
 //!
-//! 3 variacoes experimentais sobre 5,000 nos x 500 ciclos Zaratustra:
+//! 3 cenarios sobre 5,000 nos x 500 ciclos, variavel isolada = modo de nascimento:
 //!
-//! | Mode | Generation | Purpose |
-//! |------|-----------|---------|
-//! | A: DELETE_ONLY | 0 | Control — pure catabolism |
-//! | B: LOW_GEN | ~30% of deleted | Mild anabolism |
-//! | C: MATCHED_GEN | ~100% of deleted | Balanced metabolism |
+//! | Mode | Birth | kappa | Polarization | Purpose |
+//! |------|-------|-------|-------------|---------|
+//! | D: FOAM | void-born orphans | 0 | none | Baseline — structural foam |
+//! | E: ANCHORED | elite-parented | 2 | none | Isolate connectivity effect |
+//! | F: DIALECTICAL | elite-parented | 2 | +-delta | Full Option A |
 //!
-//! All 3 share identical seeding, energy decay, and noise injection.
-//! The ONLY variable is void-seeded node generation after each purge.
+//! Identical seeding, energy decay, noise injection, deletion logic.
+//! ONLY variable: how new nodes are born after purge.
 //!
 //! ## Usage
 //! ```sh
@@ -17,10 +17,9 @@
 //! ```
 //!
 //! ## Output
-//! - `telemetry_A_delete_only.csv`
-//! - `telemetry_B_low_gen.csv`
-//! - `telemetry_C_matched_gen.csv`
-//! - Raw numbers from last 100 cycles printed to stdout.
+//! - `telemetry_D_foam.csv`
+//! - `telemetry_E_anchored.csv`
+//! - `telemetry_F_dialectical.csv`
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -70,14 +69,13 @@ struct SimNode {
     is_signal: bool,
     px: f32,
     py: f32,
+    born_cycle: usize, // cycle this node was created (0 = seed)
 }
 
-/// Void coordinate — captures WHERE a node died in Poincare space.
 #[derive(Clone)]
 struct VoidSeed {
     px: f32,
     py: f32,
-    energy_at_death: f32,
 }
 
 struct CycleTelemetry {
@@ -92,84 +90,58 @@ struct CycleTelemetry {
     mean_energy: f32,
     tgc: f32,
     elite_drift: f32,
+    newborn_survival: f32, // fraction of last-cycle newborns that survived this cycle
 }
 
 #[derive(Clone, Copy)]
-struct EliteCentroid {
-    cx: f32,
-    cy: f32,
-}
+struct EliteCentroid { cx: f32, cy: f32 }
 
 impl EliteCentroid {
     fn zero() -> Self { Self { cx: 0.0, cy: 0.0 } }
-
-    fn distance(&self, other: &EliteCentroid) -> f32 {
-        let dx = self.cx - other.cx;
-        let dy = self.cy - other.cy;
-        (dx * dx + dy * dy).sqrt()
+    fn distance(&self, o: &EliteCentroid) -> f32 {
+        ((self.cx - o.cx).powi(2) + (self.cy - o.cy).powi(2)).sqrt()
     }
 }
 
-/// Generation mode for the experiment.
+/// Birth mode — the ONLY experimental variable.
 #[derive(Clone, Copy, PartialEq)]
-enum GenMode {
-    DeleteOnly,   // A: zero generation
-    LowGen,       // B: ~30% of deleted
-    MatchedGen,   // C: ~100% of deleted
+enum BirthMode {
+    /// D: Void-born orphans (kappa=0, random mid-quality). The "foam" baseline.
+    Foam,
+    /// E: Elite-parented, kappa=2, NO entropy polarization. Isolates connectivity.
+    Anchored,
+    /// F: Elite-parented, kappa=2, WITH entropy polarization. Full Option A.
+    Dialectical,
 }
 
-impl GenMode {
+impl BirthMode {
     fn label(&self) -> &'static str {
         match self {
-            GenMode::DeleteOnly => "A_delete_only",
-            GenMode::LowGen => "B_low_gen",
-            GenMode::MatchedGen => "C_matched_gen",
-        }
-    }
-
-    fn gen_ratio(&self) -> f32 {
-        match self {
-            GenMode::DeleteOnly => 0.0,
-            GenMode::LowGen => 0.30,
-            GenMode::MatchedGen => 1.0,
+            BirthMode::Foam => "D_foam",
+            BirthMode::Anchored => "E_anchored",
+            BirthMode::Dialectical => "F_dialectical",
         }
     }
 }
 
 // ──────────────────────────────────────────────────
-//  TGC Tracker — uses ACTUAL generation count
+//  TGC Tracker
 // ──────────────────────────────────────────────────
 
-struct TgcTracker {
-    ema: f32,
-    alpha: f32,
-    baseline: f32,
-}
+struct TgcTracker { ema: f32, alpha: f32 }
 
 impl TgcTracker {
-    fn new() -> Self {
-        Self { ema: 0.0, alpha: 0.3, baseline: 0.0 }
-    }
+    fn new() -> Self { Self { ema: 0.0, alpha: 0.3 } }
 
-    /// TGC(t) = (G_t / V_t) * Quality, EMA smoothed.
-    /// G_t = actual nodes created this cycle.
-    /// V_t = total nodes after cycle.
-    /// Quality = mean_vitality of survivors.
     fn update(&mut self, created: usize, total_after: usize, mean_vitality: f32) -> f32 {
-        let v_t = total_after.max(1) as f32;
-        let g_t = created as f32;
-        let quality = mean_vitality.clamp(0.0, 1.0);
-        let raw_tgc = (g_t / v_t) * quality;
-
-        self.ema = self.alpha * raw_tgc + (1.0 - self.alpha) * self.ema;
+        let raw = (created as f32 / total_after.max(1) as f32) * mean_vitality.clamp(0.0, 1.0);
+        self.ema = self.alpha * raw + (1.0 - self.alpha) * self.ema;
         self.ema
     }
-
-    fn set_baseline(&mut self, val: f32) { self.baseline = val; }
 }
 
 // ──────────────────────────────────────────────────
-//  Deterministic PRNG (no external dependency)
+//  Deterministic PRNG
 // ──────────────────────────────────────────────────
 
 struct Rng { state: u64 }
@@ -183,10 +155,14 @@ impl Rng {
         lo + t * (hi - lo)
     }
 
-    fn next_usize(&mut self, lo: usize, hi: usize) -> usize {
+    fn next_usize(&mut self, hi: usize) -> usize {
         self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        let range = (hi - lo).max(1);
-        lo + ((self.state >> 33) as usize) % range
+        ((self.state >> 33) as usize) % hi.max(1)
+    }
+
+    /// Returns true with probability p.
+    fn chance(&mut self, p: f32) -> bool {
+        self.next_f32(0.0, 1.0) < p
     }
 }
 
@@ -194,165 +170,149 @@ impl Rng {
 //  The Simulator
 // ──────────────────────────────────────────────────
 
-struct ForgettingSimulator {
-    weights: VitalityWeights,
+struct Sim {
+    w: VitalityWeights,
     graph: Vec<SimNode>,
-    void_seeds: Vec<VoidSeed>,
+    voids: Vec<VoidSeed>,
     noise_killed: usize,
     signal_killed: usize,
-    vitality_threshold: f32,
-    energy_threshold: f32,
-    tgc_tracker: TgcTracker,
-    initial_centroid: EliteCentroid,
-    gen_mode: GenMode,
+    vit_threshold: f32,
+    eng_threshold: f32,
+    tgc: TgcTracker,
+    centroid_0: EliteCentroid,
+    mode: BirthMode,
+    last_born_count: usize, // how many nodes were born last cycle
 }
 
-impl ForgettingSimulator {
-    fn new(mode: GenMode) -> Self {
+impl Sim {
+    fn new(mode: BirthMode) -> Self {
         Self {
-            weights: VitalityWeights::default(),
+            w: VitalityWeights::default(),
             graph: Vec::new(),
-            void_seeds: Vec::new(),
+            voids: Vec::new(),
             noise_killed: 0,
             signal_killed: 0,
-            vitality_threshold: 0.30,
-            energy_threshold: 0.10,
-            tgc_tracker: TgcTracker::new(),
-            initial_centroid: EliteCentroid::zero(),
-            gen_mode: mode,
+            vit_threshold: 0.30,
+            eng_threshold: 0.10,
+            tgc: TgcTracker::new(),
+            centroid_0: EliteCentroid::zero(),
+            mode,
+            last_born_count: 0,
         }
     }
 
-    fn seed_graph(&mut self) {
-        let mut rng = Rng::new(42);
-
-        // 1,000 Signal (high energy, causal anchoring)
+    fn seed(&mut self) {
+        let mut r = Rng::new(42);
         for _ in 0..1000 {
             self.graph.push(SimNode {
-                energy: rng.next_f32(0.6, 1.0),
-                hausdorff: rng.next_f32(0.6, 1.2),
-                entropy_delta: rng.next_f32(0.0, 0.2),
-                elite_proximity: rng.next_f32(0.0, 0.3),
+                energy: r.next_f32(0.6, 1.0),
+                hausdorff: r.next_f32(0.6, 1.2),
+                entropy_delta: r.next_f32(0.0, 0.2),
+                elite_proximity: r.next_f32(0.0, 0.3),
                 causal_edges: 3,
-                toxicity: rng.next_f32(0.0, 0.1),
+                toxicity: r.next_f32(0.0, 0.1),
                 is_signal: true,
-                px: rng.next_f32(-0.3, 0.3),
-                py: rng.next_f32(-0.3, 0.3),
+                px: r.next_f32(-0.3, 0.3),
+                py: r.next_f32(-0.3, 0.3),
+                born_cycle: 0,
             });
         }
-
-        // 4,000 Noise (low energy, no causal protection)
         for _ in 0..4000 {
             self.graph.push(SimNode {
-                energy: rng.next_f32(0.0, 0.25),
-                hausdorff: rng.next_f32(0.05, 0.3),
-                entropy_delta: rng.next_f32(0.5, 1.0),
-                elite_proximity: rng.next_f32(0.7, 1.0),
+                energy: r.next_f32(0.0, 0.25),
+                hausdorff: r.next_f32(0.05, 0.3),
+                entropy_delta: r.next_f32(0.5, 1.0),
+                elite_proximity: r.next_f32(0.7, 1.0),
                 causal_edges: 0,
-                toxicity: rng.next_f32(0.3, 0.8),
+                toxicity: r.next_f32(0.3, 0.8),
                 is_signal: false,
-                px: rng.next_f32(-0.9, 0.9),
-                py: rng.next_f32(-0.9, 0.9),
+                px: r.next_f32(-0.9, 0.9),
+                py: r.next_f32(-0.9, 0.9),
+                born_cycle: 0,
             });
         }
-
-        self.initial_centroid = self.compute_elite_centroid();
+        self.centroid_0 = self.elite_centroid();
     }
 
-    fn compute_elite_centroid(&self) -> EliteCentroid {
+    fn elite_centroid(&self) -> EliteCentroid {
         if self.graph.is_empty() { return EliteCentroid::zero(); }
-
-        let mut energies: Vec<f32> = self.graph.iter().map(|n| n.energy).collect();
-        energies.sort_by(|a, b| b.partial_cmp(a).unwrap());
-        let threshold = energies[energies.len() / 5];
-
-        let mut sx = 0.0f32;
-        let mut sy = 0.0f32;
-        let mut c = 0usize;
-
+        let mut e: Vec<f32> = self.graph.iter().map(|n| n.energy).collect();
+        e.sort_by(|a, b| b.partial_cmp(a).unwrap());
+        let thr = e[e.len() / 5];
+        let (mut sx, mut sy, mut c) = (0.0f32, 0.0f32, 0usize);
         for n in &self.graph {
-            if n.energy >= threshold {
-                sx += n.px;
-                sy += n.py;
-                c += 1;
-            }
+            if n.energy >= thr { sx += n.px; sy += n.py; c += 1; }
         }
         if c == 0 { return EliteCentroid::zero(); }
         EliteCentroid { cx: sx / c as f32, cy: sy / c as f32 }
     }
 
-    fn vitality(&self, node: &SimNode) -> f32 {
-        let w = &self.weights;
-        let prox = (1.0 - node.elite_proximity).max(0.0);
-        let z = w.w1_energy * node.energy
-              + w.w2_hausdorff * node.hausdorff
-              - w.w3_entropy * node.entropy_delta
-              + w.w4_elite_prox * prox
-              + w.w5_causal * node.causal_edges as f32
-              - w.w6_toxicity * node.toxicity;
+    /// Collect indices of top 5% nodes by energy — the elite pool for parenting.
+    fn elite_indices(&self) -> Vec<usize> {
+        let mut indexed: Vec<(usize, f32)> = self.graph.iter()
+            .enumerate().map(|(i, n)| (i, n.energy)).collect();
+        indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        let top = (self.graph.len() / 20).max(2); // top 5%, min 2
+        indexed[..top.min(indexed.len())].iter().map(|(i, _)| *i).collect()
+    }
+
+    fn vitality(&self, n: &SimNode) -> f32 {
+        let prox = (1.0 - n.elite_proximity).max(0.0);
+        let z = self.w.w1_energy * n.energy
+              + self.w.w2_hausdorff * n.hausdorff
+              - self.w.w3_entropy * n.entropy_delta
+              + self.w.w4_elite_prox * prox
+              + self.w.w5_causal * n.causal_edges as f32
+              - self.w.w6_toxicity * n.toxicity;
         sigmoid(z)
     }
 
-    /// Phase 0: Energy decay + noise injection (identical across all 3 experiments).
-    fn evolve_universe(&mut self, rng: &mut Rng) {
-        // Energy decay
-        for node in &mut self.graph {
-            let decay = rng.next_f32(0.005, 0.02);
-            node.energy = (node.energy - decay).max(0.0);
-            if node.causal_edges == 0 {
-                node.toxicity = (node.toxicity + rng.next_f32(0.001, 0.01)).min(1.0);
+    /// Phase 0: Energy decay + noise injection. Identical for all modes.
+    fn evolve(&mut self, r: &mut Rng) {
+        for n in &mut self.graph {
+            n.energy = (n.energy - r.next_f32(0.005, 0.02)).max(0.0);
+            if n.causal_edges == 0 {
+                n.toxicity = (n.toxicity + r.next_f32(0.001, 0.01)).min(1.0);
             }
         }
-
-        // Will-to-Power recovery for signal
-        for node in &mut self.graph {
-            if node.is_signal && node.causal_edges > 0 {
-                let recovery = rng.next_f32(0.005, 0.015);
-                node.energy = (node.energy + recovery).min(1.0);
+        for n in &mut self.graph {
+            if n.is_signal && n.causal_edges > 0 {
+                n.energy = (n.energy + r.next_f32(0.005, 0.015)).min(1.0);
             }
         }
-
-        // Constant noise injection: 10/cycle (same for all modes)
+        // Constant noise injection: 10/cycle
         for _ in 0..10 {
             self.graph.push(SimNode {
-                energy: rng.next_f32(0.0, 0.20),
-                hausdorff: rng.next_f32(0.05, 0.25),
-                entropy_delta: rng.next_f32(0.5, 1.0),
-                elite_proximity: rng.next_f32(0.7, 1.0),
+                energy: r.next_f32(0.0, 0.20),
+                hausdorff: r.next_f32(0.05, 0.25),
+                entropy_delta: r.next_f32(0.5, 1.0),
+                elite_proximity: r.next_f32(0.7, 1.0),
                 causal_edges: 0,
-                toxicity: rng.next_f32(0.3, 0.8),
+                toxicity: r.next_f32(0.3, 0.8),
                 is_signal: false,
-                px: rng.next_f32(-0.9, 0.9),
-                py: rng.next_f32(-0.9, 0.9),
+                px: r.next_f32(-0.9, 0.9),
+                py: r.next_f32(-0.9, 0.9),
+                born_cycle: 0, // noise injection, not tracked
             });
         }
     }
 
-    /// Phase 3: Void-seeded generation. Creates new nodes at void coordinates.
-    /// These are HEALTHY nodes — higher quality than random noise injection.
-    fn generate_from_void(&mut self, rng: &mut Rng, deleted: usize) -> usize {
-        let ratio = self.gen_mode.gen_ratio();
-        if ratio == 0.0 { return 0; }
-
-        let to_create = ((deleted as f32 * ratio).round() as usize).min(self.void_seeds.len());
-        if to_create == 0 { return 0; }
-
+    /// Birth: FOAM — old behavior. Void-born orphans, kappa=0.
+    fn birth_foam(&mut self, r: &mut Rng, n_create: usize, cycle: usize) -> usize {
         let mut created = 0;
-        for _ in 0..to_create {
-            if let Some(seed) = self.void_seeds.pop() {
-                // Generate a MID-quality node at the void position.
-                // Not elite (no causal), but better than pure noise.
-                // Represents structural regrowth from the void.
+        for _ in 0..n_create {
+            if let Some(seed) = self.voids.pop() {
                 self.graph.push(SimNode {
-                    energy: rng.next_f32(0.15, 0.50),         // mid-range energy
-                    hausdorff: rng.next_f32(0.3, 0.8),        // mid-range fractal
-                    entropy_delta: rng.next_f32(0.1, 0.4),    // low entropy (healthy)
-                    elite_proximity: rng.next_f32(0.3, 0.6),  // moderate proximity
-                    causal_edges: 0,                           // no causal — must earn it
-                    toxicity: rng.next_f32(0.0, 0.2),         // low toxicity
-                    is_signal: false,                          // void-born, not signal
-                    px: seed.px + rng.next_f32(-0.05, 0.05),  // near void position
-                    py: seed.py + rng.next_f32(-0.05, 0.05),
+                    energy: r.next_f32(0.15, 0.50),
+                    hausdorff: r.next_f32(0.3, 0.8),
+                    entropy_delta: r.next_f32(0.1, 0.4),
+                    elite_proximity: r.next_f32(0.3, 0.6),
+                    causal_edges: 0, // ORPHAN — the foam problem
+                    toxicity: r.next_f32(0.0, 0.2),
+                    is_signal: false,
+                    px: seed.px + r.next_f32(-0.05, 0.05),
+                    py: seed.py + r.next_f32(-0.05, 0.05),
+                    born_cycle: cycle,
                 });
                 created += 1;
             }
@@ -360,75 +320,143 @@ impl ForgettingSimulator {
         created
     }
 
-    /// Run one complete Zaratustra cycle.
-    fn run_cycle(&mut self, cycle_id: usize) -> CycleTelemetry {
-        let mut rng = Rng::new(42u64.wrapping_mul(cycle_id as u64 + 7919));
+    /// Birth: ANCHORED — elite parented, kappa=2, NO polarization.
+    fn birth_anchored(&mut self, r: &mut Rng, n_create: usize, cycle: usize, polarize: bool) -> usize {
+        let elites = self.elite_indices();
+        if elites.len() < 2 { return 0; }
 
-        // Phase 0: Universe evolution (identical for all modes)
-        self.evolve_universe(&mut rng);
+        let mut created = 0;
+        for _ in 0..n_create {
+            if self.voids.is_empty() { break; }
+            self.voids.pop(); // consume void seed (for accounting parity)
 
-        // Phase 1: Judgment — compute vitality and apply Triple Condition
-        let mut sacrificed = 0usize;
-        let mut vitalities = Vec::with_capacity(self.graph.len());
-        let mut surviving = Vec::with_capacity(self.graph.len());
-        let mut energy_sum = 0.0f32;
+            // Select 2 elite parents
+            let i1 = elites[r.next_usize(elites.len())];
+            let mut i2 = elites[r.next_usize(elites.len())];
+            // Ensure different parents
+            let mut attempts = 0;
+            while i2 == i1 && attempts < 5 {
+                i2 = elites[r.next_usize(elites.len())];
+                attempts += 1;
+            }
 
-        for node in &self.graph {
-            let v = self.vitality(node);
-            vitalities.push(v);
-            energy_sum += node.energy;
+            let p1 = &self.graph[i1];
+            let p2 = &self.graph[i2];
 
-            let cond1 = v < self.vitality_threshold;
-            let cond2 = node.energy < self.energy_threshold;
-            let cond3 = node.causal_edges == 0;
-            let toxic = node.toxicity > 0.8 && node.causal_edges == 0;
+            // Geodesic midpoint (Euclidean proxy in Poincare 2D)
+            let mid_h = (p1.hausdorff + p2.hausdorff) / 2.0;
+            let mid_pi = (p1.elite_proximity + p2.elite_proximity) / 2.0;
+            let mid_tau = (p1.toxicity + p2.toxicity) / 2.0;
+            let mid_xi_raw = (p1.entropy_delta + p2.entropy_delta) / 2.0;
+            let mid_px = (p1.px + p2.px) / 2.0 + r.next_f32(-0.02, 0.02);
+            let mid_py = (p1.py + p2.py) / 2.0 + r.next_f32(-0.02, 0.02);
 
-            if (cond1 && cond2 && cond3) || toxic {
-                // Capture void seed before deletion
-                self.void_seeds.push(VoidSeed {
-                    px: node.px,
-                    py: node.py,
-                    energy_at_death: node.energy,
-                });
-                sacrificed += 1;
-                if node.is_signal {
-                    self.signal_killed += 1;
+            // Inherited energy: beta = 0.8
+            let inherited_e = 0.8 * ((p1.energy + p2.energy) / 2.0);
+
+            // Entropy polarization (only if mode == Dialectical)
+            let mid_xi = if polarize {
+                // Adaptive delta: amplifies when near center, reduces at extremes
+                let delta = 0.3 * (1.0 - (mid_xi_raw - 0.5).abs());
+                if r.chance(0.5) {
+                    (mid_xi_raw - delta).clamp(0.0, 1.0) // low entropy — born near top
                 } else {
-                    self.noise_killed += 1;
+                    (mid_xi_raw + delta).clamp(0.0, 1.0) // high entropy — born as explorer
                 }
             } else {
-                surviving.push(node.clone());
+                mid_xi_raw // no polarization
+            };
+
+            self.graph.push(SimNode {
+                energy: inherited_e,
+                hausdorff: mid_h,
+                entropy_delta: mid_xi,
+                elite_proximity: mid_pi,
+                causal_edges: 2,    // ANCHORED — kappa=2 (structural edges to parents)
+                toxicity: mid_tau,
+                is_signal: false,
+                px: mid_px,
+                py: mid_py,
+                born_cycle: cycle,
+            });
+            created += 1;
+        }
+        created
+    }
+
+    /// Execute one Zaratustra cycle.
+    fn tick(&mut self, cycle: usize) -> CycleTelemetry {
+        let mut r = Rng::new(42u64.wrapping_mul(cycle as u64 + 7919));
+
+        // Count newborns from LAST cycle that are still alive BEFORE this cycle's purge
+        let prev_born = self.last_born_count;
+        let alive_before = if cycle > 1 && prev_born > 0 {
+            self.graph.iter().filter(|n| n.born_cycle == cycle - 1).count()
+        } else {
+            0
+        };
+
+        // Phase 0: evolve
+        self.evolve(&mut r);
+
+        // Phase 1: judgment
+        let mut sacrificed = 0usize;
+        let mut vits = Vec::with_capacity(self.graph.len());
+        let mut surviving = Vec::with_capacity(self.graph.len());
+        let mut esum = 0.0f32;
+
+        for n in &self.graph {
+            let v = self.vitality(n);
+            vits.push(v);
+            esum += n.energy;
+
+            let triple = v < self.vit_threshold && n.energy < self.eng_threshold && n.causal_edges == 0;
+            let toxic = n.toxicity > 0.8 && n.causal_edges == 0;
+
+            if triple || toxic {
+                self.voids.push(VoidSeed { px: n.px, py: n.py });
+                sacrificed += 1;
+                if n.is_signal { self.signal_killed += 1; } else { self.noise_killed += 1; }
+            } else {
+                surviving.push(n.clone());
             }
         }
 
         let total_before = self.graph.len();
         self.graph = surviving;
+        if self.voids.len() > 500 { self.voids.drain(0..self.voids.len() - 500); }
 
-        // Cap void seeds at 500
-        if self.void_seeds.len() > 500 {
-            self.void_seeds.drain(0..self.void_seeds.len() - 500);
-        }
+        // Newborn survival: of last cycle's newborns, how many survived THIS purge?
+        let alive_after = if cycle > 1 && prev_born > 0 {
+            self.graph.iter().filter(|n| n.born_cycle == cycle - 1).count()
+        } else {
+            0
+        };
+        let newborn_survival = if prev_born > 0 {
+            alive_after as f32 / prev_born as f32
+        } else {
+            1.0 // no newborns = vacuously all survived
+        };
 
-        // Phase 3: Void-seeded generation (varies by mode)
-        let nodes_created = self.generate_from_void(&mut rng, sacrificed);
+        // Phase 3: generation — ~90% of deleted + 5 baseline, capped by voids
+        let gen_target = ((sacrificed as f32 * 0.9).round() as usize + 5).min(self.voids.len());
+        let nodes_created = match self.mode {
+            BirthMode::Foam => self.birth_foam(&mut r, gen_target, cycle),
+            BirthMode::Anchored => self.birth_anchored(&mut r, gen_target, cycle, false),
+            BirthMode::Dialectical => self.birth_anchored(&mut r, gen_target, cycle, true),
+        };
+        self.last_born_count = nodes_created;
 
-        // ── Statistics ──
-        let n = vitalities.len().max(1) as f32;
-        let mean_v: f32 = vitalities.iter().sum::<f32>() / n;
-        let var_v: f32 = vitalities.iter()
-            .map(|v| (v - mean_v).powi(2))
-            .sum::<f32>() / n;
-        let mean_e = energy_sum / total_before.max(1) as f32;
-
-        // TGC — uses ACTUAL nodes_created
-        let tgc = self.tgc_tracker.update(nodes_created, self.graph.len(), mean_v);
-
-        // Elite Drift
-        let current_centroid = self.compute_elite_centroid();
-        let elite_drift = self.initial_centroid.distance(&current_centroid);
+        // Stats
+        let n = vits.len().max(1) as f32;
+        let mean_v: f32 = vits.iter().sum::<f32>() / n;
+        let var_v: f32 = vits.iter().map(|v| (v - mean_v).powi(2)).sum::<f32>() / n;
+        let mean_e = esum / total_before.max(1) as f32;
+        let tgc = self.tgc.update(nodes_created, self.graph.len(), mean_v);
+        let drift = self.centroid_0.distance(&self.elite_centroid());
 
         CycleTelemetry {
-            cycle: cycle_id,
+            cycle,
             total_nodes: self.graph.len(),
             sacrificed,
             nodes_created,
@@ -438,124 +466,92 @@ impl ForgettingSimulator {
             variance_vitality: var_v,
             mean_energy: mean_e,
             tgc,
-            elite_drift,
+            elite_drift: drift,
+            newborn_survival,
         }
     }
 }
 
 // ──────────────────────────────────────────────────
-//  Run one experiment
+//  Experiment runner
 // ──────────────────────────────────────────────────
 
-fn run_experiment(mode: GenMode) -> Vec<CycleTelemetry> {
+fn run(mode: BirthMode) -> Vec<CycleTelemetry> {
     let label = mode.label();
-    let csv_path = format!("telemetry_{}.csv", label);
+    let csv = format!("telemetry_{}.csv", label);
 
-    let mut sim = ForgettingSimulator::new(mode);
-    sim.seed_graph();
+    let mut s = Sim::new(mode);
+    s.seed();
 
-    // Capture TGC baseline at cycle 0 BEFORE any purge.
-    // Baseline = hypothetical TGC if we had 100% generation ratio on first tick.
-    // We use 1.0 as a normalized reference.
-    sim.tgc_tracker.set_baseline(1.0);
-
-    let mut file = OpenOptions::new()
-        .write(true).create(true).truncate(true)
-        .open(&csv_path).unwrap();
-    writeln!(file,
-        "cycle,total_nodes,sacrificed,nodes_created,signal_killed,noise_killed,mean_vitality,variance_vitality,mean_energy,tgc,elite_drift"
+    let mut f = OpenOptions::new().write(true).create(true).truncate(true).open(&csv).unwrap();
+    writeln!(f,
+        "cycle,total_nodes,sacrificed,nodes_created,signal_killed,noise_killed,mean_vitality,variance_vitality,mean_energy,tgc,elite_drift,newborn_survival"
     ).unwrap();
 
-    let mut results = Vec::with_capacity(500);
-    let total_cycles = 500;
+    let mut res = Vec::with_capacity(500);
 
-    println!("  [{}] Rodando {} ciclos...", label, total_cycles);
+    println!("  [{}] 500 ciclos...", label);
 
-    for i in 1..=total_cycles {
-        let t = sim.run_cycle(i);
-
-        writeln!(file, "{},{},{},{},{},{},{:.6},{:.6},{:.6},{:.6},{:.6}",
+    for i in 1..=500 {
+        let t = s.tick(i);
+        writeln!(f, "{},{},{},{},{},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.4}",
             t.cycle, t.total_nodes, t.sacrificed, t.nodes_created,
             t.signal_killed_total, t.noise_killed_total,
             t.mean_vitality, t.variance_vitality, t.mean_energy,
-            t.tgc, t.elite_drift,
+            t.tgc, t.elite_drift, t.newborn_survival,
         ).unwrap();
 
-        if i <= 3 || i % 100 == 0 || i == total_cycles {
+        if i <= 3 || i % 100 == 0 || i == 500 {
             println!(
-                "    Ciclo {:03} | N={:5} | Del={:3} Gen={:3} | V={:.3} Var={:.4} | E={:.3} | TGC={:.4} | Drift={:.4} | FP={}",
-                i, t.total_nodes, t.sacrificed, t.nodes_created,
-                t.mean_vitality, t.variance_vitality,
-                t.mean_energy, t.tgc, t.elite_drift,
+                "    {:03} N={:5} Del={:3} Gen={:3} Surv={:.2} V={:.3} Var={:.4} E={:.3} TGC={:.4} Drift={:.4} FP={}",
+                i, t.total_nodes, t.sacrificed, t.nodes_created, t.newborn_survival,
+                t.mean_vitality, t.variance_vitality, t.mean_energy, t.tgc, t.elite_drift,
                 t.signal_killed_total,
             );
         }
 
         let collapse = t.total_nodes < 100;
-        results.push(t);
-
-        if collapse {
-            println!("    [COLAPSO MINIMALISTA] ciclo {}", i);
-            break;
-        }
+        res.push(t);
+        if collapse { println!("    [COLAPSO] ciclo {}", i); break; }
     }
 
-    println!("  [{}] CSV: {}", label, csv_path);
-    println!("  [{}] Sobreviventes: {} | FP: {} | Ruido morto: {}",
-        label,
-        results.last().map_or(0, |r| r.total_nodes),
-        sim.signal_killed,
-        sim.noise_killed,
-    );
+    println!("  [{}] FP={} noise_del={} final_N={}",
+        label, s.signal_killed, s.noise_killed,
+        res.last().map_or(0, |r| r.total_nodes));
     println!();
-
-    results
+    res
 }
 
 // ──────────────────────────────────────────────────
-//  Raw numbers: last 100 cycles
+//  Raw numbers
 // ──────────────────────────────────────────────────
 
-fn print_raw_numbers(label: &str, results: &[CycleTelemetry]) {
-    let last_100: Vec<&CycleTelemetry> = if results.len() > 100 {
-        results[results.len()-100..].iter().collect()
-    } else {
-        results.iter().collect()
-    };
-
-    let n = last_100.len() as f32;
+fn raw(label: &str, r: &[CycleTelemetry]) {
+    let tail: Vec<&CycleTelemetry> = if r.len() > 100 { r[r.len()-100..].iter().collect() } else { r.iter().collect() };
+    let n = tail.len() as f32;
     if n == 0.0 { return; }
 
-    let avg_tgc: f32 = last_100.iter().map(|t| t.tgc).sum::<f32>() / n;
-    let avg_var_v: f32 = last_100.iter().map(|t| t.variance_vitality).sum::<f32>() / n;
-    let avg_drift: f32 = last_100.iter().map(|t| t.elite_drift).sum::<f32>() / n;
-    let avg_sacr: f32 = last_100.iter().map(|t| t.sacrificed as f32).sum::<f32>() / n;
-    let avg_created: f32 = last_100.iter().map(|t| t.nodes_created as f32).sum::<f32>() / n;
-    let avg_mean_v: f32 = last_100.iter().map(|t| t.mean_vitality).sum::<f32>() / n;
-    let avg_mean_e: f32 = last_100.iter().map(|t| t.mean_energy).sum::<f32>() / n;
-    let avg_nodes: f32 = last_100.iter().map(|t| t.total_nodes as f32).sum::<f32>() / n;
-    let total_fp = last_100.last().map_or(0, |t| t.signal_killed_total);
-    let total_noise = last_100.last().map_or(0, |t| t.noise_killed_total);
+    let avg = |f: fn(&CycleTelemetry) -> f32| -> f32 { tail.iter().map(|t| f(t)).sum::<f32>() / n };
+    let minmax = |f: fn(&CycleTelemetry) -> f32| -> (f32, f32) {
+        (tail.iter().map(|t| f(t)).fold(f32::INFINITY, f32::min),
+         tail.iter().map(|t| f(t)).fold(f32::NEG_INFINITY, f32::max))
+    };
 
-    // Min/Max TGC
-    let min_tgc = last_100.iter().map(|t| t.tgc).fold(f32::INFINITY, f32::min);
-    let max_tgc = last_100.iter().map(|t| t.tgc).fold(f32::NEG_INFINITY, f32::max);
+    let (tmin, tmax) = minmax(|t| t.tgc);
+    let (vmin, vmax) = minmax(|t| t.variance_vitality);
 
-    // Min/Max Var(V)
-    let min_var = last_100.iter().map(|t| t.variance_vitality).fold(f32::INFINITY, f32::min);
-    let max_var = last_100.iter().map(|t| t.variance_vitality).fold(f32::NEG_INFINITY, f32::max);
-
-    println!("  ┌─── {} ─── ULTIMOS {} CICLOS ───┐", label, last_100.len());
-    println!("  │ avg_nodes       = {:.1}", avg_nodes);
-    println!("  │ avg_sacrificed  = {:.2}", avg_sacr);
-    println!("  │ avg_created     = {:.2}", avg_created);
-    println!("  │ avg_mean_V      = {:.4}", avg_mean_v);
-    println!("  │ avg_Var(V)      = {:.6}  [min={:.6} max={:.6}]", avg_var_v, min_var, max_var);
-    println!("  │ avg_mean_E      = {:.4}", avg_mean_e);
-    println!("  │ avg_TGC         = {:.6}  [min={:.6} max={:.6}]", avg_tgc, min_tgc, max_tgc);
-    println!("  │ avg_elite_drift = {:.6}", avg_drift);
-    println!("  │ total_FP        = {}", total_fp);
-    println!("  │ total_noise_del = {}", total_noise);
+    println!("  ┌─── {} ─── LAST {} CYCLES ───┐", label, tail.len());
+    println!("  │ avg_nodes       = {:.1}", avg(|t| t.total_nodes as f32));
+    println!("  │ avg_sacrificed  = {:.2}", avg(|t| t.sacrificed as f32));
+    println!("  │ avg_created     = {:.2}", avg(|t| t.nodes_created as f32));
+    println!("  │ avg_newborn_srv = {:.4}", avg(|t| t.newborn_survival));
+    println!("  │ avg_mean_V      = {:.4}", avg(|t| t.mean_vitality));
+    println!("  │ avg_Var(V)      = {:.6}  [{:.6}..{:.6}]", avg(|t| t.variance_vitality), vmin, vmax);
+    println!("  │ avg_mean_E      = {:.4}", avg(|t| t.mean_energy));
+    println!("  │ avg_TGC         = {:.6}  [{:.6}..{:.6}]", avg(|t| t.tgc), tmin, tmax);
+    println!("  │ avg_elite_drift = {:.6}", avg(|t| t.elite_drift));
+    println!("  │ total_FP        = {}", tail.last().map_or(0, |t| t.signal_killed_total));
+    println!("  │ total_noise_del = {}", tail.last().map_or(0, |t| t.noise_killed_total));
     println!("  └────────────────────────────────────────┘");
 }
 
@@ -565,33 +561,30 @@ fn print_raw_numbers(label: &str, results: &[CycleTelemetry]) {
 
 fn main() {
     println!("=================================================================");
-    println!("  PROTOCOLO EXPERIMENTAL: TERMODINAMICA DO ESQUECIMENTO ATIVO");
-    println!("  NietzscheDB — 3 Variacoes x 500 Ciclos x 5000 Nos");
+    println!("  PROTOCOLO: O SISTEMA SABE NASCER?");
+    println!("  Variavel isolada: modo de nascimento");
+    println!("  3 cenarios x 500 ciclos x 5000 nos");
     println!("=================================================================");
     println!();
 
-    // ── Experiment A: DELETE ONLY (Control) ──
-    println!("━━━ EXPERIMENTO A: DELETE ONLY (Controle — catabolismo puro) ━━━");
-    let results_a = run_experiment(GenMode::DeleteOnly);
+    println!("━━━ D: FOAM (baseline — orfaos void-born, kappa=0) ━━━");
+    let rd = run(BirthMode::Foam);
 
-    // ── Experiment B: LOW GENERATION (~30%) ──
-    println!("━━━ EXPERIMENTO B: LOW GEN (~30%% dos deletados) ━━━");
-    let results_b = run_experiment(GenMode::LowGen);
+    println!("━━━ E: ANCHORED (elite-parented, kappa=2, sem polarizacao) ━━━");
+    let re = run(BirthMode::Anchored);
 
-    // ── Experiment C: MATCHED GENERATION (~100%) ──
-    println!("━━━ EXPERIMENTO C: MATCHED GEN (~100%% dos deletados) ━━━");
-    let results_c = run_experiment(GenMode::MatchedGen);
+    println!("━━━ F: DIALECTICAL (elite-parented, kappa=2, COM polarizacao) ━━━");
+    let rf = run(BirthMode::Dialectical);
 
-    // ── Raw Numbers: Last 100 cycles ──
     println!("=================================================================");
-    println!("  DADOS BRUTOS — ULTIMOS 100 CICLOS (SEM INTERPRETACAO)");
+    println!("  DADOS BRUTOS — ULTIMOS 100 CICLOS");
     println!("=================================================================");
     println!();
-    print_raw_numbers("A_DELETE_ONLY", &results_a);
+    raw("D_FOAM", &rd);
     println!();
-    print_raw_numbers("B_LOW_GEN", &results_b);
+    raw("E_ANCHORED", &re);
     println!();
-    print_raw_numbers("C_MATCHED_GEN", &results_c);
+    raw("F_DIALECTICAL", &rf);
     println!();
     println!("=================================================================");
     println!("  Rode: py -3 plot_metabolism.py");
