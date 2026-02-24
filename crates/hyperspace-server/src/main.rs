@@ -348,6 +348,7 @@ fn matches_filter_exprs(
                     }
                 }
             }
+            _ => { /* And/Or/Not/Contains/Exists: not implemented for hyperspace filter */ }
         }
     }
     true
