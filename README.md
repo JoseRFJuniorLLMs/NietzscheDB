@@ -1,60 +1,65 @@
 <p align="center">
-  <img src="img/logo.jpg" alt="NietzscheDB Logo" width="320"/>
+  <img src="https://raw.githubusercontent.com/JoseRFJuniorLLMs/perspektive.js/main/img/logo.gif" alt="NietzscheDB Visual Cortex" width="100%"/>
 </p>
 
 <h1 align="center">NietzscheDB</h1>
 
 <p align="center">
-  <strong>Multi-Manifold Graph Database</strong>
+  <strong>The Multi-Manifold Graph Database for AGI</strong>
 </p>
 
 <p align="center">
-  <em>A new category of database — not a combination of existing ones.</em>
+  <em>Euclidean geometry failed. The world isn't flat, and neither is intelligence.</em>
 </p>
 
 <p align="center">
-  <a href="https://github.com/JoseRFJuniorLLMs/NietzscheDB/blob/main/LICENSE_AGPLv3.md"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License"></a>
+  <a href="https://github.com/JoseRFJuniorLLMs/NietzscheDB/blob/main/LICENSE_AGPLv3.md"><img src="https://badge.fury.io/js/perspektive.svg" alt="perspektive.js"></a>
+  <a href="https://www.npmjs.com/package/perspektive"><img src="https://img.shields.io/npm/v/perspektive?color=00d8ff&style=flat-square" alt="NPM Version"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/built%20with-Rust%20nightly-orange.svg" alt="Rust"></a>
-  <img src="https://img.shields.io/badge/crates-38%20workspace-informational.svg" alt="Crates">
-  <img src="https://img.shields.io/badge/gRPC-65%2B%20RPCs-blueviolet.svg" alt="RPCs">
   <img src="https://img.shields.io/badge/geometry-Poincar%C3%A9%20%C2%B7%20Klein%20%C2%B7%20Riemann%20%C2%B7%20Minkowski-purple.svg" alt="Multi-Manifold">
-  <img src="https://img.shields.io/badge/category-Multi--Manifold%20Graph%20DB-red.svg" alt="Category">
   <img src="https://img.shields.io/badge/GPU-cuVS%20CAGRA-76b900.svg" alt="GPU">
-  <img src="https://img.shields.io/badge/TPU-PJRT%20v5e%2Fv6e%2Fv7-4285F4.svg" alt="TPU">
-</p>
-
-<p align="center">
-  <img src="img/arq1.png" alt="NietzscheDB Multi-Manifold Visualization" width="720"/>
-</p>
-
-<p align="center">
-  <img src="img/arq2.png" alt="NietzscheDB Architecture — gRPC + HTTP Layers" width="720"/>
+  <img src="https://img.shields.io/badge/TPU-PJRT%20Ironwood-4285F4.svg" alt="TPU">
 </p>
 
 ---
 
-## What Category Is This?
+## 🧠 The Manifesto: Why Nietzsche?
 
-NietzscheDB does not fit any existing database category.
+> *"There are no facts, only interpretations."*  
+> — Friedrich Nietzsche, **Notebooks**, 1886
 
-```
-Graph Database        Neo4j, ArangoDB
-  → has nodes, edges, traversal, query language         ✔ NietzscheDB has this
+Standard databases store data as "static facts" in flat, Euclidean spaces. This is a geometric lie. In high-dimensional intelligence, a concept is defined solely by its relationship to others, and its position is relative to the observer's depth of abstraction.
 
-Vector Database       Qdrant, Pinecone
-  → has embeddings, similarity search                   ✔ NietzscheDB has this
+NietzscheDB implements **Perspektivismus** (Perspectivism) as a database primitive. It abandons the "God's-eye view" of a single flat table for a **Multi-Manifold Architecture**, where the same piece of knowledge can be viewed through different geometric lenses depending on the cognitive need.
 
-Document Store        MongoDB, ArangoDB
-  → each node is a rich JSON document                   ✔ NietzscheDB has this
+---
 
-Time-evolving Graph   no mainstream product
-  → the graph rewrites itself autonomously              ✔ NietzscheDB has this (L-System)
+## 👁️ The Visual Cortex: Perspektive.js
 
-Multi-Manifold DB     no product exists
-  → 4 non-Euclidean geometries as native primitives     ✔ NietzscheDB has this
-```
+NietzscheDB is powered by **[perspektive.js](https://github.com/JoseRFJuniorLLMs/perspektive.js)**, the world's most advanced multi-manifold graph renderer. It serves as the AGI's "retina," allowing you to audit, debug, and explore the internal manifolds of the database at 60fps.
 
-The name for what NietzscheDB actually is:
+### Advanced Auditing Tools:
+- ⏳ **Causal Scrubber (Minkowski Time Machine)**: Scrub through the database history. Watch nodes dissolve and reform as you rewind the chain of causal reasoning.
+- 🔀 **Counterfactual UI**: Drag-and-drop nodes to create "What-If" hypotheses. Generate ephemeral edges to simulate new realities without mutating the core graph.
+- 🌌 **Fractal Viewport**: Infinite zoom into the Poincaré boundary. As the brain grows, the renderer streams new subgraphs dynamically (Google Maps for Memory).
+- ⚛️ **Probability Clouds**: Volumetric GLSL raymarching visualize quantum fidelity and semantic arousal on the Bloch Sphere.
+
+---
+
+## 🌎 The 4 Geometric Perspectives
+
+NietzscheDB doesn't just store data; it projects it across four distinct manifolds to solve specific AGI problems:
+
+| Lens | Geometry | Manifold | AGI Role |
+|---|---|---|---|
+| 🌌 **Hierarchy** | Poincaré Ball | Hyperbolic (K < 0) | **Abstraction Level**: Depth = Generality. Center = Foundation, Border = Detail. |
+| 🧭 **Logic** | Klein Model | Hyperbolic (K < 0) | **Reasoning**: Semantic paths are straight lines. O(1) collinearity checks. |
+| ⏳ **Causality** | Minkowski | Lorentzian (Flat) | **Auditability**: Light cone filters ensure effect never precedes cause. |
+| ⚛️ **Synthesis** | Riemann Sphere | Spherical (K > 0) | **Dialectics**: Where thesis and antithesis merge into a shallower, more abstract point. |
+
+---
+
+## 🚀 Key Features
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -62,67 +67,23 @@ The name for what NietzscheDB actually is:
 │           MULTI-MANIFOLD GRAPH DATABASE                │
 │    Poincaré · Klein · Riemann · Minkowski              │
 │                                                         │
-│   · 4 non-Euclidean geometries as native primitives    │
+│   · Perspektive.js 0.1.3 native visual cortex          │
+│   · Causal Scrubber (Minkowski Time Machine)           │
+│   · Counterfactual UI (Speculative Reasoning)          │
 │   · Autonomous fractal growth via L-System rules        │
 │   · Multi-scale search via hyperbolic heat diffusion    │
-│   · Active memory reconsolidation during idle cycles    │
-│   · GPU/TPU-accelerated vector search                   │
-│   · 11 built-in graph algorithms (PageRank, Louvain,...) │
-│   · Hybrid BM25+ANN search with RRF fusion              │
-│   · Filtered KNN with Roaring Bitmaps + metadata push    │
-│   · Product Quantization (magnitude-preserving)          │
-│   · MERGE upsert with edge metadata + atomic counters    │
-│   · SET with arithmetic (n.count = n.count + 1)          │
-│   · CREATE with TTL + DETACH DELETE                      │
-│   · Edge alias property access (r.weight, r.count)       │
-│   · Redis-compatible cache (CacheSet/Get/Del + TTL)      │
-│   · Per-collection RwLock concurrency                    │
-│   · Persistent secondary indexes with query planner      │
-│   · RBAC + AES-256-CTR encryption at-rest                │
-│   · Schema validation + metadata secondary indexes       │
-│   · Multi-vector per node (Named Vectors)                │
-│   · Media/blob storage via OpenDAL (S3, GCS, local)      │
-│   · Relational tables via SQLite (hybrid graph+SQL)      │
-│   · MCP server for AI assistant integration              │
-│   · Prometheus/OpenTelemetry metrics export              │
-│   · Kafka Connect sink for CDC streaming                 │
-│   · Autonomous evolution (Zaratustra cycle)             │
-│   · Hegelian Dialectic Engine (thesis→antithesis→synthesis)│
-│   · Code-as-Data: NQL queries as activatable graph nodes │
-│   · Semantic CRDTs for conflict-free cluster merge       │
-│   · Schrödinger Edges (probabilistic, context-collapsed) │
-│   · Valence/Arousal emotional vectors in heat diffusion  │
-│   · Energy Circuit Breaker (anti-tumor protection)       │
-│   · Quantum Bridge (Poincaré-to-Bloch manifold mapping)  │
-│   · Niilista GC (Semantic redundancy deduplication)      │
+│   · Active memory reconsolidation during sleep cycles   │
+│   · GPU (cuVS) / TPU (PJRT) accelerated vector search   │
+│   · Hegelian Dialectic Engine (automated synthesis)     │
+│   · Code-as-Data: NQL queries as activatable nodes      │
+│   · Schrödinger Edges (probabilistic context collapse)  │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
-
 ```
 
-**In plain language:**
-- *For users:* "A memory database that thinks in hierarchies, grows like a plant, feels emotions, resolves contradictions, reasons through causality, and sleeps to consolidate what it learned."
-- *For engineers:* "A multi-manifold graph (Poincaré storage · Klein pathfinding · Riemann synthesis · Minkowski causality) with native L-System growth, heat kernel diffusion as a search primitive, GPU/TPU vector backends, 71+ gRPC RPCs, MCP server for AI assistants, Prometheus metrics, filtered KNN with metadata push-down, Product Quantization, MERGE upsert semantics, persistent secondary indexes, per-collection RwLock concurrency, Redis-compatible cache layer, Hegelian dialectic synthesis, probabilistic Schrödinger edges, emotional valence/arousal vectors, Semantic CRDTs, Code-as-Data reactive rules, anti-tumor circuit breakers, and periodic Riemannian reconsolidation."
-- *For the market:* The category does not exist yet. This is it.
+**NietzscheDB closes the interpretability gap.** It allows you to see the abyss — and ensures that when you look into the database, the database (geometrically) looks back at you.
 
 ---
-
-## What is NietzscheDB?
-
-NietzscheDB is a purpose-built database engine for **[EVA](https://github.com/JoseRFJuniorLLMs)** — an AI memory and reasoning system that requires more than flat vector search can offer.
-
-Standard vector databases store memories in Euclidean space: every concept lives at the same "depth", every relationship is a number, and hierarchical structure collapses into cosine similarity. EVA needs to think differently.
-
-NietzscheDB is the world's first **multi-manifold graph database**, operating across **four non-Euclidean geometries** simultaneously:
-
-| Geometry | Curvature | Role | Operations |
-|---|---|---|---|
-| **Poincaré Ball** | K < 0 (hyperbolic) | Storage & HNSW index | Distance, KNN, diffusion, sleep |
-| **Klein Disk** | K < 0 (hyperbolic) | Pathfinding | Geodesics as straight lines, O(1) colinearity |
-| **Riemann Sphere** | K > 0 (spherical) | Synthesis & aggregation | Dialectical synthesis, Fréchet mean, GROUP BY centroid |
-| **Minkowski Spacetime** | Flat (Lorentzian) | Causality | Light cone filter, causal chains, WHY/WHAT-IF queries |
-
-**Architecture principle: 4 Geometries · 1 Storage (Poincaré) · 0 Duplication.** Klein, Riemann, and Minkowski are on-the-fly projections at query time — no data is duplicated.
 
 - Abstract concepts naturally live near the center of the Poincaré ball
 - Specific memories live near the boundary
@@ -140,32 +101,19 @@ It is a fork of **[YARlabs/hyperspace-db](https://github.com/YARlabs/hyperspace-
 
 | Problem | Standard Vector DB | NietzscheDB |
 |---|---|---|
-| Hierarchy representation | Flat — same depth for all | Geometric — depth = abstraction level (Poincaré) |
-| Semantic search | Cosine similarity | Multi-manifold HNSW + heat kernel diffusion |
-| Pathfinding | Euclidean graph | Klein model — geodesics are straight lines, O(1) |
-| Concept synthesis | None | Riemann sphere — dialectical midpoint at shallower depth |
-| Causal reasoning | None | Minkowski spacetime — light cone filter for WHY/WHAT-IF |
-| Knowledge growth | Static inserts | L-System: graph grows by production rules |
-| Memory pruning | Manual deletion | Hausdorff dimension: self-pruning fractal |
-| Memory consolidation | No concept | Sleep cycle: Riemannian perturbation + rollback |
-| Query language | k-NN only | NQL — graph, vector, diffusion, CREATE/SET/DELETE/DETACH DELETE/MERGE, EXPLAIN |
-| Search | Vector OR text | Hybrid BM25+KNN with RRF fusion |
-| Graph analytics | External tool needed | 11 built-in algorithms (PageRank, Louvain, A*, ...) |
-| Hardware acceleration | CPU only or proprietary | GPU (cuVS CAGRA) + TPU (PJRT) at runtime |
-| Security | API key at best | RBAC (Admin/Writer/Reader) + AES-256-CTR encryption at-rest |
-| Data integrity | No schema enforcement | Per-NodeType schema validation (required fields + types) |
-| Cache layer | External Redis | Built-in CacheSet/Get/Del with TTL + lazy expiry |
-| Concurrency | Global lock or external | Per-collection RwLock — concurrent reads, write-isolated |
-| Consistency | Single-store | ACID saga pattern across graph + vector store |
-| Vector compression | Scalar/binary quant | Product Quantization (magnitude-preserving — depth safe) |
-| Multi-vector | Single embedding only | Named Vectors: multiple embeddings per node with different metrics |
-| AI integration | REST API only | MCP server (19 tools) + REST + gRPC |
-| Media storage | External service | Built-in OpenDAL store (S3, GCS, local filesystem) |
-| Relational data | Separate RDBMS | Built-in SQLite table store with NodeRef foreign keys |
-| Observability | External setup | Built-in Prometheus metrics (12 counters/gauges/histograms) |
-| CDC streaming | External CDC | Built-in Kafka Connect sink (6 mutation types) |
-| Quantum Bridge | None | Persistent Poincaré → Bloch sphere mapping |
-| Semantic GC | Standard Vacuum | Niilista: Near-duplicate embedding merge/prune |
+| **Hierarchy** | Flat — same depth for all | Geometric — depth = abstraction level (Poincaré) |
+| **Logic/Reasoning** | Cosine similarity only | Multi-manifold (Klein Model) + straight-line semantic paths |
+| **Causal Auditability** | None | Minkowski light cone filters (WHY / What-If) |
+| **Observability** | JSON Logs / Dashboards | **Perspektive.js Visual Cortex** (60fps multi-manifold auditing) |
+| **Hypothetical Reasoning**| Manual data cloning | **Counterfactual UI** (ShadowGraph overlays) |
+| **Temporal Scrubbing** | Time filtering | **Causal Scrubber** (Minkowski Time Machine) |
+| **Knowledge Growth** | Static inserts | L-System self-organizing fractal growth |
+| **Memory Pruning** | Manual/TTL deletion | Hausdorff dimension self-pruning |
+| **Consolidation** | No concept | Sleep Cycles (Riemannian reconsolidation) |
+| **Conflict Resolution** | Last-write-wins | Hegelian Dialectic Engine (automated synthesis) |
+| **Query Language** | k-NN / SQL / GraphQL | NQL (Multi-manifold, Diffusion, Speculative Dream) |
+| **Hardware** | Generic CPU/GPU | cuVS (GPU) + PJRT Ironwood (TPU) backends |
+| **Integration** | REST API | MCP (Model Context Protocol) + gRPC + REST |
 
 
 ---
@@ -1412,62 +1360,46 @@ inherits = "release"
 
 ---
 
-## Research Context
+## Research Context: The Non-Euclidean Revolution
 
-NietzscheDB closes gaps that no existing database fills:
+NietzscheDB closes gaps that no existing database fills. It is built on the realization that **Intelligence is not flat**.
 
-- **No database operates across 4 non-Euclidean geometries simultaneously.** NietzscheDB is the world's first multi-manifold graph database: Poincaré (storage), Klein (pathfinding), Riemann (synthesis), Minkowski (causality). All from a single Poincaré storage layer — zero data duplication.
-- **No production HNSW is natively multi-manifold.** hnswlib, FAISS, Qdrant, Milvus, Weaviate — all use Euclidean geometry internally. NietzscheDB (native Poincaré HNSW with Klein/Riemann/Minkowski projections) is genuinely original work.
-- **No graph database has intrinsic non-Euclidean geometry.** Neo4j, ArangoDB, TigerGraph — all flat.
-- **No AI memory system has a formal sleep/reconsolidation cycle.** NietzscheDB implements Riemannian optimization with Hausdorff identity verification and automatic rollback.
-- **No database has an autonomous fractal growth engine.** The L-System rewrites the graph topology every tick based on production rules and local Hausdorff dimension.
-- **No database ships 11 graph algorithms with both gRPC and REST interfaces.** PageRank, Louvain, A*, WCC, SCC, betweenness, closeness, degree, label propagation, triangle count, Jaccard — all built-in.
-- **No graph database has built-in hybrid BM25+ANN search.** NietzscheDB fuses full-text BM25 with multi-manifold KNN via Reciprocal Rank Fusion (RRF) in a single API call.
-- **No graph database has application-level encryption with per-CF key derivation.** AES-256-CTR with HKDF-SHA256 derives unique keys per column family from a single master key.
-- **No graph database has magnitude-preserving Product Quantization.** PQ compresses vectors while preserving `‖x‖` — critical for hyperbolic depth semantics. Binary Quantization is explicitly rejected (destroys hierarchy).
-- **No graph database ships with a built-in MCP server.** NietzscheDB exposes 19 tools via the Model Context Protocol for direct AI assistant integration.
-- **No graph database bridges graph + relational + blob storage in one engine.** SQLite table store with NodeRef foreign keys + OpenDAL media store (S3/GCS/local) — unified under one API.
-- **No database has emotional dimensions on graph nodes.** NietzscheDB's valence/arousal fields model reward/punishment axes that alter heat diffusion propagation — heat travels faster through emotionally charged memories, mirroring how biological memory is inseparable from emotion.
-- **No database has probabilistic edges with context-dependent collapse.** Schrödinger Edges exist in superposition and collapse at query time based on context — modeling the brain's context-dependent associations.
-- **No database has a built-in Hegelian dialectic engine.** NietzscheDB detects contradictions, creates tension nodes, and synthesizes resolutions — the graph reasons through opposites.
+- **Multi-Manifold Native**: While every other vector database (Qdrant, Milvus, Pinecone) uses Euclidean or Cosine distance as a flat metric, NietzscheDB operates across 4 non-Euclidean geometries: Poincaré (Hierarchy), Klein (Straight-line Logic), Riemann (Synthesis), and Minkowski (Causality).
+- **The Visual Audit Gap**: Traditional databases are black boxes. NietzscheDB integrates **Perspektive.js** as its Visual Cortex, allowing humans to physically see the database manifolds and audit decision-making via the Causal Scrubber.
+- **Autonomous Metabolism**: NietzscheDB implements a formal **Sleep/Reconsolidation Cycle**. It doesn't just store data; it organizes it during downtime using Riemannian optimization and Hausdorff identity verification.
+- **Dialectical Reasoning**: The built-in **Hegelian Dialectic Engine** allows the database to resolve contradictions by synthesizing opposites into abstract "synthesis" nodes.
+- **Emotional Physics**: Valence and arousal fields on nodes alter heat diffusion propagation. Knowledge that "matters" (high arousal) spreads faster through the memory, mirroring biological cognitive priority.
 
-Key references:
-- Krioukov et al., "Hyperbolic Geometry of Complex Networks" (2010)
-- Ganea et al., "Hyperbolic Neural Networks" (NeurIPS 2018)
-- Defferrard et al., "Convolutional Neural Networks on Graphs with Fast Localized Spectral Filtering" (2016)
-- Becigneul & Ganea, "Riemannian Adaptive Optimization Methods" (ICLR 2019)
-- HyperCore (Yale, 2025) — HyperbolicGraphRAG, Lorentz ViT, HypLoRA
-- Hyperbolic Graph Wavelet Neural Network — Tsinghua 2025
+### Key References & Inspiration
+- **Hyperbolic Geometry of Complex Networks** (Krioukov et al., 2010)
+- **Hyperbolic Neural Networks** (Ganea et al., NeurIPS 2018)
+- **Riemannian Adaptive Optimization** (Becigneul & Ganea, ICLR 2019)
+- **Beyond Euclidean Embeddings** — The foundation of Nietzsche's *Perspectivism* as a computational paradigm.
 
 ---
 
 ## Git Remotes
 
 ```bash
-origin    https://github.com/JoseRFJuniorLLMs/NietzscheDB.git   # this repo
-upstream  https://github.com/YARlabs/hyperspace-db.git          # upstream sync
-```
-
-To pull upstream HNSW improvements:
-```bash
-git fetch upstream
-git merge upstream/main --allow-unrelated-histories
+origin    https://github.com/JoseRFJuniorLLMs/NietzscheDB.git   # NietzscheDB Manifesto repo
+upstream  https://github.com/YARlabs/hyperspace-db.git          # Upstream HNSW foundation
 ```
 
 ---
 
 ## License
 
-NietzscheDB inherits the **AGPL-3.0** license from HyperspaceDB.
-Commercial licensing available — see [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md).
+NietzscheDB is licensed under the **AGPL-3.0**.  
+Developed as the memory core for the **EVA AGI System**.
 
 ---
 
 <p align="center">
+  <img src="https://raw.githubusercontent.com/JoseRFJuniorLLMs/perspektive.js/main/img/logo.gif" alt="NietzscheDB Retina" width="120px" /><br>
   <em>"He who has a why to live can bear almost any how."</em><br>
-  — Friedrich Nietzsche
+  — <strong>Friedrich Nietzsche</strong>
 </p>
 
 <p align="center">
-  Built for <strong>EVA</strong> · Powered by <strong>Rust nightly</strong> · <strong>38 crates</strong> · <strong>71+ gRPC RPCs</strong> · <strong>4 Geometries</strong> · <strong>MCP + Prometheus</strong> · <strong>GPU/TPU</strong> · <strong>RBAC + Encryption</strong>
+  <strong>Retina of the AGI</strong> · Powered by <strong>Rust nightly</strong> · <strong>Perspektive.js 0.1.3</strong> · <strong>4 Manifolds</strong> · <strong>MCP + gRPC</strong> · <strong>GPU/TPU</strong> · <strong>Hegelian Engine</strong>
 </p>
