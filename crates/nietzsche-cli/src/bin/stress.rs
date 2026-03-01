@@ -1,0 +1,143 @@
+use nietzsche_proto::db::database_client::DatabaseClient;
+use nietzsche_proto::db::{
+    ConfigUpdate, CreateCollectionRequest, Empty, InsertRequest, SearchRequest,
+};
+use rand::Rng;
+use std::io::Write;
+use std::time::Instant;
+use tonic::transport::Channel;
+
+const TOTAL_VECTORS: usize = 1_000_000;
+const SEARCH_QUERIES: usize = 10_000;
+const COLLECTION_NAME: &str = "benchmark_8d";
+
+#[tokio::main]
+#[allow(clippy::cast_precision_loss)]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("🚀 Starting NietzscheDB Stress Test");
+    println!("Connecting to localhost:50051...");
+
+    // Connect to server
+    let channel = Channel::from_static("http://127.0.0.1:50051")
+        .connect()
+        .await?;
+    let mut client = DatabaseClient::new(channel);
+
+    // 0. Create Collection
+    println!("✨ Creating collection '{COLLECTION_NAME}'...");
+    let _ = client
+        .create_collection(CreateCollectionRequest {
+            name: COLLECTION_NAME.to_string(),
+            dimension: 8,
+            metric: "poincare".to_string(),
+        })
+        .await
+        .ok(); // Ignore if exists
+
+    // 1. Configure for speed (High Throughput)
+    println!("🔧 Configuring DB for ingestion (ef_construction=50)...");
+    let _ = client
+        .configure(ConfigUpdate {
+            ef_construction: Some(50),
+            ef_search: None,
+            collection: COLLECTION_NAME.to_string(),
+        })
+        .await?;
+
+    // 2. Insert Vectors
+    println!("📦 Inserting {TOTAL_VECTORS} vectors...");
+    let mut rng = rand::thread_rng();
+
+    let start_insert = Instant::now();
+    for i in 0..TOTAL_VECTORS {
+        // Generate random vector
+        let mut vector: Vec<f64> = (0..8).map(|_| rng.gen_range(-1.0..1.0)).collect();
+
+        // Normalize to Unit Ball (Poincaré Model Requirement)
+        let norm_sq: f64 = vector.iter().map(|x| x * x).sum();
+        let norm = norm_sq.sqrt();
+        if norm >= 0.99 {
+            let scale = 0.99 / norm;
+            for x in &mut vector {
+                *x *= scale;
+            }
+        }
+
+        let req = InsertRequest {
+            vector,
+            id: u32::try_from(i).unwrap(),
+            metadata: std::collections::HashMap::new(),
+            typed_metadata: std::collections::HashMap::new(),
+            collection: COLLECTION_NAME.to_string(),
+            origin_node_id: String::new(),
+            logical_clock: 0,
+            durability: 0,
+        };
+
+        client.insert(req).await?;
+
+        if (i + 1) % 1000 == 0 {
+            print!(".");
+            std::io::stdout().flush()?;
+        }
+    }
+    let duration_insert = start_insert.elapsed();
+    println!("\n✅ Insert done in {duration_insert:.2?}.");
+    println!(
+        "   Throughput: {:.2} vectors/sec",
+        TOTAL_VECTORS as f64 / duration_insert.as_secs_f64()
+    );
+
+    // 3. Trigger Snapshot (Flush)
+    println!("💾 Triggering Snapshot...");
+    let _ = client.trigger_snapshot(Empty {}).await?;
+
+    // 4. Search Benchmark
+    println!("🔍 Running {SEARCH_QUERIES} Search Queries (top_k=10)...");
+    // Configure for accuracy (optional)
+    let _ = client
+        .configure(ConfigUpdate {
+            ef_search: Some(100),
+            ef_construction: None,
+            collection: COLLECTION_NAME.to_string(),
+        })
+        .await?;
+
+    let start_search = Instant::now();
+    for _ in 0..SEARCH_QUERIES {
+        let mut query_vec: Vec<f64> = (0..8).map(|_| rng.gen_range(-1.0..1.0)).collect();
+        // Normalize
+        let norm_sq: f64 = query_vec.iter().map(|x| x * x).sum();
+        let norm = norm_sq.sqrt();
+        if norm >= 0.99 {
+            let scale = 0.99 / norm;
+            for x in &mut query_vec {
+                *x *= scale;
+            }
+        }
+
+        let req = SearchRequest {
+            vector: query_vec,
+            top_k: 10,
+            filter: std::collections::HashMap::new(),
+            filters: Vec::new(),
+            hybrid_query: None,
+            hybrid_alpha: None,
+            collection: COLLECTION_NAME.to_string(),
+        };
+        client.search(req).await?;
+    }
+    let duration_search = start_search.elapsed();
+
+    println!("✅ Search done in {duration_search:.2?}.");
+    println!(
+        "   QPS: {:.2} queries/sec",
+        SEARCH_QUERIES as f64 / duration_search.as_secs_f64()
+    );
+    println!(
+        "   Avg Latency: {:.2} ms",
+        (duration_search.as_secs_f64() * 1000.0) / SEARCH_QUERIES as f64
+    );
+
+    Ok(())
+}

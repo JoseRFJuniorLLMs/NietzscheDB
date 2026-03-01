@@ -5,7 +5,7 @@
 ---
 
 ## O QUE E O PROJETO
-Banco de dados grafico **multi-manifold** em Rust, fork do HyperspaceDB com graph engine nativo (NietzscheDB). Opera em 4 geometrias nao-euclidianas simultaneamente: **Poincare** (storage/HNSW), **Klein** (pathfinding), **Riemann** (sintese), **Minkowski** (causalidade). HNSW para busca vetorial, RocksDB para storage, NQL (Nietzsche Query Language) como linguagem propria. Substituiu Neo4j + Qdrant + Redis na EVA.
+Banco de dados grafico **multi-manifold** em Rust, fork do NietzscheDB com graph engine nativo (NietzscheDB). Opera em 4 geometrias nao-euclidianas simultaneamente: **Poincare** (storage/HNSW), **Klein** (pathfinding), **Riemann** (sintese), **Minkowski** (causalidade). HNSW para busca vetorial, RocksDB para storage, NQL (Nietzsche Query Language) como linguagem propria. Substituiu NietzscheDB + NietzscheDB + NietzscheDB na EVA.
 
 **Tech Stack:** Rust nightly, Tokio, Tonic (gRPC), RocksDB, Axum (HTTP dashboard), Pest (PEG parser), DashMap, rayon, memmap2, React 19 (dashboard SPA), D3.js (dashboard embedded), Docker Compose
 
@@ -22,7 +22,7 @@ Banco de dados grafico **multi-manifold** em Rust, fork do HyperspaceDB com grap
 - AdjacencyIndex: DashMap lock-free bidirectional
 - CollectionManager: multi-collection namespace isolado
 - ACID Saga transactions (Phase 7): buffered ops, WAL, idempotent replay
-- EmbeddedVectorStore: HNSW real via hyperspace-index, Cosine + Poincare + Euclidean
+- EmbeddedVectorStore: HNSW real via nietzsche-hnsw, Cosine + Poincare + Euclidean
 
 ### Graph Traversal
 - BFS, Dijkstra, Diffusion walk, Shortest path (com filtros energy_min, max_depth)
@@ -71,7 +71,7 @@ Banco de dados grafico **multi-manifold** em Rust, fork do HyperspaceDB com grap
 ### React Dashboard
 - Auth, Overview, Collections, Nodes, DataExplorer (NQL console), GraphExplorer (cosmograph), Settings
 
-### HyperspaceDB (fork base)
+### NietzscheDB (fork base)
 - HNSW hiperbolico, WAL v3, mmap storage
 - Scalar I8 e Binary quantization
 - Cluster federation, multi-tenancy
@@ -138,8 +138,8 @@ Rust nightly, protoc (vendored), libclang-dev, clang, cmake, libssl-dev
 - md/roadmap2.md (duplicata exata de roadmap.md)
 - md/ARCHITECTURE.md (copia de docs/ARCHITECTURE.md)
 - md/audit_resultado.md (audit de OUTRO projeto - EVA-Mobile)
-- md/feito.md (lista features HyperspaceDB, nao NietzscheDB)
-- md/TODO_ADOPTION.md (todos items completos, HyperspaceDB only)
+- md/feito.md (lista features NietzscheDB, nao NietzscheDB)
+- md/TODO_ADOPTION.md (todos items completos, NietzscheDB only)
 - md/faze11.md / faze11x.md (superseded por fazer.md)
 - ~~sdks/go/~~ → IMPLEMENTADO (48 RPCs + multi-manifold)
 - sdks/cpp/ (so README, sem implementacao)

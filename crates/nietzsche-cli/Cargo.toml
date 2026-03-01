@@ -1,0 +1,15 @@
+[package]
+name = "nietzsche-cli"
+version = "2.0.0"
+edition = "2021"
+
+[dependencies]
+ratatui = { workspace = true }
+crossterm = "0.27"
+tokio = { workspace = true, features = ["full"] }
+nietzsche-proto = { workspace = true }
+nietzsche-core = { workspace = true }
+tonic = { workspace = true }
+rand = "0.8"
+nietzsche-rsdk = { path = "../nietzsche-rsdk" }
+chrono = "0.4"

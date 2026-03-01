@@ -1,7 +1,7 @@
 {
-    "name": "langchain-hyperspace",
+    "name": "langchain-nietzsche",
     "version": "1.6.0",
-    "description": "LangChain integration for HyperspaceDB",
+    "description": "LangChain integration for NietzscheDBDB",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
     "scripts": {
@@ -12,18 +12,18 @@
     },
     "keywords": [
         "langchain",
-        "hyperspacedb",
+        "nietzschedb",
         "vector database",
         "search",
         "hyperbolic"
     ],
-    "author": "HyperspaceDB Team",
+    "author": "NietzscheDBDB Team",
     "license": "Apache-2.0",
     "dependencies": {
         "@grpc/grpc-js": "^1.9.0",
         "@grpc/proto-loader": "^0.7.0",
         "@langchain/core": "^0.1.0",
-        "hyperspace-sdk-ts": "file:../../sdks/ts",
+        "nietzsche-sdk-ts": "file:../../sdks/ts",
         "uuid": "^9.0.0"
     },
     "devDependencies": {

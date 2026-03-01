@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 description = "Autonomous agency engine: daemons, observer, and counterfactual simulator for NietzscheDB"
 
+[features]
+default = []
+cuda = ["dep:cudarc"]
+
 [dependencies]
 nietzsche-graph   = { path = "../nietzsche-graph" }
 nietzsche-pregel  = { path = "../nietzsche-pregel" }
@@ -11,6 +15,7 @@ nietzsche-lsystem = { path = "../nietzsche-lsystem" }
 nietzsche-neural  = { path = "../nietzsche-neural" }
 nietzsche-gnn     = { path = "../nietzsche-gnn" }
 nietzsche-rl      = { path = "../nietzsche-rl" }
+cudarc            = { version = "0.12", features = ["nvrtc", "cuda-version-from-build-system"], optional = true }
 uuid              = { workspace = true }
 serde             = { workspace = true }
 serde_json        = { workspace = true }
@@ -22,6 +27,10 @@ rand              = { workspace = true }
 [[bin]]
 name = "simulate_forgetting"
 path = "src/bin/simulate_forgetting.rs"
+
+[[bin]]
+name = "experiment_link_prediction"
+path = "src/bin/experiment_link_prediction.rs"
 
 [dev-dependencies]
 tempfile = "3"

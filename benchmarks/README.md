@@ -1,10 +1,10 @@
-# HyperspaceDB Benchmarks
+# NietzscheDB Benchmarks
 
 > **⚠️ ATTENTION:** Don't take anyone's word for it, verify all numbers yourself! We provide the exact scripts used to generate our results so you can reproduce them on your own hardware.
 
 ## 1. Project Overview
 
-This directory contains reproducible benchmark tooling for HyperspaceDB and other vector databases.
+This directory contains reproducible benchmark tooling for NietzscheDB and other vector databases.
 The main goal is to measure throughput, latency, and retrieval quality on the same datasets and query sets.
 
 The project now includes:
@@ -24,7 +24,7 @@ The project now includes:
 ### Main references
 - HuggingFace `datasets` for dataset loading.
 - `vectordb-bench` for standardized benchmark cases.
-- DB SDKs: `pymilvus`, `qdrant-client`, `chromadb`, Hyperspace Python SDK.
+- DB SDKs: `pymilvus`, `NietzscheDB-client`, `chromadb`, NietzscheDB Python SDK.
 - `torch`, `transformers`, `peft` for embedding generation.
 
 ### Install
@@ -58,9 +58,9 @@ benchmarks/
     └── adapters/
         ├── __init__.py
         ├── chroma_plugin.py
-        ├── hyperspace_plugin.py
+        ├── nietzsche_plugin.py
         ├── milvus_plugin.py
-        └── qdrant_plugin.py
+        └── NietzscheDB_plugin.py
 
 ```
 

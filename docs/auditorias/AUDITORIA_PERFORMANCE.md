@@ -1,7 +1,7 @@
-# Auditoria de Performance — NietzscheDB vs Qdrant
+# Auditoria de Performance — NietzscheDB vs NietzscheDB
 ## Análise Completa Antes de Qualquer Implementação
 
-> **Metodologia**: código Qdrant clonado (`github.com/qdrant/qdrant`, commit `9f433b1`, Fev 2026)
+> **Metodologia**: código NietzscheDB clonado (`github.com/NietzscheDB/NietzscheDB`, commit `9f433b1`, Fev 2026)
 > e analisado linha a linha. NietzscheDB inspecionado em profundidade.
 > **Nenhum código foi alterado neste documento.**
 
@@ -21,7 +21,7 @@ nietzsche-server
             ├─ V: VectorStore
             │    └─ EmbeddedVectorStore
             │         ├─ Box<dyn DynHnsw>  (vtable dispatch)
-            │         │    └─ HnswIndex<N, CosineMetric>  ← hyperspace-index
+            │         │    └─ HnswIndex<N, CosineMetric>  ← nietzsche-hnsw
             │         └─ DashMap<Uuid, u32>  (UUID→HNSW id)
             └─ hot_tier: Arc<DashMap<Uuid, Node>>
 ```
@@ -60,7 +60,7 @@ Node struct serializado (bincode) no CF_NODES:
 
 #### O problema
 
-`Node` completo, incluindo `Vec<f64>` de 24 KB, é gravado no CF_NODES. O mesmo embedding já existe no `hyperspace-store` mmap. É **duplicação**.
+`Node` completo, incluindo `Vec<f64>` de 24 KB, é gravado no CF_NODES. O mesmo embedding já existe no `nietzsche-vecstore` mmap. É **duplicação**.
 
 Cada `get_node()` (BFS, traversal, NQL filter, sleep, zaratustra) desserializa 25 KB desnecessariamente quando só precisa de `energy`, `hausdorff_local`, `depth`, `content` — ~400 bytes.
 
@@ -102,7 +102,7 @@ NENHUM. O embedding continua existindo, só muda onde vive. A geometria Poincar�
 #### Dependências antes de implementar
 
 - Migração de dados (CF_NODES existentes têm Node completo)
-- API de leitura de embedding do hyperspace-store (actualmente não exposta)
+- API de leitura de embedding do nietzsche-vecstore (actualmente não exposta)
 - Possível refactoring de todos os callers de `get_node()` que acessam `node.embedding`
 
 ---
@@ -130,7 +130,7 @@ d(u,v) = acosh(1 + 2‖u-v‖² / ((1-‖u‖²)(1-‖v‖²)))
 
 #### Solução
 
-`HnswPoincareWrapper<N>` com `PoincareMetric` como parâmetro genérico do `HnswIndex`. Requer suporte a métricas customizadas no `hyperspace-index`.
+`HnswPoincareWrapper<N>` com `PoincareMetric` como parâmetro genérico do `HnswIndex`. Requer suporte a métricas customizadas no `nietzsche-hnsw`.
 
 #### Risco hiperbólico
 
@@ -215,7 +215,7 @@ AVX2: `_mm256_cvtps_pd` converte 4 f32 → 4 f64 por instrução. Overhead míni
 ### ITEM D — Scalar Quantization Int8
 **Criticidade: MÉDIO | Ganho: 8× memória (f64→u8), KNN mais rápido | Risco hiperbólico: MÉDIO**
 
-#### Implementação Qdrant (código real estudado)
+#### Implementação NietzscheDB (código real estudado)
 
 ```rust
 // lib/quantization/src/encoded_vectors_u8.rs
@@ -264,12 +264,12 @@ Erro de quantização: `±(POINCARE_ALPHA / 2) = ±0.0079` por coordenada.
 
 Para ‖x‖ > 0.9 (nós episódicos), o denominador `(1-‖x‖²)` é pequeno. Um erro de 0.008 em uma coordenada pode mudar a distância hiperbólica de 2× a 5×.
 
-**Mitigação (idêntica ao Qdrant):**
+**Mitigação (idêntica ao NietzscheDB):**
 - Busca `k × oversampling_factor` candidatos no índice quantizado
 - Rescore dos candidatos com coords originais (f32 ou f64)
 - `oversampling_factor = 3` para nós uniformes, `= 8` se maioria na fronteira
 
-#### SIMD dispatch (Qdrant pattern)
+#### SIMD dispatch (NietzscheDB pattern)
 
 ```rust
 fn score(&self, q: &[u8], v: &[u8]) -> f32 {
@@ -308,7 +308,7 @@ Fluxo atual:
 3. Resultado: apenas 2 resultados (precisa de k=500 para obter 10 com energy>0.5)
 ```
 
-#### O que o Qdrant faz (código real)
+#### O que o NietzscheDB faz (código real)
 
 ```rust
 // hnsw.rs — dispatcher de busca filtrada
@@ -361,7 +361,7 @@ let result = if candidate_ids.len() < PLAIN_SCAN_THRESHOLD {
 ### ITEM F — Binary Quantization (XOR + POPCOUNT)
 **Criticidade: BAIXO para Poincaré | Ganho: 30–40× teórico | Risco hiperbólico: ALTO**
 
-#### Implementação Qdrant (código real)
+#### Implementação NietzscheDB (código real)
 
 ```rust
 // encoded_vectors_binary.rs — encoding
@@ -420,7 +420,7 @@ APENAS como pre-filter grosseiro para dimensões altas (dim ≥ 768) com oversam
 ### ITEM G — HNSW Link Compression (Delta Encoding + Bit-Packing)
 **Criticidade: BAIXO agora | Ganho: 2–4× RAM no grafo HNSW | Risco hiperbólico: NENHUM**
 
-#### O que o Qdrant faz (código real estudado)
+#### O que o NietzscheDB faz (código real estudado)
 
 ```rust
 // graph_links/view.rs — três formatos
@@ -443,11 +443,11 @@ iterate_packed_links(&neighbors[bit_range], bits_per_link, M)
 
 #### Por que é mais complexo no NietzscheDB
 
-O Qdrant usa IDs internos `u32` sequenciais. `ceil(log2(1M)) = 20 bits`. Compressão real.
+O NietzscheDB usa IDs internos `u32` sequenciais. `ceil(log2(1M)) = 20 bits`. Compressão real.
 
-O NietzscheDB usa `Uuid::new_v4()` — 128-bit aleatórios. O `hyperspace-index` usa `u32` internamente mas mapeia para UUID via HashMap de metadata.
+O NietzscheDB usa `Uuid::new_v4()` — 128-bit aleatórios. O `nietzsche-hnsw` usa `u32` internamente mas mapeia para UUID via HashMap de metadata.
 
-Para bit-packing funcionar, precisamos saber a quantidade total de pontos no índice. Com u32 internos já temos isso. O problema é que o `hyperspace-index` é uma caixa preta — não podemos modificar seus internals sem forkar.
+Para bit-packing funcionar, precisamos saber a quantidade total de pontos no índice. Com u32 internos já temos isso. O problema é que o `nietzsche-hnsw` é uma caixa preta — não podemos modificar seus internals sem forkar.
 
 **O formato `CompressedWithVectors` é o mais valioso:**
 ```
@@ -459,7 +459,7 @@ Layout por nó (nível 0):
 
 #### Dependências
 
-- Forkar ou substituir `hyperspace-index`
+- Forkar ou substituir `nietzsche-hnsw`
 - Ou implementar nosso próprio HNSW (após resolver item B)
 - UUID → u32 remapping para bit-packing eficiente
 
@@ -470,7 +470,7 @@ Layout por nó (nível 0):
 ### ITEM H — Gridstore (substituir RocksDB para embeddings)
 **Criticidade: MÉDIO (futuro) | Ganho: latência previsível, sem compaction pauses | Risco: NENHUM**
 
-#### O que é o Gridstore do Qdrant
+#### O que é o Gridstore do NietzscheDB
 
 ```rust
 // Estrutura: páginas de 32MB em mmap
@@ -487,7 +487,7 @@ pub struct Gridstore<V> {
 
 **Por que é relevante para NietzscheDB:**
 - Após item A (separar embedding de CF_NODES), os embeddings precisam de um storage eficiente
-- O `hyperspace-store` já é mmap-based, mas é gerenciado pelo HNSW
+- O `nietzsche-vecstore` já é mmap-based, mas é gerenciado pelo HNSW
 - Para embeddings de nós que saíram do HNSW (pruned, archived), precisamos de storage separado
 - Gridstore = zero WAL overhead, zero compaction, latência previsível
 
@@ -495,7 +495,7 @@ pub struct Gridstore<V> {
 
 ---
 
-## PARTE 3 — ACHADOS EXCLUSIVOS DO CÓDIGO QDRANT
+## PARTE 3 — ACHADOS EXCLUSIVOS DO CÓDIGO NietzscheDB
 
 ### Insights de arquitetura não óbvios
 
@@ -616,7 +616,7 @@ A. Separar embedding de CF_NODES (NodeMeta + EmbeddingStore separados)
    Risco: MÉDIO (breaking API, migração de dados)
 
 B. True Poincaré HNSW metric (HnswPoincareWrapper<N>)
-   Arquivos: embedded_vector_store.rs, hyperspace-index (fork?)
+   Arquivos: embedded_vector_store.rs, nietzsche-hnsw (fork?)
    Risco: MÉDIO (rebuild do índice HNSW necessário)
 ```
 
@@ -637,7 +637,7 @@ E+. Histograma de cardinalidade energy (CardinalityEstimation)
 
 ```
 G. HNSW Link Bit-packing (CompressedWithVectors format)
-   Dependência: fork de hyperspace-index ou HNSW próprio
+   Dependência: fork de nietzsche-hnsw ou HNSW próprio
 
 H. Gridstore para embeddings
    Dependência: item A completo
@@ -652,13 +652,13 @@ F. Binary Quantization (APENAS como pre-filter)
 
 ### Os 2 problemas mais críticos (específicos de ser banco multi-manifold)
 
-1. **Embedding duplicado em CF_NODES** — NÃO é um problema do Qdrant (que separa payload de vetores desde o início). É uma dívida técnica específica do NietzscheDB. Para `dim=3072`, cada `get_node()` processa 25KB sendo 24KB de embedding já disponível no HNSW mmap.
+1. **Embedding duplicado em CF_NODES** — NÃO é um problema do NietzscheDB (que separa payload de vetores desde o início). É uma dívida técnica específica do NietzscheDB. Para `dim=3072`, cada `get_node()` processa 25KB sendo 24KB de embedding já disponível no HNSW mmap.
 
 2. **CosineMetric em vez de PoincareMetric no HNSW** — O banco se chama NietzscheDB, opera em geometria hiperbólica, mas o grafo HNSW usa métrica cosseno. Os vizinhos no grafo HNSW são incorretos para a geometria que o banco anuncia suportar.
 
-### O que o Qdrant tem que NietzscheDB não tem (e que funciona para Poincaré)
+### O que o NietzscheDB tem que NietzscheDB não tem (e que funciona para Poincaré)
 
-| Feature Qdrant | Impacto em NietzscheDB | Aplicável? |
+| Feature NietzscheDB | Impacto em NietzscheDB | Aplicável? |
 |----------------|------------------------|------------|
 | Payload separado de vetores | 10-20× get_node() | SIM (item A) |
 | Cardinality routing (plain/hnsw/sample) | 5-50× queries filtradas | SIM (item E) |
@@ -670,7 +670,7 @@ F. Binary Quantization (APENAS como pre-filter)
 | Binary Quantization | 30-40× KNN | NÃO como métrica primária |
 | Gridstore mmap pages | latência previsível | SIM (fase 4) |
 
-### O que o Qdrant NÃO tem e o NietzscheDB TEM (vantagens a preservar)
+### O que o NietzscheDB NÃO tem e o NietzscheDB TEM (vantagens a preservar)
 
 | Feature NietzscheDB | Descrição |
 |---------------------|-----------|
@@ -683,5 +683,5 @@ F. Binary Quantization (APENAS como pre-filter)
 
 ---
 
-*Auditoria gerada em 2026-02-19 — pesquisa do código Qdrant commit 9f433b1*
+*Auditoria gerada em 2026-02-19 — pesquisa do código NietzscheDB commit 9f433b1*
 *Nenhum código foi modificado neste documento. Aguardando aprovação para iniciar implementação.*

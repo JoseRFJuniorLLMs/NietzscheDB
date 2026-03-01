@@ -1,13 +1,13 @@
-# HyperspaceDB Dashboard
+# NietzscheDB Dashboard
 
-Professional web-based management interface for HyperspaceDB.
+Professional web-based management interface for NietzscheDB.
 
 ## Features
 
 ### 🔐 Authentication
 - API key-based access control
 - Secure SHA-256 hashing
-- Default key: `I_LOVE_HYPERSPACEDB`
+- Default key: `I_LOVE_NIETZSCHEDB`
 
 ### 📊 Collection Management
 - Create collections with preset configurations
@@ -56,7 +56,7 @@ npm run build
 
 ### Environment
 
-The dashboard connects to the HyperspaceDB server at `http://localhost:50050` by default.
+The dashboard connects to the NietzscheDB server at `http://localhost:50050` by default.
 
 ## Architecture
 
@@ -76,7 +76,7 @@ The dashboard connects to the HyperspaceDB server at `http://localhost:50050` by
 
 ## API Integration
 
-The dashboard communicates with HyperspaceDB via HTTP REST API:
+The dashboard communicates with NietzscheDB via HTTP REST API:
 
 ```typescript
 // List collections
@@ -108,10 +108,10 @@ Headers: { 'x-api-key': 'YOUR_KEY' }
 
 ### Changing API Key
 
-Set the `HYPERSPACE_API_KEY` environment variable in the server's `.env` file:
+Set the `NDB_API_KEY` environment variable in the server's `.env` file:
 
 ```bash
-HYPERSPACE_API_KEY=your_custom_key_here
+NDB_API_KEY=your_custom_key_here
 ```
 
 ### Adding New Presets
@@ -127,7 +127,7 @@ const COLLECTION_PRESETS = [
 
 ## Deployment
 
-The dashboard is embedded in the HyperspaceDB server binary via `rust-embed`. The build artifacts are automatically included during server compilation.
+The dashboard is embedded in the NietzscheDB server binary via `rust-embed`. The build artifacts are automatically included during server compilation.
 
 To update the dashboard:
 
@@ -140,4 +140,4 @@ cargo build --release
 
 ## License
 
-Same as HyperspaceDB main project (AGPLv3 + Commercial).
+Same as NietzscheDB main project (AGPLv3 + Commercial).

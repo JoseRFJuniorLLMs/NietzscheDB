@@ -1,6 +1,6 @@
 # The Hyperbolic Geometry
 
-HyperspaceDB operates in the **Poincaré Ball Model** of hyperbolic geometry. This space is uniquely suited for hierarchical data (trees, graphs, taxonomies) because the amount of "space" available grows exponentially with the radius, similar to how the number of nodes in a tree grows with depth.
+NietzscheDB operates in the **Poincaré Ball Model** of hyperbolic geometry. This space is uniquely suited for hierarchical data (trees, graphs, taxonomies) because the amount of "space" available grows exponentially with the radius, similar to how the number of nodes in a tree grows with depth.
 
 ## The Distance Formula
 
@@ -16,7 +16,7 @@ Where:
 
 ## Optimization: The "Alpha" Trick
 
-Calculating `arccosh` and divisions for every distance check in HNSW is expensive. HyperspaceDB optimizes this by pre-computing the curvature factors.
+Calculating `arccosh` and divisions for every distance check in HNSW is expensive. NietzscheDB optimizes this by pre-computing the curvature factors.
 
 For every vector $x$, we store an additional scalar $\alpha_x$:
 
@@ -36,4 +36,4 @@ $$
 
 If $\delta(A) < \delta(B)$, then $d(A) < d(B)$.
 
-HyperspaceDB performs all internal graph traversals using only $\delta$ (SIMD-optimized), and applies the heavy `arccosh` only once: when returning the final top-K results to the client.
+NietzscheDB performs all internal graph traversals using only $\delta$ (SIMD-optimized), and applies the heavy `arccosh` only once: when returning the final top-K results to the client.

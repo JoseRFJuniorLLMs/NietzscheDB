@@ -1,7 +1,7 @@
 
 # 📉 Binary Quantization
 
-HyperspaceDB supports multiple storage modes to balance **Performance vs Memory**.
+NietzscheDB supports multiple storage modes to balance **Performance vs Memory**.
 
 ## Modes
 
@@ -20,13 +20,13 @@ Start the server with your desired mode:
 
 ```bash
 # Default (ScalarI8)
-./hyperspace-server
+./nietzsche-baseserver
 
 # Ultra-Compact (Binary)
-./hyperspace-server --mode binary
+./nietzsche-baseserver --mode binary
 
 # Full Precision (Research)
-./hyperspace-server --mode none
+./nietzsche-baseserver --mode none
 ```
 
 > **Note**: The mode is set at server startup and applies to the entire database instance. Mixing modes is not currently supported.

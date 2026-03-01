@@ -1,0 +1,27 @@
+[package]
+name = "nietzsche-hnsw"
+version = "2.0.0"
+edition = "2021"
+
+[dependencies]
+parking_lot = "0.12"
+rand = "0.8"
+smallvec = { workspace = true }
+ordered-float = "4.0"
+nietzsche-core = { path = "../nietzsche-core", features = ["nightly-simd"] }
+nietzsche-vecstore = { path = "../nietzsche-vecstore", default-features = false }
+rkyv = { workspace = true, features = ["validation"] }
+roaring = "0.11.3"
+dashmap = "6.1.0"
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0"
+memmap2 = { workspace = true, optional = true }
+
+[features]
+default = ["persistence"]
+persistence = ["nietzsche-vecstore/mmap", "dep:memmap2"]
+
+[dev-dependencies]
+proptest = "1.0"
+tempfile = "3.8"
+

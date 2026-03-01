@@ -1,8 +1,8 @@
 import grpc
 import numpy as np
 import time
-import hyperspace_pb2
-import hyperspace_pb2_grpc
+import nietzsche_db_pb2
+import nietzsche_db_pb2_grpc
 
 # Config
 DIM = 8
@@ -20,7 +20,7 @@ def run():
     print(f"Connecting to {HOST}...")
     try:
         channel = grpc.insecure_channel(HOST)
-        stub = hyperspace_pb2_grpc.DatabaseStub(channel)
+        stub = nietzsche_db_pb2_grpc.DatabaseStub(channel)
         
         # Check connection implicitly by calling Insert
         pass
@@ -29,7 +29,7 @@ def run():
         return
 
     channel = grpc.insecure_channel(HOST)
-    stub = hyperspace_pb2_grpc.DatabaseStub(channel)
+    stub = nietzsche_db_pb2_grpc.DatabaseStub(channel)
 
     # 1. Insert Data with Metadata
     print("🚀 Inserting vectors...")
@@ -41,7 +41,7 @@ def run():
         meta = {"category": category}
         
         try:
-            stub.Insert(hyperspace_pb2.InsertRequest(vector=vec, metadata=meta))
+            stub.Insert(nietzsche_db_pb2.InsertRequest(vector=vec, metadata=meta))
             if i % 10 == 0: print(f".", end="", flush=True)
         except grpc.RpcError as e:
             print(f"Insert failed: {e}")
@@ -53,7 +53,7 @@ def run():
     # 2. DELETE Test
     print("\n🗑️ Deleting Vector ID 0 (which is Red)...")
     try:
-        stub.Delete(hyperspace_pb2.DeleteRequest(id=0))
+        stub.Delete(nietzsche_db_pb2.DeleteRequest(id=0))
         print("✅ Delete confirmed.")
     except grpc.RpcError as e:
         print(f"❌ Delete failed: {e}")
@@ -65,7 +65,7 @@ def run():
     try:
         # Filter for RED only
         f = {"category": "red"}
-        response = stub.Search(hyperspace_pb2.SearchRequest(vector=query_vec, top_k=5, filter=f))
+        response = stub.Search(nietzsche_db_pb2.SearchRequest(vector=query_vec, top_k=5, filter=f))
         print("🎯 Search Results (Red Only):")
         for res in response.results:
             print(f"   ID: {res.id}, Dist: {res.distance:.4f}")
@@ -82,7 +82,7 @@ def run():
     try:
         # Filter for BLUE only
         f = {"category": "blue"}
-        response = stub.Search(hyperspace_pb2.SearchRequest(vector=query_vec, top_k=5, filter=f))
+        response = stub.Search(nietzsche_db_pb2.SearchRequest(vector=query_vec, top_k=5, filter=f))
         print("🎯 Search Results (Blue Only):")
         for res in response.results:
             print(f"   ID: {res.id}, Dist: {res.distance:.4f}")

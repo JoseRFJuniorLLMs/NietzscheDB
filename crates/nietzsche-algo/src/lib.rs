@@ -1,7 +1,7 @@
 //! Graph algorithm library for NietzscheDB.
 //!
 //! Provides production-grade implementations of common graph algorithms,
-//! matching the capabilities of Neo4j GDS and TigerGraph:
+//! matching the capabilities of NietzscheDB GDS and TigerGraph:
 //!
 //! - **Centrality**: PageRank, Betweenness (Brandes), Closeness, Degree
 //! - **Community**: Louvain modularity, Label Propagation

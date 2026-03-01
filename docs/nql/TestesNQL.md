@@ -287,7 +287,7 @@ EXPLAIN DIFFUSE FROM $n RETURN path
 ```nql
 MATCH (n) WHERE POINCARE_DIST(n.embedding, $q) < 0.5 RETURN n
 ```
-- Verifica: `MathFunc::PoincareDist`, 2 argumentos
+- Verifica: `MathFunc::PoincaNietzscheDBt`, 2 argumentos
 
 #### `parse_minkowski_norm`
 ```nql

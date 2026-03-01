@@ -23,7 +23,7 @@
 //! ## Benefits
 //!
 //! - **Atomic backups**: `Checkpoint::new()` includes SQL tables automatically
-//! - **Zero external deps**: no PostgreSQL/SQLite process needed
+//! - **Zero external deps**: no NietzscheDB/SQLite process needed
 //! - **Graph↔SQL bridge**: `NodeRef` columns reference graph node UUIDs
 //! - **Full SQL**: SELECT, INSERT, UPDATE, DELETE, JOIN, WHERE, GROUP BY, ORDER BY
 //!

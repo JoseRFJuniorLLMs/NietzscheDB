@@ -2,18 +2,18 @@
 
 ## 1. Current Search/Retrieval Infrastructure
 
-### 1.1 HNSW Implementation (hyperspace-index)
+### 1.1 HNSW Implementation (nietzsche-hnsw)
 
-NietzscheDB has a full multi-layer HNSW (Hierarchical Navigable Small World) graph implementation in `hyperspace-index`.
+NietzscheDB has a full multi-layer HNSW (Hierarchical Navigable Small World) graph implementation in `nietzsche-hnsw`.
 
-**Core structure** (`crates/hyperspace-index/src/lib.rs`):
+**Core structure** (`crates/nietzsche-hnsw/src/lib.rs`):
 - `HnswIndex<const N: usize, M: Metric<N>>` — generic over dimension `N` and metric `M`
 - Multi-layer navigable small world graph with up to `MAX_LAYERS = 16` levels
 - Topology stored as `Vec<Node>` where each `Node` has `Vec<RwLock<Vec<NodeId>>>` per layer
 - Uses `parking_lot::RwLock` for concurrent read/write (fine-grained per-layer locks)
 - Thread-local `VisitedScratch` with generation-based visited tracking (no per-query allocation)
 
-**HNSW Parameters** (from `crates/hyperspace-core/src/config.rs`):
+**HNSW Parameters** (from `crates/nietzsche-core/src/config.rs`):
 - `M` (max connections per layer): default `16`, configurable via `GlobalConfig::set_m()`
 - `ef_construction`: default `100`, configurable at runtime via atomics
 - `ef_search`: default `100`, configurable at runtime via atomics
@@ -45,14 +45,14 @@ NietzscheDB has a full multi-layer HNSW (Hierarchical Navigable Small World) gra
 - **Fallback**: if GPU build or search fails, falls back to CPU linear scan with `eprintln!` warning
 - Implements the `VectorStore` trait from `nietzsche-graph`
 
-**GPU compute shaders** (`crates/hyperspace-core/src/gpu.rs`):
+**GPU compute shaders** (`crates/nietzsche-core/src/gpu.rs`):
 - WGSL compute shader for batch Lorentz SQ8 distance computation
 - 256 threads per workgroup, dequantizes i8 coords with per-vector scale factor
 - CPU reference implementation for validation
 
 ### 1.3 Metrics (Distance Functions)
 
-All metrics implement `Metric<N>` trait (`crates/hyperspace-core/src/lib.rs`):
+All metrics implement `Metric<N>` trait (`crates/nietzsche-core/src/lib.rs`):
 
 | Metric | Distance | Used For |
 |--------|----------|----------|
@@ -87,7 +87,7 @@ Each metric supports three quantization modes:
 
 ### 1.5 Hybrid Search (RRF Fusion)
 
-**Location**: `HnswIndex::search_hybrid()` (`crates/hyperspace-index/src/lib.rs`, line ~1740)
+**Location**: `HnswIndex::search_hybrid()` (`crates/nietzsche-hnsw/src/lib.rs`, line ~1740)
 
 - Activated when `hybrid_query` is present in `SearchParams`
 - Vector path: HNSW search for top `k*2` candidates (recall buffer)
@@ -147,7 +147,7 @@ Each metric supports three quantization modes:
 
 ### 1.9 Metadata Index (HNSW Layer)
 
-**Location**: `MetadataIndex` in `hyperspace-index/src/lib.rs`
+**Location**: `MetadataIndex` in `nietzsche-hnsw/src/lib.rs`
 
 - `inverted: DashMap<String, RoaringBitmap>` — tag-based filtering (`key:value` and `_txt:token`)
 - `numeric: DashMap<String, BTreeMap<i64, RoaringBitmap>>` — numeric range filtering
@@ -156,7 +156,7 @@ Each metric supports three quantization modes:
 
 ### 1.10 AutoTuner
 
-**Location**: `crates/hyperspace-core/src/auto_tuner.rs`
+**Location**: `crates/nietzsche-core/src/auto_tuner.rs`
 
 - Rolling window of query latencies and result counts
 - Auto-adjusts `ef_search` based on p95 latency vs target and estimated recall vs target
@@ -703,12 +703,12 @@ impl NeuralCircuitBreaker {
 
 | Component | File | Key Functions/Structs |
 |-----------|------|----------------------|
-| HNSW Index | `crates/hyperspace-index/src/lib.rs` | `HnswIndex::search()`, `search_layer0()`, `search_hybrid()`, `index_node()` |
-| HNSW Config | `crates/hyperspace-core/src/config.rs` | `GlobalConfig` (M=16, ef=100) |
-| Metrics | `crates/hyperspace-core/src/lib.rs` | `PoincareMetric`, `EuclideanMetric`, `LorentzMetric`, `CosineMetric` |
-| Vector Types | `crates/hyperspace-core/src/vector.rs` | `HyperVector<N>`, `QuantizedHyperVector<N>`, `BinaryHyperVector<N>` |
-| GPU Compute | `crates/hyperspace-core/src/gpu.rs` | `LORENTZ_DISTANCE_WGSL`, `batch_lorentz_distance_cpu()` |
-| AutoTuner | `crates/hyperspace-core/src/auto_tuner.rs` | `AutoTuner` |
+| HNSW Index | `crates/nietzsche-hnsw/src/lib.rs` | `HnswIndex::search()`, `search_layer0()`, `search_hybrid()`, `index_node()` |
+| HNSW Config | `crates/nietzsche-core/src/config.rs` | `GlobalConfig` (M=16, ef=100) |
+| Metrics | `crates/nietzsche-core/src/lib.rs` | `PoincareMetric`, `EuclideanMetric`, `LorentzMetric`, `CosineMetric` |
+| Vector Types | `crates/nietzsche-core/src/vector.rs` | `HyperVector<N>`, `QuantizedHyperVector<N>`, `BinaryHyperVector<N>` |
+| GPU Compute | `crates/nietzsche-core/src/gpu.rs` | `LORENTZ_DISTANCE_WGSL`, `batch_lorentz_distance_cpu()` |
+| AutoTuner | `crates/nietzsche-core/src/auto_tuner.rs` | `AutoTuner` |
 | GPU VectorStore | `crates/nietzsche-hnsw-gpu/src/lib.rs` | `GpuVectorStore`, `GpuState::build_gpu_index()`, `gpu_search()` |
 | Filtered KNN | `crates/nietzsche-filtered-knn/src/search.rs` | `filtered_knn()`, `brute_force_knn()` |
 | Filter Builder | `crates/nietzsche-filtered-knn/src/filter.rs` | `NodeFilter`, `build_filter_bitmap()` |

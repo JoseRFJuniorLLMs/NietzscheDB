@@ -31,14 +31,14 @@
 - [x] RPCs: CreateCollection, DropCollection, ListCollections
 - [x] RwLock por colecao (reads concorrentes, writes isolados)
 
-## TTL / Cache / Lists (substitui Redis)
+## TTL / Cache / Lists (substitui NietzscheDB)
 
 - [x] expires_at em NodeMeta + TTL Reaper background (60s default)
 - [x] CacheSet/CacheGet/CacheDel RPCs com TTL
 - [x] ListStore: CF_LISTS com RPUSH/LRANGE/LEN RPCs
 - [x] ReapExpired RPC para limpeza manual
 
-## Merge (substitui Neo4j MERGE)
+## Merge (substitui NietzscheDB MERGE)
 
 - [x] MergeNode RPC — get-or-create com on_create_set / on_match_set
 - [x] MergeEdge RPC — upsert de aresta com metadata atomico
@@ -188,9 +188,9 @@
 - [x] Named Vectors / Multi-Vector (nietzsche-named-vectors)
 - [x] Product Quantization magnitude-preserving (nietzsche-pq)
 - [x] Prometheus/OpenTelemetry metrics (nietzsche-metrics)
-- [x] WASM + IndexedDB (hyperspace-wasm)
-- [x] TUI ratatui + stress tests (hyperspace-cli)
-- [x] ONNX + remote embedder (hyperspace-embed)
+- [x] WASM + IndexedDB (nietzsche-wasm)
+- [x] TUI ratatui + stress tests (nietzsche-cli)
+- [x] ONNX + remote embedder (nietzsche-embed)
 
 ## Testes
 
@@ -211,7 +211,7 @@
 | NQL FOREACH | BAIXO | Batch operations |
 | NQL IN COLLECTION syntax | MEDIO | Existe no gRPC, nao no NQL |
 | NQL CREATE INDEX syntax | BAIXO | Existe via RPC |
-| NQL edge property access (r.field) | ALTO | Bloqueador Neo4j queries |
+| NQL edge property access (r.field) | ALTO | Bloqueador NietzscheDB queries |
 | SET/DELETE em path patterns | MEDIO | So funciona em node patterns |
 
 ### 5 Features Arquiteturais Faltantes (verificado no codigo 2026-02-22)
@@ -222,7 +222,7 @@
 | 2 | **Semantic Drift Validation** | ❌ | ALTO | `nietzsche-sleep/src/cycle.rs` → Hausdorff geometry check apenas, sem oracle semantico |
 | 3 | **Manifold Visualizer** | 🟡 | BAIXO | `dashboard/GraphExplorerPage.tsx` → Cosmograph Euclidiano, sem Poincare disk |
 | 4 | **HNSW Distributed Sharding** | ❌ | BAIXO | `nietzsche-graph/vector_store.rs` → Collection-level apenas, sem cross-shard KNN |
-| 5 | **DX Integrations** | ❌ | CRITICO | `sdks/python/` → HyperspaceDB (nome antigo), sem LangChain/DSPy/OGM |
+| 5 | **DX Integrations** | ❌ | CRITICO | `sdks/python/` → NietzscheDB (nome antigo), sem LangChain/DSPy/OGM |
 
 ### Outros Pendentes
 

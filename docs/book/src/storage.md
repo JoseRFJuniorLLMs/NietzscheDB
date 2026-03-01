@@ -1,6 +1,6 @@
 # Storage Format
 
-HyperspaceDB uses a custom segmented file format designed for:
+NietzscheDB uses a custom segmented file format designed for:
 1.  **Fast Appends** (Zero seek time).
 2.  **Mmap Compatibility** (OS manages caching).
 3.  **Space Efficiency** (Quantization).
@@ -52,7 +52,7 @@ It is only read during startup if the Index Snapshot is older than the last WAL 
 
 ## RAM Backend (WASM)
 
-For WebAssembly deployments (`hyperspace-wasm`), the storage backend automatically switches to `RAMVectorStore`.
+For WebAssembly deployments (`nietzsche-wasm`), the storage backend automatically switches to `RAMVectorStore`.
 
 *   **Structure**: Uses `Vec<Arc<RwLock<Vec<u8>>>>` (Heap Memory) instead of memory-mapped files.
 *   **Segmentation**: The same chunking logic (64k vectors) is preserved. This allows the core `HNSW` index to use the same addressing logic (`id >> 16`, `id & 0xFFFF`) regardless of the backend.

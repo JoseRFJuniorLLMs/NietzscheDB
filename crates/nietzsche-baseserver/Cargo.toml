@@ -1,0 +1,44 @@
+[package]
+name = "nietzsche-baseserver"
+version = "2.0.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true }
+tonic = { workspace = true }
+tracing = { workspace = true }
+nietzsche-proto = { workspace = true }
+nietzsche-core = { workspace = true, features = ["nightly-simd"] }
+nietzsche-hnsw = { workspace = true }
+nietzsche-vecstore = { workspace = true }
+tokio-stream = "0.1"
+rand = "0.8"
+sha2 = "0.10.9"
+hex = "0.4.3"
+clap = { version = "4.5.54", features = ["derive"] }
+dotenv = "0.15.0"
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0.149"
+dashmap = "6.1.0"
+rayon = "1.10"
+arc-swap = "1.7"
+axum = "0.8.8"
+rust-embed = "8.11.0"
+mime_guess = "2.0.5"
+tower-http = { version = "0.6.8", features = ["cors", "trace", "fs"] }
+sysinfo = "0.32"
+nietzsche-embed = { path = "../nietzsche-embed", optional = true }
+nietzsche-api    = { workspace = true }
+uuid = { version = "1.7", features = ["v4", "serde"] }
+parking_lot.workspace = true
+async-trait = "0.1.89"
+futures = "0.3.32"
+
+# jemalloc is not supported on Windows — gate it so the dev machine (Windows)
+# can build without errors while the production target (Linux) gets the allocator.
+[target.'cfg(not(windows))'.dependencies]
+tikv-jemallocator = "0.6"
+tikv-jemalloc-ctl = "0.6"
+
+[features]
+embed = ["dep:nietzsche-embed"]

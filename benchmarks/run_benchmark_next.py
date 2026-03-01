@@ -111,9 +111,9 @@ def prepare_context(cfg: legacy.Config, target_db: str | None = None) -> Benchma
 
     ds_slug = cfg.dataset_name.replace("/", "_")
     target_db_norm = (target_db or "").lower()
-    run_hyperspace_only = target_db_norm in {"hyper", "hyperspace"}
+    run_nietzsche_only = target_db_norm in {"hyper", "nietzsche"}
 
-    need_euc = not (run_hyperspace_only and cfg.HYPER_MODE.lower() == "poincare")
+    need_euc = not (run_nietzsche_only and cfg.HYPER_MODE.lower() == "poincare")
     if need_euc and doc_vecs_euc is None:
         cache_file = f"cache_{ds_slug}_euclidean_1024d_{cfg.doc_limit}.npz"
         if pathlib.Path(cache_file).exists():
@@ -131,7 +131,7 @@ def prepare_context(cfg: legacy.Config, target_db: str | None = None) -> Benchma
             q_vecs_euc = model_base.encode(test_queries, batch_size=cfg.batch_size)
             np.save(q_cache_file, q_vecs_euc)
 
-    need_hyp = cfg.HYPER_MODE.lower() == "poincare" and (not target_db_norm or run_hyperspace_only)
+    need_hyp = cfg.HYPER_MODE.lower() == "poincare" and (not target_db_norm or run_nietzsche_only)
     if need_hyp:
         cache_file = f"cache_{ds_slug}_hyperbolic_64d_{cfg.doc_limit}.npz"
         if pathlib.Path(cache_file).exists():

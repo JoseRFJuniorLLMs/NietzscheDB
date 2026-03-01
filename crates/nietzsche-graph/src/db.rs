@@ -53,8 +53,8 @@ impl BackpressureSignal {
 
 /// Filter for KNN metadata pre-filtering (pushed down to the HNSW index).
 ///
-/// Converts to `hyperspace_core::FilterExpr` at the HNSW boundary.
-/// Supports the filter patterns used by EVA-Mind's Qdrant calls
+/// Converts to `nietzsche_core::FilterExpr` at the HNSW boundary.
+/// Supports the filter patterns used by EVA-Mind's NietzscheDB calls
 /// (e.g. `SearchWithScore(ctx, col, emb, k, 0.7, userID)`).
 #[derive(Debug, Clone)]
 pub enum MetadataFilter {
@@ -82,10 +82,10 @@ pub enum MetadataFilter {
 // VectorStore trait
 // ─────────────────────────────────────────────
 
-/// Abstraction over a hyperbolic vector store (HyperspaceDB or a mock).
+/// Abstraction over a hyperbolic vector store (NietzscheDB or a mock).
 ///
 /// `NietzscheDB` is generic over this trait so that unit tests can inject
-/// a `MockVectorStore` without requiring a live HyperspaceDB process.
+/// a `MockVectorStore` without requiring a live NietzscheDB process.
 pub trait VectorStore: Send + Sync {
     /// Upsert a vector embedding for `id`.
     fn upsert(&mut self, id: Uuid, vector: &PoincareVector) -> Result<(), GraphError>;
@@ -183,7 +183,7 @@ impl VectorStore for MockVectorStore {
 /// Maintains three subsystems and keeps them consistent:
 /// - [`GraphStorage`] — durable RocksDB-backed graph (nodes, edges, adjacency)
 /// - [`GraphWal`]     — append-only Write-Ahead Log for crash recovery
-/// - `V: VectorStore` — hyperbolic vector index (HyperspaceDB in production)
+/// - `V: VectorStore` — hyperbolic vector index (NietzscheDB in production)
 ///
 /// ## Write protocol (saga pattern)
 /// 1. Append WAL entry (durable before in-memory update).
@@ -1044,7 +1044,7 @@ impl<V: VectorStore> NietzscheDB<V> {
         Ok(new_val)
     }
 
-    // ── MERGE helpers (FASE D — Neo4j MERGE replacement) ─────────
+    // ── MERGE helpers (FASE D — NietzscheDB MERGE replacement) ─────────
 
     /// Find a node by `node_type` and content key match.
     ///
@@ -1277,7 +1277,7 @@ impl<V: VectorStore> NietzscheDB<V> {
     /// Filtered KNN: search for the `k` nearest neighbours that match `filter`.
     ///
     /// The filter is pushed down to the HNSW RoaringBitmap index for sub-linear
-    /// candidate pruning. Equivalent to Qdrant's `SearchWithScore(..., filter)`.
+    /// candidate pruning. Equivalent to NietzscheDB's `SearchWithScore(..., filter)`.
     pub fn knn_filtered(
         &self,
         query: &PoincareVector,
@@ -1290,7 +1290,7 @@ impl<V: VectorStore> NietzscheDB<V> {
     /// **Filtered KNN** — return the `k` nearest neighbours that satisfy
     /// `node.energy >= min_energy`, using `energy_idx` as a pre-filter.
     ///
-    /// ## Routing strategy (Qdrant pattern)
+    /// ## Routing strategy (NietzscheDB pattern)
     ///
     /// | Candidate count | Strategy |
     /// |-----------------|----------|
@@ -1605,6 +1605,103 @@ impl<V: VectorStore> NietzscheDB<V> {
             guard.pop(&id);
         }
     }
+
+    // ── Defibrillator (one-time thermodynamic ignition) ─────────────
+
+    /// Inject topology-aware energy into every node in the collection.
+    ///
+    /// ## Formula
+    /// - **Connected nodes** (degree > 0): `energy = 1.0 + ln(1 + degree)`
+    /// - **Singletons** (degree == 0): `energy = 0.5`
+    ///
+    /// This creates an immediate energy hierarchy that respects the graph
+    /// topology: hub nodes receive significantly more energy than leaves.
+    /// Designed to be run **once** to bootstrap a dead collection where the
+    /// L-System has drained all nodes to energy 0.0.
+    ///
+    /// Uses `iter_nodes_meta()` (streaming) + `put_node_meta_update_energy()`
+    /// to avoid loading all embeddings into RAM.
+    pub fn defibrillate(&self) -> Result<DefibrillateReport, GraphError> {
+        let t0 = std::time::Instant::now();
+
+        let mut revived: u64 = 0;
+        let mut singleton_count: u64 = 0;
+        let mut total: u64 = 0;
+        let mut max_energy: f32 = 0.0;
+        let mut sum_energy: f64 = 0.0;
+
+        for meta_result in self.storage.iter_nodes_meta() {
+            let mut meta = meta_result?;
+            let old_energy = meta.energy;
+
+            let k = (self.adjacency.degree_out(&meta.id)
+                    + self.adjacency.degree_in(&meta.id)) as f64;
+
+            if k > 0.0 {
+                // The spark of life: base + logarithmic saturation of degree
+                meta.energy = (1.0 + (1.0 + k).ln()) as f32;
+                revived += 1;
+            } else {
+                // Singletons get the existential minimum
+                meta.energy = 0.5;
+                singleton_count += 1;
+            }
+
+            if meta.energy > max_energy {
+                max_energy = meta.energy;
+            }
+            sum_energy += meta.energy as f64;
+            total += 1;
+
+            self.storage.put_node_meta_update_energy(&meta, old_energy)?;
+
+            if total % 100_000 == 0 {
+                tracing::info!(
+                    processed = total,
+                    revived = revived,
+                    "⚡ [DEFIBRILLATOR] progress"
+                );
+            }
+        }
+
+        let mean_energy = if total > 0 {
+            (sum_energy / total as f64) as f32
+        } else {
+            0.0
+        };
+
+        let duration_ms = t0.elapsed().as_millis() as u64;
+
+        tracing::warn!(
+            total = total,
+            revived = revived,
+            singletons = singleton_count,
+            max_energy = max_energy,
+            mean_energy = mean_energy,
+            duration_ms = duration_ms,
+            "⚡ DEFIBRILLATOR SHOCK APPLIED — organism is alive"
+        );
+
+        Ok(DefibrillateReport {
+            total_nodes: total,
+            revived_count: revived,
+            singleton_count,
+            max_energy,
+            mean_energy,
+            duration_ms,
+        })
+    }
+}
+
+/// Report produced by [`NietzscheDB::defibrillate`].
+#[derive(Debug, Clone)]
+pub struct DefibrillateReport {
+    pub total_nodes: u64,
+    pub revived_count: u64,
+    pub singleton_count: u64,
+    pub max_energy: f32,
+    pub mean_energy: f32,
+    pub duration_ms: u64,
 }
 
 // ─────────────────────────────────────────────

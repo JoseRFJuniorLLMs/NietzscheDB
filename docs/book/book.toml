@@ -3,10 +3,10 @@ authors = ["YARlabs"]
 language = "en"
 
 src = "src"
-title = "HyperspaceDB Documentation"
+title = "NietzscheDBDB Documentation"
 
 [output.html]
 mathjax-support = true
 default-theme = "navy"
-site-url = "/hyperspace-db/"
-git-repository-url = "https://github.com/yarlabs/hyperspace-db"
+site-url = "/nietzsche-db/"
+git-repository-url = "https://github.com/yarlabs/nietzsche-db"

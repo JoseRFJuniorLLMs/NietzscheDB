@@ -20,11 +20,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../sdks
 
 # --- Imports ---
 try:
-    from hyperspace import HyperspaceClient
-    HYPERSPACE_AVAILABLE = True
+    from nietzsche_legacy import NietzscheBaseClient
+    NIETZSCHE_AVAILABLE = True
 except ImportError as e:
-    HYPERSPACE_AVAILABLE = False
-    print(f"⚠️ Hyperspace SDK not found: {e}")
+    NIETZSCHE_AVAILABLE = False
+    print(f"⚠️ NietzscheDB SDK not found: {e}")
     # print(f"DEBUG: sys.path includes: {sys.path[-1]}")
 
 try:
@@ -35,12 +35,12 @@ except ImportError as e:
     print(f"⚠️ Milvus SDK not found: {e}. Skipping Milvus.")
 
 try:
-    from qdrant_client import QdrantClient
-    from qdrant_client.models import Distance, VectorParams, PointStruct
-    QDRANT_AVAILABLE = True
+    from NietzscheDB_client import NietzscheDBClient
+    from NietzscheDB_client.models import Distance, VectorParams, PointStruct
+    NietzscheDB_AVAILABLE = True
 except ImportError:
-    QDRANT_AVAILABLE = False
-    print("⚠️ Qdrant SDK not found. Skipping Qdrant.")
+    NietzscheDB_AVAILABLE = False
+    print("⚠️ NietzscheDB SDK not found. Skipping NietzscheDB.")
 
 try:
     import chromadb
@@ -387,13 +387,13 @@ def get_docker_disk(container_keyword: str) -> str:
         # Determine internal path based on DB type
         if "milvus" in container_keyword:
              path = "/var/lib/milvus"
-        elif "qdrant" in container_keyword:
-             path = "/qdrant/storage"
+        elif "NietzscheDB" in container_keyword:
+             path = "/NietzscheDB/storage"
         elif "chroma" in container_keyword:
              # Chroma uses /chroma/chroma by default in docker image
              path = "/chroma/chroma"
         elif "postgres" in container_keyword or "pgvector" in container_keyword:
-             path = "/var/lib/postgresql/data"
+             path = "/var/lib/NietzscheDB/data"
         elif "elastic" in container_keyword:
              path = "/usr/share/elasticsearch/data"
         elif "weaviate" in container_keyword:
@@ -419,13 +419,13 @@ def get_local_disk(path: str) -> str:
         return format_size(str(total))
     except: return "N/A"
 
-def get_hyperspace_disk_api(host="localhost"):
-    """Try to get disk usage via Hyperspace Metrics API"""
+def get_nietzsche_disk_api(host="localhost"):
+    """Try to get disk usage via NietzscheDB Metrics API"""
     import requests
     for port in [50050, 50051, 50052, 50053]:
         try:
             url = f"http://{host}:{port}/api/metrics"
-            headers = {"x-api-key": "I_LOVE_HYPERSPACEDB"}
+            headers = {"x-api-key": "I_LOVE_NIETZSCHEDB"}
             res = requests.get(url, headers=headers, timeout=2).json()
             if 'disk_usage_mb' in res:
                 return f"{res['disk_usage_mb']}M"
@@ -605,8 +605,8 @@ def generate_benchmark_html_report(results: List[Result], dataset_name: str = "U
         print("   [Debug] No successful results to report in HTML.")
         return
 
-    # Sort data: Hyperspace ALWAYS first, others by search_qps
-    data.sort(key=lambda x: (0 if "hyperspace" in x.database.lower() else 1, -x.search_qps))
+    # Sort data: NietzscheDB ALWAYS first, others by search_qps
+    data.sort(key=lambda x: (0 if "nietzsche" in x.database.lower() else 1, -x.search_qps))
 
     dbs = [r.database for r in data]
     colors = ["#22d3ee", "#fac05e", "#818cf8", "#f472b6", "#10b981", "#6366f1"]
@@ -639,7 +639,7 @@ def generate_benchmark_html_report(results: List[Result], dataset_name: str = "U
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HyperspaceDB Benchmark Report</title>
+    <title>NietzscheDB Benchmark Report</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {{ --bg: #0f172a; --card-bg: #1e293b; --text: #f8fafc; --accent: #22d3ee; }}
@@ -741,8 +741,8 @@ def generate_benchmark_html_report(results: List[Result], dataset_name: str = "U
 </html>""")
     print(f"\n✅ Visual report updated: {html_path}")
 
-def detect_hyperspace_metric(host="localhost"):
-    """Detect if HyperspaceDB is in poincare or cosine mode via API"""
+def detect_nietzsche_metric(host="localhost"):
+    """Detect if NietzscheDB is in poincare or cosine mode via API"""
     import requests
     # Check common dashboard/api ports
     for port in [50050, 50051, 50052, 50053]:
@@ -763,7 +763,7 @@ def extract_ids(res_obj):
     ids = []
     for hit in res_obj:
         if isinstance(hit, dict):
-            # Hyperspace SDK returns dicts with metadata
+            # NietzscheDB SDK returns dicts with metadata
             if "metadata" in hit and "doc_id" in hit["metadata"]:
                 ids.append(hit["metadata"]["doc_id"])
             elif "id" in hit:
@@ -775,7 +775,7 @@ def extract_ids(res_obj):
     return ids
 
 
-def hyperspace_search_many(client, vectors, top_k, collection, batch_size=64):
+def nietzsche_search_many(client, vectors, top_k, collection, batch_size=64):
     supports_batch = callable(getattr(client, "search_batch", None))
     all_ids = []
     latencies = []
@@ -800,15 +800,15 @@ def hyperspace_search_many(client, vectors, top_k, collection, batch_size=64):
     return all_ids, latencies
 
 def wait_for_indexing(host="localhost", port=50050, collection="bench_semantic", timeout=None):
-    """Wait for HyperspaceDB background indexing to complete with progress display"""
+    """Wait for NietzscheDB background indexing to complete with progress display"""
     import requests
     print(f"⏳ Monitoring indexing for '{collection}' (waiting for queue to clear)...")
     url = f"http://{host}:{port}/api/collections/{collection}/stats"
     
-    # Default headers for HyperspaceDB
+    # Default headers for NietzscheDB
     headers = {
-        "x-api-key": "I_LOVE_HYPERSPACEDB",
-        "x-hyperspace-user-id": "default_admin"
+        "x-api-key": "I_LOVE_NIETZSCHEDB",
+        "x-nietzsche-user-id": "default_admin"
     }
     
     start_time = time.time()
@@ -841,7 +841,7 @@ def wait_for_indexing(host="localhost", port=50050, collection="bench_semantic",
                     print(f"\n✅ Indexing complete! Docs ready: {count:,}")
                     break
             elif response.status_code == 401:
-                print(f"\r   🚫 Auth Error (401): Check HYPERSPACE_API_KEY in .env          ", end="", flush=True)
+                print(f"\r   🚫 Auth Error (401): Check NDB_API_KEY in .env          ", end="", flush=True)
                 time.sleep(5) 
                 continue
             elif response.status_code == 404:
@@ -1164,7 +1164,7 @@ def run_benchmark():
 
     # Euclidean (1024d)
     need_euc = (not target_db) or \
-               any(db in target_db for db in ["milvus", "qdrant", "chroma"]) or \
+               any(db in target_db for db in ["milvus", "NietzscheDB", "chroma"]) or \
                ("hyper" in (target_db or "") and cfg.HYPER_MODE == "cosine")
                
     if need_euc:
@@ -1334,12 +1334,12 @@ def run_benchmark():
             final_results.append(Result("Milvus", cfg.dim_base, "Euclidean", "Cosine", 0,0,0,0,0,0,0,0,0,0,0,0,"0", f"Error: {e}"))
 
     # ==========================================
-    # PHASE 1.1: Qdrant (1024d Euclidean)
+    # PHASE 1.1: NietzscheDB (1024d Euclidean)
     # ==========================================
-    if QDRANT_AVAILABLE and (not target_db or "qdrant" in target_db):
-        print("\n🔷 PHASE 1.1: Qdrant (1024d Euclidean)")
+    if NietzscheDB_AVAILABLE and (not target_db or "NietzscheDB" in target_db):
+        print("\n🔷 PHASE 1.1: NietzscheDB (1024d Euclidean)")
         try:
-            client = QdrantClient(host="localhost", port=6334, prefer_grpc=True)
+            client = NietzscheDBClient(host="localhost", port=6334, prefer_grpc=True)
             name = "bench_semantic"
             try: client.delete_collection(name)
             except Exception: pass # Silencing gRPC errors
@@ -1349,7 +1349,7 @@ def run_benchmark():
                 vectors_config=VectorParams(size=cfg.dim_base, distance=Distance.COSINE)
             )
             
-            print("   Inserting into Qdrant...")
+            print("   Inserting into NietzscheDB...")
             t0 = time.time()
             q_batch_size = max(10, int(3_000_000 / (cfg.dim_base * 8)))
             for i in tqdm(range(0, len(doc_vecs_euc), q_batch_size)):
@@ -1362,7 +1362,7 @@ def run_benchmark():
                 client.upsert(collection_name=name, points=points, wait=True)
             v_dur = time.time() - t0
             
-            print("   Waiting for Qdrant to settle indexing...")
+            print("   Waiting for NietzscheDB to settle indexing...")
             time.sleep(5)
             
             # Search
@@ -1370,7 +1370,7 @@ def run_benchmark():
             all_gt_ids = []
             lats = []
             
-            print("   Searching Qdrant...")
+            print("   Searching NietzscheDB...")
             search_t0 = time.time()
             for i, q_vec in enumerate(tqdm(q_vecs_euc)):
                 q_id = test_query_ids[i]
@@ -1387,16 +1387,16 @@ def run_benchmark():
             recall_sys = calculate_system_recall(all_res_ids, math_gt_euc, 10)
             
             # Concurrency
-            print("   Testing Qdrant Concurrency...")
+            print("   Testing NietzscheDB Concurrency...")
             q_list = q_vecs_euc[0].tolist()
-            def qdrant_query():
+            def NietzscheDB_query():
                 client.search(collection_name=name, query_vector=q_list, limit=10)
-            conc = run_concurrency_profile(qdrant_query)
+            conc = run_concurrency_profile(NietzscheDB_query)
             
-            disk = format_size(get_docker_disk("qdrant"))
+            disk = format_size(get_docker_disk("NietzscheDB"))
             
             final_results.append(Result(
-                database="Qdrant",
+                database="NietzscheDB",
                 dimension=cfg.dim_base,
                 geometry="Euclidean",
                 metric="Cosine",
@@ -1417,8 +1417,8 @@ def run_benchmark():
             ))
             client.delete_collection(name)
         except Exception as e:
-            print(f"   ⚠️ Qdrant error: {e}")
-            final_results.append(Result("Qdrant", cfg.dim_base, "Euclidean", "Cosine", 0,0,0,0,0,0,0,0,0,0,0,0,"0", f"Error: {e}"))
+            print(f"   ⚠️ NietzscheDB error: {e}")
+            final_results.append(Result("NietzscheDB", cfg.dim_base, "Euclidean", "Cosine", 0,0,0,0,0,0,0,0,0,0,0,0,"0", f"Error: {e}"))
 
     # ==========================================
     # PHASE 1.2: ChromaDB (1024d Euclidean)
@@ -1731,7 +1731,7 @@ def run_benchmark():
             print(f"   ⚠️ Weaviate error: {e}")
             final_results.append(Result("Weaviate", cfg.dim_base, "Euclidean", "Cosine", 0,0,0,0,0,0,0,0,0,0,0,0,"0", f"Error: {e}"))
 
-    if HYPERSPACE_AVAILABLE and (not target_db or "hyper" in target_db):
+    if NIETZSCHE_AVAILABLE and (not target_db or "hyper" in target_db):
         mode = cfg.HYPER_MODE.lower()
         use_hyp = (mode == "poincare")
         
@@ -1740,18 +1740,18 @@ def run_benchmark():
         target_dim = cfg.dim_hyp if use_hyp else cfg.dim_base
         geom_name = "Poincaré" if use_hyp else "Euclidean"
         
-        print(f"\n🚀 PHASE 2: HyperspaceDB ({target_dim}d {geom_name})")
+        print(f"\n🚀 PHASE 2: NietzscheDB ({target_dim}d {geom_name})")
 
         try:
             # 1. Metric Detection
-            server_metric = detect_hyperspace_metric()
+            server_metric = detect_nietzsche_metric()
             if server_metric and server_metric != mode:
                 print(f"   ⚠️ Skipping: Server is in '{server_metric}' mode, but benchmark wants '{mode}'.")
-                final_results.append(Result("Hyperspace", target_dim, geom_name, mode.capitalize(), 0,0,0,0,0,0,0,0,0,0,0,0,"0", f"Skipped: mode mismatch ({server_metric})"))
+                final_results.append(Result("NietzscheDB", target_dim, geom_name, mode.capitalize(), 0,0,0,0,0,0,0,0,0,0,0,0,"0", f"Skipped: mode mismatch ({server_metric})"))
                 # Go to next phase
                 raise StopIteration
             
-            client = HyperspaceClient("localhost:50051", api_key="I_LOVE_HYPERSPACEDB")
+            client = NietzscheBaseClient("localhost:50051", api_key="I_LOVE_NIETZSCHEDB")
             coll_name = "bench_semantic"
             try: client.delete_collection(coll_name)
             except Exception: pass # Silencing gRPC errors
@@ -1761,7 +1761,7 @@ def run_benchmark():
                 raise RuntimeError("Collection creation failed")
             
             # Insert
-            print("   Inserting into Hyperspace...")
+            print("   Inserting into NietzscheDB...")
             t0 = time.time()
             
             # Optimized chunk size for gRPC performance
@@ -1792,7 +1792,7 @@ def run_benchmark():
             all_gt_ids = []
             lats = []
             
-            print("   Searching Hyperspace...")
+            print("   Searching NietzscheDB...")
             search_t0 = time.time()
             query_batch_size = 64
             for i in tqdm(range(0, len(target_q_vecs), query_batch_size)):
@@ -1801,7 +1801,7 @@ def run_benchmark():
                     q_id = test_query_ids[i + j]
                     all_gt_ids.append(valid_qrels.get(q_id, []))
 
-                batch_ids, batch_lats = hyperspace_search_many(
+                batch_ids, batch_lats = nietzsche_search_many(
                     client=client,
                     vectors=batch_vecs,
                     top_k=10,
@@ -1817,27 +1817,27 @@ def run_benchmark():
             recall_sys = calculate_system_recall(all_res_ids, gt_for_mode, 10)
             
             # Concurrency
-            print("   Testing Hyperspace Concurrency...")
+            print("   Testing NietzscheDB Concurrency...")
             q_list = target_q_vecs[0].tolist()
             conc_batch_size = 32
-            def hyperspace_query():
+            def nietzsche_query():
                 if callable(getattr(client, "search_batch", None)):
                     client.search_batch([q_list] * conc_batch_size, top_k=10, collection=coll_name)
                     return
                 client.search(q_list, top_k=10, collection=coll_name)
             conc = run_concurrency_profile(
-                hyperspace_query,
+                nietzsche_query,
                 queries_per_call=conc_batch_size if callable(getattr(client, "search_batch", None)) else 1,
             )
             
             # Get disk usage - prefer API, fallback to local path sensing
-            disk = get_hyperspace_disk_api()
+            disk = get_nietzsche_disk_api()
             if not disk:
                 disk = get_local_disk("../data")
             disk = format_size(disk)
             
             final_results.append(Result(
-                database="Hyperspace",
+                database="NietzscheDB",
                 dimension=target_dim,
                 geometry=geom_name,
                 metric=mode.capitalize(),
@@ -1857,13 +1857,13 @@ def run_benchmark():
                 status="Success"
             ))
             
-            print(f"   📊 Hyperspace Results: Semantic Recall@10={recall:.4f}, System Recall@10={recall_sys:.4f}, MRR@10={mrr:.4f}")
+            print(f"   📊 NietzscheDB Results: Semantic Recall@10={recall:.4f}, System Recall@10={recall_sys:.4f}, MRR@10={mrr:.4f}")
             
             # Cleanup
             client.delete_collection("bench_semantic")
         except Exception as e:
-            print(f"   ⚠️ Hyperspace error: {e}")
-            final_results.append(Result("Hyperspace", target_dim, geom_name, mode.capitalize(), 0,0,0,0,0,0,0,0,0,0,0,0,"0", f"Error: {e}"))
+            print(f"   ⚠️ NietzscheDB error: {e}")
+            final_results.append(Result("NietzscheDB", target_dim, geom_name, mode.capitalize(), 0,0,0,0,0,0,0,0,0,0,0,0,"0", f"Error: {e}"))
 
     # ==========================================
     # FINAL REPORT
@@ -1883,16 +1883,16 @@ def run_benchmark():
                 f.write(f"| **{r.database}** | {r.dimension:,} | {r.geometry} | {r.metric} | {r.insert_qps:,.0f} | {r.search_qps:,.0f} | {r.p99:.2f}ms | {r.recall:.1%} | {r.recall_sys:.1%} | {r.mrr:.2f} | {r.ndcg:.2f} | {r.c1_qps:,.0f} | {r.c10_qps:,.0f} | {r.c30_qps:,.0f} | {r.disk_usage} |\n")
         
         f.write("\n## 💡 Accuracy Analysis\n")
-        hyp = next((r for r in final_results if r.database == "Hyperspace"), None)
+        hyp = next((r for r in final_results if r.database == "NietzscheDB"), None)
         base = next((r for r in final_results if r.database == "Milvus"), None)
         
         if hyp and base:
-            f.write(f"Hyperspace 64d Recall: {hyp.recall:.1%}\n")
+            f.write(f"NietzscheDB 64d Recall: {hyp.recall:.1%}\n")
             f.write(f"Milvus 1024d Recall: {base.recall:.1%}\n\n")
             if hyp.recall >= base.recall * 0.95:
                 f.write("✅ **Semantic Equivalence:** 64d Hyperbolic vectors achieve comparable accuracy to 1024d Euclidean embeddings while being **16x smaller**.\n")
             else:
-                f.write(f"⚠️ **Accuracy Gap:** Hyperspace is {(base.recall - hyp.recall)*100:.1f}% behind baseline. Consider additional fine-tuning epochs.\n")
+                f.write(f"⚠️ **Accuracy Gap:** NietzscheDB is {(base.recall - hyp.recall)*100:.1f}% behind baseline. Consider additional fine-tuning epochs.\n")
 
 if __name__ == "__main__":
     run_benchmark()

@@ -1,11 +1,11 @@
 #!/bin/bash
 set -e
 
-# HyperspaceDB One-Click Benchmark Script
+# NietzscheDB One-Click Benchmark Script
 # ======================================
 
 echo "--------------------------------------------------"
-echo "🚀 HyperspaceDB Benchmark Suite"
+echo "🚀 NietzscheDB Benchmark Suite"
 echo "--------------------------------------------------"
 echo "⚠️  DISCLAIMER: Don't take anyone's word for it,"
 echo "    verify all numbers yourself!"
@@ -35,29 +35,29 @@ pip install --upgrade pip
 pip install setuptools wheel
 pip install -r requirements.txt
 
-echo "🦀 Installing Hyperspace Python SDK in editable mode..."
+echo "🦀 Installing NietzscheDB Python SDK in editable mode..."
 pip install -e ../sdks/python
 
 # 3. Regenerate Python Protos (Fixes Version Mismatch)
 echo "🧬 Regenerating Python protos to match environment..."
 python3 -m grpc_tools.protoc \
-    -I ../crates/hyperspace-proto/proto \
-    --python_out=../sdks/python/hyperspace/proto \
-    --grpc_python_out=../sdks/python/hyperspace/proto \
-    ../crates/hyperspace-proto/proto/hyperspace.proto
+    -I ../crates/nietzsche-proto/proto \
+    --python_out=../sdks/python/nietzsche_legacy/proto \
+    --grpc_python_out=../sdks/python/nietzsche_legacy/proto \
+    ../crates/nietzsche-proto/proto/nietzsche_db.proto
 
 # Patch imports for Python 3
 if [[ "$OSTYPE" == "darwin"* ]]; then
-  sed -i '' 's/import hyperspace_pb2 as hyperspace__pb2/from . import hyperspace_pb2 as hyperspace__pb2/' ../sdks/python/hyperspace/proto/hyperspace_pb2_grpc.py
+  sed -i '' 's/import nietzsche_legacy_pb2 as nietzsche_db__pb2/from . import nietzsche_legacy_pb2 as nietzsche_db__pb2/' ../sdks/python/nietzsche_legacy/proto/nietzsche_db_pb2_grpc.py
 else
-  sed -i 's/import hyperspace_pb2 as hyperspace__pb2/from . import hyperspace_pb2 as hyperspace__pb2/' ../sdks/python/hyperspace/proto/hyperspace_pb2_grpc.py
+  sed -i 's/import nietzsche_legacy_pb2 as nietzsche_db__pb2/from . import nietzsche_legacy_pb2 as nietzsche_db__pb2/' ../sdks/python/nietzsche_legacy/proto/nietzsche_db_pb2_grpc.py
 fi
 
 # 4. Deploy Infrastructure
-echo "🐳 Deploying Docker containers (HyperspaceDB & Competitors)..."
+echo "🐳 Deploying Docker containers (NietzscheDB & Competitors)..."
 docker-compose up -d
 
-# echo "⏳ Waiting for HyperspaceDB to be healthy..."
+# echo "⏳ Waiting for NietzscheDB to be healthy..."
 # MAX_RETRIES=30
 # COUNT=0
 # until curl -s http://localhost:50051/health > /dev/null || [ $COUNT -eq $MAX_RETRIES ]; do
@@ -67,8 +67,8 @@ docker-compose up -d
 # done
 
 # if [ $COUNT -eq $MAX_RETRIES ]; then
-#     echo "❌ Error: HyperspaceDB failed to start. Logs:"
-#     docker-compose logs hyperspace
+#     echo "❌ Error: NietzscheDB failed to start. Logs:"
+#     docker-compose logs nietzsche
 #     exit 1
 # fi
 echo -e "\n✅ Infrastructure is ready!"

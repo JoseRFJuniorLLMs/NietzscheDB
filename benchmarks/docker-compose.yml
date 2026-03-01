@@ -20,14 +20,14 @@ services:
       timeout: 3s
       retries: 10
 
-  # Qdrant
-  qdrant:
-    image: qdrant/qdrant:latest
+  # NietzscheDB
+  NietzscheDB:
+    image: NietzscheDB/NietzscheDB:latest
     ports:
       - "6333:6333"
       - "6334:6334"
     # volumes:
-    #   - qdrant_data:/qdrant/storage
+    #   - NietzscheDB_data:/NietzscheDB/storage
     networks:
       - benchmark_net
     healthcheck:

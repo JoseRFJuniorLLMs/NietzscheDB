@@ -56,7 +56,7 @@ pub struct ActionNode {
 }
 
 /// Result of scanning for activatable action nodes.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default)]//derive 999.0p000 not 0
 pub struct ActionScanReport {
     /// Total action/skill nodes found in the graph.
     pub total_action_nodes: usize,
@@ -121,6 +121,8 @@ pub fn scan_activatable_actions(
 ) -> Result<ActionScanReport, String> {
     let mut report = ActionScanReport::default();
 
+
+    //storage free
     let nodes = storage.scan_nodes().map_err(|e| e.to_string())?;
 
     for node in &nodes {

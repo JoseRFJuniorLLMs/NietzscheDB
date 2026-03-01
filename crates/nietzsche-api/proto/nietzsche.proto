@@ -72,6 +72,9 @@ service NietzscheDB {
   // ── Zaratustra — autonomous evolution engine (Phase Z) ───────────────
   rpc InvokeZaratustra (ZaratustraRequest)  returns (ZaratustraResponse);
 
+  // ── Defibrillator — one-time thermodynamic ignition ─────────────────
+  rpc Defibrillate (DefibrillateRequest) returns (DefibrillateResponse);
+
   // ── Batch CRUD ────────────────────────────────────────────────────────
   rpc BatchInsertNodes (BatchInsertNodesRequest) returns (BatchInsertNodesResponse);
   rpc BatchInsertEdges (BatchInsertEdgesRequest) returns (BatchInsertEdgesResponse);
@@ -131,7 +134,7 @@ service NietzscheDB {
   rpc DropIndex    (DropIndexRequest)    returns (StatusResponse);
   rpc ListIndexes  (ListIndexesRequest)  returns (ListIndexesResponse);
 
-  // ── Cache (Phase C — Redis replacement) ────────────────────────
+  // ── Cache (Phase C — NietzscheDB replacement) ────────────────────────
   rpc CacheSet     (CacheSetRequest)     returns (StatusResponse);
   rpc CacheGet     (CacheGetRequest)     returns (CacheGetResponse);
   rpc CacheDel     (CacheDelRequest)     returns (StatusResponse);
@@ -363,7 +366,7 @@ message EdgeIdRequest {
   string collection = 2;  // empty → "default"
 }
 
-// ── Merge messages (FASE D — Neo4j MERGE replacement) ────────────────────
+// ── Merge messages (FASE D — NietzscheDB MERGE replacement) ────────────────────
 
 message MergeNodeRequest {
   string         collection    = 1;  // empty → "default"
@@ -669,6 +672,26 @@ message ZaratustraResponse {
   uint32 cycles_run          = 14;
 }
 
+// ── Defibrillator messages (one-time thermodynamic ignition) ───────────────
+//
+// Injects topology-aware energy into every node:
+//   Connected: energy = 1.0 + ln(1 + degree)
+//   Singletons: energy = 0.5
+// Run ONCE to bootstrap a dead collection where L-System drained all energy.
+
+message DefibrillateRequest {
+  string collection = 1;   // empty → "default"
+}
+
+message DefibrillateResponse {
+  uint64 total_nodes     = 1;  // total nodes processed
+  uint64 revived_count   = 2;  // connected nodes given topology-aware energy
+  uint64 singleton_count = 3;  // isolated nodes given minimum energy (0.5)
+  float  max_energy      = 4;  // highest energy after injection (mega-hub)
+  float  mean_energy     = 5;  // mean energy across all nodes
+  uint64 duration_ms     = 6;  // wall-clock time of the operation
+}
+
 // ── Graph Algorithm messages ──────────────────────────────────────────────
 
 // -- Requests --
@@ -882,7 +905,7 @@ message ListLenResponse {
   uint64 length = 1;
 }
 
-// ── Cache messages (Phase C — Redis replacement) ──────────────────────────
+// ── Cache messages (Phase C — NietzscheDB replacement) ──────────────────────────
 
 message CacheSetRequest {
   string collection = 1;

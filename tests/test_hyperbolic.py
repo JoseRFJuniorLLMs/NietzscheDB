@@ -1,17 +1,17 @@
 import grpc
 import math
-import hyperspace_pb2
-import hyperspace_pb2_grpc
+import nietzsche_db_pb2
+import nietzsche_db_pb2_grpc
 
 def test_hyperbolic():
     channel = grpc.insecure_channel('localhost:50051')
-    stub = hyperspace_pb2_grpc.DatabaseStub(channel)
+    stub = nietzsche_db_pb2_grpc.DatabaseStub(channel)
     
     COLLECTION = "hyp_16" # Assuming manually created or server started with dim=16.
     
     # 1. Insert Origin
     vec_a = [0.0] * 16
-    stub.insert(hyperspace_pb2.InsertRequest(
+    stub.insert(nietzsche_db_pb2.InsertRequest(
         vector=vec_a,
         id=1,
         collection=COLLECTION,
@@ -21,7 +21,7 @@ def test_hyperbolic():
     # 2. Insert [0.5, 0...]
     vec_b = [0.0] * 16
     vec_b[0] = 0.5
-    stub.insert(hyperspace_pb2.InsertRequest(
+    stub.insert(nietzsche_db_pb2.InsertRequest(
         vector=vec_b,
         id=2,
         collection=COLLECTION,
@@ -31,7 +31,7 @@ def test_hyperbolic():
     print("Vectors inserted.")
     
     # 3. Search Origin
-    response = stub.search(hyperspace_pb2.SearchRequest(
+    response = stub.search(nietzsche_db_pb2.SearchRequest(
         vector=vec_a,
         top_k=2,
         collection=COLLECTION

@@ -67,7 +67,7 @@ pub struct NietzscheDB<V: VectorStore> {
 | `CF_SENSORY` | node_id (16B) | SensoryMemory bincode | Dados sensoriais |
 | `CF_ENERGY_IDX` | [energy_be(4B) + node_id(16B)] | vazio | Indice energia |
 | `CF_META_IDX` | [field_hash(8B) + value(8B) + node_id(16B)] | vazio | Indice secundario |
-| `CF_LISTS` | [node_id(16B) + list_hash(8B) + seq_be(8B)] | bytes | Listas Redis-like |
+| `CF_LISTS` | [node_id(16B) + list_hash(8B) + seq_be(8B)] | bytes | Listas NietzscheDB-like |
 | `CF_SQL_SCHEMA` | table_name UTF-8 | schema bincode | Swartz SQL schemas |
 | `CF_SQL_DATA` | composite key | bytes | Swartz SQL data |
 
@@ -429,12 +429,12 @@ Localizado em `D:\DEV\EVA\internal\brainstem\infrastructure\nietzsche\`:
 | Arquivo | O que faz | Status |
 |---------|-----------|--------|
 | `client.go` | gRPC connection + health checks | FUNCIONAL |
-| `vector_adapter.go` | Substitui Qdrant para KNN | FUNCIONAL |
+| `vector_adapter.go` | Substitui NietzscheDB para KNN | FUNCIONAL |
 | `sql_adapter.go` | Swartz SQL engine via gRPC | FUNCIONAL |
 | `graph_adapter.go` | Geometria hiperbolica + community detection | FUNCIONAL |
 | `audio_buffer.go` | Audio em tempo real | FUNCIONAL |
 
-**Status**: NietzscheDB ja esta em uso no EVA para busca vetorial. PostgreSQL ainda e fonte de verdade para dados clinicos.
+**Status**: NietzscheDB ja esta em uso no EVA para busca vetorial. NietzscheDB ainda e fonte de verdade para dados clinicos.
 
 ---
 
@@ -448,7 +448,7 @@ Localizado em `D:\DEV\EVA\internal\brainstem\infrastructure\nietzsche\`:
 | NQL `FOREACH` | Batch em subquery | BAIXO — workaround: batch RPC |
 | NQL `IN COLLECTION` syntax | Colecao no NQL | MEDIO — workaround: campo `collection` no gRPC |
 | NQL `CREATE INDEX` syntax | Index via NQL | BAIXO — existe via gRPC RPC |
-| Edge property access em NQL | `r.field` em WHERE/ORDER BY | ALTO — bloqueador para queries Neo4j complexas |
+| Edge property access em NQL | `r.field` em WHERE/ORDER BY | ALTO — bloqueador para queries NietzscheDB complexas |
 | SET/DELETE em path patterns | Mutacao em traversals | MEDIO — workaround: MATCH + collect IDs + SET individual |
 | Raft consensus | Strong consistency distribuida | BAIXO (single-node funciona) |
 | Hyperbolic visualizer | Poincare disk no dashboard | BAIXO (funcional sem ele) |
@@ -491,7 +491,7 @@ As 5 lacunas identificadas na analise arquitetural foram verificadas no codigo-f
 - **Recomendacao**: Pos-MVP. Estimativa ~5K LOC
 
 #### 5. DX Integrations (LangGraph/DSPy/OGM) — ❌ NAO IMPLEMENTADO
-- **Arquivo**: `sdks/python/` — contem HyperspaceDB (nome antigo), NAO NietzscheDB
+- **Arquivo**: `sdks/python/` — contem NietzscheDB (nome antigo), NAO NietzscheDB
 - **O que existe**: MCP server com 9 tools, Go SDK com 48 RPCs
 - **O que falta**: Python SDK completo (bloqueador), LangGraph memory/state store integration, DSPy retriever module, OGM (Object-Graph Mapping) com decorators Python, LangChain VectorStore interface
 - **Impacto**: CRITICO — sem Python SDK + integracoes, adocao externa e impossivel

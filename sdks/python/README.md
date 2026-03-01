@@ -1,6 +1,6 @@
-# HyperspaceDB Python SDK
+# NietzscheDB Python SDK
 
-Official Python client for HyperspaceDB gRPC API.
+Official Python client for NietzscheDB gRPC API.
 
 The SDK is designed for production services and benchmark tooling:
 - collection management
@@ -12,27 +12,27 @@ The SDK is designed for production services and benchmark tooling:
 ## Requirements
 
 - Python 3.8+
-- Running HyperspaceDB server (default gRPC endpoint: `localhost:50051`)
+- Running NietzscheDB server (default gRPC endpoint: `localhost:50051`)
 
 ## Installation
 
 ```bash
-pip install hyperspacedb
+pip install nietzschedb
 ```
 
 Optional embedder extras:
 
 ```bash
-pip install "hyperspacedb[openai]"
-pip install "hyperspacedb[all]"
+pip install "nietzschedb[openai]"
+pip install "nietzschedb[all]"
 ```
 
 ## Quick Start
 
 ```python
-from hyperspace import HyperspaceClient
+from nietzsche import NietzscheBaseClient
 
-client = HyperspaceClient("localhost:50051", api_key="I_LOVE_HYPERSPACEDB")
+client = NietzscheBaseClient("localhost:50051", api_key="I_LOVE_NIETZSCHEDB")
 collection = "docs_py"
 
 client.delete_collection(collection)
@@ -105,12 +105,12 @@ Use `Durability` enum values:
 
 ## Multi-Tenancy
 
-Pass `user_id` to include `x-hyperspace-user-id` on all requests:
+Pass `user_id` to include `x-nietzsche-user-id` on all requests:
 
 ```python
-client = HyperspaceClient(
+client = NietzscheBaseClient(
     "localhost:50051",
-    api_key="I_LOVE_HYPERSPACEDB",
+    api_key="I_LOVE_NIETZSCHEDB",
     user_id="tenant_a",
 )
 ```

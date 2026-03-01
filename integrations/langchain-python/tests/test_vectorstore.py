@@ -1,10 +1,10 @@
-"""Unit tests for HyperspaceVectorStore."""
+"""Unit tests for NietzscheVectorStore."""
 
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from langchain_core.documents import Document
 
-from langchain_hyperspace import HyperspaceVectorStore
+from langchain_nietzsche import NietzscheVectorStore
 
 
 class MockEmbeddings:
@@ -27,9 +27,9 @@ def mock_embeddings():
 
 @pytest.fixture
 def vectorstore(mock_embeddings):
-    """Fixture for HyperspaceVectorStore."""
+    """Fixture for NietzscheVectorStore."""
     with patch('grpc.insecure_channel'):
-        store = HyperspaceVectorStore(
+        store = NietzscheVectorStore(
             host="localhost",
             port=50051,
             collection_name="test_collection",
@@ -39,8 +39,8 @@ def vectorstore(mock_embeddings):
         return store
 
 
-class TestHyperspaceVectorStore:
-    """Test suite for HyperspaceVectorStore."""
+class TestNietzscheVectorStore:
+    """Test suite for NietzscheVectorStore."""
     
     def test_initialization(self, vectorstore):
         """Test vector store initialization."""
@@ -92,7 +92,7 @@ class TestHyperspaceVectorStore:
     def test_add_texts_no_deduplication(self, mock_embeddings):
         """Test adding texts without deduplication."""
         with patch('grpc.insecure_channel'):
-            vectorstore = HyperspaceVectorStore(
+            vectorstore = NietzscheVectorStore(
                 host="localhost",
                 port=50051,
                 collection_name="test",
@@ -109,7 +109,7 @@ class TestHyperspaceVectorStore:
     def test_add_texts_no_embedding_function(self):
         """Test that add_texts fails without embedding function."""
         with patch('grpc.insecure_channel'):
-            vectorstore = HyperspaceVectorStore(
+            vectorstore = NietzscheVectorStore(
                 host="localhost",
                 port=50051,
                 collection_name="test",
@@ -122,7 +122,7 @@ class TestHyperspaceVectorStore:
     def test_similarity_search_no_embedding_function(self):
         """Test that search fails without embedding function."""
         with patch('grpc.insecure_channel'):
-            vectorstore = HyperspaceVectorStore(
+            vectorstore = NietzscheVectorStore(
                 host="localhost",
                 port=50051,
                 collection_name="test",
@@ -136,7 +136,7 @@ class TestHyperspaceVectorStore:
         """Test creating vector store from texts."""
         with patch('grpc.insecure_channel'):
             texts = ["Hello", "World"]
-            vectorstore = HyperspaceVectorStore.from_texts(
+            vectorstore = NietzscheVectorStore.from_texts(
                 texts=texts,
                 embedding=mock_embeddings,
                 host="localhost",
@@ -153,7 +153,7 @@ class TestHyperspaceVectorStore:
                 Document(page_content="World", metadata={"source": "test2"}),
             ]
             
-            vectorstore = HyperspaceVectorStore.from_documents(
+            vectorstore = NietzscheVectorStore.from_documents(
                 documents=docs,
                 embedding=mock_embeddings,
                 host="localhost",
@@ -165,7 +165,7 @@ class TestHyperspaceVectorStore:
     def test_metadata_with_api_key(self, mock_embeddings):
         """Test that API key is included in metadata."""
         with patch('grpc.insecure_channel'):
-            vectorstore = HyperspaceVectorStore(
+            vectorstore = NietzscheVectorStore(
                 host="localhost",
                 port=50051,
                 collection_name="test",
@@ -202,18 +202,18 @@ class TestHyperspaceVectorStore:
         assert result is None
 
 
-class TestHyperspaceVectorStoreIntegration:
+class TestNietzscheVectorStoreIntegration:
     """Integration tests (require running server)."""
     
     @pytest.mark.integration
     def test_real_connection(self, mock_embeddings):
-        """Test real connection to HyperspaceDB server.
+        """Test real connection to NietzscheDB server.
         
-        This test requires a running HyperspaceDB server on localhost:50051.
+        This test requires a running NietzscheDB server on localhost:50051.
         Skip if server is not available.
         """
         try:
-            vectorstore = HyperspaceVectorStore(
+            vectorstore = NietzscheVectorStore(
                 host="localhost",
                 port=50051,
                 collection_name="integration_test",
@@ -229,4 +229,4 @@ class TestHyperspaceVectorStoreIntegration:
             assert isinstance(results, list)
             
         except Exception as e:
-            pytest.skip(f"HyperspaceDB server not available: {e}")
+            pytest.skip(f"NietzscheDB server not available: {e}")

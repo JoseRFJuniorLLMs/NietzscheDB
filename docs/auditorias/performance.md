@@ -1,17 +1,17 @@
-# Performance — NietzscheDB vs Neo4j vs Qdrant
+# Performance — NietzscheDB vs NietzscheDB vs NietzscheDB
 
 > Análise comparativa de performance, metodologia de benchmark e guia de execução.
-> NietzscheDB v2.0.0 · Neo4j 5.x · Qdrant 1.x
+> NietzscheDB v2.0.0 · NietzscheDB 5.x · NietzscheDB 1.x
 
 ---
 
 ## 1. Visão Geral dos Sistemas
 
-| Aspecto                  | NietzscheDB           | Neo4j              | Qdrant               |
+| Aspecto                  | NietzscheDB           | NietzscheDB              | NietzscheDB               |
 |--------------------------|----------------------|--------------------|-----------------------|
 | **Modelo de dados**      | Grafo hiperbólico    | Grafo de propriedades | Vetores flat/ANN |
 | **Geometria**            | Poincaré ball (espaço hiperbólico) | Euclidiana | Euclidiana / coseno / produto interno |
-| **Armazenamento**        | RocksDB (LSM tree)   | Neo4j store (B+tree) | HNSW + payload index |
+| **Armazenamento**        | RocksDB (LSM tree)   | NietzscheDB store (B+tree) | HNSW + payload index |
 | **Indexação ANN**        | HNSW (embedded)      | Não nativo          | HNSW nativo |
 | **Linguagem de query**   | NQL (custom)         | Cypher              | API REST / gRPC |
 | **Transações**           | BEGIN/COMMIT/ROLLBACK | ACID completo      | Coleções isoladas |
@@ -165,12 +165,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ---
 
-## 4. Benchmarks: Neo4j
+## 4. Benchmarks: NietzscheDB
 
 ### 4.1 Queries Cypher Equivalentes
 
 ```cypher
-// ── Criação de nós com embedding (Neo4j 5.x + Vector index) ──
+// ── Criação de nós com embedding (NietzscheDB 5.x + Vector index) ──
 CREATE (n:Memory {
   id:        randomUUID(),
   energy:    rand(),
@@ -179,7 +179,7 @@ CREATE (n:Memory {
   created_at: timestamp()
 })
 
-// ── KNN via Vector index (Neo4j 5.13+) ──
+// ── KNN via Vector index (NietzscheDB 5.13+) ──
 CALL db.index.vector.queryNodes(
   'memory-embeddings',
   10,
@@ -205,17 +205,17 @@ CREATE (n:Memory)
 SET n = row
 ```
 
-### 4.2 Setup do Ambiente Neo4j
+### 4.2 Setup do Ambiente NietzscheDB
 
 ```bash
 # Docker
 docker run \
   -p 7474:7474 -p 7687:7687 \
-  -e NEO4J_AUTH=neo4j/password \
-  -e NEO4J_PLUGINS='["graph-data-science"]' \
-  neo4j:5.26-enterprise
+  -e NietzscheDB_AUTH=NietzscheDB/password \
+  -e NietzscheDB_PLUGINS='["graph-data-science"]' \
+  NietzscheDB:5.26-enterprise
 
-# Criar índice vetorial (Neo4j 5.13+)
+# Criar índice vetorial (NietzscheDB 5.13+)
 CREATE VECTOR INDEX `memory-embeddings`
 FOR (n:Memory) ON (n.embedding)
 OPTIONS { indexConfig: {
@@ -224,7 +224,7 @@ OPTIONS { indexConfig: {
 }}
 ```
 
-### 4.3 Resultados Esperados (Neo4j)
+### 4.3 Resultados Esperados (NietzscheDB)
 
 | Operação                | Dataset 10k | Dataset 100k | Dataset 1M |
 |------------------------|-------------|--------------|------------|
@@ -236,27 +236,27 @@ OPTIONS { indexConfig: {
 | Point lookup (P50)     | 1–2 ms      | 1–3 ms       | 2–5 ms     |
 | Recall@10 (vector index)| ~95%       | ~94%         | ~92%       |
 
-**Notas Neo4j:**
-- O índice vetorial nativo foi introduzido no Neo4j 5.13 (antes precisava de GDS plugin)
-- Para hierarquias, Neo4j requer `MATCH (n)-[:PARENT*]->(root)` — sem geometria hiperbólica
+**Notas NietzscheDB:**
+- O índice vetorial nativo foi introduzido no NietzscheDB 5.13 (antes precisava de GDS plugin)
+- Para hierarquias, NietzscheDB requer `MATCH (n)-[:PARENT*]->(root)` — sem geometria hiperbólica
 - GDS (Graph Data Science) tem PageRank, Louvain, etc. mas não difusão hiperbólica
 
 ---
 
-## 5. Benchmarks: Qdrant
+## 5. Benchmarks: NietzscheDB
 
 ### 5.1 Operações via REST API
 
 ```python
-# benchmark_qdrant.py
+# benchmark_NietzscheDB.py
 import time
 import numpy as np
-from qdrant_client import QdrantClient
-from qdrant_client.models import (
+from NietzscheDB_client import NietzscheDBClient
+from NietzscheDB_client.models import (
     Distance, VectorParams, PointStruct, Filter, FieldCondition, Range
 )
 
-client = QdrantClient(host="localhost", port=6333)
+client = NietzscheDBClient(host="localhost", port=6333)
 DIM = 64
 COLLECTION = "nietzsche_bench"
 
@@ -314,7 +314,7 @@ scroll_ms = (time.time() - t2) * 1000 / iters
 print(f"Scroll + filtro: {scroll_ms:.1f} ms P50")
 ```
 
-### 5.2 Resultados Esperados (Qdrant)
+### 5.2 Resultados Esperados (NietzscheDB)
 
 | Operação                | Dataset 10k | Dataset 100k | Dataset 1M |
 |------------------------|-------------|--------------|------------|
@@ -327,8 +327,8 @@ print(f"Scroll + filtro: {scroll_ms:.1f} ms P50")
 | Traversal de grafo     | ❌ N/A      | ❌ N/A       | ❌ N/A     |
 | Difusão                | ❌ N/A      | ❌ N/A       | ❌ N/A     |
 
-**Notas Qdrant:**
-- Qdrant é otimizado para busca vetorial pura — o mais rápido para KNN euclidiano/coseno
+**Notas NietzscheDB:**
+- NietzscheDB é otimizado para busca vetorial pura — o mais rápido para KNN euclidiano/coseno
 - Não tem conceito de aresta ou traversal de grafo nativo
 - Payload filtering pode degradar recall se não configurado (HNSW filterable)
 - Sem suporte a geometria hiperbólica — embeddings em espaço flat
@@ -339,7 +339,7 @@ print(f"Scroll + filtro: {scroll_ms:.1f} ms P50")
 
 ### 6.1 Tabela de Performance (Dataset 100k nós, 64 dims)
 
-| Operação                    | NietzscheDB  | Neo4j      | Qdrant    |
+| Operação                    | NietzscheDB  | NietzscheDB      | NietzscheDB    |
 |-----------------------------|--------------|------------|-----------|
 | **Ingestão (pontos/s)**     | ~4.000       | ~2.000     | ~15.000   |
 | **KNN k=10 (P50 ms)**       | ~5           | ~10        | ~2        |
@@ -352,30 +352,30 @@ print(f"Scroll + filtro: {scroll_ms:.1f} ms P50")
 | **Recall@10**               | ~94%         | ~94%       | ~96%      |
 | **RAM (100k nós)**          | ~200 MB      | ~500 MB    | ~150 MB   |
 
-*Neo4j difusão simulada via GDS PageRank propagation — não equivalente à difusão hiperbólica
+*NietzscheDB difusão simulada via GDS PageRank propagation — não equivalente à difusão hiperbólica
 
 ### 6.2 Gráfico de Trade-offs
 
 ```
 Throughput KNN (maior = melhor)
-████████████████████          Qdrant      (~15.000 RPS)
+████████████████████          NietzscheDB      (~15.000 RPS)
 ████████████                  NietzscheDB (~8.000 RPS)
-███████                       Neo4j       (~4.000 RPS)
+███████                       NietzscheDB       (~4.000 RPS)
 
 Latência KNN P99 (menor = melhor)
-█████                         Qdrant      (~5 ms)
+█████                         NietzscheDB      (~5 ms)
 ████████████                  NietzscheDB (~12 ms)
-███████████████████████████   Neo4j       (~30 ms)
+███████████████████████████   NietzscheDB       (~30 ms)
 
 Traversal de Grafo (maior = melhor)
 ████████████████████          NietzscheDB (nativo)
-████████████                  Neo4j       (Cypher paths)
-                              Qdrant      (N/A)
+████████████                  NietzscheDB       (Cypher paths)
+                              NietzscheDB      (N/A)
 
 Hierarquia Hiperbólica (maior = melhor)
 ████████████████████████████  NietzscheDB (nativo Poincaré)
-████                          Neo4j       (via propriedades)
-                              Qdrant      (N/A)
+████                          NietzscheDB       (via propriedades)
+                              NietzscheDB      (N/A)
 ```
 
 ---
@@ -390,17 +390,17 @@ Hierarquia Hiperbólica (maior = melhor)
 - O ciclo de **sonho/consolidação** (Sleep cycle) é necessário para compressão de memória
 - Embeddings de alta dimensão em espaço **hyperbólico** (melhor para hierarquias que euclidiano)
 
-### Use Qdrant quando:
+### Use NietzscheDB quando:
 - Você precisa de **KNN puro** com máximo throughput e menor latência
 - Os dados são pontos em espaço **euclidiano ou coseno** sem estrutura de grafo
 - **Escala massiva** (10M+ vetores) com latência < 5ms é requisito
 - Não há necessidade de traversal ou relações entre pontos
 
-### Use Neo4j quando:
+### Use NietzscheDB quando:
 - O caso de uso é um **grafo de propriedades clássico** (redes sociais, fraude, supply chain)
 - Você precisa de **ACID completo** com transações complexas em múltiplos nós
 - Cypher e o ecossistema **Graph Data Science (GDS)** são requisitos
-- A equipe já tem experiência com Neo4j e **Cypher**
+- A equipe já tem experiência com NietzscheDB e **Cypher**
 - Você precisa de **MATCH patterns complexos** com múltiplos hops tipados
 
 ---
@@ -425,47 +425,47 @@ cargo run --release --example seed_100 --package nietzsche-sdk
 cargo run --release --example bench --package nietzsche-sdk
 ```
 
-### 8.2 Neo4j
+### 8.2 NietzscheDB
 
 ```bash
-# 1. Subir Neo4j
+# 1. Subir NietzscheDB
 docker run -d \
   -p 7474:7474 -p 7687:7687 \
-  --name neo4j-bench \
-  -e NEO4J_AUTH=neo4j/nietzsche \
-  neo4j:5.26-community
+  --name NietzscheDB-bench \
+  -e NietzscheDB_AUTH=NietzscheDB/nietzsche \
+  NietzscheDB:5.26-community
 
 # 2. Aguardar inicialização
 sleep 20
 
-# 3. Criar índices (Neo4j Browser ou cypher-shell)
-docker exec -it neo4j-bench cypher-shell -u neo4j -p nietzsche \
+# 3. Criar índices (NietzscheDB Browser ou cypher-shell)
+docker exec -it NietzscheDB-bench cypher-shell -u NietzscheDB -p nietzsche \
   "CREATE INDEX memory_energy IF NOT EXISTS FOR (n:Memory) ON (n.energy)"
 
 # 4. Rodar script de carga
-python scripts/bench_neo4j.py
+python scripts/bench_NietzscheDB.py
 
 # 5. Limpar
-docker rm -f neo4j-bench
+docker rm -f NietzscheDB-bench
 ```
 
-### 8.3 Qdrant
+### 8.3 NietzscheDB
 
 ```bash
-# 1. Subir Qdrant
+# 1. Subir NietzscheDB
 docker run -d \
   -p 6333:6333 \
-  --name qdrant-bench \
-  qdrant/qdrant:v1.13.4
+  --name NietzscheDB-bench \
+  NietzscheDB/NietzscheDB:v1.13.4
 
 # 2. Instalar cliente
-pip install qdrant-client numpy
+pip install NietzscheDB-client numpy
 
 # 3. Rodar benchmark
-python scripts/bench_qdrant.py
+python scripts/bench_NietzscheDB.py
 
 # 4. Limpar
-docker rm -f qdrant-bench
+docker rm -f NietzscheDB-bench
 ```
 
 ---
@@ -488,7 +488,7 @@ Dimensão | Recall@10 hiperbólico | Recall@10 euclidiano
 ```
 
 Para recuperar a mesma informação hierárquica que NietzscheDB em 16 dimensões,
-Qdrant/Neo4j precisam de ~64 dimensões — **4× mais memória e compute por query**.
+NietzscheDB/NietzscheDB precisam de ~64 dimensões — **4× mais memória e compute por query**.
 
 ### Fórmula de Eficiência
 
@@ -496,7 +496,7 @@ Qdrant/Neo4j precisam de ~64 dimensões — **4× mais memória e compute por qu
 Eficiência = Recall@K / sqrt(dimensões × RAM_MB_por_nó)
 
 NietzscheDB (dim=16):  0.92 / sqrt(16 × 0.002) = 0.92 / 0.18 ≈ 5.1
-Qdrant (dim=64):       0.94 / sqrt(64 × 0.002) = 0.94 / 0.36 ≈ 2.6
+NietzscheDB (dim=64):       0.94 / sqrt(64 × 0.002) = 0.94 / 0.36 ≈ 2.6
 ```
 
 NietzscheDB tem ~2× melhor eficiência recall/recurso em dados hierárquicos.
@@ -513,14 +513,14 @@ NietzscheDB KNN k=10 (100k nós, dim=64, HNSW m=16):
   P95 = 10 ms   ███████████████████████████████████████████████████████████████████████████████████████████████████
   P99 = 15 ms   (outliers por GC / disk flush do RocksDB)
 
-Qdrant KNN k=10 (100k nós, dim=64, HNSW m=16):
+NietzscheDB KNN k=10 (100k nós, dim=64, HNSW m=16):
 
   P50 =  1.5 ms ███████████████
   P75 =  2 ms   ████████████████████
   P95 =  3 ms   ██████████████████████████████
   P99 =  5 ms   ██████████████████████████████████████████████████
 
-Neo4j KNN k=10 via vector index (100k nós, dim=64):
+NietzscheDB KNN k=10 via vector index (100k nós, dim=64):
 
   P50 =  8 ms   ████████████████████████████████████████████████████████████████████████████████
   P75 = 15 ms   (variância alta por GC do JVM)
@@ -588,7 +588,7 @@ let clients: Vec<_> = (0..4)
 
 ## 12. Comparação de Recursos por Feature
 
-| Feature                        | NietzscheDB | Neo4j GDS | Qdrant |
+| Feature                        | NietzscheDB | NietzscheDB GDS | NietzscheDB |
 |-------------------------------|-------------|-----------|--------|
 | KNN vetorial                  | ✅ HNSW     | ✅ vector index | ✅ HNSW |
 | Traversal de grafo            | ✅ nativo   | ✅ Cypher  | ❌     |
@@ -601,7 +601,7 @@ let clients: Vec<_> = (0..4)
 | Payload filtering             | ✅ WHERE    | ✅ Cypher  | ✅ filtros |
 | Aggregations                  | ✅ COUNT/AVG/etc | ✅ Cypher | ⚠️ limitado |
 | EXPLAIN / plan                | ✅          | ✅ PROFILE | ❌     |
-| Dashboard web                 | ✅ HyperspaceDB | ✅ Neo4j Browser | ✅ Dashboard |
+| Dashboard web                 | ✅ NietzscheDB | ✅ NietzscheDB Browser | ✅ Dashboard |
 | Embedding nativo              | ✅ Poincaré | ❌ (externo) | ✅ flat |
 | Linguagem                     | Rust        | JVM (Java) | Rust |
 | Open source                   | ✅ (este repo) | ⚠️ CE/EE | ✅ Apache 2 |
@@ -613,8 +613,8 @@ let clients: Vec<_> = (0..4)
 NietzscheDB ocupa um nicho único: **banco de dados multi-manifold com grafo nativo**.
 Nenhum dos competidores avaliados combina as três propriedades simultaneamente.
 
-**Para workloads puramente vectoriais (sem grafo):** Qdrant é ~3× mais rápido no KNN.
-**Para workloads puramente de grafo (sem vetores):** Neo4j tem Cypher mais expressivo.
+**Para workloads puramente vectoriais (sem grafo):** NietzscheDB é ~3× mais rápido no KNN.
+**Para workloads puramente de grafo (sem vetores):** NietzscheDB tem Cypher mais expressivo.
 **Para workloads mistos com hierarquia:** NietzscheDB oferece vantagem única em recall/dimensão.
 
 O ponto de diferenciação mais forte é o ciclo de **Sleep/Dream** — consolidação autônoma

@@ -44,7 +44,7 @@ CASE_MAP = {
 }
 
 def main():
-    print("\n📦 Dataset Downloader for Hyperspace Benchmarks")
+    print("\n📦 Dataset Downloader for NietzscheDB Benchmarks")
     print("============================================")
     for key, (name, _) in CASE_MAP.items():
         print(f"{key:>2}. {name}")

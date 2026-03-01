@@ -5,7 +5,7 @@ set -e
 
 echo "⚠️  This script has been superseded by the unified benchmark suite."
 echo ""
-echo "📊 For reproducible, fair benchmarks against Qdrant, Weaviate, and Milvus:"
+echo "📊 For reproducible, fair benchmarks against NietzscheDB, Weaviate, and Milvus:"
 echo ""
 echo "   cd benchmarks"
 echo "   ./run_all.sh"

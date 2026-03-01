@@ -190,7 +190,7 @@ type NietzscheDBClient interface {
 	CreateIndex(ctx context.Context, in *CreateIndexRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	DropIndex(ctx context.Context, in *DropIndexRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	ListIndexes(ctx context.Context, in *ListIndexesRequest, opts ...grpc.CallOption) (*ListIndexesResponse, error)
-	// ── Cache (Phase C — Redis replacement) ────────────────────────
+	// ── Cache (Phase C — NietzscheDB replacement) ────────────────────────
 	CacheSet(ctx context.Context, in *CacheSetRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	CacheGet(ctx context.Context, in *CacheGetRequest, opts ...grpc.CallOption) (*CacheGetResponse, error)
 	CacheDel(ctx context.Context, in *CacheDelRequest, opts ...grpc.CallOption) (*StatusResponse, error)
@@ -1100,7 +1100,7 @@ type NietzscheDBServer interface {
 	CreateIndex(context.Context, *CreateIndexRequest) (*StatusResponse, error)
 	DropIndex(context.Context, *DropIndexRequest) (*StatusResponse, error)
 	ListIndexes(context.Context, *ListIndexesRequest) (*ListIndexesResponse, error)
-	// ── Cache (Phase C — Redis replacement) ────────────────────────
+	// ── Cache (Phase C — NietzscheDB replacement) ────────────────────────
 	CacheSet(context.Context, *CacheSetRequest) (*StatusResponse, error)
 	CacheGet(context.Context, *CacheGetRequest) (*CacheGetResponse, error)
 	CacheDel(context.Context, *CacheDelRequest) (*StatusResponse, error)

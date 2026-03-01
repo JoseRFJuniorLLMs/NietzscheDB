@@ -22,4 +22,4 @@ ordered-float    = { workspace = true }
 # Dynamic FFI loader — loads libcugraph.so at runtime (cuda feature only)
 libloading       = { version = "0.8", optional = true }
 # CUDA runtime bindings + NVRTC for Poincaré kernel compilation
-cudarc           = { version = "0.12", features = ["nvrtc"], optional = true }
+cudarc           = { version = "0.12", features = ["nvrtc", "cuda-version-from-build-system"], optional = true }

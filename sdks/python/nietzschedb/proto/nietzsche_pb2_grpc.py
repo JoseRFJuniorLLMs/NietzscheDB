@@ -785,7 +785,7 @@ class NietzscheDBServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def CacheSet(self, request, context):
-        """── Cache (Phase C — Redis replacement) ────────────────────────
+        """── Cache (Phase C — NietzscheDB replacement) ────────────────────────
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')

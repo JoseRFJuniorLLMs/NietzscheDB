@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Integration tests for HyperspaceDB Dashboard API
+Integration tests for NietzscheDBDB Dashboard API
 Tests all HTTP endpoints for correctness.
 """
 
@@ -10,7 +10,7 @@ import sys
 import time
 
 API_URL = "http://localhost:50050/api"
-API_KEY = "test_key_12345"  # Set HYPERSPACE_API_KEY=test_key_12345 when running server
+API_KEY = "test_key_12345"  # Set NDB_API_KEY=test_key_12345 when running server
 
 HEADERS = {"x-api-key": API_KEY}
 
@@ -145,7 +145,7 @@ def test_search_with_data():
 
 def main():
     print("=" * 60)
-    print("HyperspaceDB Dashboard API Integration Tests")
+    print("NietzscheDBDB Dashboard API Integration Tests")
     print("=" * 60)
     print(f"API URL: {API_URL}")
     print(f"Using API Key: {API_KEY[:8]}...")
@@ -161,7 +161,7 @@ def main():
             except:
                 if i == 4:
                     print("❌ Server not responding. Start server with:")
-                    print("   HYPERSPACE_API_KEY=test_key_12345 cargo run --bin hyperspace-server")
+                    print("   NDB_API_KEY=test_key_12345 cargo run --bin nietzsche-baseserver")
                     sys.exit(1)
                 time.sleep(1)
         

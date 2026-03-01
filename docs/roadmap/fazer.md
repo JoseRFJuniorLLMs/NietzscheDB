@@ -1,6 +1,6 @@
 # NietzscheDB — Plano de Compatibilidade com EVA-Mind
 
-> **Contexto**: Auditoria realizada em 2026-02-18 comparando EVA-Mind (2× Neo4j, Redis, Qdrant, PostgreSQL)
+> **Contexto**: Auditoria realizada em 2026-02-18 comparando EVA-Mind (2× NietzscheDB, NietzscheDB, NietzscheDB, NietzscheDB)
 > com NietzscheDB. Este documento lista **tudo que falta** no NietzscheDB + NQL para absorver o stack
 > do EVA-Mind, organizado por prioridade e viabilidade.
 
@@ -10,20 +10,20 @@
 
 | Database EVA-Mind | Compatibilidade Atual | Bloqueador Principal |
 |---|---|---|
-| Neo4j #1 (Grafo Paciente) | 45% | MERGE, path patterns `*1..4`, filtros em aresta |
-| Neo4j #2 (Meta-Cognitivo EVA) | 70% | MERGE/upsert; resto mapeável |
-| Redis (Cache + Audio) | 0% | TTL, List structures, latência sub-ms |
-| Qdrant (Vetores) | 15% | Cosine ≠ Poincaré, multi-dim, multi-coleção |
-| PostgreSQL (Relacional) | 0% | Sem relacional, PL/pgSQL, LGPD, ACID |
+| NietzscheDB #1 (Grafo Paciente) | 45% | MERGE, path patterns `*1..4`, filtros em aresta |
+| NietzscheDB #2 (Meta-Cognitivo EVA) | 70% | MERGE/upsert; resto mapeável |
+| NietzscheDB (Cache + Audio) | 0% | TTL, List structures, latência sub-ms |
+| NietzscheDB (Vetores) | 15% | Cosine ≠ Poincaré, multi-dim, multi-coleção |
+| NietzscheDB (Relacional) | 0% | Sem relacional, PL/pgSQL, LGPD, ACID |
 
 **Compatibilidade global atual: ~26%**
-**Meta pós-plano: ~85%** (PostgreSQL e Redis permanecem como satélites opcionais)
+**Meta pós-plano: ~85%** (NietzscheDB e NietzscheDB permanecem como satélites opcionais)
 
 ---
 
 ## O que o EVA-Mind usa de cada banco (referência rápida)
 
-### Neo4j #1 — Grafo do Paciente
+### NietzscheDB #1 — Grafo do Paciente
 ```
 (:Person)-[:EXPERIENCED]->(:Event {content, emotion, importance, activation_score})
 (:Event)-[:RELATED_TO]->(:Topic)
@@ -38,7 +38,7 @@ Queries críticas:
   MERGE (p)-[r:MENTIONED]->(t) ON MATCH SET r.count = r.count + 1
 ```
 
-### Neo4j #2 — Meta-cognitivo EVA
+### NietzscheDB #2 — Meta-cognitivo EVA
 ```
 (:EvaSession)-[:HAS_TURN]->(:EvaTurn)-[:ABOUT]->(:EvaTopic)
 (:EvaTopic)-[:RELATED_TO]->(:EvaTopic)
@@ -46,7 +46,7 @@ Queries críticas:
 Queries: MERGE com ON CREATE/MATCH SET; leitura de tópicos frequentes
 ```
 
-### Redis
+### NietzscheDB
 ```
 audio:<sessionID>            → List  RPUSH/LRANGE  TTL 1h   (buffer PCM streaming)
 emb:<md5>                    → String JSON          TTL 24h  (cache embeddings)
@@ -56,7 +56,7 @@ cognitive_load:<id>:state    → String JSON          TTL 5min (carga cognitiva)
 fdpn:<userID>:<hash>         → String JSON          TTL 5min (subgrafo FDPN)
 ```
 
-### Qdrant
+### NietzscheDB
 ```
 memories          dim=3072  Cosine  Gemini embedding-001   (memórias episódicas)
 speaker_embeddings dim=192  Cosine  ECAPA-TDNN ONNX        (impressões digitais de voz)
@@ -69,7 +69,7 @@ aesop_fables      dim=768   Cosine  Vertex AI              (fábulas de Esopo)
 eva_learnings     dim=3072  Cosine  Gemini                 (aprendizados contínuos)
 ```
 
-### PostgreSQL
+### NietzscheDB
 ```
 40+ tabelas: idosos, agendamentos, episodic_memories, patient_enneagram,
 patient_master_signifiers, lacan_*, clinical_assessments, lgpd_audit_log,
@@ -87,10 +87,10 @@ RLS:      Row-Level Security em 11 tabelas (multi-tenancy)
 ---
 
 ### FASE A — Distância Cosine + Multi-Métrica no VectorStore
-**Prioridade: CRÍTICA** | Bloqueia: substituição do Qdrant
+**Prioridade: CRÍTICA** | Bloqueia: substituição do NietzscheDB
 
 #### A.1 — Adicionar Cosine distance ao HNSW
-**Arquivo alvo**: `crates/hyperspace-index/src/hnsw.rs`, `crates/hyperspace-core/src/metrics.rs`
+**Arquivo alvo**: `crates/nietzsche-hnsw/src/hnsw.rs`, `crates/nietzsche-core/src/metrics.rs`
 
 ```rust
 // Adicionar novo enum de métrica
@@ -118,23 +118,23 @@ O que implementar:
 
 ```rust
 // Hoje: MockVectorStore (linear scan) está hardcoded no binário do servidor
-// Meta: injetar HyperspaceDB real via gRPC client ou embedding direto
+// Meta: injetar NietzscheDB real via gRPC client ou embedding direto
 
-let vector_store = HyperspaceVectorStore::new(
-    hyperspace_endpoint,
+let vector_store = NietzscheVectorStore::new(
+    nietzsche_endpoint,
     metric: DistanceMetric::Cosine,
 ).await?;
 let db = NietzscheDB::open(data_dir, vector_store)?;
 ```
 
-- [ ] `HyperspaceVectorStore` que implementa `VectorStore` trait via gRPC
+- [ ] `NietzscheVectorStore` que implementa `VectorStore` trait via gRPC
 - [ ] `EmbeddedVectorStore` — HNSW embutido no mesmo processo (sem rede)
 - [ ] Configuração via env vars: `NIETZSCHE_VECTOR_BACKEND=embedded|grpc`
 
 ---
 
 ### FASE B — Multi-Coleção e Multi-Dimensionalidade
-**Prioridade: CRÍTICA** | Bloqueia: substituição do Qdrant
+**Prioridade: CRÍTICA** | Bloqueia: substituição do NietzscheDB
 
 O EVA-Mind tem 17+ coleções com 3 dimensionalidades diferentes (192, 768, 3072).
 
@@ -172,7 +172,7 @@ impl NietzscheDB {
 - [ ] `KnnSearch` recebe `collection: String`
 
 #### B.2 — Filtro por metadata durante KNN (pushed-down)
-**Arquivo alvo**: `crates/hyperspace-index/src/hnsw.rs`
+**Arquivo alvo**: `crates/nietzsche-hnsw/src/hnsw.rs`
 
 ```rust
 // Hoje: KNN retorna top-K e aplicação filtra depois
@@ -194,17 +194,17 @@ pub enum MetadataFilter {
 }
 ```
 
-- [ ] Roaring Bitmap por valor de campo (como HyperspaceDB já tem em `feito.md`)
+- [ ] Roaring Bitmap por valor de campo (como NietzscheDB já tem em `feito.md`)
 - [ ] Pré-filtro: candpool apenas de nós que passam no filtro
 - [ ] gRPC: `KnnSearch` recebe campo `filter: MetadataFilterProto`
-- [ ] Equivale ao `SearchWithScore(ctx, col, emb, k, 0.7, userID)` do Qdrant
+- [ ] Equivale ao `SearchWithScore(ctx, col, emb, k, 0.7, userID)` do NietzscheDB
 
 ---
 
-### FASE C — Substituição Completa do Redis
-**Prioridade: ALTA** | Meta: eliminar Redis do stack do EVA-Mind totalmente
+### FASE C — Substituição Completa do NietzscheDB
+**Prioridade: ALTA** | Meta: eliminar NietzscheDB do stack do EVA-Mind totalmente
 
-#### Análise: o que o Redis faz no EVA-Mind
+#### Análise: o que o NietzscheDB faz no EVA-Mind
 
 | Key Pattern | Estrutura | TTL | Frequência | Substituível? |
 |---|---|---|---|---|
@@ -215,12 +215,12 @@ pub enum MetadataFilter {
 | `fdpn:<id>:<hash>` | String JSON | 5min | Média | ✅ C.1 |
 | `audio:<sessionID>` | **List** RPUSH/LRANGE | 1h | Alta (20 chunks/s) | ✅ C.2 |
 
-**Conclusão**: Redis é 100% substituível após C.1 + C.2 + block cache configurado.
+**Conclusão**: NietzscheDB é 100% substituível após C.1 + C.2 + block cache configurado.
 
-#### Análise de latência — RocksDB vs Redis
+#### Análise de latência — RocksDB vs NietzscheDB
 
 ```
-Redis (in-memory):          0.05 – 0.1 ms
+NietzscheDB (in-memory):          0.05 – 0.1 ms
 RocksDB block cache hit:    0.1  – 0.5 ms   ← diferença irrelevante
 RocksDB disk miss:          1    – 5   ms   ← nunca acontece para hot keys
 
@@ -229,7 +229,7 @@ no block cache do RocksDB. Gemini API = 50-200ms. Economizar 0.4ms no cache
 é irrelevante. A troca é viável.
 ```
 
-#### C.1 — TTL por nó + JanitorTask (substitui 5 de 6 usos do Redis)
+#### C.1 — TTL por nó + JanitorTask (substitui 5 de 6 usos do NietzscheDB)
 **Arquivo alvo**: `crates/nietzsche-graph/src/model.rs`, `crates/nietzsche-graph/src/storage.rs`
 
 ```rust
@@ -241,7 +241,7 @@ pub struct Node {
 
 Como o EVA-Mind usaria (Go SDK):
 ```go
-// Antes (Redis):
+// Antes (NietzscheDB):
 cache.Set(ctx, "emb:"+hash, jsonBytes, 24*time.Hour)
 
 // Depois (NietzscheDB):
@@ -297,7 +297,7 @@ impl ListStore {
 
 Como o EVA-Mind usaria (Go SDK):
 ```go
-// Antes (Redis):
+// Antes (NietzscheDB):
 pipe.RPush(ctx, "audio:"+sessionID, pcmChunk)
 pipe.Expire(ctx, "audio:"+sessionID, 1*time.Hour)
 chunks := client.LRange(ctx, "audio:"+sessionID, 0, -1)
@@ -333,9 +333,9 @@ opts.set_block_based_table_factory(&BlockBasedOptions {
 - [ ] Collection `cache` criada automaticamente no startup
 - [ ] Lookup `metadata.key = $key` usa índice secundário (Fase E) → O(log n)
 - [ ] `NIETZSCHE_BLOCK_CACHE_MB` env var (default: 512)
-- [ ] Benchmark: latência p99 de get/set no collection `cache` vs Redis local
+- [ ] Benchmark: latência p99 de get/set no collection `cache` vs NietzscheDB local
 
-#### Checklist Fase C — Redis completo
+#### Checklist Fase C — NietzscheDB completo
 
 - [ ] **C.1** `expires_at` em Node + JanitorTask
 - [ ] **C.1** Collection `cache` com índice em `metadata.key`
@@ -345,9 +345,9 @@ opts.set_block_based_table_factory(&BlockBasedOptions {
 - [ ] **C.3** RocksDB block cache configurável
 - [ ] **C.X** Go SDK: `CacheGet`, `CacheSet`, `CacheDelete`, `ListRPush`, `ListLRange`
 
-#### Migração do EVA-Mind (Redis → NietzscheDB)
+#### Migração do EVA-Mind (NietzscheDB → NietzscheDB)
 
-| Componente EVA | Redis key | Substituto NietzscheDB |
+| Componente EVA | NietzscheDB key | Substituto NietzscheDB |
 |---|---|---|
 | `embedding_cache.go` | `emb:<md5>` TTL 24h | `CacheSet("emb:"+hash, data, 86400)` |
 | `embedding_cache.go` | `sig:<id>:<hash>` TTL 5min | `CacheSet("sig:"+..., data, 300)` |
@@ -356,22 +356,22 @@ opts.set_block_based_table_factory(&BlockBasedOptions {
 | `fdpn_engine.go` | `fdpn:<id>:<hash>` TTL 5min | `CacheSet("fdpn:"+..., data, 300)` |
 | `audio_analysis.go` | `audio:<sid>` List TTL 1h | `ListRPush("audio:"+sid, chunk, 3600)` |
 
-#### Métricas de sucesso — Redis substituído
+#### Métricas de sucesso — NietzscheDB substituído
 ```
-✓ Redis eliminado quando:
-  → CacheGet latência p99 < 2ms (vs Redis 0.1ms — aceitável dado Gemini 50-200ms)
+✓ NietzscheDB eliminado quando:
+  → CacheGet latência p99 < 2ms (vs NietzscheDB 0.1ms — aceitável dado Gemini 50-200ms)
   → ListRPush throughput ≥ 50 ops/s por sessão (audio PCM rate = 20/s)
   → JanitorTask não interfere com reads (background isolado)
   → Zero perda de chunks de áudio em stress test de 1h
-  → EVA-Mind rodando sem variável REDIS_HOST no .env
+  → EVA-Mind rodando sem variável NietzscheDB_HOST no .env
 ```
 
 ---
 
 ### FASE D — MERGE Semântico e Upsert
-**Prioridade: ALTA** | Bloqueia: substituição dos dois Neo4j
+**Prioridade: ALTA** | Bloqueia: substituição dos dois NietzscheDB
 
-O MERGE é o padrão mais usado no EVA-Mind em Neo4j.
+O MERGE é o padrão mais usado no EVA-Mind em NietzscheDB.
 
 #### D.1 — MERGE no gRPC API
 **Arquivo alvo**: `crates/nietzsche-api/src/handlers.rs`, `proto/nietzsche.proto`
@@ -822,11 +822,11 @@ FOREACH (n IN [e] | SET n.energy = 0.0)
 
 | Componente EVA-Mind | Fases necessárias | Esforço estimado |
 |---|---|---|
-| `graph_store.go` (Neo4j #1 escrita) | NQL-1 (MERGE), NQL-3 (SET) | Médio — reescrever em Go SDK |
-| `retrieval.go` (Neo4j #1 leitura) | NQL-2 (path *1..4), NQL-6 (edge props) | Alto — padrões complexos |
-| `eva_memory.go` (Neo4j #2) | NQL-1 (MERGE), NQL-3 (SET) | Baixo — grafo simples |
+| `graph_store.go` (NietzscheDB #1 escrita) | NQL-1 (MERGE), NQL-3 (SET) | Médio — reescrever em Go SDK |
+| `retrieval.go` (NietzscheDB #1 leitura) | NQL-2 (path *1..4), NQL-6 (edge props) | Alto — padrões complexos |
+| `eva_memory.go` (NietzscheDB #2) | NQL-1 (MERGE), NQL-3 (SET) | Baixo — grafo simples |
 | `fdpn_engine.go` (spreading activation) | NQL-2 (path), NQL-7 (collection) | Alto — lógica de ativação |
-| `wisdom_service.go` (Qdrant multi-col) | Fase B (multi-col) + NQL-7 | Alto — 11 coleções |
+| `wisdom_service.go` (NietzscheDB multi-col) | Fase B (multi-col) + NQL-7 | Alto — 11 coleções |
 | `storage.go` (memórias episódicas) | Fase A (Cosine) + Fase B (multi-col) | Alto — pipeline completo |
 | `embedding_cache.go` `emb:<md5>` TTL 24h | Fase C.1 + C.3 (block cache) | Baixo — `CacheSet/Get` |
 | `embedding_cache.go` `sig:<id>:<hash>` TTL 5min | Fase C.1 | Baixo — `CacheSet/Get` |
@@ -839,8 +839,8 @@ FOREACH (n IN [e] | SET n.energy = 0.0)
 
 | Database | Decisão | Motivo |
 |---|---|---|
-| **PostgreSQL** | ✅ Manter permanentemente | É a fonte de verdade clínica — 40+ tabelas, LGPD, PL/pgSQL, multi-tenancy RLS. NietzscheDB complementa, não substitui. |
-| **Redis** | ✅ Substituível após Fase C completa | Fase C.1 (TTL) substitui 5 de 6 usos. Fase C.2 (List) substitui o último (audio PCM). Redis eliminado totalmente. |
+| **NietzscheDB** | ✅ Manter permanentemente | É a fonte de verdade clínica — 40+ tabelas, LGPD, PL/pgSQL, multi-tenancy RLS. NietzscheDB complementa, não substitui. |
+| **NietzscheDB** | ✅ Substituível após Fase C completa | Fase C.1 (TTL) substitui 5 de 6 usos. Fase C.2 (List) substitui o último (audio PCM). NietzscheDB eliminado totalmente. |
 
 ---
 
@@ -850,12 +850,12 @@ FOREACH (n IN [e] | SET n.energy = 0.0)
 FASE A  →  FASE B  →  FASE D  →  FASE E  →  NQL-1 + NQL-2 + NQL-3
   ↑             ↑          ↑          ↑             ↑
 Cosine      Multi-col   MERGE    Índices      Linguagem completa
-(Qdrant)    (Qdrant)   (Neo4j)  (perf)       (Neo4j + Qdrant)
+(NietzscheDB)    (NietzscheDB)   (NietzscheDB)  (perf)       (NietzscheDB + NietzscheDB)
 
 Depois:
   NQL-4 → NQL-5 → NQL-6 → NQL-7 → FASE C → FASE F → FASE G
   CREATE   DELETE  Edge    Coll    TTL+List Sensory  Concurr.
-                                   Redis↓
+                                   NietzscheDB↓
 
 Paralelo (não bloqueia o caminho crítico):
   FASE C.2 → FASE I.1 → FASE I.2 → FASE I.3 → FASE I.4
@@ -868,14 +868,14 @@ Por último (não bloqueia o resto):
   (SQLite)    statements 8 métodos  EVA-Mind    TABLE+NODE+VEC
 ```
 
-### Critérios de "pronto para migrar Neo4j"
+### Critérios de "pronto para migrar NietzscheDB"
 - [ ] MERGE idempotente funcionando via gRPC e NQL
 - [ ] Path pattern `*1..4` com label filter executando em <100ms para 10k nós
 - [ ] ORDER BY em propriedades de aresta
 - [ ] Índice secundário em pelo menos 3 campos
 - [ ] `nietzsche-sdk` Go client funcional (hoje só Rust)
 
-### Critérios de "pronto para migrar Qdrant"
+### Critérios de "pronto para migrar NietzscheDB"
 - [ ] Cosine distance implementado e validado (recall@10 ≥ 0.95)
 - [ ] Pelo menos 5 coleções independentes com dimensões diferentes
 - [ ] KNN com filtro pushed-down por metadata
@@ -940,14 +940,14 @@ z, _ := client.InvokeZaratustra(ctx, nietzsche.ZaratustraOpts{Cycles: 1})
 
 ### Engine (Rust)
 - [x] **A.1** Cosine distance no HNSW — `EmbeddedVectorStore` suporta Cosine, Euclidean, Poincare, DotProduct via `VectorMetric` enum
-- [x] **A.2** HyperspaceVectorStore real — servidor usa `EmbeddedVectorStore` (CPU default, GPU/TPU feature-gated). MockVectorStore eliminado
+- [x] **A.2** NietzscheVectorStore real — servidor usa `EmbeddedVectorStore` (CPU default, GPU/TPU feature-gated). MockVectorStore eliminado
 - [x] **B.1** Collections namespace — `CollectionManager` com HNSW + RocksDB independente por colecao. gRPC: CreateCollection/DropCollection/ListCollections
 - [x] **B.2** KNN com filtro de metadata pushed-down — `knn_filtered()` e `knn_energy_filtered()` em `db.rs`. Dual-path: scan <500, HNSW+oversample >=500
 - [x] **C.1** `expires_at` em Node + JanitorTask — TTL Reaper roda a cada `NIETZSCHE_TTL_REAPER_INTERVAL_SECS` (default 60s). `reap_expired()` phantomiza nos expirados
 - [x] **C.2** `ListStore` RPUSH/LRANGE em RocksDB CF `lists` + gRPC — CF_LISTS implementado. RPCs: ListRPush, ListLRange, ListLen
 - [x] **C.3** RocksDB block cache configuravel — configurado em `storage.rs` open()
 - [x] **C.X** Go SDK: `CacheGet`, `CacheSet`, `CacheDel`, `ListRPush`, `ListLRange`, `ListLen` — tudo em `cache.go`
-- [x] **D.1** MergeNode + MergeEdge gRPC — ambos RPCs implementados com semantica Neo4j MERGE (get-or-create + on_match_set + on_create_set)
+- [x] **D.1** MergeNode + MergeEdge gRPC — ambos RPCs implementados com semantica NietzscheDB MERGE (get-or-create + on_match_set + on_create_set)
 - [x] **D.2** Incremento atomico em metadata de aresta — `IncrementEdgeMeta` RPC + `increment_edge_metadata()` em db.rs
 - [x] **E.1** Indices secundarios por campo — CF_META_IDX com field_hash + sortable_value. RPCs: CreateIndex/DropIndex/ListIndexes. `index_scan_eq()` e `index_scan_range()` em db.rs
 - [x] **F**   Sensory RPCs — InsertSensory, GetSensory, Reconstruct, DegradeSensory todos implementados com logica real (quantization f32/f16/int8/PQ)
@@ -1004,43 +1004,43 @@ z, _ := client.InvokeZaratustra(ctx, nietzsche.ZaratustraOpts{Cycles: 1})
 
 ### Métricas de Sucesso Finais
 ```
-✓ Neo4j #1 substituível quando:
+✓ NietzscheDB #1 substituível quando:
   → MERGE + path *1..4 + edge props + índices funcionando
-  → Recall de memórias episódicas ≥ Neo4j em benchmark A/B
+  → Recall de memórias episódicas ≥ NietzscheDB em benchmark A/B
 
-✓ Qdrant substituível quando:
-  → Cosine recall@10 ≥ 0.95 vs Qdrant
+✓ NietzscheDB substituível quando:
+  → Cosine recall@10 ≥ 0.95 vs NietzscheDB
   → Multi-coleção com dim 192 + 768 + 3072 funcionando
   → KNN filtrado por idoso_id < 10ms p95
 
-✓ Redis ELIMINADO quando:
+✓ NietzscheDB ELIMINADO quando:
   → CacheGet p99 < 2ms (RocksDB block cache quente)
   → ListRPush ≥ 50 ops/s por sessão (PCM audio rate ok)
   → JanitorTask rodando sem impacto em leituras
-  → EVA-Mind sem REDIS_HOST no .env — zero dependência
+  → EVA-Mind sem NietzscheDB_HOST no .env — zero dependência
 
-✓ PostgreSQL: PERMANECE — decisão definitiva, não entra no escopo de migração
+✓ NietzscheDB: PERMANECE — decisão definitiva, não entra no escopo de migração
 
 ✓ Table Store (Fase H) pronto quando:
   → CRUD de tabelas leves via NQL funcionando
-  → Dados de config migrados do PostgreSQL para NietzscheDB
-  → PostgreSQL aliviado de ~8 tabelas de configuração não-clínica
+  → Dados de config migrados do NietzscheDB para NietzscheDB
+  → NietzscheDB aliviado de ~8 tabelas de configuração não-clínica
 ```
 
 ---
 
 ## FASE H — Table Store Mínimo (dados leves de configuração)
 
-> **Decisão**: PostgreSQL permanece para tudo clínico, regulado e relacional.
-> A Fase H cobre apenas dados de **configuração leve** que hoje vivem no PostgreSQL
+> **Decisão**: NietzscheDB permanece para tudo clínico, regulado e relacional.
+> A Fase H cobre apenas dados de **configuração leve** que hoje vivem no NietzscheDB
 > mas não precisam de ACID completo, JOINs complexos ou LGPD.
-> Objetivo: aliviar o PostgreSQL de tabelas simples e centralizar mais dados no NietzscheDB.
+> Objetivo: aliviar o NietzscheDB de tabelas simples e centralizar mais dados no NietzscheDB.
 
 ---
 
 ### Tabelas do EVA-Mind candidatas à migração para NietzscheDB
 
-| Tabela PostgreSQL | Motivo para migrar | Complexidade |
+| Tabela NietzscheDB | Motivo para migrar | Complexidade |
 |---|---|---|
 | `personas` | Configuração estática, 8 registros, sem FK crítica | Baixa |
 | `persona_configs` | Config por paciente, acesso simples por `idoso_id` | Baixa |
@@ -1052,10 +1052,10 @@ z, _ := client.InvokeZaratustra(ctx, nietzsche.ZaratustraOpts{Cycles: 1})
 | `enneagram_types` | 9 registros fixos com keywords/patterns | Baixa |
 | `treatment_goals` | Metas de tratamento por paciente, sem JOINs complexos | Média |
 
-**NÃO candidatas** (permanecem no PostgreSQL):
+**NÃO candidatas** (permanecem no NietzscheDB):
 ```
 idosos, agendamentos, historico_ligacoes — core operacional + scheduling
-episodic_memories — FK âncora do Qdrant (point ID = postgres ID)
+episodic_memories — FK âncora do NietzscheDB (point ID = postgres ID)
 clinical_assessments — dados clínicos regulados (PHQ-9, GAD-7, C-SSRS)
 lgpd_audit_log — obrigação legal, requer integridade garantida
 cognitive_load_state — PL/pgSQL functions dependentes
@@ -1353,7 +1353,7 @@ rpc ListTables(ListTablesRequest) returns (ListTablesResponse);
 
 ---
 
-### H.4 — Script de migração EVA-Mind: PostgreSQL → NietzscheDB Table Store
+### H.4 — Script de migração EVA-Mind: NietzscheDB → NietzscheDB Table Store
 
 Para cada tabela candidata, criar um script Go de migração única:
 
@@ -1370,7 +1370,7 @@ func migratePersonas(pg *sql.DB, ndb *nietzsche.Client) error {
             "prompt": p.Prompt, "active": p.Active,
         })
     }
-    // Após validação: DROP TABLE personas no PostgreSQL
+    // Após validação: DROP TABLE personas no NietzscheDB
 }
 ```
 
@@ -1432,9 +1432,9 @@ nem o ciclo de sono Riemanniano integrado ao planner de queries.
 ✓ Table Store pronto quando:
   → CRUD em tabelas leves < 2ms p99
   → Scan com índice < 5ms para 10k registros
-  → 8 tabelas de config migradas do PostgreSQL com zero perda de dados
+  → 8 tabelas de config migradas do NietzscheDB com zero perda de dados
   → Hybrid JOIN funcionando em benchmark sintético
-  → PostgreSQL aliviado de ~15% das queries de configuração do EVA-Mind
+  → NietzscheDB aliviado de ~15% das queries de configuração do EVA-Mind
 ```
 
 ---
@@ -1442,7 +1442,7 @@ nem o ciclo de sono Riemanniano integrado ao planner de queries.
 ## FASE I — Media Store (OpenDAL)
 **Prioridade: MÉDIA** | Depende de: Fase C.2 (ListStore) + Fase A (Cosine/VectorStore)
 
-> **Contexto**: EVA-Mind já usa áudio (PCM streaming via Redis List → Fase C.2 substitui).
+> **Contexto**: EVA-Mind já usa áudio (PCM streaming via NietzscheDB List → Fase C.2 substitui).
 > Fase I adiciona armazenamento **permanente** de áudio, imagem e vídeo, com metadados
 > no grafo e embeddings no VectorStore. OpenDAL abstrai o backend de storage.
 
@@ -1547,8 +1547,8 @@ rpc ConsolidateAudio(ConsolidateAudioRequest) returns (ConsolidateAudioResponse)
 ✓ Media Store pronto quando:
   → Upload de PCM 10MB < 500ms (filesystem local)
   → ConsolidateAudio: ListStore → MediaStore → Graph node em < 2s
-  → EVA-Mind sem Redis para áudio E com audio permanente em GCS
-  → speaker_embeddings no VectorStore (dim=192) substituindo Qdrant
+  → EVA-Mind sem NietzscheDB para áudio E com audio permanente em GCS
+  → speaker_embeddings no VectorStore (dim=192) substituindo NietzscheDB
 ```
 
 ---
@@ -1567,7 +1567,7 @@ rpc ConsolidateAudio(ConsolidateAudioRequest) returns (ConsolidateAudioResponse)
 │  │ WAL+Adj  │ │  17+ collections │ │ prompts  │ │ TTL  │ │fs/gcs│ │
 │  └────┬─────┘ └────────┬─────────┘ └────┬─────┘ └──┬───┘ └──┬───┘ │
 │       │                │                │           │         │     │
-│  absorve Neo4j #1+#2   │   absorve Qdrant  absorve Redis  audio/img │
+│  absorve NietzscheDB #1+#2   │   absorve NietzscheDB  absorve NietzscheDB  audio/img │
 │  ┌─────▼────────────────▼────────────────▼───────────▼─────────▼──┐ │
 │  │                      NQL Engine                                  │ │
 │  │  MATCH · MERGE · CREATE · SET · DELETE · DETACH DELETE          │ │
@@ -1581,7 +1581,7 @@ rpc ConsolidateAudio(ConsolidateAudioRequest) returns (ConsolidateAudioResponse)
 └────────────────────────────────────────────────────────────────────┘
                           ↕ coexiste com
 ┌────────────────────────────────────────────────────────────────────┐
-│                         PostgreSQL                                   │
+│                         NietzscheDB                                   │
 │   idosos · agendamentos · episodic_memories · lgpd_audit_log        │
 │   clinical_assessments · patient_* (12 sistemas de memória)         │
 │   speaker_profiles · cognitive_load · ethical_audit                 │
@@ -1589,9 +1589,9 @@ rpc ConsolidateAudio(ConsolidateAudioRequest) returns (ConsolidateAudioResponse)
 └────────────────────────────────────────────────────────────────────┘
 
 Stack EVA-Mind:   ANTES  5 bancos  →  DEPOIS  2 bancos
-                  Neo4j #1             NietzscheDB  (grafo + vetor + cache + table + media)
-                  Neo4j #2      ──►
-                  Redis
-                  Qdrant
-                  PostgreSQL           PostgreSQL   (clínico + LGPD)
+                  NietzscheDB #1             NietzscheDB  (grafo + vetor + cache + table + media)
+                  NietzscheDB #2      ──►
+                  NietzscheDB
+                  NietzscheDB
+                  NietzscheDB           NietzscheDB   (clínico + LGPD)
 ```

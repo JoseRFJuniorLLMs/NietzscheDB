@@ -3,13 +3,13 @@ import os
 import time
 import subprocess
 import sys
-from hyperspace import HyperspaceClient
+from nietzsche_legacy import NietzscheBaseClient
 
 def test_replication():
     print("\n🚀 Starting Replication HA Test (Leader-Follower)")
     
     # Paths
-    server_bin = "./target/release/hyperspace-server"
+    server_bin = "./target/release/nietzsche-baseserver"
     leader_dir = "data_leader"
     follower_dir = "data_follower"
     leader_wal = "wal_leader.log"
@@ -17,7 +17,7 @@ def test_replication():
     
     # Cleanup
     subprocess.run(f"rm -rf {leader_dir} {follower_dir} {leader_wal} {follower_wal} index.snap", shell=True)
-    subprocess.run("pkill hyperspace-server", shell=True)
+    subprocess.run("pkill nietzsche-baseserver", shell=True)
     time.sleep(1)
 
     # 1. Start Leader (Port 50051)
@@ -62,8 +62,8 @@ def test_replication():
         # Tests run with KEY usually if I built with it? No, key comes from ENV.
         # I won't set env, so auth disabled.
         
-        client_leader = HyperspaceClient("localhost:50051")
-        client_follower = HyperspaceClient("localhost:50052")
+        client_leader = NietzscheBaseClient("localhost:50051")
+        client_follower = NietzscheBaseClient("localhost:50052")
         
         vec = [0.1] * 8
         client_leader.insert(100, vec, {"name": "alpha"})

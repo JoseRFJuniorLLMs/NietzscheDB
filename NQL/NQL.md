@@ -4,16 +4,17 @@
 
 ## Manual de Referencia Completo
 
-**Versao:** 2.0 (NQL v2 — Fases 1-11 implementadas)
+**Versao:** 3.0 (NQL v3 — Fases 1-11 + NQL 3.0 Sprint implementados)
 **Banco:** NietzscheDB — Multi-Manifold Graph Database (Poincaré · Klein · Riemann · Minkowski)
 **Parser:** pest (PEG Grammar) em Rust
 **Repositorio:** github.com/JoseRFJuniorLLMs/NietzscheDB
 
 ---
 
-> *NQL e a primeira linguagem de query com primitivas hiperbolicas nativas
-> e funcoes matematicas eponymous — nomeadas em homenagem aos matematicos
-> cujo trabalho fundamenta o NietzscheDB.
+> *NQL e a primeira linguagem de query com primitivas hiperbolicas nativas,
+> funcoes matematicas eponymous — nomeadas em homenagem aos matematicos e
+> fisicos cujo trabalho fundamenta o NietzscheDB — e funcoes cognitivas
+> nomeadas em homenagem a Boltzmann, Helmholtz, Lyapunov, Prigogine e Erdos.
 > Nao e uma extensao de Cypher, SQL ou SPARQL. E uma linguagem nova,
 > construida para um substrato de memoria que nao existia antes.*
 
@@ -25,9 +26,16 @@
 2. [Tipos de Dados](#2-tipos-de-dados)
 3. [Statements](#3-statements)
    * [MATCH](#31-match)
-   * [DIFFUSE](#32-diffuse)
-   * [RECONSTRUCT](#33-reconstruct-fase-11)
-   * [EXPLAIN](#34-explain)
+   * [OPTIONAL MATCH](#32-optional-match-nql-30)
+   * [DIFFUSE](#33-diffuse)
+   * [RECONSTRUCT](#34-reconstruct-fase-11)
+   * [EXPLAIN](#35-explain)
+   * [UNION / UNION ALL](#36-union--union-all-nql-30)
+   * [UNWIND](#37-unwind-nql-30)
+   * [SHORTEST\_PATH](#38-shortest_path-nql-30)
+   * [MATCH ELITES](#39-match-elites-nql-30)
+   * [MEASURE TENSION / MEASURE TGC](#310-measure-tension--measure-tgc-nql-30)
+   * [FIND NEAREST](#311-find-nearest-nql-30)
 4. [Operadores de Distancia](#4-operadores-de-distancia)
    * [HYPERBOLIC\_DIST](#41-hyperbolic_dist)
    * [SENSORY\_DIST](#42-sensory_dist-fase-11)
@@ -45,26 +53,43 @@
    * [LAPLACIAN\_SCORE](#511-laplacian_score--pierre-simon-laplace)
    * [FOURIER\_COEFF](#512-fourier_coeff--joseph-fourier)
    * [DIRICHLET\_ENERGY](#513-dirichlet_energy--peter-gustav-lejeune-dirichlet)
-6. [Clausulas e Operadores](#6-clausulas-e-operadores)
-   * [WHERE](#61-where)
-   * [ORDER BY](#62-order-by)
-   * [LIMIT / SKIP](#63-limit--skip)
-   * [RETURN](#64-return)
-   * [DISTINCT](#65-distinct)
-   * [AS (alias)](#66-as-alias)
-   * [IN](#67-in)
-   * [BETWEEN](#68-between)
-   * [CONTAINS / STARTS\_WITH / ENDS\_WITH](#69-contains--starts_with--ends_with)
-   * [AND / OR / NOT](#610-and--or--not)
-7. [Agregacoes](#7-agregacoes)
-   * [COUNT / SUM / AVG / MIN / MAX](#71-count--sum--avg--min--max)
-   * [GROUP BY](#72-group-by)
-8. [Planner — Como NQL decide a estrategia](#8-planner)
-9. [Parametros e Variaveis](#9-parametros-e-variaveis)
-10. [Comparacao com outras linguagens](#10-comparacao-com-outras-linguagens)
-11. [Exemplos por dominio](#11-exemplos-por-dominio)
-12. [Erros e diagnostico](#12-erros-e-diagnostico)
-13. [Referencia rapida](#13-referencia-rapida)
+6. [Funcoes Cognitivas Eponymous (NQL 3.0)](#6-funcoes-cognitivas-eponymous-nql-30)
+   * [BOLTZMANN\_SURVIVAL](#61-boltzmann_survival--ludwig-boltzmann)
+   * [HELMHOLTZ\_GRADIENT](#62-helmholtz_gradient--hermann-von-helmholtz)
+   * [LYAPUNOV\_DELTA](#63-lyapunov_delta--aleksandr-lyapunov)
+   * [PRIGOGINE\_BASIN](#64-prigogine_basin--ilya-prigogine)
+   * [ERDOS\_EDGE\_PROB](#65-erdos_edge_prob--paul-erdos)
+7. [Funcoes Built-in (NQL 3.0)](#7-funcoes-built-in-nql-30)
+   * [String](#71-string)
+   * [Math](#72-math)
+   * [Cast](#73-cast)
+   * [Null](#74-null)
+8. [Condicoes Avancadas (NQL 3.0)](#8-condicoes-avancadas-nql-30)
+   * [IS NULL / IS NOT NULL](#81-is-null--is-not-null)
+   * [Regex (=~)](#82-regex-)
+   * [EXISTS subquery](#83-exists-subquery)
+   * [CASE WHEN](#84-case-when)
+9. [Clausulas e Operadores](#9-clausulas-e-operadores)
+   * [WHERE](#91-where)
+   * [ORDER BY](#92-order-by)
+   * [LIMIT / SKIP](#93-limit--skip)
+   * [RETURN](#94-return)
+   * [DISTINCT](#95-distinct)
+   * [AS (alias)](#96-as-alias)
+   * [IN](#97-in)
+   * [BETWEEN](#98-between)
+   * [CONTAINS / STARTS\_WITH / ENDS\_WITH](#99-contains--starts_with--ends_with)
+   * [AND / OR / NOT](#910-and--or--not)
+10. [Agregacoes](#10-agregacoes)
+    * [COUNT / SUM / AVG / MIN / MAX](#101-count--sum--avg--min--max)
+    * [COLLECT](#102-collect-nql-30)
+    * [GROUP BY](#103-group-by)
+11. [Planner — Como NQL decide a estrategia](#11-planner)
+12. [Parametros e Variaveis](#12-parametros-e-variaveis)
+13. [Comparacao com outras linguagens](#13-comparacao-com-outras-linguagens)
+14. [Exemplos por dominio](#14-exemplos-por-dominio)
+15. [Erros e diagnostico](#15-erros-e-diagnostico)
+16. [Referencia rapida](#16-referencia-rapida)
 
 ---
 
@@ -313,7 +338,40 @@ RETURN n
 
 ---
 
-### 3.2 DIFFUSE
+### 3.2 OPTIONAL MATCH (NQL 3.0)
+
+Busca padrao opcional — equivalente a LEFT OUTER JOIN em SQL.
+Se o padrao nao encontrar correspondencia, as variaveis vinculadas retornam NULL em vez de eliminar a linha.
+
+**Sintaxe:**
+
+```nql
+MATCH (a[:Label])
+OPTIONAL MATCH (a)-[:TYPE]->(b)
+[WHERE condicao]
+RETURN a, b
+```
+
+**Exemplos:**
+
+```nql
+-- Retornar todas as pessoas, mesmo sem conexoes
+MATCH (p:Concept)
+OPTIONAL MATCH (p)-[:Association]->(related)
+RETURN p, related
+
+-- Com filtro no padrao opcional
+MATCH (n:Semantic)
+OPTIONAL MATCH (n)-[:Hierarchical]->(child)
+WHERE child.energy > 0.5
+RETURN n, child
+```
+
+> **Diferenca do MATCH:** No MATCH normal, se o padrao de aresta nao encontra correspondencia, a linha inteira e eliminada. No OPTIONAL MATCH, a linha e mantida com `b = NULL`.
+
+---
+
+### 3.3 DIFFUSE
 
 Propaga ativacao pelo grafo via **heat kernel hiperbolico**.
 Retorna nos ativados em multiplas escalas de difusao.
@@ -362,7 +420,7 @@ RETURN path
 
 ---
 
-### 3.3 RECONSTRUCT (Fase 11)
+### 3.4 RECONSTRUCT (Fase 11)
 
 Reconstroi a experiencia sensorial de um no a partir do latent armazenado.
 
@@ -401,7 +459,7 @@ RECONSTRUCT $n MODALITY text
 
 ---
 
-### 3.4 EXPLAIN
+### 3.5 EXPLAIN
 
 Retorna o plano de execucao de uma query sem executa-la.
 Util para diagnostico e otimizacao.
@@ -462,6 +520,160 @@ EXPLAIN RECONSTRUCT $nid MODALITY audio QUALITY high
 | `GroupBy`         | Numero de chaves de agrupamento       |
 | `DiffusionWalk`   | Caminhada de difusao                  |
 | `ReconstructLatent` | Reconstrucao sensorial              |
+
+---
+
+### 3.6 UNION / UNION ALL (NQL 3.0)
+
+Combina resultados de duas ou mais queries em um unico resultado.
+`UNION` remove duplicatas; `UNION ALL` mantem todas as linhas.
+
+**Sintaxe:**
+
+```nql
+<query1>
+UNION [ALL]
+<query2>
+```
+
+**Exemplos:**
+
+```nql
+-- Combinar Semantic e Episodic de alta energia (sem duplicatas)
+MATCH (n:Semantic) WHERE n.energy > 0.8 RETURN n LIMIT 10
+UNION
+MATCH (n:Episodic) WHERE n.energy > 0.9 RETURN n LIMIT 10
+
+-- Manter todas as linhas (com duplicatas)
+MATCH (n) WHERE n.energy > 0.9 RETURN n LIMIT 5
+UNION ALL
+MATCH (n) WHERE n.depth < 0.2 RETURN n LIMIT 5
+```
+
+---
+
+### 3.7 UNWIND (NQL 3.0)
+
+Expande uma lista em linhas individuais. Util para iterar sobre arrays de valores.
+
+**Sintaxe:**
+
+```nql
+UNWIND expressao AS alias
+RETURN alias
+```
+
+**Exemplos:**
+
+```nql
+-- Expandir lista literal
+UNWIND [1, 2, 3, 4, 5] AS x
+RETURN x
+
+-- Expandir lista de strings
+UNWIND ["Memory", "Concept", "Episodic"] AS tipo
+RETURN tipo
+```
+
+---
+
+### 3.8 SHORTEST\_PATH (NQL 3.0)
+
+Encontra o caminho mais curto entre dois padroes de nos no grafo.
+
+**Sintaxe:**
+
+```nql
+SHORTEST_PATH (a[:Label])-[*[..n]]->(b[:Label])
+[LIMIT n]
+```
+
+**Exemplos:**
+
+```nql
+-- Caminho mais curto entre Concept e Memory (max 5 hops)
+SHORTEST_PATH (a:Concept)-[*..5]->(b:Memory) LIMIT 1
+
+-- Caminho entre quaisquer dois nos
+SHORTEST_PATH (a)-[*..10]->(b) LIMIT 3
+```
+
+---
+
+### 3.9 MATCH ELITES (NQL 3.0)
+
+Retorna os nos com maior energia no grafo — os "Ubermenschen" do NietzscheDB.
+
+**Sintaxe:**
+
+```nql
+MATCH ELITES [LIMIT n]
+```
+
+**Exemplos:**
+
+```nql
+-- Top 10 nos de elite
+MATCH ELITES LIMIT 10
+
+-- Top 50
+MATCH ELITES LIMIT 50
+```
+
+> **Implementacao:** Usa scan completo com ordenacao por energia decrescente.
+
+---
+
+### 3.10 MEASURE TENSION / MEASURE TGC (NQL 3.0)
+
+Metricas de saude do grafo.
+
+**MEASURE TENSION** — calcula a tensao hiperbolica entre dois padroes de nos:
+
+```nql
+MEASURE TENSION (a[:Label]), (b[:Label])
+```
+
+**MEASURE TGC** — calcula a Topological Generative Capacity do grafo:
+
+```nql
+MEASURE TGC
+```
+
+**Exemplos:**
+
+```nql
+-- Tensao entre conceitos e memorias
+MEASURE TENSION (a:Concept), (b:Memory)
+
+-- TGC global
+MEASURE TGC
+```
+
+> **TGC** = `intensity x mean_quality x (1 + alpha x deltaH_s) x (1 + beta x deltaE_g)`
+> Veja documentacao detalhada em `docs/articles/NietzscheDB-Topological-Generative-Capacity.md`.
+
+---
+
+### 3.11 FIND NEAREST (NQL 3.0)
+
+Busca k-NN (nearest neighbors) no espaco hiperbolico com namespace opcional.
+
+**Sintaxe:**
+
+```nql
+FIND NEAREST ["namespace"] TARGET expressao [LIMIT n]
+```
+
+**Exemplos:**
+
+```nql
+-- Buscar 5 nos mais proximos de um vetor
+FIND NEAREST TARGET $query_vec LIMIT 5
+
+-- Buscar em namespace especifico
+FIND NEAREST "medical" TARGET $query_vec LIMIT 10
+```
 
 ---
 
@@ -536,7 +748,7 @@ LIMIT 10
 
 ## 5. Funcoes Matematicas Eponymous
 
-NQL v2 introduz **13 funcoes built-in nomeadas em homenagem aos matematicos** cujo trabalho fundamenta a geometria hiperbolica, a difusao espectral e a teoria de grafos do NietzscheDB.
+NQL introduz **13 funcoes geometricas built-in nomeadas em homenagem aos matematicos** cujo trabalho fundamenta a geometria hiperbolica, a difusao espectral e a teoria de grafos do NietzscheDB. NQL 3.0 adiciona mais **5 funcoes cognitivas** nomeadas em homenagem a fisicos e matematicos (ver secao 6).
 
 Estas funcoes operam diretamente sobre nos e seus embeddings, arestas e vizinhancas, sem necessidade de exportar dados para ferramentas externas.
 
@@ -1003,9 +1215,341 @@ RETURN n
 
 ---
 
-## 6. Clausulas e Operadores
+## 6. Funcoes Cognitivas Eponymous (NQL 3.0)
 
-### 6.1 WHERE
+NQL 3.0 introduz **5 funcoes cognitivas** nomeadas em homenagem a fisicos e matematicos cujo trabalho fundamenta a dinamica do NietzscheDB — continuando a tradicao das 13 funcoes geometricas eponymous.
+
+### 6.1 BOLTZMANN\_SURVIVAL — Ludwig Boltzmann
+
+Probabilidade de sobrevivencia do no baseada em estatistica de energia (distribuicao de Boltzmann).
+
+```
+BOLTZMANN_SURVIVAL(alias) -> Float   (0.0-1.0)
+```
+
+```nql
+-- Nos com alta probabilidade de sobrevivencia
+MATCH (n)
+WHERE BOLTZMANN_SURVIVAL(n) > 0.7
+RETURN n, BOLTZMANN_SURVIVAL(n) AS survival
+ORDER BY survival DESC LIMIT 20
+
+-- Nos em risco de esquecimento
+MATCH (n)
+WHERE BOLTZMANN_SURVIVAL(n) < 0.3
+RETURN n
+```
+
+---
+
+### 6.2 HELMHOLTZ\_GRADIENT — Hermann von Helmholtz
+
+Gradiente de energia livre local. Mede a direcao e magnitude do fluxo de energia na vizinhanca.
+
+```
+HELMHOLTZ_GRADIENT(alias) -> Float
+```
+
+```nql
+-- Nos com alto gradiente de energia (fronteiras entre regioes)
+MATCH (n)
+WHERE HELMHOLTZ_GRADIENT(n) > 0.5
+RETURN n, HELMHOLTZ_GRADIENT(n) AS gradient
+ORDER BY gradient DESC
+
+-- Nos em equilibrio (gradiente ~0)
+MATCH (n)
+WHERE HELMHOLTZ_GRADIENT(n) < 0.05
+RETURN n
+```
+
+---
+
+### 6.3 LYAPUNOV\_DELTA — Aleksandr Lyapunov
+
+Divergencia de estabilidade entre dois nos. Mede o quanto as trajetorias de dois nos divergem no espaco hiperbolico.
+
+```
+LYAPUNOV_DELTA(alias1, alias2) -> Float
+```
+
+```nql
+-- Pares de nos com baixa divergencia (estaveis)
+MATCH (a:Concept), (b:Concept)
+WHERE LYAPUNOV_DELTA(a, b) < 0.1
+RETURN a, b, LYAPUNOV_DELTA(a, b) AS delta
+LIMIT 20
+
+-- Pares com alta divergencia (instabilidade)
+MATCH (a), (b)
+WHERE LYAPUNOV_DELTA(a, b) > 0.8
+RETURN a, b
+LIMIT 10
+```
+
+---
+
+### 6.4 PRIGOGINE\_BASIN — Ilya Prigogine
+
+Profundidade do basin de estrutura dissipativa. Mede o quanto um no esta "preso" em um atrator.
+
+```
+PRIGOGINE_BASIN(alias) -> Float
+```
+
+```nql
+-- Nos em bacias profundas (atratores fortes)
+MATCH (n)
+WHERE PRIGOGINE_BASIN(n) > 0.7
+RETURN n, PRIGOGINE_BASIN(n) AS basin
+ORDER BY basin DESC
+
+-- Nos em bacias rasas (facilmente perturbados)
+MATCH (n)
+WHERE PRIGOGINE_BASIN(n) < 0.2
+RETURN n
+```
+
+---
+
+### 6.5 ERDOS\_EDGE\_PROB — Paul Erdos
+
+Probabilidade de formacao de aresta entre dois nos pelo modelo Erdos-Renyi.
+
+```
+ERDOS_EDGE_PROB(alias1, alias2) -> Float   (0.0-1.0)
+```
+
+```nql
+-- Pares com alta probabilidade de conexao
+MATCH (a:Semantic), (b:Semantic)
+WHERE ERDOS_EDGE_PROB(a, b) > 0.6
+RETURN a, b, ERDOS_EDGE_PROB(a, b) AS prob
+ORDER BY prob DESC LIMIT 20
+
+-- Sugerir novas arestas
+MATCH (a), (b)
+WHERE ERDOS_EDGE_PROB(a, b) > 0.8
+  AND NOT EXISTS { (a)-[]->(b) }
+RETURN a, b
+LIMIT 10
+```
+
+---
+
+## 7. Funcoes Built-in (NQL 3.0)
+
+NQL 3.0 adiciona **30+ funcoes built-in** para manipulacao de strings, matematica, conversao de tipos e tratamento de nulos.
+
+### 7.1 String
+
+| Funcao | Assinatura | Descricao |
+|---|---|---|
+| `UPPER(s)` | String -> String | Converte para maiusculas |
+| `LOWER(s)` | String -> String | Converte para minusculas |
+| `TRIM(s)` | String -> String | Remove espacos nas bordas |
+| `LTRIM(s)` | String -> String | Remove espacos a esquerda |
+| `RTRIM(s)` | String -> String | Remove espacos a direita |
+| `LENGTH(s)` | String -> Int | Tamanho da string |
+| `SUBSTRING(s, start, len)` | String, Int, Int -> String | Substring |
+| `REPLACE(s, old, new)` | String, String, String -> String | Substituicao |
+| `CONCAT(a, b, ...)` | String... -> String | Concatenacao |
+| `REVERSE(s)` | String -> String | Inverte a string |
+| `SPLIT(s, delim)` | String, String -> String (JSON array) | Divide por delimitador |
+
+**Exemplos:**
+
+```nql
+-- Busca case-insensitive
+MATCH (n) WHERE UPPER(n.title) = "NIETZSCHE" RETURN n
+
+-- Manipulacao de strings no RETURN
+MATCH (n)
+RETURN n.title, LENGTH(n.title) AS len, REVERSE(n.title) AS rev
+LIMIT 10
+
+-- Substring
+MATCH (n)
+RETURN SUBSTRING(n.title, 0, 5) AS prefix
+LIMIT 10
+
+-- Replace
+MATCH (n)
+RETURN REPLACE(n.title, "old", "new") AS updated
+LIMIT 10
+
+-- Concat
+MATCH (n)
+RETURN CONCAT(n.node_type, ": ", n.title) AS full_label
+LIMIT 10
+```
+
+### 7.2 Math
+
+| Funcao | Assinatura | Descricao |
+|---|---|---|
+| `ABS(x)` | Float -> Float | Valor absoluto |
+| `CEIL(x)` | Float -> Float | Arredondamento para cima |
+| `FLOOR(x)` | Float -> Float | Arredondamento para baixo |
+| `ROUND(x)` | Float -> Float | Arredondamento |
+| `SQRT(x)` | Float -> Float | Raiz quadrada |
+| `LOG(x)` | Float -> Float | Logaritmo natural |
+| `LOG10(x)` | Float -> Float | Logaritmo base 10 |
+| `POW(base, exp)` | Float, Float -> Float | Potencia |
+| `SIGN(x)` | Float -> Float | Sinal (-1, 0, 1) |
+| `MOD(a, b)` | Float, Float -> Float | Modulo (resto) |
+
+**Exemplos:**
+
+```nql
+-- Distancia absoluta de um alvo
+MATCH (n)
+RETURN n, ABS(n.energy - 0.5) AS dist_from_half
+ORDER BY dist_from_half ASC LIMIT 10
+
+-- Arredondamento
+MATCH (n)
+RETURN ROUND(n.depth) AS rounded_depth, CEIL(n.energy * 10) AS energy_decile
+
+-- Raiz quadrada e potencia
+MATCH (n) WHERE SQRT(n.energy) > 0.7 RETURN n
+MATCH (n) RETURN POW(n.energy, 2) AS energy_sq
+```
+
+### 7.3 Cast
+
+| Funcao | Assinatura | Descricao |
+|---|---|---|
+| `TO_INT(x)` | any -> Int | Converte para inteiro |
+| `TO_FLOAT(x)` | any -> Float | Converte para float |
+| `TO_STRING(x)` | any -> String | Converte para string |
+| `TO_BOOL(x)` | any -> Bool | Converte para booleano |
+
+**Exemplos:**
+
+```nql
+-- Converter para string
+MATCH (n)
+RETURN TO_STRING(n.energy) AS energy_str
+
+-- Converter para inteiro (porcentagem)
+MATCH (n)
+RETURN TO_INT(n.energy * 100) AS energy_pct
+
+-- Converter para float
+MATCH (n)
+RETURN TO_FLOAT(n.lsystem_generation) AS gen_float
+```
+
+### 7.4 Null
+
+| Funcao | Assinatura | Descricao |
+|---|---|---|
+| `COALESCE(a, b, ...)` | any... -> any | Primeiro valor nao-null |
+
+**Exemplo:**
+
+```nql
+-- Fallback encadeado
+MATCH (n)
+RETURN COALESCE(n.title, n.name, n.id) AS label
+LIMIT 20
+```
+
+---
+
+## 8. Condicoes Avancadas (NQL 3.0)
+
+### 8.1 IS NULL / IS NOT NULL
+
+Verifica se uma propriedade e nula (nao definida no no).
+
+```nql
+-- Nos sem titulo
+MATCH (n) WHERE n.title IS NULL RETURN n LIMIT 10
+
+-- Nos com titulo definido
+MATCH (n) WHERE n.title IS NOT NULL RETURN n LIMIT 20
+
+-- Combinado com outras condicoes
+MATCH (n)
+WHERE n.energy > 0.5 AND n.expires_at IS NULL
+RETURN n
+```
+
+> **Semantica NULL:** Campos nao definidos no `content` do no sao tratados como NULL. Comparacoes com NULL seguem semantica SQL — `NULL > 0.5` retorna false.
+
+### 8.2 Regex (=~)
+
+Comparacao por expressao regular (Rust regex syntax).
+
+```nql
+-- Titulo que comeca com "neuro"
+MATCH (n) WHERE n.title =~ "^neuro.*" RETURN n LIMIT 10
+
+-- Contendo digitos
+MATCH (n) WHERE n.id =~ "\\d+" RETURN n LIMIT 10
+
+-- Case-insensitive com flag inline
+MATCH (n) WHERE n.title =~ "(?i)memory" RETURN n LIMIT 20
+```
+
+> **Motor de regex:** Usa a crate `regex` do Rust — sintaxe completa em https://docs.rs/regex. Patterns invalidos retornam false silenciosamente.
+
+### 8.3 EXISTS subquery
+
+Verifica se um padrao de grafo existe para o no atual.
+
+```nql
+-- Nos que tem pelo menos uma aresta de saida
+MATCH (n) WHERE EXISTS { (n)-[:Association]->(m) } RETURN n
+
+-- Nos sem filhos hierarquicos
+MATCH (n) WHERE NOT EXISTS { (n)-[:Hierarchical]->(child) } RETURN n
+
+-- Combinado com filtros
+MATCH (n)
+WHERE n.energy > 0.5
+  AND EXISTS { (n)-[:Association]->(m) WHERE m.energy > 0.3 }
+RETURN n
+```
+
+> **Performance:** EXISTS faz scan do grafo para cada no candidato. Use com LIMIT para evitar queries custosas.
+
+### 8.4 CASE WHEN
+
+Expressao condicional que retorna valores diferentes baseado em condicoes.
+
+```nql
+-- Classificar nos por nivel de energia
+MATCH (n)
+RETURN n,
+  CASE WHEN n.energy > 0.8 THEN "elite"
+       WHEN n.energy > 0.5 THEN "ativo"
+       WHEN n.energy > 0.2 THEN "decaindo"
+       ELSE "moribundo" END AS status
+LIMIT 20
+
+-- Em WHERE
+MATCH (n)
+WHERE CASE WHEN n.node_type = "Semantic" THEN n.energy > 0.3
+           ELSE n.energy > 0.7 END
+RETURN n
+
+-- Em ORDER BY
+MATCH (n)
+RETURN n
+ORDER BY CASE WHEN n.node_type = "Concept" THEN 0
+              WHEN n.node_type = "Semantic" THEN 1
+              ELSE 2 END ASC
+LIMIT 20
+```
+
+---
+
+## 9. Clausulas e Operadores
+
+### 9.1 WHERE
 
 Filtros booleanos sobre nos, arestas e funcoes.
 
@@ -1015,7 +1559,7 @@ WHERE n.energy > 0.3
   AND NOT n.energy < 0.1
 ```
 
-### 6.2 ORDER BY
+### 9.2 ORDER BY
 
 Ordenacao por propriedade, funcao de distancia ou funcao matematica.
 
@@ -1026,7 +1570,7 @@ ORDER BY POINCARE_DIST(n.embedding, $q) ASC
 ORDER BY SENSORY_DIST(n.latent, $q) ASC
 ```
 
-### 6.3 LIMIT / SKIP
+### 9.3 LIMIT / SKIP
 
 ```nql
 LIMIT 10           -- maximo 10 resultados
@@ -1036,7 +1580,7 @@ LIMIT 10 SKIP 20   -- paginacao: pagina 3 (20..30)
 
 > **Nota:** NQL usa `SKIP` (nao `OFFSET`). O SKIP e aplicado apos ORDER BY e antes de LIMIT.
 
-### 6.4 RETURN
+### 9.4 RETURN
 
 ```nql
 RETURN n                                           -- no completo
@@ -1046,7 +1590,7 @@ RETURN n.node_type, AVG(n.energy) AS avg_e         -- agregacao + campo
 RETURN DISTINCT n                                  -- sem duplicatas
 ```
 
-### 6.5 DISTINCT
+### 9.5 DISTINCT
 
 Remove nos duplicados por ID no resultado.
 
@@ -1055,7 +1599,7 @@ RETURN DISTINCT n
 RETURN DISTINCT n LIMIT 50
 ```
 
-### 6.6 AS (alias)
+### 9.6 AS (alias)
 
 Renomeia campos no resultado.
 
@@ -1065,7 +1609,7 @@ RETURN COUNT(*) AS total
 RETURN AVG(n.energy) AS media_energia
 ```
 
-### 6.7 IN
+### 9.7 IN
 
 Verifica se um valor pertence a uma lista.
 
@@ -1074,7 +1618,7 @@ WHERE n.energy IN (0.3, 0.5, 0.8)
 WHERE n.node_type IN ("Memory", "Concept")
 ```
 
-### 6.8 BETWEEN
+### 9.8 BETWEEN
 
 Verifica se um valor esta dentro de um intervalo (inclusivo).
 
@@ -1085,7 +1629,7 @@ WHERE n.depth BETWEEN 0.0 AND 0.5
 
 Equivale a `n.energy >= 0.3 AND n.energy <= 0.8` mas com sintaxe mais legivel.
 
-### 6.9 CONTAINS / STARTS\_WITH / ENDS\_WITH
+### 9.9 CONTAINS / STARTS\_WITH / ENDS\_WITH
 
 Operadores de busca em strings.
 
@@ -1095,7 +1639,7 @@ WHERE n.node_type STARTS_WITH "Mem"
 WHERE n.id ENDS_WITH "f00"
 ```
 
-### 6.10 AND / OR / NOT
+### 9.10 AND / OR / NOT
 
 Operadores logicos com precedencia: `NOT > AND > OR`.
 Parenteses podem alterar a precedencia.
@@ -1120,9 +1664,9 @@ WHERE (n.energy > 0.5 OR n.depth < 0.3) AND NOT n.node_type = "Pruned"
 
 ---
 
-## 7. Agregacoes
+## 10. Agregacoes
 
-### 7.1 COUNT / SUM / AVG / MIN / MAX
+### 10.1 COUNT / SUM / AVG / MIN / MAX
 
 NQL v2 suporta funcoes de agregacao completas.
 
@@ -1152,7 +1696,26 @@ RETURN COUNT(*) AS total,
        SUM(n.energy) AS soma
 ```
 
-### 7.2 GROUP BY
+### 10.2 COLLECT (NQL 3.0)
+
+Agrega valores em um array JSON. Util para coletar todos os valores de um campo por grupo.
+
+```nql
+-- Coletar energias por tipo de no
+MATCH (n)
+WHERE n.energy > 0.0
+RETURN n.node_type, COLLECT(n.energy) AS energias
+GROUP BY n.node_type
+
+-- Coletar IDs de nos de alta energia
+MATCH (n)
+WHERE n.energy > 0.7
+RETURN COLLECT(n.id) AS elite_ids
+```
+
+> **Formato de saida:** COLLECT retorna um array JSON como string: `"[0.8, 0.9, 0.7]"`.
+
+### 10.3 GROUP BY
 
 Agrupa resultados por campo ou propriedade antes de aplicar agregacoes.
 
@@ -1172,7 +1735,7 @@ GROUP BY n.node_type
 
 ---
 
-## 8. Planner
+## 11. Planner
 
 O Planner e o componente que decide como executar cada query.
 Nao ha hints manuais necessarios — o Planner escolhe automaticamente.
@@ -1231,7 +1794,7 @@ EXPLAIN MATCH (n:Memory)
 
 ---
 
-## 9. Parametros e Variaveis
+## 12. Parametros e Variaveis
 
 ### Tipos de parametros
 
@@ -1269,7 +1832,7 @@ let results = execute(&query, &storage, &adjacency, &params)?;
 
 ---
 
-## 10. Comparacao com outras linguagens
+## 13. Comparacao com outras linguagens
 
 ### NQL vs Cypher (Neo4j)
 
@@ -1281,30 +1844,51 @@ let results = execute(&query, &storage, &adjacency, &params)?;
 | GROUP BY                            | ok        | ok (v2)                   |
 | DISTINCT                            | ok        | ok (v2)                   |
 | EXPLAIN                             | ok        | ok (v2)                   |
+| OPTIONAL MATCH                      | ok        | ok (v3)                   |
+| UNION / UNION ALL                   | ok        | ok (v3)                   |
+| CASE WHEN                           | ok        | ok (v3)                   |
+| IS NULL / IS NOT NULL               | ok        | ok (v3)                   |
+| Regex (=~)                          | ok        | ok (v3)                   |
+| EXISTS subquery                     | ok        | ok (v3)                   |
+| UNWIND                              | ok        | ok (v3)                   |
+| SHORTEST\_PATH                      | ok        | ok (v3)                   |
+| COLLECT                             | ok        | ok (v3)                   |
+| Funcoes string (30+)                | ok        | ok (v3)                   |
+| Funcoes math (10+)                  | ok        | ok (v3)                   |
+| Cast (TO\_INT, etc.)                | ok        | ok (v3)                   |
+| COALESCE                            | ok        | ok (v3)                   |
 | **Distancia hiperbolica**           | --        | ok HYPERBOLIC\_DIST       |
-| **Funcoes matematicas eponymous**   | --        | ok 13 funcoes             |
+| **18 funcoes geometricas eponymous** | --       | ok (Poincare a Erdos)     |
 | **Difusao heat kernel**             | --        | ok DIFFUSE                |
 | **Dimensao de Hausdorff**           | --        | ok HAUSDORFF\_DIM()       |
 | **Curvatura de Ricci**              | --        | ok RIEMANN\_CURVATURE()   |
 | **Reconstrucao sensorial**          | --        | ok RECONSTRUCT            |
+| **MATCH ELITES**                    | --        | ok (v3)                   |
+| **MEASURE TENSION / TGC**           | --        | ok (v3)                   |
+| **FIND NEAREST (k-NN hiperbolico)** | --        | ok (v3)                   |
 
 ### NQL vs SQL
 
-| Capacidade                   | SQL                   | NQL                         |
-| ---------------------------- | --------------------- | --------------------------- |
-| Joins relacionais            | ok                    | -- (use MATCH com arestas)  |
-| Agregacoes (SUM, AVG)        | ok                    | ok (v2)                     |
-| GROUP BY                     | ok                    | ok (v2)                     |
-| BETWEEN / IN                 | ok                    | ok (v2)                     |
-| EXPLAIN                      | ok                    | ok (v2)                     |
-| Grafos                       | --                    | ok                          |
-| Vetores                      | extensao (pgvector)   | ok nativo hiperbolico       |
-| Hierarquias                  | CTE recursivo         | ok geometrico               |
-| Funcoes de curvatura/espectro | --                   | ok 13 funcoes               |
+| Capacidade                    | SQL                   | NQL                         |
+| ----------------------------- | --------------------- | --------------------------- |
+| Joins relacionais             | ok                    | -- (use MATCH com arestas)  |
+| Agregacoes (SUM, AVG)         | ok                    | ok (v2)                     |
+| GROUP BY                      | ok                    | ok (v2)                     |
+| BETWEEN / IN                  | ok                    | ok (v2)                     |
+| EXPLAIN                       | ok                    | ok (v2)                     |
+| IS NULL / IS NOT NULL         | ok                    | ok (v3)                     |
+| CASE WHEN                     | ok                    | ok (v3)                     |
+| COALESCE                      | ok                    | ok (v3)                     |
+| UNION                         | ok                    | ok (v3)                     |
+| String/Math/Cast functions    | ok                    | ok (v3, 30+ funcoes)        |
+| Grafos                        | --                    | ok                          |
+| Vetores                       | extensao (pgvector)   | ok nativo hiperbolico       |
+| Hierarquias                   | CTE recursivo         | ok geometrico               |
+| Funcoes de curvatura/espectro | --                    | ok 18 funcoes               |
 
 ---
 
-## 11. Exemplos por Dominio
+## 14. Exemplos por Dominio
 
 ### EVA-Mind — Saude e Memoria Clinica
 
@@ -1481,7 +2065,7 @@ LIMIT 10
 
 ---
 
-## 12. Erros e Diagnostico
+## 15. Erros e Diagnostico
 
 ### Erros estruturados (NQL v2)
 
@@ -1512,17 +2096,25 @@ Error: ParamTypeMismatch { name: "q", expected: "Vector", got: "other" }
 
 ---
 
-## 13. Referencia Rapida
+## 16. Referencia Rapida
 
 ### Statements
 
 | Statement                              | Descricao                               | Status        |
 | -------------------------------------- | --------------------------------------- | ------------- |
 | `MATCH (n) WHERE ... RETURN ...`       | Busca nos com filtros                   | Implementado  |
+| `OPTIONAL MATCH (a)-[:T]->(b) ...`     | Left-outer-join pattern                 | v3            |
 | `MATCH (a)-[:T]->(b) ... RETURN ...`   | Traversal de arestas                    | Implementado  |
 | `DIFFUSE FROM ... WITH t=[...] ...`    | Difusao heat kernel multi-escala        | Implementado  |
 | `RECONSTRUCT $id [MODALITY ...] ...`   | Reconstroi experiencia sensorial        | Implementado  |
 | `EXPLAIN <query>`                      | Plano de execucao                       | Implementado  |
+| `... UNION [ALL] ...`                  | Combina resultados de queries           | v3            |
+| `UNWIND expr AS alias RETURN ...`      | Expande lista em linhas                 | v3            |
+| `SHORTEST_PATH (a)-[*..n]->(b)`        | Caminho mais curto                      | v3            |
+| `MATCH ELITES LIMIT n`                 | Nos de elite (maior energia)            | v3            |
+| `MEASURE TENSION (a), (b)`             | Tensao hiperbolica entre nos            | v3            |
+| `MEASURE TGC`                          | Topological Generative Capacity         | v3            |
+| `FIND NEAREST [ns] TARGET ... LIMIT n` | k-NN hiperbolico                        | v3            |
 
 ### Operadores de distancia
 
@@ -1531,7 +2123,7 @@ Error: ParamTypeMismatch { name: "q", expected: "Vector", got: "other" }
 | `HYPERBOLIC_DIST(prop, arg)`     | 2    | Float   | Distancia geodesica na bola de Poincare             |
 | `SENSORY_DIST(prop, $param)`     | 2    | Float   | Distancia entre latents sensoriais                  |
 
-### Funcoes matematicas eponymous
+### Funcoes geometricas eponymous
 
 | Funcao                           | Args | Retorno | Matematico            | Descricao                            |
 | -------------------------------- | ---- | ------- | --------------------- | ------------------------------------ |
@@ -1549,34 +2141,64 @@ Error: ParamTypeMismatch { name: "q", expected: "Vector", got: "other" }
 | `FOURIER_COEFF(alias, k)`        | 2    | Float   | Joseph Fourier        | Coeficiente cos(k*pi*x)             |
 | `DIRICHLET_ENERGY(alias)`        | 1    | Float   | P.G.L. Dirichlet      | Energia sum(f(i)-f(j))^2            |
 
+### Funcoes cognitivas eponymous (NQL 3.0)
+
+| Funcao                           | Args | Retorno | Fisico/Matematico     | Descricao                            |
+| -------------------------------- | ---- | ------- | --------------------- | ------------------------------------ |
+| `BOLTZMANN_SURVIVAL(alias)`      | 1    | Float   | Ludwig Boltzmann      | Probabilidade de sobrevivencia       |
+| `HELMHOLTZ_GRADIENT(alias)`      | 1    | Float   | Hermann von Helmholtz | Gradiente de energia livre           |
+| `LYAPUNOV_DELTA(a, b)`           | 2    | Float   | Aleksandr Lyapunov    | Divergencia de estabilidade          |
+| `PRIGOGINE_BASIN(alias)`         | 1    | Float   | Ilya Prigogine        | Profundidade do basin dissipativo    |
+| `ERDOS_EDGE_PROB(a, b)`          | 2    | Float   | Paul Erdos            | Probabilidade de aresta (Erdos-Renyi)|
+
+### Funcoes built-in (NQL 3.0)
+
+| Funcao                                    | Categoria | Descricao                         |
+| ----------------------------------------- | --------- | --------------------------------- |
+| `UPPER/LOWER/TRIM/LTRIM/RTRIM`           | String    | Transformacao de case/espacos     |
+| `LENGTH/SUBSTRING/REPLACE`               | String    | Manipulacao de texto              |
+| `CONCAT/REVERSE/SPLIT`                   | String    | Composicao de strings             |
+| `ABS/CEIL/FLOOR/ROUND`                   | Math      | Arredondamento numerico           |
+| `SQRT/LOG/LOG10/POW`                     | Math      | Funcoes matematicas               |
+| `SIGN/MOD`                               | Math      | Sinal e modulo                    |
+| `TO_INT/TO_FLOAT/TO_STRING/TO_BOOL`     | Cast      | Conversao de tipos                |
+| `COALESCE(a, b, ...)`                    | Null      | Primeiro valor nao-null           |
+| `CASE WHEN ... THEN ... ELSE ... END`    | Condicional| Expressao condicional             |
+
 ### Agregacoes
 
-| Funcao       | Argumento        | Retorno | Descricao            |
-| ------------ | ---------------- | ------- | -------------------- |
-| `COUNT(*)`   | `*` ou prop      | Int     | Contagem             |
-| `SUM(prop)`  | propriedade      | Float   | Soma                 |
-| `AVG(prop)`  | propriedade      | Float   | Media                |
-| `MIN(prop)`  | propriedade      | Float   | Minimo               |
-| `MAX(prop)`  | propriedade      | Float   | Maximo               |
+| Funcao            | Argumento        | Retorno | Descricao               |
+| ----------------- | ---------------- | ------- | ----------------------- |
+| `COUNT(*)`        | `*` ou prop      | Int     | Contagem                |
+| `SUM(prop)`       | propriedade      | Float   | Soma                    |
+| `AVG(prop)`       | propriedade      | Float   | Media                   |
+| `MIN(prop)`       | propriedade      | Float   | Minimo                  |
+| `MAX(prop)`       | propriedade      | Float   | Maximo                  |
+| `COLLECT(prop)`   | propriedade      | String  | Array JSON de valores (v3) |
 
-### Clausulas
+### Clausulas e Operadores
 
-| Clausula                | Descricao                    |
-| ----------------------- | ---------------------------- |
-| `WHERE`                 | Filtro booleano              |
-| `ORDER BY ... ASC\|DESC` | Ordenacao                   |
-| `LIMIT n`               | Maximo de resultados         |
-| `SKIP n`                | Pular resultados (paginacao) |
-| `RETURN`                | Campos retornados            |
-| `DISTINCT`              | Deduplicacao por ID          |
-| `AS alias`              | Renomear campo retornado     |
-| `GROUP BY`              | Agrupar por campo            |
-| `IN (...)`              | Pertence a lista             |
-| `BETWEEN ... AND ...`   | Dentro do intervalo          |
-| `CONTAINS`              | Contem substring             |
-| `STARTS_WITH`           | Comeca com                   |
-| `ENDS_WITH`             | Termina com                  |
-| `AND / OR / NOT`        | Logica booleana              |
+| Clausula                | Descricao                         |
+| ----------------------- | --------------------------------- |
+| `WHERE`                 | Filtro booleano                   |
+| `ORDER BY ... ASC\|DESC` | Ordenacao                        |
+| `LIMIT n`               | Maximo de resultados              |
+| `SKIP n`                | Pular resultados (paginacao)      |
+| `RETURN`                | Campos retornados                 |
+| `DISTINCT`              | Deduplicacao por ID               |
+| `AS alias`              | Renomear campo retornado          |
+| `GROUP BY`              | Agrupar por campo                 |
+| `IN (...)`              | Pertence a lista                  |
+| `BETWEEN ... AND ...`   | Dentro do intervalo               |
+| `CONTAINS`              | Contem substring                  |
+| `STARTS_WITH`           | Comeca com                        |
+| `ENDS_WITH`             | Termina com                       |
+| `AND / OR / NOT`        | Logica booleana                   |
+| `IS NULL`               | Propriedade nao definida (v3)     |
+| `IS NOT NULL`           | Propriedade definida (v3)         |
+| `=~`                    | Regex matching (v3)               |
+| `EXISTS { ... }`        | Subquery de existencia (v3)       |
+| `CASE WHEN ... END`     | Expressao condicional (v3)        |
 
 ### Parametros DIFFUSE
 
@@ -1605,20 +2227,26 @@ NOT  >  AND  >  OR
 
 Queries suportadas:
 ```
-query = { SOI ~ (explain_query | reconstruct_query | diffuse_query | match_query) ~ EOI }
+query = { SOI ~ (explain_query | reconstruct_query | diffuse_query
+                | union_query | unwind_query | shortest_path_query
+                | match_elites_query | measure_tension_query
+                | measure_tgc_query | find_nearest_query
+                | match_query) ~ EOI }
 ```
 
 ---
 
 ## Notas finais
 
-NQL v2 e a primeira linguagem de query de banco de dados que:
+NQL v3 e a primeira linguagem de query de banco de dados que:
 
 1. **Opera nativamente em espaco hiperbolico** — nao e um plugin ou extensao
-2. **Nomeia suas funcoes em homenagem aos matematicos** que fundamentam cada operacao
+2. **Nomeia suas funcoes em homenagem a matematicos e fisicos** que fundamentam cada operacao (18 funcoes eponymous: Poincare, Klein, Minkowski, Lobachevsky, Riemann, Gauss, Chebyshev, Ramanujan, Hausdorff, Euler, Laplace, Fourier, Dirichlet, Boltzmann, Helmholtz, Lyapunov, Prigogine, Erdos)
 3. **Integra analise espectral** (Chebyshev, Fourier, Laplacian) diretamente na linguagem de query
 4. **Mede curvatura, topologia e expansao** como primitivas de primeira classe
 5. **Reconstroi experiencias sensoriais** a partir de latents comprimidos
+6. **Fecha o gap com Cypher/GQL** com OPTIONAL MATCH, UNION, CASE WHEN, IS NULL, regex, EXISTS, UNWIND, SHORTEST\_PATH, COLLECT, 30+ funcoes built-in — mantendo primitivas hiperbolicas unicas
+7. **Funcoes cognitivas fisico-nomeadas** para analise de dinamica do grafo: sobrevivencia (Boltzmann), gradiente de energia (Helmholtz), divergencia (Lyapunov), bacias dissipativas (Prigogine), probabilidade de arestas (Erdos)
 
 ```
 github.com/JoseRFJuniorLLMs/NietzscheDB

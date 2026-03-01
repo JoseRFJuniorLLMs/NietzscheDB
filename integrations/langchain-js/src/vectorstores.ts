@@ -2,21 +2,21 @@ import { VectorStore } from "@langchain/core/vectorstores";
 import { Embeddings } from "@langchain/core/embeddings";
 import { Document } from "@langchain/core/documents";
 import * as crypto from "crypto";
-import { HyperspaceClient } from "hyperspace-sdk-ts";
+import { NietzscheClient } from "nietzsche-sdk-ts";
 
-export interface HyperspaceStoreArgs {
-    client: HyperspaceClient;
+export interface NietzscheDBStoreArgs {
+    client: NietzscheClient;
     collectionName?: string;
     enableDeduplication?: boolean;
 }
 
-export class HyperspaceStore extends VectorStore {
+export class NietzscheDBStore extends VectorStore {
     declare FilterType: object;
-    private client: HyperspaceClient;
+    private client: NietzscheClient;
     private collectionName: string;
     private enableDeduplication: boolean;
 
-    constructor(embeddings: Embeddings, args: HyperspaceStoreArgs) {
+    constructor(embeddings: Embeddings, args: NietzscheDBStoreArgs) {
         super(embeddings, args);
         this.client = args.client;
         this.collectionName = args.collectionName ?? "default";
@@ -24,7 +24,7 @@ export class HyperspaceStore extends VectorStore {
     }
 
     _vectorstoreType(): string {
-        return "hyperspace";
+        return "nietzsche";
     }
 
     async addDocuments(documents: Document[]): Promise<string[]> {
@@ -118,8 +118,8 @@ export class HyperspaceStore extends VectorStore {
         texts: string[],
         metadatas: object[] | object,
         embeddings: Embeddings,
-        dbConfig: HyperspaceStoreArgs
-    ): Promise<HyperspaceStore> {
+        dbConfig: NietzscheDBStoreArgs
+    ): Promise<NietzscheDBStore> {
         const docs: Document[] = [];
         for (let i = 0; i < texts.length; i += 1) {
             const metadata = Array.isArray(metadatas) ? metadatas[i] : metadatas;
@@ -129,7 +129,7 @@ export class HyperspaceStore extends VectorStore {
             });
             docs.push(newDoc);
         }
-        const store = new HyperspaceStore(embeddings, dbConfig);
+        const store = new NietzscheDBStore(embeddings, dbConfig);
         await store.addDocuments(docs);
         return store;
     }

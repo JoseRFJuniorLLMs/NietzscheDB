@@ -1,5 +1,5 @@
 import numpy as np
-from hyperspace import HyperspaceClient
+from nietzsche_legacy import NietzscheBaseClient
 import time
 import sys
 import os
@@ -11,13 +11,13 @@ sys.path.append(os.path.join(os.getcwd(), 'sdks/python'))
 DIM = 1024
 VEC_COUNT = 1
 
-print(f"📡 Connecting to HyperspaceDB (expecting {DIM} dimensions)...")
+print(f"📡 Connecting to NietzscheDBDB (expecting {DIM} dimensions)...")
 
 try:
     # Retry connection logic
     for i in range(5):
         try:
-            client = HyperspaceClient(host="localhost:50051")
+            client = NietzscheBaseClient(host="localhost:50051")
             # Simple ping/check? just proceed to insert
             break
         except Exception as e:

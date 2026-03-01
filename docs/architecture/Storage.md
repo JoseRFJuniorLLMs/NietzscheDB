@@ -15,7 +15,7 @@ NietzscheDB utilizes RocksDB as its primary graph storage engine, organized into
 | `sensory` | Sensory latent data | NodeID | Compressed Latent |
 | `energy_idx` | Sorted Energy Index | Energy(f32) + ID | (Empty) |
 | `meta_idx` | Generic Property Index | PropValue + ID | (Empty) |
-| `lists` | Atomic lists (Redis-like) | ListKey | Vec<ValueID> |
+| `lists` | Atomic lists (NietzscheDB-like) | ListKey | Vec<ValueID> |
 | `sql_schema` | Relational schemas | TableName | Schema JSON |
 | `sql_data` | Relational records | TableName + RowID | Record JSON |
 | `cooldowns` | Code-as-Data activation | NodeID | Timestamp |

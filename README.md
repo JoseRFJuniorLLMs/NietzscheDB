@@ -117,7 +117,7 @@ NietzscheDB is a **Neuro-Symbolic** engine. It bridges the gap between neural pe
 - An autonomous evolution cycle (Zaratustra) propagates energy, captures temporal echoes, and identifies elite nodes
 - Causal relationships are identified via Minkowski intervals (ds² < 0 = timelike = causal)
 
-It is a fork of **[YARlabs/hyperspace-db](https://github.com/YARlabs/hyperspace-db)** — extended from a hyperbolic HNSW vector database into the world's first **multi-manifold graph database** with a full graph engine, query language, L-System growth, 4 non-Euclidean geometries, GPU/TPU acceleration, graph algorithms, cluster support, and an autonomous sleep/reconsolidation cycle.
+It is a fork of **[YARlabs/nietzsche-db](https://github.com/YARlabs/nietzsche-db)** — extended from a hyperbolic HNSW vector database into the world's first **multi-manifold graph database** with a full graph engine, query language, L-System growth, 4 non-Euclidean geometries, GPU/TPU acceleration, graph algorithms, cluster support, and an autonomous sleep/reconsolidation cycle.
 
 ---
 
@@ -165,17 +165,17 @@ NietzscheDB is built as a **Rust nightly workspace** with 41 crates in two layer
 │  Observe:    nietzsche-metrics                                               │
 │  Storage:    nietzsche-table    nietzsche-media      nietzsche-kafka          │
 ├──────────────────────────────────────────────────────────────────────────────┤
-│                     HyperspaceDB Layer (9 crates — fork base)                │
+│                     NietzscheDB Layer (9 crates — fork base)                │
 │                                                                              │
-│  hyperspace-core   hyperspace-index   hyperspace-store                       │
-│  hyperspace-server hyperspace-proto   hyperspace-cli                         │
-│  hyperspace-embed  hyperspace-wasm    hyperspace-sdk                         │
+│  nietzsche-core   nietzsche-hnsw   nietzsche-vecstore                       │
+│  nietzsche-baseserver nietzsche-proto   nietzsche-cli                         │
+│  nietzsche-embed  nietzsche-wasm    nietzsche-rsdk                         │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### HyperspaceDB Foundation (fork base)
+### NietzscheDB Foundation (fork base)
 
-The storage and indexing foundation, inheriting all of HyperspaceDB v2.0:
+The storage and indexing foundation, inheriting all of NietzscheDB v2.0:
 
 - **Poincare Ball HNSW** — native multi-manifold nearest-neighbor index. Not re-ranking, not post-processing: the graph itself navigates in non-Euclidean geometry (Poincaré ball with Klein/Riemann/Minkowski projections at query time).
 - **mmap Vector Store** — memory-mapped, append-only segments (`chunk_N.hyp`) with 1-bit to 8-bit quantization (up to 64x compression).
@@ -185,8 +185,8 @@ The storage and indexing foundation, inheriting all of HyperspaceDB v2.0:
 - **SIMD Acceleration** — Portable SIMD (`std::simd`) for 4-8x distance computation speedup on AVX2/Neon.
 - **Multi-tenancy** — namespace isolation per `user_id`, per-user quota and billing accounting.
 - **9,087 QPS** insert performance verified under stress test (90x above original target).
-- **WASM** — browser-compatible build via `hyperspace-wasm` with IndexedDB storage.
-- **Universal Embedder** — `hyperspace-embed` with local ONNX (`ort`) + remote API support.
+- **WASM** — browser-compatible build via `nietzsche-wasm` with IndexedDB storage.
+- **Universal Embedder** — `nietzsche-embed` with local ONNX (`ort`) + remote API support.
 
 ### NietzscheDB Extensions
 
@@ -200,7 +200,7 @@ Thirty-two new crates built on top of the foundation:
 - `AdjacencyIndex` using `DashMap` for lock-free concurrent access
 - `GraphStorage` over RocksDB with **15 column families**: `nodes`, `embeddings`, `edges`, `adj_out`, `adj_in`, `meta`, `sensory`, `energy_idx`, `meta_idx`, `lists`, `sql_schema`, `sql_data`, `cooldowns`, `dsi_id`, `dsi_semantic`
 - Own WAL for graph operations, separate from the vector WAL
-- `NietzscheDB` dual-write: every insert goes to both RocksDB (graph) and HyperspaceDB (embedding)
+- `NietzscheDB` dual-write: every insert goes to both RocksDB (graph) and NietzscheDB (embedding)
 - **Traversal engine** (`traversal.rs`): energy-gated BFS (reads only NodeMeta — ~100 bytes per hop), Poincare-distance Dijkstra, shortest-path reconstruction, energy-biased `DiffusionWalk` with seeded RNG
 - **EmbeddedVectorStore** abstraction: CPU (HnswIndex) / GPU (GpuVectorStore) / TPU (TpuVectorStore) / Mock — selected at runtime via `NIETZSCHE_VECTOR_BACKEND`. Default is Embedded (real HNSW); Mock requires explicit opt-in
 - **Multi-Metric HNSW**: Cosine, Euclidean, Poincare, and DotProduct distance metrics per collection. Factory routing ensures correct metric type at the HNSW graph topology level
@@ -213,7 +213,7 @@ Thirty-two new crates built on top of the foundation:
 - **Metadata secondary indexes** (`CF_META_IDX`): arbitrary field indexing with FNV-1a + sortable value encoding for range scans
 - **ListStore** (`CF_LISTS`): per-node ordered lists with RPUSH/LRANGE/LLEN semantics, atomic sequence counters
 - **TTL / expires_at** enforcement: background reaper scans expired nodes and phantomizes them (topology-preserving). CREATE with `ttl` property auto-computes `expires_at`
-- **Redis-compatible cache layer**: `CacheSet`/`CacheGet`/`CacheDel` RPCs using CF_META with "cache:" prefix, TTL as 8-byte expiry timestamp, lazy-delete on expired reads
+- **NietzscheDB-compatible cache layer**: `CacheSet`/`CacheGet`/`CacheDel` RPCs using CF_META with "cache:" prefix, TTL as 8-byte expiry timestamp, lazy-delete on expired reads
 - **Per-collection `tokio::sync::RwLock` concurrency**: `CollectionManager` with `DashMap` + `Arc<RwLock<NietzscheDB>>` per collection. Reads proceed concurrently; writes block only the affected collection
 - **Full-text search + hybrid** (`fulltext.rs`): inverted index with BM25 scoring, plus RRF fusion with KNN vector search
 - **Schrödinger Edges** (`schrodinger.rs`): probabilistic edges with Markov transition probabilities — edges are "superpositions" that collapse at MATCH time. Context-dependent probability boost, per-tick decay, reinforcement learning. Batch collapse/decay operations
@@ -234,7 +234,7 @@ Four non-Euclidean geometry modules sharing a single Poincaré storage layer:
 Invariants enforced: Poincaré ‖x‖ < 1.0, Klein ‖x‖ < 1.0, Sphere ‖x‖ = 1.0. Cascaded roundtrip error < 1e-4 after 10 projections. Includes criterion benchmarks.
 
 #### `nietzsche-query` — NQL Query Language
-Nietzsche Query Language — a declarative query language with first-class multi-manifold primitives. Parser built with `pest` (PEG grammar). Supports arithmetic SET expressions (`n.count = n.count + 1`), edge alias property access (`-[r:TYPE]->` with `r.weight` in WHERE/ORDER BY), CREATE with TTL, DETACH DELETE, and eval_field fallback to `node.content`/`node.metadata` for dynamic properties. 113+ unit + integration tests.
+Nietzsche Query Language — a declarative query language with first-class multi-manifold primitives. Parser built with `pest` (PEG grammar). **NQL 3.0** brings OPTIONAL MATCH, UNION, CASE WHEN, IS NULL/IS NOT NULL, regex matching, EXISTS subqueries, UNWIND, SHORTEST_PATH, COLLECT, 30+ string/math/cast/null built-in functions, and 5 new physicist-named cognitive functions — closing the gap with Cypher/GQL while preserving NQL's unique hyperbolic geometry primitives. Supports arithmetic SET expressions (`n.count = n.count + 1`), edge alias property access (`-[r:TYPE]->` with `r.weight` in WHERE/ORDER BY), CREATE with TTL, DETACH DELETE, and eval_field fallback to `node.content`/`node.metadata` for dynamic properties. 113+ unit + integration tests.
 
 **[Full NQL Reference: docs/NQL.md](docs/NQL.md)**
 
@@ -243,6 +243,7 @@ Query types:
 | Type | Description |
 |---|---|
 | `MATCH` | Pattern matching on nodes/paths with geometric conditions |
+| `OPTIONAL MATCH` | Left-outer-join style pattern — returns NULL for non-matching bindings |
 | `CREATE` | Insert new nodes with labels, properties, and optional TTL |
 | `MATCH … SET` | Update matched nodes' properties (supports arithmetic: `n.count = n.count + 1`) |
 | `MATCH … DELETE` | Delete matched nodes |
@@ -251,6 +252,13 @@ Query types:
 | `DIFFUSE` | Multi-scale heat-kernel activation propagation |
 | `RECONSTRUCT` | Decode sensory data from latent vector |
 | `EXPLAIN` | Return execution plan with cost estimates |
+| `UNION / UNION ALL` | Combine results from multiple queries (with/without dedup) |
+| `UNWIND` | Expand a list expression into individual rows |
+| `SHORTEST_PATH` | Find shortest path between two node patterns |
+| `MATCH ELITES` | Return top-energy elite nodes from the graph |
+| `MEASURE TENSION` | Compute hyperbolic tension between two node patterns |
+| `MEASURE TGC` | Compute Topological Generative Capacity of the graph |
+| `FIND NEAREST` | K-NN search in hyperbolic space with optional namespace |
 | `DREAM FROM` | Speculative graph exploration via heat-kernel diffusion with noise |
 | `APPLY/REJECT DREAM` | Accept or discard dream simulation results |
 | `TRANSLATE` | Cross-modal projection (Synesthesia) via Poincare ball log/exp map |
@@ -375,6 +383,78 @@ RETURN n ORDER BY n.arousal DESC LIMIT 10
 MATCH (n) WHERE n.id = $id
 SET n.valence = 0.8, n.arousal = 0.9
 RETURN n
+
+-- ── NQL 3.0 Features ────────────────────────────────
+
+-- OPTIONAL MATCH (left-outer-join)
+MATCH (a:Person)
+OPTIONAL MATCH (a)-[:KNOWS]->(b)
+RETURN a, b
+
+-- UNION — combine two queries
+MATCH (n:Semantic) WHERE n.energy > 0.8 RETURN n LIMIT 5
+UNION
+MATCH (n:Episodic) WHERE n.energy > 0.9 RETURN n LIMIT 5
+
+-- IS NULL / IS NOT NULL
+MATCH (n) WHERE n.title IS NOT NULL RETURN n LIMIT 20
+MATCH (n) WHERE n.expires_at IS NULL RETURN n LIMIT 10
+
+-- Regex matching
+MATCH (n) WHERE n.title =~ "^neuro.*" RETURN n LIMIT 10
+
+-- EXISTS subquery
+MATCH (n) WHERE EXISTS { (n)-[:Association]->(m) } RETURN n
+
+-- CASE WHEN expression
+MATCH (n) RETURN n,
+  CASE WHEN n.energy > 0.8 THEN "elite"
+       WHEN n.energy > 0.5 THEN "active"
+       ELSE "decay" END AS status
+LIMIT 20
+
+-- COLLECT aggregation (returns JSON array)
+MATCH (n) RETURN n.node_type, COLLECT(n.energy) AS energies
+GROUP BY n.node_type
+
+-- UNWIND list into rows
+UNWIND [1, 2, 3] AS x RETURN x
+
+-- SHORTEST_PATH between two nodes
+SHORTEST_PATH (a:Concept)-[*..5]->(b:Memory) LIMIT 1
+
+-- MATCH ELITES — top-energy nodes
+MATCH ELITES LIMIT 10
+
+-- MEASURE TENSION between node types
+MEASURE TENSION (a:Concept), (b:Memory)
+
+-- MEASURE TGC — Topological Generative Capacity
+MEASURE TGC
+
+-- FIND NEAREST — hyperbolic k-NN
+FIND NEAREST "concept" TARGET $query_vec LIMIT 5
+
+-- String functions
+MATCH (n) WHERE UPPER(n.title) = "NIETZSCHE" RETURN n
+MATCH (n) RETURN n.title, LENGTH(n.title) AS len, REVERSE(n.title) AS rev LIMIT 10
+
+-- Math functions
+MATCH (n) RETURN n, ABS(n.energy - 0.5) AS dist, ROUND(n.depth, 2) AS rounded
+MATCH (n) WHERE SQRT(n.energy) > 0.7 RETURN n
+
+-- Cast functions
+MATCH (n) RETURN TO_STRING(n.energy) AS e_str, TO_INT(n.depth * 100) AS d_pct
+
+-- COALESCE (first non-null)
+MATCH (n) RETURN COALESCE(n.title, n.name, "untitled") AS label
+
+-- Physicist-named cognitive functions
+MATCH (n) WHERE BOLTZMANN_SURVIVAL(n) > 0.5 RETURN n
+MATCH (n) WHERE HELMHOLTZ_GRADIENT(n) > 0.1 RETURN n
+MATCH (a), (b) WHERE LYAPUNOV_DELTA(a, b) < 0.3 RETURN a, b
+MATCH (n) WHERE PRIGOGINE_BASIN(n) > 0.5 RETURN n
+MATCH (a), (b) RETURN ERDOS_EDGE_PROB(a, b) AS prob
 ```
 
 **Built-in geometric functions:**
@@ -398,6 +478,21 @@ RETURN n
 | `NOW()` | — | Current Unix timestamp (seconds, f64) |
 | `EPOCH_MS()` | — | Current Unix epoch (milliseconds, f64) |
 | `INTERVAL("1h")` | — | Duration to seconds (s/m/h/d/w units) |
+| `BOLTZMANN_SURVIVAL(n)` | Ludwig Boltzmann | Survival probability via energy statistics |
+| `HELMHOLTZ_GRADIENT(n)` | Hermann von Helmholtz | Free-energy gradient magnitude |
+| `LYAPUNOV_DELTA(a, b)` | Aleksandr Lyapunov | Stability divergence between two nodes |
+| `PRIGOGINE_BASIN(n)` | Ilya Prigogine | Dissipative structure basin depth |
+| `ERDOS_EDGE_PROB(a, b)` | Paul Erdős | Edge formation probability (Erdős–Rényi) |
+| `COALESCE(a, b, ...)` | — | First non-null value |
+| `UPPER/LOWER/TRIM(s)` | — | String case/whitespace functions |
+| `LENGTH/SUBSTRING/REPLACE` | — | String manipulation |
+| `CONCAT/REVERSE/SPLIT` | — | String composition |
+| `ABS/CEIL/FLOOR/ROUND` | — | Numeric rounding |
+| `SQRT/LOG/LOG10/POW` | — | Mathematical functions |
+| `SIGN/MOD` | — | Sign and modulus |
+| `TO_INT/TO_FLOAT/TO_STRING/TO_BOOL` | — | Type casting |
+| `CASE WHEN ... THEN ... END` | — | Conditional expression |
+| `COLLECT(expr)` | — | Aggregate into JSON array |
 
 #### `nietzsche-lsystem` — Fractal Growth Engine
 The knowledge graph is not static — it grows by **L-System production rules**:
@@ -748,7 +843,7 @@ service NietzscheDB {
   rpc ListLRange(ListRangeRequest)        returns (ListRangeResponse);
   rpc ListLen(ListLenRequest)             returns (ListLenResponse);
 
-  // ── Cache (Redis-compatible) ────────────────────────────────
+  // ── Cache (NietzscheDB-compatible) ────────────────────────────────
   rpc CacheSet(CacheSetRequest)           returns (StatusResponse);
   rpc CacheGet(CacheGetRequest)           returns (CacheGetResponse);
   rpc CacheDel(CacheDelRequest)           returns (StatusResponse);
@@ -997,6 +1092,23 @@ E0.8  Table Store (SQLite)                 ✅ COMPLETE  (7 column types, 15 tes
 E0.9  Media/Blob Store (OpenDAL)           ✅ COMPLETE  (5 media types, 8 tests)
 E1.0  Go SDK batch RPCs                    ✅ COMPLETE  (42/42 RPCs)
 
+── NQL 3.0 Sprint (2026-03-01) ─────────────────────
+NQL-8  OPTIONAL MATCH (left-outer-join)    ✅ COMPLETE
+NQL-9  UNION / UNION ALL                   ✅ COMPLETE
+NQL-10 CASE WHEN expression               ✅ COMPLETE
+NQL-11 IS NULL / IS NOT NULL               ✅ COMPLETE
+NQL-12 Regex matching (=~)                 ✅ COMPLETE
+NQL-13 EXISTS subquery                     ✅ COMPLETE
+NQL-14 UNWIND                              ✅ COMPLETE
+NQL-15 SHORTEST_PATH                       ✅ COMPLETE
+NQL-16 MATCH ELITES                        ✅ COMPLETE
+NQL-17 MEASURE TENSION / MEASURE TGC       ✅ COMPLETE
+NQL-18 FIND NEAREST                        ✅ COMPLETE
+NQL-19 COLLECT aggregation                 ✅ COMPLETE
+NQL-20 30+ built-in functions              ✅ COMPLETE  (string: 11, math: 10, cast: 4, null: 1)
+NQL-21 5 physicist cognitive functions      ✅ COMPLETE  (Boltzmann, Helmholtz, Lyapunov, Prigogine, Erdős)
+NQL-22 Null-safe comparison semantics      ✅ COMPLETE  (SQL-like NULL propagation)
+
 ── EVA Compatibility Sprint (2026-02-21) ──────────
 A.1   Multi-Metric HNSW fix + DotProduct   ✅ COMPLETE  (Euclidean bug fixed, DotProduct added)
 A.2   EmbeddedVectorStore as default       ✅ COMPLETE  (Mock → Embedded, real HNSW by default)
@@ -1015,7 +1127,7 @@ NQL-4 CREATE with TTL support               ✅ COMPLETE  (ttl property → expi
 NQL-5 DETACH DELETE                         ✅ COMPLETE  (node + all incident edges)
 NQL-6 Edge property access in WHERE/RETURN  ✅ COMPLETE  (edge alias -[r:TYPE]-> with r.field)
 NQL-7 ORDER BY on edge properties           ✅ COMPLETE  (r.weight, r.created_at, etc.)
-Ph.C  Redis-compatible cache RPCs           ✅ COMPLETE  (CacheSet/Get/Del + ReapExpired)
+Ph.C  NietzscheDB-compatible cache RPCs           ✅ COMPLETE  (CacheSet/Get/Del + ReapExpired)
 Ph.F  Sensory RPCs (fully connected)        ✅ COMPLETE  (insert/get/reconstruct/degrade)
 Ph.G  Per-collection RwLock concurrency     ✅ COMPLETE  (DashMap + tokio::sync::RwLock)
 
@@ -1081,7 +1193,7 @@ Individual suites:
 | Riemannian ops | `cargo bench -p nietzsche-sleep` |
 | Chebyshev / diffusion | `cargo bench -p nietzsche-pregel` |
 | Hyperbolic math | `cargo bench -p nietzsche-hyp-ops` |
-| Distance metrics | `cargo bench -p hyperspace-core` |
+| Distance metrics | `cargo bench -p nietzsche-core` |
 
 ### Representative results (ring graph, Apple M2)
 
@@ -1129,13 +1241,13 @@ Three telemetry profiles: `D_foam` (void-born orphans), `E_anchored` (elite-pare
 | `nietzsche-agency` | 155 | Event bus, 8 daemons, observer, reactor, desire, identity, counterfactual, dialectic, code-as-data |
 | `nietzsche-agency/forgetting` | 72 | Vitality, judgment, bounds, Ricci, causal immunity, ledger, TGC, elite drift, anti-gaming, stability, variance, friction, Zaratustra cycle |
 | `nietzsche-hyp-ops` | 40+ | All 4 geometries, manifold roundtrips, synthesis, Minkowski causality |
-| `nietzsche-query` | 113+ | NQL parser, executor, all statement types |
+| `nietzsche-query` | 113+ | NQL parser, executor, all statement types (NQL 3.0: OPTIONAL MATCH, UNION, CASE WHEN, IS NULL, regex, EXISTS, 30+ functions) |
 | `nietzsche-graph` | 50+ | Storage, traversal, merge, fulltext, schrodinger |
 | **Total workspace** | 800+ | All 41 crates with unit + integration tests |
 
 ### Cross-Database Benchmark Suite (`benchmarks/`)
 
-Modular plugin-based runner comparing NietzscheDB against Milvus, Qdrant, and ChromaDB:
+Modular plugin-based runner comparing NietzscheDB against Milvus, NietzscheDB, and ChromaDB:
 - Throughput (Insert/Search QPS), Latency (P50/P95/P99)
 - Recall@10, MRR@10, NDCG@10
 - System Recall@10 (vs exact brute-force)
@@ -1164,7 +1276,7 @@ services:
     volumes:
       - nietzsche_data:/data/nietzsche
 
-  hyperspace:
+  nietzsche:
     build:
       context: .
       dockerfile: deploy/docker/Dockerfile
@@ -1176,7 +1288,7 @@ services:
     depends_on:
       - nietzsche
     volumes:
-      - hyperspace_data:/data/hyperspace
+      - nietzsche_data:/data/nietzsche
 
   prometheus:
     image: prom/prometheus
@@ -1435,18 +1547,18 @@ NietzscheDB/
 ├── Cargo.toml                ← unified Rust workspace (41 crates)
 ├── rust-toolchain.toml       ← nightly channel
 ├── Dockerfile                ← multi-stage production image
-├── docker-compose.yaml       ← nietzsche + hyperspace + prometheus + grafana
+├── docker-compose.yaml       ← nietzsche + nietzsche + prometheus + grafana
 ├── .github/workflows/        ← CI + deploy pipelines
 ├── crates/
-│   ├── hyperspace-core/      ← Poincare HNSW, distance metrics, SIMD
-│   ├── hyperspace-store/     ← mmap segments, WAL v3
-│   ├── hyperspace-index/     ← HNSW graph, ArcSwap lock-free updates
-│   ├── hyperspace-server/    ← gRPC server, multi-tenancy, replication
-│   ├── hyperspace-proto/     ← protobuf definitions
-│   ├── hyperspace-cli/       ← CLI tools (ratatui TUI)
-│   ├── hyperspace-embed/     ← ONNX + remote embedding
-│   ├── hyperspace-wasm/      ← WASM / browser / IndexedDB
-│   ├── hyperspace-sdk/       ← HyperspaceDB Rust client
+│   ├── nietzsche-core/      ← Poincare HNSW, distance metrics, SIMD
+│   ├── nietzsche-vecstore/     ← mmap segments, WAL v3
+│   ├── nietzsche-hnsw/     ← HNSW graph, ArcSwap lock-free updates
+│   ├── nietzsche-baseserver/    ← gRPC server, multi-tenancy, replication
+│   ├── nietzsche-proto/     ← protobuf definitions
+│   ├── nietzsche-cli/       ← CLI tools (ratatui TUI)
+│   ├── nietzsche-embed/     ← ONNX + remote embedding
+│   ├── nietzsche-wasm/      ← WASM / browser / IndexedDB
+│   ├── nietzsche-rsdk/       ← NietzscheDB Rust client
 │   ├── nietzsche-graph/      ← multi-manifold graph engine     [Phases 1-3]
 │   ├── nietzsche-hyp-ops/    ← multi-manifold geometry (Poincaré·Klein·Riemann·Minkowski)
 │   ├── nietzsche-query/      ← NQL parser + executor           [Phase 4]
@@ -1526,7 +1638,7 @@ inherits = "release"
 
 NietzscheDB closes gaps that no existing database fills. It is built on the realization that **Intelligence is not flat**.
 
-- **Multi-Manifold Native**: While every other vector database (Qdrant, Milvus, Pinecone) uses Euclidean or Cosine distance as a flat metric, NietzscheDB operates across 4 non-Euclidean geometries: Poincaré (Hierarchy), Klein (Straight-line Logic), Riemann (Synthesis), and Minkowski (Causality).
+- **Multi-Manifold Native**: While every other vector database (NietzscheDB, Milvus, Pinecone) uses Euclidean or Cosine distance as a flat metric, NietzscheDB operates across 4 non-Euclidean geometries: Poincaré (Hierarchy), Klein (Straight-line Logic), Riemann (Synthesis), and Minkowski (Causality).
 - **The Visual Audit Gap**: Traditional databases are black boxes. NietzscheDB integrates **Perspektive.js** as its Visual Cortex, allowing humans to physically see the database manifolds and audit decision-making via the Causal Scrubber.
 - **Autonomous Metabolism**: NietzscheDB implements a formal **Sleep/Reconsolidation Cycle**. It doesn't just store data; it organizes it during downtime using Riemannian optimization and Hausdorff identity verification.
 - **Dialectical Reasoning**: The built-in **Hegelian Dialectic Engine** allows the database to resolve contradictions by synthesizing opposites into abstract "synthesis" nodes.
@@ -1587,7 +1699,7 @@ Health Metrics → PPO Policy (ONNX) → Growth Strategy → Evolution → Param
 
 ```bash
 origin    https://github.com/JoseRFJuniorLLMs/NietzscheDB.git   # NietzscheDB Manifesto repo
-upstream  https://github.com/YARlabs/hyperspace-db.git          # Upstream HNSW foundation
+upstream  https://github.com/YARlabs/nietzsche-db.git          # Upstream HNSW foundation
 ```
 
 ---

@@ -22,8 +22,8 @@ keywords = [
 ]
 
 [project.optional-dependencies]
-# Legacy HyperspaceDB client (for backward compatibility)
-hyperspace = ["numpy>=1.20.0"]
+# Legacy base API client (for backward compatibility)
+legacy = ["numpy>=1.20.0"]
 # Embedder integrations
 openai = ["openai>=1.0.0"]
 langchain = ["langchain-core>=0.1.0"]
@@ -31,4 +31,4 @@ dev = ["grpcio-tools>=1.50.0", "pytest>=7.0.0"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["nietzschedb*", "hyperspace*"]
+include = ["nietzschedb*", "nietzsche_legacy*"]

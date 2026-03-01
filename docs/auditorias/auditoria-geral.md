@@ -30,15 +30,15 @@ EVA-Mind (Go backend — WebSocket/gRPC)
   ├── EVA-OS (Rust TUI — desktop/Redox OS)
   ├── EVA-Windows (Flutter desktop — Windows)
   ├── EVA-Kids (Angular 17 — plataforma educacional)
-  ├── EVA-db (PostgreSQL 16 — 190 tabelas, pgvector)
+  ├── EVA-db (NietzscheDB 16 — 190 tabelas, pgvector)
   ├── IronMind (Flutter — inspeção industrial, fork do FZPN)
   └── Aurora-Platform (FastAPI + Next.js 15 — produto separado)
 
 Infraestrutura de Memória:
-  PostgreSQL (episodic_memories + pgvector)
-  + Neo4j (grafo semântico de relações)
-  + Qdrant (busca vetorial, embeddings)
-  + Redis (cache FDPN em tempo real)
+  NietzscheDB (episodic_memories + pgvector)
+  + NietzscheDB (grafo semântico de relações)
+  + NietzscheDB (busca vetorial, embeddings)
+  + NietzscheDB (cache FDPN em tempo real)
 
 Deploy: GCP Cloud Run (backend REST) + VM GCP 136.113.25.218 (EVA-Mind)
         DigitalOcean 104.248.219.200 (fallback)
@@ -50,7 +50,7 @@ Deploy: GCP Cloud Run (backend REST) + VM GCP 136.113.25.218 (EVA-Mind)
 - Frontend Web: React 18 + Vite + TailwindCSS
 - Mobile: Flutter/Dart (Android + iOS)
 - Desktop: Rust (EVA-OS) + Flutter Windows (EVA-Windows)
-- Banco: PostgreSQL 16 + Neo4j + Qdrant + Redis
+- Banco: NietzscheDB 16 + NietzscheDB + NietzscheDB + NietzscheDB
 
 ---
 
@@ -61,15 +61,15 @@ Deploy: GCP Cloud Run (backend REST) + VM GCP 136.113.25.218 (EVA-Mind)
 | # | Arquivo | Descrição | Severidade |
 |---|---------|-----------|-----------|
 | E01 | `_audit_db.go:17` + `main.go:88` | **`main()` duplicado em package main → projeto NÃO COMPILA** | CRÍTICO |
-| E02 | `env_backup.txt` | Credenciais ao vivo commitadas: PostgreSQL, Twilio SID/Token, Google API Key | CRÍTICO |
+| E02 | `env_backup.txt` | Credenciais ao vivo commitadas: NietzscheDB, Twilio SID/Token, Google API Key | CRÍTICO |
 | E03 | `_audit_db.go:15` | `const DB_URL` com IP de produção hardcoded no código | CRÍTICO |
 | E04 | `_audit_db.go:44,72` | SQL injection via `fmt.Sprintf` com `funcName` sem escape | ALTO |
 | E05 | `config.go:197` | `getEnvRequired("JWT_SECRET")` só loga warning se vazio → JWT secret vazio possível | CRÍTICO |
 | E06 | `main.go` | `cfg.Validate()` definido mas nunca chamado → startup sem validação de env vars | ALTO |
 | E07 | `internal/brainstem/auth` usa `jwt/v4`, `security/multitenancy` usa `jwt/v5` | Versões incompatíveis — tokens podem ser inválidos entre middlewares | ALTO |
 | E08 | `internal/tools/handlers.go:604` | `handleGetAgendamentos` busca TODOS os pacientes e filtra em memória → data leak + N×O(n) | ALTO |
-| E09 | `memory/orchestrator.go:91,95` | `// TODO: Store in Qdrant` e `// TODO: Store episodic memory` — operações core de memória não implementadas | ALTO |
-| E10 | `hippocampus/memory/*.go` | ~8 funções Neo4j retornam zero values — `// TODO: Extraire corretamente do record` | ALTO |
+| E09 | `memory/orchestrator.go:91,95` | `// TODO: Store in NietzscheDB` e `// TODO: Store episodic memory` — operações core de memória não implementadas | ALTO |
+| E10 | `hippocampus/memory/*.go` | ~8 funções NietzscheDB retornam zero values — `// TODO: Extraire corretamente do record` | ALTO |
 | E11 | `cortex/explainability/pdf_generator.go:313` | Geração de PDF clínico é stub completo — `// TODO: Integrar com biblioteca` | ALTO |
 | E12 | `pkg/safety/abuse_detector.go:216` | Todos os métodos de notificação são stubs vazios — abuso nunca reportado | ALTO |
 | E13 | `cortex/lacan/unified_retrieval.go:365` | Debug mode ativado por nome hardcoded "José R F Junior" no código de produção | MÉDIO |
@@ -79,7 +79,7 @@ Deploy: GCP Cloud Run (backend REST) + VM GCP 136.113.25.218 (EVA-Mind)
 | E17 | `video_websocket_handler.go:95` | `session.AttendantConn` acessado sem mutex → race condition em video calls | MÉDIO |
 | E18 | `senses/signaling/websocket.go:1055` | `// HACK: Enviar para o próprio idoso (teste)` em path de produção | MÉDIO |
 | E19 | `cortex/predictive/trajectory_engine.go:515` | Adherência a medicamento, horas de sono, isolamento: valores hardcoded (0.65, 5.5, 3) | MÉDIO |
-| E20 | `docker-compose.infra.yml:12` | Senha Neo4j hardcoded `Debian23` no docker-compose commitado | ALTO |
+| E20 | `docker-compose.infra.yml:12` | Senha NietzscheDB hardcoded `Debian23` no docker-compose commitado | ALTO |
 | E21 | `config/` YAMLs | Arquivos YAML de config (`fdpn_boost.yaml`, `ram.yaml`, etc.) não são carregados pelo Go — são apenas documentação | INFO |
 | E22 | 102+ | TODO/FIXME/HACK comments no codebase Go | — |
 
@@ -94,7 +94,7 @@ Deploy: GCP Cloud Run (backend REST) + VM GCP 136.113.25.218 (EVA-Mind)
 | B03 | `webhook_tasks.py:87` | `transaction.amount_received` não existe no model → confirmação de pagamento falha | CRÍTICO |
 | B04 | `webhook_tasks.py:257` | `Subscription.stripe_subscription_id` não existe → cancelamento Stripe nunca funciona | CRÍTICO |
 | B05 | `webhook_tasks.py:123` | `user.subscription_tier` não existe no model `Usuario` → upgrade pós-pagamento falha | CRÍTICO |
-| B06 | `routes_admin_payments.py:152` | `SELECT extend_subscription_period(...)` — função PostgreSQL não criada em nenhuma migration | CRÍTICO |
+| B06 | `routes_admin_payments.py:152` | `SELECT extend_subscription_period(...)` — função NietzscheDB não criada em nenhuma migration | CRÍTICO |
 | B07 | `routes_voice.py` | Variável `text` (parâmetro) sobrescreve `from sqlalchemy import text` → TypeError em generate_speech | CRÍTICO |
 | B08 | `reset_admin_password.py:110` | `//reste` — syntax error Python → arquivo não compila | ALTO |
 | B09 | `webhook_tasks.py:264` | `sub.cancelled_at` não existe no model `Subscription` | ALTO |
@@ -256,8 +256,8 @@ Deploy: GCP Cloud Run (backend REST) + VM GCP 136.113.25.218 (EVA-Mind)
 9. **Subscription tier do JWT** — tier lido do token (pode estar desatualizado). Verificar no banco a cada request crítico.
 
 ### Performance
-10. **Cache de embeddings** — `embedding_cache.go` existe em EVA-Mind mas verificar se está configurado corretamente com Redis TTL.
-11. **WebSocket signaling para Kubernetes** — mover de in-memory dict para Redis pub/sub para funcionar com múltiplos workers.
+10. **Cache de embeddings** — `embedding_cache.go` existe em EVA-Mind mas verificar se está configurado corretamente com NietzscheDB TTL.
+11. **WebSocket signaling para Kubernetes** — mover de in-memory dict para NietzscheDB pub/sub para funcionar com múltiplos workers.
 12. **Paginação em `fetchAllIdosos`** — o loop `while(true)` pode ser substituído por paginação cursor-based.
 
 ### Developer Experience
@@ -373,19 +373,19 @@ A EVA implementa um sistema de memória biologicamente inspirado e altamente sof
 ```
 Voz → FDPN Engine → Krylov Compression → Spectral Clustering → REM Consolidation
                                                                       ↓
-                                              Neo4j ← Grafo semântico de relações
-                                              Qdrant ← Embeddings vetoriais (1536D → 64D)
-                                              PostgreSQL ← Memórias episódicas
-                                              Redis ← Cache de ativação em tempo real
+                                              NietzscheDB ← Grafo semântico de relações
+                                              NietzscheDB ← Embeddings vetoriais (1536D → 64D)
+                                              NietzscheDB ← Memórias episódicas
+                                              NietzscheDB ← Cache de ativação em tempo real
 ```
 
 ### Componentes de Memória
 
 | Componente | Arquivo | Status |
 |-----------|---------|--------|
-| **FDPN Engine** | `hippocampus/memory/fdpn_engine.go` | Implementado — Neo4j + Redis + Qdrant, 10 threads, threshold 0.3 |
+| **FDPN Engine** | `hippocampus/memory/fdpn_engine.go` | Implementado — NietzscheDB + NietzscheDB + NietzscheDB, 10 threads, threshold 0.3 |
 | **Krylov Compression** | `memory/krylov/krylov_manager.go` | Implementado — comprime 1536D → 64D |
-| **REM Consolidation** | `memory/consolidation/rem_consolidator.go` | Implementado — episódico → clustering espectral → semântico Neo4j |
+| **REM Consolidation** | `memory/consolidation/rem_consolidator.go` | Implementado — episódico → clustering espectral → semântico NietzscheDB |
 | **Hebbian Learning** | `memory/consolidation/hebbian.go` | Implementado |
 | **Memory Pruning** | `memory/consolidation/pruning.go` | Implementado |
 | **Spaced Repetition** | `hippocampus/spaced/spaced_repetition.go` | Implementado |
@@ -402,7 +402,7 @@ Voz → FDPN Engine → Krylov Compression → Spectral Clustering → REM Conso
 | **Self Core** | `superhuman/self_core_service.go` | Identidade/conceito-de-si da EVA |
 | **Consciousness** | `superhuman/consciousness_service.go` | Simulação de consciência |
 
-### Base de Conhecimento (Qdrant Collections)
+### Base de Conhecimento (NietzscheDB Collections)
 
 A EVA busca sabiamente em coleções de sabedoria:
 - Histórias de Nasrudin
@@ -436,7 +436,7 @@ A EVA busca sabiamente em coleções de sabedoria:
 ### Análise da Arquitetura de Memória
 
 **Pontos fortes:**
-- Sistema multi-store altamente sofisticado (PostgreSQL + Neo4j + Qdrant + Redis)
+- Sistema multi-store altamente sofisticado (NietzscheDB + NietzscheDB + NietzscheDB + NietzscheDB)
 - Inspiração biológica real (REM, Hebbian, FDPN)
 - Compressão Krylov economiza espaço de embedding
 - Análise topológica (homologia persistente) é estado da arte
@@ -455,7 +455,7 @@ A EVA busca sabiamente em coleções de sabedoria:
 
 ```
 1. ROTACIONAR AGORA:
-   - Credenciais PostgreSQL em env_backup.txt (IP: 34.39.249.108)
+   - Credenciais NietzscheDB em env_backup.txt (IP: 34.39.249.108)
    - Google API Key: AIzaSyBlem2g_EFVLTt3Fb1AofF1EOAf05YPo3U (.env EVA-Front)
    - Firebase API Key: AIzaSyAaEeKNGxz_1FOCT4SmP2CDIKx4zLLCDC8 (firebase.js hardcoded)
 
@@ -472,10 +472,10 @@ A EVA busca sabiamente em coleções de sabedoria:
 
 | Local | Tipo | Risco |
 |-------|------|-------|
-| `EVA-Mind/env_backup.txt` | PostgreSQL + **Twilio SID/Token** + Google API Key ao vivo | CRÍTICO |
+| `EVA-Mind/env_backup.txt` | NietzscheDB + **Twilio SID/Token** + Google API Key ao vivo | CRÍTICO |
 | `EVA-Mind/_audit_db.go:15` | `const DB_URL` com IP de produção (104.248.x.x) hardcoded | CRÍTICO |
-| `EVA-Mind/docker-compose.infra.yml` | Neo4j password `Debian23` hardcoded | ALTO |
-| `EVA-Back/eva-enterprise/env_backup.txt` | Credenciais DB PostgreSQL ao vivo | CRÍTICO |
+| `EVA-Mind/docker-compose.infra.yml` | NietzscheDB password `Debian23` hardcoded | ALTO |
+| `EVA-Back/eva-enterprise/env_backup.txt` | Credenciais DB NietzscheDB ao vivo | CRÍTICO |
 | `EVA-Back/deploy.sh` | Credenciais DB hardcoded no script | CRÍTICO |
 | `EVA-Front/src/services/firebase.js` | Firebase API Key no código-fonte | ALTO |
 | `EVA-Front/.env` | Google Gemini API Key | ALTO (se no git) |
@@ -508,14 +508,14 @@ A EVA busca sabiamente em coleções de sabedoria:
 - EVA-Mind (Go): motor de memória e WebSocket são sofisticados e bem construídos
 - EVA-db: estrutura robusta com 190 tabelas cobrindo todos os domínios
 - EVA-Mobile-FZPN: detecção de quedas (Sentinela) e core de chamadas estável
-- Arquitetura de memória multi-store (PostgreSQL + Neo4j + Qdrant + Redis) é estado da arte
+- Arquitetura de memória multi-store (NietzscheDB + NietzscheDB + NietzscheDB + NietzscheDB) é estado da arte
 
 ### Prioridade de Correção
 
 **HOJE (EVA-Mind não compila):**
 0. Deletar `_audit_db.go` do EVA-Mind — causa `main()` duplicado e impede qualquer build Go
 0b. Remover `env_backup.txt` do EVA-Mind e do git history (BFG Repo-Cleaner)
-0c. Rotacionar credenciais Twilio, PostgreSQL (ambos IPs), Google API Key
+0c. Rotacionar credenciais Twilio, NietzscheDB (ambos IPs), Google API Key
 
 **SEMANA 1 (Bloqueadores de funcionamento):**
 1. Criar `secrets.js` no EVA-Front (ou refatorar para `import.meta.env`)

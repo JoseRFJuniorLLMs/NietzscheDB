@@ -1,6 +1,6 @@
 # Evaluation & Benchmarks
 
-HyperspaceDB is optimized for two critical metrics: **Throughput** (Ingestion speed) and **Latency** (Search speed).
+NietzscheDB is optimized for two critical metrics: **Throughput** (Ingestion speed) and **Latency** (Search speed).
 
 ## Test Environment
 *   **Hardware**: Apple M4 Pro (Emulated Environment) / Linux AVX2

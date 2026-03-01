@@ -1,7 +1,7 @@
 
 # 🧠 Hybrid Search
 
-HyperspaceDB combines **Hyperbolic Vector Search** with **Lexical (Keyword) Search** to provide the best of both worlds.
+NietzscheDB combines **Hyperbolic Vector Search** with **Lexical (Keyword) Search** to provide the best of both worlds.
 
 This is powered by **Reciprocal Rank Fusion (RRF)**, which normalizes scores from both engines and merges them.
 

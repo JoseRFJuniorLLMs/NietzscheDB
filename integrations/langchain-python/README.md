@@ -1,9 +1,9 @@
-# LangChain HyperspaceDB Integration
+# LangChain NietzscheDB Integration
 
-[![PyPI version](https://badge.fury.io/py/langchain-hyperspace.svg)](https://badge.fury.io/py/langchain-hyperspace)
+[![PyPI version](https://badge.fury.io/py/langchain-nietzsche.svg)](https://badge.fury.io/py/langchain-nietzsche)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Official LangChain integration for [NietzscheDB](https://github.com/yourusername/hyperspace-db) - a multi-manifold graph database with Edge-Cloud Federation.
+Official LangChain integration for [NietzscheDB](https://github.com/yourusername/nietzsche-db) - a multi-manifold graph database with Edge-Cloud Federation.
 
 ## Features
 
@@ -17,7 +17,7 @@ Official LangChain integration for [NietzscheDB](https://github.com/yourusername
 ## Installation
 
 ```bash
-pip install langchain-hyperspace
+pip install langchain-nietzsche
 ```
 
 ## Quick Start
@@ -25,7 +25,7 @@ pip install langchain-hyperspace
 ### Basic Usage
 
 ```python
-from langchain_hyperspace import HyperspaceVectorStore
+from langchain_nietzsche import NietzscheVectorStore
 from langchain_openai import OpenAIEmbeddings
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.document_loaders import TextLoader
@@ -34,7 +34,7 @@ from langchain.document_loaders import TextLoader
 embeddings = OpenAIEmbeddings()
 
 # Create vector store
-vectorstore = HyperspaceVectorStore(
+vectorstore = NietzscheVectorStore(
     host="localhost",
     port=50051,
     collection_name="my_documents",
@@ -62,13 +62,13 @@ for doc in results:
 ### RAG (Retrieval-Augmented Generation) Example
 
 ```python
-from langchain_hyperspace import HyperspaceVectorStore
+from langchain_nietzsche import NietzscheVectorStore
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain.chains import RetrievalQA
 
 # Setup
 embeddings = OpenAIEmbeddings()
-vectorstore = HyperspaceVectorStore(
+vectorstore = NietzscheVectorStore(
     host="localhost",
     port=50051,
     collection_name="knowledge_base",
@@ -84,16 +84,16 @@ qa_chain = RetrievalQA.from_chain_type(
 )
 
 # Ask questions
-response = qa_chain.run("What are the key features of HyperspaceDB?")
+response = qa_chain.run("What are the key features of NietzscheDB?")
 print(response)
 ```
 
 ### Content Deduplication
 
-HyperspaceDB automatically deduplicates content using SHA-256 hashing:
+NietzscheDB automatically deduplicates content using SHA-256 hashing:
 
 ```python
-vectorstore = HyperspaceVectorStore(
+vectorstore = NietzscheVectorStore(
     host="localhost",
     port=50051,
     collection_name="deduplicated_docs",
@@ -128,7 +128,7 @@ print(f"Bucket Hashes: {len(digest['buckets'])} buckets")
 ### Connection Options
 
 ```python
-vectorstore = HyperspaceVectorStore(
+vectorstore = NietzscheVectorStore(
     host="localhost",          # Server host
     port=50051,                # gRPC port
     collection_name="default", # Collection name
@@ -178,23 +178,23 @@ metadatas = [{"index": i} for i in range(10000)]
 vectorstore.add_texts(texts, metadatas=metadatas)
 ```
 
-## Running HyperspaceDB Server
+## Running NietzscheDB Server
 
 ### Using Docker
 
 ```bash
 docker run -p 50051:50051 -p 50050:50050 \
-  -e HYPERSPACE_API_KEY=your_secret_key \
-  hyperspacedb/hyperspace-server:latest
+  -e NDB_API_KEY=your_secret_key \
+  nietzschedb/nietzsche-baseserver:latest
 ```
 
 ### From Source
 
 ```bash
-git clone https://github.com/yourusername/hyperspace-db
-cd hyperspace-db
+git clone https://github.com/yourusername/nietzsche-db
+cd nietzsche-db
 cargo build --release
-HYPERSPACE_API_KEY=your_secret_key ./target/release/hyperspace-server
+NDB_API_KEY=your_secret_key ./target/release/nietzsche-baseserver
 ```
 
 ## Development
@@ -202,8 +202,8 @@ HYPERSPACE_API_KEY=your_secret_key ./target/release/hyperspace-server
 ### Setup
 
 ```bash
-git clone https://github.com/yourusername/hyperspace-db
-cd hyperspace-db/integrations/langchain-python
+git clone https://github.com/yourusername/nietzsche-db
+cd nietzsche-db/integrations/langchain-python
 
 # Install in development mode
 pip install -e ".[dev]"
@@ -242,13 +242,13 @@ See the [examples/](examples/) directory for complete examples:
 
 ## Documentation
 
-- [HyperspaceDB Documentation](https://hyperspacedb.io/docs)
+- [NietzscheDB Documentation](https://nietzschedb.io/docs)
 - [LangChain Documentation](https://python.langchain.com/docs)
-- [API Reference](https://hyperspacedb.io/docs/api)
+- [API Reference](https://nietzschedb.io/docs/api)
 
 ## Performance
 
-HyperspaceDB is optimized for:
+NietzscheDB is optimized for:
 
 - **Insert**: 10K+ vectors/second
 - **Search**: <10ms p99 latency
@@ -265,19 +265,19 @@ Apache License 2.0 - see [LICENSE](../../LICENSE) for details.
 
 ## Support
 
-- GitHub Issues: [Report bugs](https://github.com/yourusername/hyperspace-db/issues)
-- Discord: [Join community](https://discord.gg/hyperspacedb)
-- Email: support@hyperspacedb.io
+- GitHub Issues: [Report bugs](https://github.com/yourusername/nietzsche-db/issues)
+- Discord: [Join community](https://discord.gg/nietzschedb)
+- Email: support@nietzschedb.io
 
 ## Citation
 
-If you use HyperspaceDB in your research, please cite:
+If you use NietzscheDB in your research, please cite:
 
 ```bibtex
-@software{hyperspacedb2024,
-  title = {HyperspaceDB: Hyperbolic Vector Database with Edge-Cloud Federation},
-  author = {HyperspaceDB Team},
+@software{nietzschedb2024,
+  title = {NietzscheDB: Hyperbolic Vector Database with Edge-Cloud Federation},
+  author = {NietzscheDB Team},
   year = {2024},
-  url = {https://github.com/yourusername/hyperspace-db}
+  url = {https://github.com/yourusername/nietzsche-db}
 }
 ```

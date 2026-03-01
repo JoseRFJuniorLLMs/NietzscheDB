@@ -1,4 +1,4 @@
-# [H] HyperspaceDB
+# [H] NietzscheDB
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -6,7 +6,7 @@
 [![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](#)
 
 **Fastest Vector Database for Hierarchical & Flat Data written in Rust.**  
-HyperspaceDB natively supports both the **Poincaré ball model** (for hierarchies) and **Euclidean space** (for standard OpenAI/BGE embeddings), delivering extreme performance through specialized SIMD kernels.
+NietzscheDB natively supports both the **Poincaré ball model** (for hierarchies) and **Euclidean space** (for standard OpenAI/BGE embeddings), delivering extreme performance through specialized SIMD kernels.
 
 ---
 
@@ -26,7 +26,7 @@ HyperspaceDB natively supports both the **Poincaré ball model** (for hierarchie
 
 ## 🛠 Architecture
 
-HyperspaceDB follows a **Persistence-First, Index-Second** design:
+NietzscheDB follows a **Persistence-First, Index-Second** design:
 1.  **gRPC Request**: Insert/Search commands arrive via a high-performance Tonic server.
 2.  **WAL & Segmented Storage**: Every insert is immediate persisted to a Write-Ahead Log and a memory-mapped segmented file store.
 3.  **Background Indexer**: The HNSW graph is updated asynchronously by a dedicated thread-pool, ensuring 0ms search blocking.
@@ -41,12 +41,12 @@ Make sure you have `just` and `nightly rust` installed.
 
 ```bash
 cargo build --release
-./target/release/hyperspace-server
+./target/release/nietzsche-baseserver
 ```
 
 ### 2. Launch Dashboard
 ```bash
-./target/release/hyperspace-cli
+./target/release/nietzsche-cli
 ```
 
 ### 3. Use Python SDK
@@ -55,9 +55,9 @@ pip install ./sdks/python
 ```
 
 ```python
-from hyperspace import HyperspaceClient
+from nietzsche import NietzscheBaseClient
 
-client = HyperspaceClient("localhost:50051")
+client = NietzscheBaseClient("localhost:50051")
 client.insert(vector=[0.1]*8, metadata={"category": "tech"})
 results = client.search(vector=[0.11]*8, top_k=5)
 ```
@@ -72,7 +72,7 @@ results = client.search(vector=[0.11]*8, top_k=5)
 *   **Storage Efficiency**: Automatic segmentation + mmap
 
 ### "The 1 Million Challenge"
-HyperspaceDB successfully handles **1,000,000** vectors with <10% search degradation compared to 10k baseline, proving efficient HNSW scaling.
+NietzscheDB successfully handles **1,000,000** vectors with <10% search degradation compared to 10k baseline, proving efficient HNSW scaling.
 
 ---
 

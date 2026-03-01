@@ -1,5 +1,5 @@
 
-from hyperspace import HyperspaceClient
+from nietzsche_legacy import NietzscheBaseClient
 import time
 import sys
 
@@ -9,7 +9,7 @@ def test_auth():
     # 1. Try without key (Should Fail)
     print("1. Attempting connection WITHOUT key...")
     try:
-        client = HyperspaceClient("localhost:50051") # no key
+        client = NietzscheBaseClient("localhost:50051") # no key
         success = client.insert(999, [0.1]*8, {"test": "fail"})
         if success:
             print("❌ FAIL: Insert succeeded but should have failed!")
@@ -22,7 +22,7 @@ def test_auth():
     # 2. Try with WRONG key (Should Fail)
     print("2. Attempting connection with WRONG key...")
     try:
-        client = HyperspaceClient("localhost:50051", api_key="wrong_secret")
+        client = NietzscheBaseClient("localhost:50051", api_key="wrong_secret")
         success = client.insert(999, [0.1]*8, {"test": "fail"})
         if success:
              print("❌ FAIL: Insert succeeded with wrong key!")
@@ -35,7 +35,7 @@ def test_auth():
     # 3. Try with CORRECT key (Should Success)
     print("3. Attempting connection with CORRECT key...")
     try:
-        client = HyperspaceClient("localhost:50051", api_key="supersecret")
+        client = NietzscheBaseClient("localhost:50051", api_key="supersecret")
         success = client.insert(999, [0.1]*8, {"test": "ok"})
         if success:
              print("✅ PASS: Insert succeeded!")

@@ -1,12 +1,12 @@
 # API Reference
 
-HyperspaceDB operates on a **Dual-API** architecture:
+NietzscheDB operates on a **Dual-API** architecture:
 1. **gRPC (Data Plane)**: High-performance ingestion and search.
 2. **HTTP (Control Plane)**: Management, monitoring, and dashboard integration.
 
 ## 📡 gRPC API (Data Plane)
 
-Defined in `hyperspace.proto`. Used by SDKs (Python, Rust, Go).
+Defined in `nietzsche_db.proto`. Used by SDKs (Python, Rust, Go).
 
 ### Collection Management
 
@@ -102,7 +102,7 @@ Served on port `50050` (default). All endpoints under `/api`.
 
 Every request should include:
 - `x-api-key`: API Key (optional if disabled, but recommended)
-- `x-hyperspace-user-id`: Tenant Identifier (e.g. `client_123`). If omitted, defaults to `default_admin`.
+- `x-nietzsche-user-id`: Tenant Identifier (e.g. `client_123`). If omitted, defaults to `default_admin`.
 
 ### Cluster Status
 `GET /api/cluster/status`

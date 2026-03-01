@@ -1,31 +1,31 @@
-# HyperspaceDB TypeScript SDK
+# NietzscheDB TypeScript SDK
 
-Official TypeScript client for HyperspaceDB gRPC API.
+Official TypeScript client for NietzscheDB gRPC API.
 
 Use this SDK for:
 - collection lifecycle management
 - vector insert and search
 - high-throughput batched search (`searchBatch`)
-- multi-tenant authentication headers (`x-api-key`, `x-hyperspace-user-id`)
+- multi-tenant authentication headers (`x-api-key`, `x-nietzsche-user-id`)
 
 ## Requirements
 
 - Node.js 18+
-- Running HyperspaceDB server (default gRPC endpoint: `localhost:50051`)
+- Running NietzscheDB server (default gRPC endpoint: `localhost:50051`)
 
 ## Installation
 
 ```bash
-npm install hyperspace-sdk-ts
+npm install nietzsche-sdk-ts
 ```
 
 ## Quick Start
 
 ```ts
-import { HyperspaceClient } from "hyperspace-sdk-ts";
+import { NietzscheClient } from "nietzsche-sdk-ts";
 
 async function main() {
-  const client = new HyperspaceClient("localhost:50051", "I_LOVE_HYPERSPACEDB");
+  const client = new NietzscheClient("localhost:50051", "I_LOVE_NIETZSCHEDB");
   const collection = "docs_ts";
 
   await client.deleteCollection(collection).catch(() => {});
@@ -45,7 +45,7 @@ main().catch(console.error);
 
 ## API Overview
 
-### `new HyperspaceClient(host?, apiKey?, userId?)`
+### `new NietzscheClient(host?, apiKey?, userId?)`
 
 - `host`: gRPC endpoint, default `localhost:50051`
 - `apiKey`: optional API key
@@ -107,7 +107,7 @@ try {
   const res = await client.search([0.1, 0.2, 0.3], 10, "my_collection");
   console.log(res);
 } catch (err) {
-  console.error("Hyperspace request failed:", err);
+  console.error("NietzscheDB request failed:", err);
 }
 ```
 

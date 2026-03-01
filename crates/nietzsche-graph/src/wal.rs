@@ -14,7 +14,7 @@ use crate::model::{Edge, Node, PoincareVector};
 
 /// All mutations that go through the graph WAL.
 ///
-/// This WAL covers *graph* operations only — the HyperspaceDB
+/// This WAL covers *graph* operations only — the NietzscheDB
 /// vector store has its own separate WAL for embeddings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GraphWalEntry {

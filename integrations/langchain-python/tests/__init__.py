@@ -1,1 +1,1 @@
-"""Tests for langchain-hyperspace."""
+"""Tests for langchain-nietzsche."""

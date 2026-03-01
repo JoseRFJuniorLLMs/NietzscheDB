@@ -6,11 +6,11 @@ import random
 # Ensure we can import the SDK
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../sdks/python')))
 
-from hyperspace.client import HyperspaceClient
+from nietzsche_legacy.client import NietzscheBaseClient
 
 def main():
-    print("Connecting to HyperspaceDB...")
-    client = HyperspaceClient(host="localhost:50051", api_key="I_LOVE_HYPERSPACEDB")
+    print("Connecting to NietzscheDBDB...")
+    client = NietzscheBaseClient(host="localhost:50051", api_key="I_LOVE_NIETZSCHEDB")
 
     col_name = "py_sdk_test"
     

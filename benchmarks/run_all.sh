@@ -44,21 +44,21 @@ if [ ! -d "venv" ]; then
 fi
 source venv/bin/activate
 
-# Install HyperspaceDB SDK from local directory
-echo -e "${GREEN}📦 Installing HyperspaceDB Python SDK...${NC}"
+# Install NietzscheDB SDK from local directory
+echo -e "${GREEN}📦 Installing NietzscheDB Python SDK...${NC}"
 pip install -q -e ../sdks/python || {
-    echo -e "${YELLOW}⚠️  HyperspaceDB SDK installation failed. Will skip HyperspaceDB benchmark.${NC}"
+    echo -e "${YELLOW}⚠️  NietzscheDB SDK installation failed. Will skip NietzscheDB benchmark.${NC}"
 }
 
 # Install other database clients (latest versions)
-pip install -q --upgrade numpy qdrant-client weaviate-client pymilvus 2>/dev/null || {
+pip install -q --upgrade numpy NietzscheDB-client weaviate-client pymilvus 2>/dev/null || {
     echo -e "${YELLOW}⚠️  Some Python packages failed to install. Continuing anyway...${NC}"
 }
 
-# Pull HyperspaceDB Docker image
-echo -e "${GREEN}⬇️  Pulling HyperspaceDB Docker image...${NC}"
-$DOCKER_COMPOSE pull hyperspace || {
-    echo -e "${YELLOW}⚠️  Failed to pull HyperspaceDB image. Will try to use local if available.${NC}"
+# Pull NietzscheDB Docker image
+echo -e "${GREEN}⬇️  Pulling NietzscheDB Docker image...${NC}"
+$DOCKER_COMPOSE pull nietzsche || {
+    echo -e "${YELLOW}⚠️  Failed to pull NietzscheDB image. Will try to use local if available.${NC}"
 }
 # Start all databases
 echo -e "${GREEN}🚀 Starting all vector databases...${NC}"
@@ -83,8 +83,8 @@ check_health() {
     fi
 }
 
-check_health "HyperspaceDB" "http://localhost:50051/health" || true
-check_health "Qdrant" "http://localhost:6333/health" || true
+check_health "NietzscheDB" "http://localhost:50051/health" || true
+check_health "NietzscheDB" "http://localhost:6333/health" || true
 check_health "Weaviate" "http://localhost:8080/v1/.well-known/ready" || true
 check_health "Milvus" "http://localhost:9091/healthz" || true
 

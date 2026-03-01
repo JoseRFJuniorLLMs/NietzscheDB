@@ -9,8 +9,8 @@ if ! command -v wasm-pack &> /dev/null; then
     exit 1
 fi
 
-echo "🚀 Building HyperspaceDB WASM module..."
-cd crates/hyperspace-wasm
+echo "🚀 Building NietzscheDBDB WASM module..."
+cd crates/nietzsche-wasm
 
 # Build for web target
 wasm-pack build --target web --out-dir ../../examples/wasm-demo/pkg

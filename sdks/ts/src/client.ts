@@ -1,15 +1,15 @@
 import * as grpc from '@grpc/grpc-js';
-import { DatabaseClient } from './proto/hyperspace_grpc_pb';
+import { DatabaseClient } from './proto/nietzsche_db_grpc_pb';
 import {
     BatchSearchRequest,
     InsertRequest, SearchRequest,
     CreateCollectionRequest, DeleteCollectionRequest, Empty,
     DurabilityLevel
-} from './proto/hyperspace_pb';
+} from './proto/nietzsche_db_pb';
 
 export { DurabilityLevel };
 
-export class HyperspaceClient {
+export class NietzscheClient {
     private client: DatabaseClient;
     private metadata: grpc.Metadata;
     private static toVectorList(vector: number[] | Float32Array | Float64Array): number[] {
@@ -35,7 +35,7 @@ export class HyperspaceClient {
             this.metadata.add('x-api-key', apiKey);
         }
         if (userId) {
-            this.metadata.add('x-hyperspace-user-id', userId);
+            this.metadata.add('x-nietzsche-user-id', userId);
         }
     }
 
@@ -71,7 +71,7 @@ export class HyperspaceClient {
         return new Promise((resolve, reject) => {
             const req = new InsertRequest();
             req.setId(id);
-            req.setVectorList(HyperspaceClient.toVectorList(vector));
+            req.setVectorList(NietzscheClient.toVectorList(vector));
             if (meta) {
                 const map = req.getMetadataMap();
                 for (const k in meta) map.set(k, meta[k]);
@@ -91,7 +91,7 @@ export class HyperspaceClient {
     public search(vector: number[] | Float32Array | Float64Array, topK: number, collection: string = ''): Promise<{ id: number, distance: number, metadata: { [key: string]: string } }[]> {
         return new Promise((resolve, reject) => {
             const req = new SearchRequest();
-            req.setVectorList(HyperspaceClient.toVectorList(vector));
+            req.setVectorList(NietzscheClient.toVectorList(vector));
             req.setTopK(topK);
             req.setCollection(collection);
 
@@ -122,7 +122,7 @@ export class HyperspaceClient {
             req.setSearchesList(
                 vectors.map((vector) => {
                     const s = new SearchRequest();
-                    s.setVectorList(HyperspaceClient.toVectorList(vector));
+                    s.setVectorList(NietzscheClient.toVectorList(vector));
                     s.setTopK(topK);
                     s.setCollection(collection);
                     return s;

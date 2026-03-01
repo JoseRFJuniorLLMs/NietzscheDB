@@ -1,7 +1,7 @@
 
 # 🔒 Security & Auth
 
-HyperspaceDB includes built-in security features for production deployments.
+NietzscheDB includes built-in security features for production deployments.
 
 ## API Authentication
 
@@ -9,11 +9,11 @@ We use a simple but effective **API Key** mechanism.
 
 ### Enabling Auth
 
-Set the `HYPERSPACE_API_KEY` environment variable when starting the server.
+Set the `NDB_API_KEY` environment variable when starting the server.
 
 ```bash
-export HYPERSPACE_API_KEY="my-secret-key-123"
-./hyperspace-server
+export NDB_API_KEY="my-secret-key-123"
+./nietzsche-baseserver
 ```
 
 If this variable is NOT set, authentication is **disabled** (dev mode).
@@ -24,7 +24,7 @@ Clients must pass the key in the `x-api-key` metadata header.
 
 **Python:**
 ```python
-client = HyperspaceClient(
+client = NietzscheBaseClient(
     host="localhost:50051", 
     api_key="my-secret-key-123",
     user_id="tenant_name"  # Optional: For multi-tenancy
@@ -43,7 +43,7 @@ let client = Client::connect(
 
 ## Multi-Tenancy Isolation
 
-Use `x-hyperspace-user-id` header to isolate data per user.
+Use `x-nietzsche-user-id` header to isolate data per user.
 
 *   **Gateway Responsibility**: Ensure your API Gateway validates user tokens and injects this header securely.
 *   **Internal Scope**: Data created with a `user_id` is invisible to other users and the default admin scope.

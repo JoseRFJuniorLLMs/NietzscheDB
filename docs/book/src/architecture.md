@@ -1,6 +1,6 @@
-# HyperspaceDB Architecture Guide
+# NietzscheDB Architecture Guide
 
-HyperspaceDB is a specialized vector database designed for high-performance hyperbolic embedding search. This document details its internal architecture, storage format, and indexing strategies.
+NietzscheDB is a specialized vector database designed for high-performance hyperbolic embedding search. This document details its internal architecture, storage format, and indexing strategies.
 
 ---
 
@@ -31,7 +31,7 @@ graph TD
 
 ---
 
-## 💾 Storage Layer (hyperspace-store)
+## 💾 Storage Layer (nietzsche-vecstore)
 
 ### 1. Vector Storage (`data/`)
 Vectors are stored in a segmented, append-only format using **Memory-Mapped Files (mmap)**.
@@ -45,7 +45,7 @@ Writes are durable. Every insert is appended to `wal.log` before being acknowled
 
 ---
 
-## 🕸 Indexing Layer (hyperspace-index)
+## 🕸 Indexing Layer (nietzsche-hnsw)
 
 ### Hyperbolic HNSW
 We implement a modified **Hierarchical Navigable Small World** graph optimized for the Poincaré Ball model.
@@ -86,9 +86,9 @@ Parameters `ef_search` (search depth) and `ef_construction` (build quality) are 
 ## Memory Management & Stability
 
 ### Cold Storage Architecture
-HyperspaceDB implements a "Cold Storage" mechanism to handle large numbers of collections efficiently:
+NietzscheDB implements a "Cold Storage" mechanism to handle large numbers of collections efficiently:
 1.  **Lazy Loading**: Collections are not loaded into RAM at startup. Instead, only metadata is scanned. The actual collection (vector index, storage) is instantiated from disk only upon the first `get()` request.
 2.  **Idle Eviction (Reaper)**: A background task runs every 60 seconds to scan for idle collections. Any collection not accessed for a configurable period (default: 1 hour) is automatically unloaded from memory to free up RAM.
 3.  **Graceful Shutdown**: When a collection is evicted or deleted, its `Drop` implementation ensures that all associated background tasks (indexing, snapshotting) are immediately aborted, preventing resource leaks and panicked threads.
 
-This architecture allows HyperspaceDB to support thousands of collections while keeping the active memory footprint low, scaling based on actual usage rather than total data.
+This architecture allows NietzscheDB to support thousands of collections while keeping the active memory footprint low, scaling based on actual usage rather than total data.

@@ -10,7 +10,7 @@ from typing import List, Dict
 
 # Add sdk to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "sdks", "python")))
-from hyperspace import HyperspaceClient
+from nietzsche_legacy import NietzscheBaseClient
 
 @dataclass
 class ConcurrencyResult:
@@ -23,9 +23,9 @@ class ConcurrencyResult:
     srch_efficiency: float
 
 def wait_for_indexing(host="localhost", port=50050, collection="stress_test", timeout=600):
-    """Wait for HyperspaceDB background indexing to complete with visible progress"""
+    """Wait for NietzscheDB background indexing to complete with visible progress"""
     url = f"http://{host}:{port}/api/collections/{collection}/stats"
-    headers = {"x-api-key": "I_LOVE_HYPERSPACEDB", "x-hyperspace-user-id": "default_admin"}
+    headers = {"x-api-key": "I_LOVE_NIETZSCHEDB", "x-nietzsche-user-id": "default_admin"}
     start_time = time.time()
     while True:
         if timeout and time.time() - start_time > timeout:
@@ -120,7 +120,7 @@ def run_concurrent_searches(client, concurrency, total_count, dim, metric, colle
 def run_concurrency_suite(dim, metric, label):
     host = "localhost"
     port = 50051
-    api_key = "I_LOVE_HYPERSPACEDB"
+    api_key = "I_LOVE_NIETZSCHEDB"
     collection_base = f"stress_{metric}_{dim}"
     concurrencies = [1, 10, 50, 100, 500, 1000]
     results = []
@@ -133,7 +133,7 @@ def run_concurrency_suite(dim, metric, label):
     
     for c in concurrencies:
         coll = f"{collection_base}_{c}"
-        client = HyperspaceClient(f"{host}:{port}", api_key=api_key)
+        client = NietzscheBaseClient(f"{host}:{port}", api_key=api_key)
         client.delete_collection(coll)
         
         if not client.create_collection(coll, dimension=dim, metric=metric):
@@ -180,7 +180,7 @@ def print_results(results, label):
     print("=" * 110)
 
 def main():
-    print("🔥 Starting Comprehensive HyperspaceDB Stress Test (Euclidean vs Hyperbolic)")
+    print("🔥 Starting Comprehensive NietzscheDB Stress Test (Euclidean vs Hyperbolic)")
     print("   Note: Using batch_insert to maximize performance figures.")
     
     # Step 1: Euclidean Baseline

@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "langchain-hyperspace"
+name = "langchain-nietzsche"
 version = "1.6.0"
-description = "LangChain integration for HyperspaceDB - Hyperbolic Vector Database with Edge-Cloud Federation"
+description = "LangChain integration for NietzscheDB - Hyperbolic Vector Database with Edge-Cloud Federation"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "Apache-2.0"}
@@ -45,10 +45,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/hyperspace-db"
-Documentation = "https://hyperspacedb.io/docs"
-Repository = "https://github.com/yourusername/hyperspace-db"
-"Bug Tracker" = "https://github.com/yourusername/hyperspace-db/issues"
+Homepage = "https://github.com/yourusername/nietzsche-db"
+Documentation = "https://nietzschedb.io/docs"
+Repository = "https://github.com/yourusername/nietzsche-db"
+"Bug Tracker" = "https://github.com/yourusername/nietzsche-db/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
