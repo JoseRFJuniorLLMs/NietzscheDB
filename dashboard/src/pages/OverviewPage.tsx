@@ -116,7 +116,7 @@ const FEATURE_CATEGORIES: FeatureCategory[] = [
             "RocksDB with 7 column families",
             "HNSW index (Poincare ball metric)",
             "WAL with CRC32 + AES-256 encryption",
-            "Redis-compatible cache layer",
+            "NietzscheDB-compatible cache layer",
             "TTL Janitor (auto-expiration)",
             "Multi-collection isolation",
         ],

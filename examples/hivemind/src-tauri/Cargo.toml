@@ -20,6 +20,6 @@ dirs = "5.0"
 anyhow = "1.0"
 
 # Local DB
-hyperspace-core = { path = "../../../crates/hyperspace-core" }
-hyperspace-index = { path = "../../../crates/hyperspace-index", features = ["persistence"] }
-hyperspace-store = { path = "../../../crates/hyperspace-store", features = ["mmap"] }
+nietzsche-core = { path = "../../../crates/nietzsche-core" }
+nietzsche-hnsw = { path = "../../../crates/nietzsche-hnsw", features = ["persistence"] }
+nietzsche-vecstore = { path = "../../../crates/nietzsche-vecstore", features = ["mmap"] }

@@ -939,7 +939,7 @@ class NietzscheClient:
         ))
         return resp.on_path, resp.distance
 
-    # ── Cache / TTL (Redis replacement) ────────────────────────────────────
+    # ── Cache / TTL (NietzscheDB replacement) ────────────────────────────────────
 
     def cache_set(
         self,

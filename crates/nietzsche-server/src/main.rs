@@ -666,14 +666,24 @@ async fn main() -> anyhow::Result<()> {
                                             break;
                                         }
                                         nietzsche_agency::AgencyIntent::TriggerLSystemGrowth { reason } => {
-                                            info!(collection = %col_name, reason = %reason, "agency: triggering L-System growth");
+                                            // Guard: skip L-System for huge collections (CPU Hausdorff is O(n²))
+                                            const LSYSTEM_MAX_NODES: usize = 50_000;
+                                            let nc = db.node_count().unwrap_or(0);
+                                            if nc > LSYSTEM_MAX_NODES {
+                                                warn!(collection = %col_name, node_count = nc, limit = LSYSTEM_MAX_NODES,
+                                                    "L-System SKIPPED: collection too large for Hausdorff computation");
+                                                break;
+                                            }
+                                            info!(collection = %col_name, reason = %reason, node_count = nc, "agency: triggering L-System growth");
                                             drop(db);
                                             let mut db_w = shared.write().await;
-                                            let lsystem = nietzsche_lsystem::LSystemEngine::new(vec![
+                                            let mut lsystem = nietzsche_lsystem::LSystemEngine::new(vec![
                                                 nietzsche_lsystem::ProductionRule::growth_child("agency-grow", 3),
                                                 nietzsche_lsystem::ProductionRule::lateral_association("agency-assoc", 3),
-                                                nietzsche_lsystem::ProductionRule::prune_fading("agency-prune", 0.1),
+                                                // prune_fading REMOVED — cortical disconnection syndrome fix
                                             ]);
+                                            // Disable Hausdorff auto-prune: nodes with D=0.0 must NOT be killed
+                                            lsystem.hausdorff_lo = 0.0;
                                             match lsystem.tick(&mut *db_w) {
                                                 Ok(r) => info!(spawned = r.nodes_spawned, pruned = r.nodes_pruned, "agency L-System tick complete"),
                                                 Err(e) => warn!(error = %e, "agency L-System tick failed"),
@@ -756,9 +766,19 @@ async fn main() -> anyhow::Result<()> {
                                                 }
                                             }).collect();
                                             if !rules.is_empty() {
+                                                // Guard: skip L-System for huge collections (CPU Hausdorff is O(n²))
+                                                const LSYSTEM_MAX_NODES: usize = 50_000;
+                                                let nc = db.node_count().unwrap_or(0);
+                                                if nc > LSYSTEM_MAX_NODES {
+                                                    warn!(collection = %col_name, node_count = nc, limit = LSYSTEM_MAX_NODES,
+                                                        "evolved L-System SKIPPED: collection too large for Hausdorff computation");
+                                                    break;
+                                                }
                                                 drop(db);
                                                 let mut db_w = shared.write().await;
-                                                let lsystem = nietzsche_lsystem::LSystemEngine::new(rules);
+                                                let mut lsystem = nietzsche_lsystem::LSystemEngine::new(rules);
+                                                // Disable Hausdorff auto-prune — cortical disconnection fix
+                                                lsystem.hausdorff_lo = 0.0;
                                                 match lsystem.tick(&mut *db_w) {
                                                     Ok(r) => info!(spawned = r.nodes_spawned, pruned = r.nodes_pruned, "evolved L-System tick complete"),
                                                     Err(e) => warn!(error = %e, "evolved L-System tick failed"),

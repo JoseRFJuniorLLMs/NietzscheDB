@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────
-// NQL Abstract Syntax Tree  (v2)
+// NQL Abstract Syntax Tree  (v3 — NQL 2.0)
 // ─────────────────────────────────────────────
 
 use serde::{Serialize, Deserialize};
@@ -61,6 +61,25 @@ pub enum Query {
     // ── Psychoanalyze (Lineage) ──────────────────────────
     /// `PSYCHOANALYZE $node` — return the evolutionary lineage of a node.
     Psychoanalyze(PsychoanalyzeQuery),
+
+    // ═══════════════════════════════════════════════════
+    // ── NQL 2.0: New Query Types ───────────────────────
+    // ═══════════════════════════════════════════════════
+
+    /// `MATCH … UNION [ALL] MATCH …` — combine results from multiple match queries.
+    Union(UnionQuery),
+    /// `UNWIND expr AS alias RETURN …` — expand array to rows.
+    Unwind(UnwindQuery),
+    /// `SHORTEST_PATH ((src), (dst)) [LIMIT n] [RETURN …]`
+    ShortestPath(ShortestPathQuery),
+    /// `MATCH ELITES [IN "col"] [LIMIT n] [RETURN …]` — top-N by energy.
+    MatchElites(MatchElitesQuery),
+    /// `MEASURE TENSION BETWEEN (a) AND (b)` — dialectical tension.
+    MeasureTension(MeasureTensionQuery),
+    /// `MEASURE TGC [IN "col"]` — thermodynamic graph consciousness.
+    MeasureTgc(MeasureTgcQuery),
+    /// `FIND NEAREST [IN space] TO $vec [LIMIT n] [RETURN …]` — KNN in hyperbolic space.
+    FindNearest(FindNearestQuery),
 }
 
 // ── PSYCHOANALYZE ────────────────────────────────────────────
@@ -256,14 +275,15 @@ pub struct SetAssignment {
 
 #[derive(Debug, Clone)]
 pub struct MatchQuery {
-    pub pattern:      Pattern,
-    pub conditions:   Vec<Condition>,
-    pub ret:          ReturnClause,
+    pub pattern:          Pattern,
+    pub optional_matches: Vec<Pattern>,
+    pub conditions:       Vec<Condition>,
+    pub ret:              ReturnClause,
     /// `AS OF CYCLE n` — Eternal Return time-travel (Phase 15.4).
-    pub as_of_cycle:  Option<u32>,
+    pub as_of_cycle:      Option<u32>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Pattern {
     Node(NodePattern),
     Path(PathPattern),
@@ -277,13 +297,13 @@ pub struct NodePattern {
     pub semantic_id: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HopRange {
     pub min: usize,
     pub max: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PathPattern {
     pub from:       NodePattern,
     pub edge_label: Option<String>,
@@ -293,7 +313,7 @@ pub struct PathPattern {
     pub hop_range:  Option<HopRange>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Direction {
     /// (a)-->(b)  or  (a)-[:T]->(b)
     Out,
@@ -315,6 +335,16 @@ pub enum Condition {
     Between { expr: Expr, low: Expr, high: Expr },
     /// `expr CONTAINS|STARTS_WITH|ENDS_WITH expr`
     StringOp { left: Expr, op: StringCompOp, right: Expr },
+
+    // ── NQL 2.0 Conditions ──────────────────────────────
+    /// `expr IS NULL`
+    IsNull { expr: Expr },
+    /// `expr IS NOT NULL`
+    IsNotNull { expr: Expr },
+    /// `expr =~ "pattern"` — regex match
+    Regex { expr: Expr, pattern: Expr },
+    /// `EXISTS { MATCH (n) WHERE … }` — existential subquery
+    Exists { pattern: Pattern, conditions: Vec<Condition> },
 }
 
 /// Comparison operators.
@@ -366,6 +396,11 @@ pub enum Expr {
         op:    ArithOp,
         right: Box<Expr>,
     },
+    /// NQL 2.0: `CASE WHEN cond THEN val [WHEN …]* [ELSE val] END`
+    CaseWhen {
+        branches:  Vec<(Condition, Box<Expr>)>,
+        else_expr: Option<Box<Expr>>,
+    },
 }
 
 /// Arithmetic operators for SET expressions.
@@ -381,14 +416,14 @@ pub enum HDistArg {
     Vector(Vec<f64>),
 }
 
-// ── Mathematician-named functions ─────────────────────────
+// ── Mathematician-named functions + NQL 2.0 ──────────────
 
 /// Built-in functions named after the mathematicians whose work
-/// underpins NietzscheDB.
+/// underpins NietzscheDB, plus NQL 2.0 string/math/cast functions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MathFunc {
     /// Henri Poincaré — distance in the Poincaré ball model
-    PoincareDist,
+    PoincaNietzscheDBt,
     /// Felix Klein — distance in the Klein (Beltrami-Klein) model
     KleinDist,
     /// Hermann Minkowski — conformal factor / Lorentz norm
@@ -418,8 +453,79 @@ pub enum MathFunc {
     /// EPOCH_MS() — current Unix epoch in milliseconds (f64)
     EpochMs,
     /// INTERVAL("1h") — parse duration string to seconds (f64)
-    /// Supported units: s (seconds), m (minutes), h (hours), d (days), w (weeks)
     Interval,
+
+    // ── NQL 2.0: String Functions ───────────────────────
+    /// UPPER(str) — convert to uppercase
+    Upper,
+    /// LOWER(str) — convert to lowercase
+    Lower,
+    /// TRIM(str) — trim whitespace from both ends
+    Trim,
+    /// LTRIM(str) — trim whitespace from left
+    Ltrim,
+    /// RTRIM(str) — trim whitespace from right
+    Rtrim,
+    /// LENGTH(str) — character count
+    Length,
+    /// SUBSTRING(str, start, len) — extract substring
+    Substring,
+    /// REPLACE(str, search, replacement) — replace occurrences
+    Replace,
+    /// CONCAT(str1, str2, …) — concatenate strings
+    Concat,
+    /// REVERSE(str) — reverse string
+    Reverse,
+    /// SPLIT(str, delimiter) — split string into array
+    Split,
+
+    // ── NQL 2.0: Math Functions ─────────────────────────
+    /// ABS(x) — absolute value
+    Abs,
+    /// CEIL(x) — ceiling
+    Ceil,
+    /// FLOOR(x) — floor
+    Floor,
+    /// ROUND(x) — round to nearest integer
+    Round,
+    /// SQRT(x) — square root
+    Sqrt,
+    /// LOG(x) — natural logarithm
+    Log,
+    /// LOG10(x) — base-10 logarithm
+    Log10,
+    /// POW(base, exp) — exponentiation
+    Pow,
+    /// SIGN(x) — sign function (-1, 0, 1)
+    Sign,
+    /// MOD(x, y) — modulus
+    Mod,
+
+    // ── NQL 2.0: Type Casting ───────────────────────────
+    /// TO_INT(x) — cast to integer
+    ToInt,
+    /// TO_FLOAT(x) — cast to float
+    ToFloat,
+    /// TO_STRING(x) — cast to string
+    ToString,
+    /// TO_BOOL(x) — cast to boolean
+    ToBool,
+
+    // ── NQL 2.0: Null Handling ──────────────────────────
+    /// COALESCE(expr1, expr2, …) — first non-null value
+    Coalesce,
+
+    // ── NQL 2.0: Cognitive Instrumentation (physicist/mathematician names) ──
+    /// Ludwig Boltzmann — BOLTZMANN_SURVIVAL(n): L-System cycles survived
+    BoltzmannSurvival,
+    /// Hermann von Helmholtz — HELMHOLTZ_GRADIENT(n): temporal energy derivative
+    HelmholtzGradient,
+    /// Aleksandr Lyapunov — LYAPUNOV_DELTA(prop, cycles): property variation
+    LyapunovDelta,
+    /// Ilya Prigogine — PRIGOGINE_BASIN(n): basin of attraction in Poincaré space
+    PrigoginBasin,
+    /// Paul Erdős — ERDOS_EDGE_PROB(a, b): predicted edge emergence probability
+    ErdosEdgeProb,
 }
 
 /// Argument to a mathematician-named function.
@@ -463,7 +569,7 @@ pub enum ReturnExpr {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AggFunc { Count, Sum, Avg, Min, Max }
+pub enum AggFunc { Count, Sum, Avg, Min, Max, Collect }
 
 #[derive(Debug, Clone)]
 pub enum AggArg {
@@ -534,4 +640,63 @@ pub struct ReconstructQuery {
 pub enum ReconstructTarget {
     Param(String),
     Alias(String),
+}
+
+// ═══════════════════════════════════════════════════════════
+// ── NQL 2.0: New Query Structs ───────────────────────────
+// ═══════════════════════════════════════════════════════════
+
+/// `MATCH … UNION [ALL] MATCH …`
+#[derive(Debug, Clone)]
+pub struct UnionQuery {
+    pub queries: Vec<MatchQuery>,
+    /// `true` for `UNION ALL` (keep duplicates).
+    pub all:     Vec<bool>,
+}
+
+/// `UNWIND expr AS alias RETURN …`
+#[derive(Debug, Clone)]
+pub struct UnwindQuery {
+    pub expr:  Expr,
+    pub alias: String,
+    pub ret:   ReturnClause,
+}
+
+/// `SHORTEST_PATH ((src), (dst)) [LIMIT n] [RETURN …]`
+#[derive(Debug, Clone)]
+pub struct ShortestPathQuery {
+    pub from:  NodePattern,
+    pub to:    NodePattern,
+    pub limit: Option<usize>,
+    pub ret:   Option<ReturnClause>,
+}
+
+/// `MATCH ELITES [IN "col"] [LIMIT n] [RETURN …]`
+#[derive(Debug, Clone)]
+pub struct MatchElitesQuery {
+    pub collection: Option<String>,
+    pub limit:      Option<usize>,
+    pub ret:        Option<ReturnClause>,
+}
+
+/// `MEASURE TENSION BETWEEN (a) AND (b)`
+#[derive(Debug, Clone)]
+pub struct MeasureTensionQuery {
+    pub node_a: NodePattern,
+    pub node_b: NodePattern,
+}
+
+/// `MEASURE TGC [IN "col"]`
+#[derive(Debug, Clone)]
+pub struct MeasureTgcQuery {
+    pub collection: Option<String>,
+}
+
+/// `FIND NEAREST [IN space] TO $vec [LIMIT n] [RETURN …]`
+#[derive(Debug, Clone)]
+pub struct FindNearestQuery {
+    pub space:  Option<String>,
+    pub target: Expr,
+    pub limit:  Option<usize>,
+    pub ret:    Option<ReturnClause>,
 }

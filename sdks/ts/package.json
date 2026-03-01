@@ -1,7 +1,7 @@
 {
-  "name": "hyperspace-sdk-ts",
+  "name": "nietzsche-sdk-ts",
   "version": "2.0.0",
-  "description": "Official TypeScript SDK for HyperspaceDB gRPC API",
+  "description": "Official TypeScript SDK for NietzscheDBDB gRPC API",
   "main": "dist/client.js",
   "types": "dist/client.d.ts",
   "files": [
@@ -12,7 +12,7 @@
     "build": "tsc"
   },
   "keywords": [
-    "hyperspace",
+    "nietzsche",
     "vector-database",
     "ann",
     "grpc",

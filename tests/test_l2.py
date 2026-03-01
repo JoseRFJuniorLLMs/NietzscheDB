@@ -1,16 +1,16 @@
 import grpc
-import hyperspace_pb2
-import hyperspace_pb2_grpc
+import nietzsche_db_pb2
+import nietzsche_db_pb2_grpc
 
 def test_l2():
     channel = grpc.insecure_channel('localhost:50051')
-    stub = hyperspace_pb2_grpc.DatabaseStub(channel)
+    stub = nietzsche_db_pb2_grpc.DatabaseStub(channel)
     
     COLLECTION = "default" # Enforce creation via ENV vars or API first
     
     # 1. Insert Vector A (Origin) [0.0, ...]
     vec_a = [0.0] * 1024
-    stub.insert(hyperspace_pb2.InsertRequest(
+    stub.insert(nietzsche_db_pb2.InsertRequest(
         vector=vec_a,
         id=1,
         collection=COLLECTION,
@@ -21,7 +21,7 @@ def test_l2():
     # Note: We use 0.5 to stay within default ScalarI8 quantization range [-1, 1]
     vec_b = [0.0] * 1024
     vec_b[0] = 0.5
-    stub.insert(hyperspace_pb2.InsertRequest(
+    stub.insert(nietzsche_db_pb2.InsertRequest(
         vector=vec_b,
         id=2, # Internal ID will be auto-assigned
         collection=COLLECTION,
@@ -31,7 +31,7 @@ def test_l2():
     # 3. Insert Vector C (0.8) -> L2 Sq = 0.64
     vec_c = [0.0] * 1024
     vec_c[0] = 0.8
-    stub.insert(hyperspace_pb2.InsertRequest(
+    stub.insert(nietzsche_db_pb2.InsertRequest(
         vector=vec_c,
         id=3,
         collection=COLLECTION,
@@ -41,7 +41,7 @@ def test_l2():
     print("Vectors inserted.")
     
     # 4. Search for Origin
-    response = stub.search(hyperspace_pb2.SearchRequest(
+    response = stub.search(nietzsche_db_pb2.SearchRequest(
         vector=vec_a,
         top_k=5,
         collection=COLLECTION

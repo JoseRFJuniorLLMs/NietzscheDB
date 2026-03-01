@@ -62,6 +62,36 @@ pub fn evaluate_condition(
                 _ => Ok(false),
             }
         }
+        // ── NQL 2.0 conditions — simplified evaluation for daemon context ──
+        Condition::IsNull { expr } => {
+            match eval_expr(expr, node, alias) {
+                Err(_) => Ok(true),   // field not found → null
+                Ok(_)  => Ok(false),
+            }
+        }
+        Condition::IsNotNull { expr } => {
+            match eval_expr(expr, node, alias) {
+                Err(_) => Ok(false),
+                Ok(_)  => Ok(true),
+            }
+        }
+        Condition::Regex { expr, pattern } => {
+            let ev = eval_expr(expr, node, alias)?;
+            let pv = eval_expr(pattern, node, alias)?;
+            match (&ev, &pv) {
+                (EvalValue::Str(text), EvalValue::Str(re_str)) => {
+                    match regex::Regex::new(re_str) {
+                        Ok(re) => Ok(re.is_match(text)),
+                        Err(_) => Ok(false),
+                    }
+                }
+                _ => Ok(false),
+            }
+        }
+        Condition::Exists { .. } => {
+            // EXISTS requires full graph scan — not available in daemon context
+            Ok(false)
+        }
     }
 }
 

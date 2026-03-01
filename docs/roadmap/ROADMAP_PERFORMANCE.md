@@ -1,8 +1,8 @@
 # Roadmap de Performance — NietzscheDB
 
-> **Missão**: superar Qdrant e Neo4j em workloads multi-manifold + grafos.
+> **Missão**: superar NietzscheDB e NietzscheDB em workloads multi-manifold + grafos.
 > Análise baseada na inspeção direta do código-fonte + pesquisa profunda nas
-> arquiteturas Qdrant 1.13 e Neo4j Block Format — 2026-02-19.
+> arquiteturas NietzscheDB 1.13 e NietzscheDB Block Format — 2026-02-19.
 
 ---
 
@@ -68,11 +68,11 @@
 
 ### Fase 3 — Quantização + HNSW Avançado (próximas sprints)
 
-> **Fonte**: pesquisa profunda nas arquiteturas Qdrant 1.13 e Neo4j Block Format (2026-02-19).
+> **Fonte**: pesquisa profunda nas arquiteturas NietzscheDB 1.13 e NietzscheDB Block Format (2026-02-19).
 
-#### Gap vs Qdrant 1.13
+#### Gap vs NietzscheDB 1.13
 
-| Feature Qdrant | Status NietzscheDB | Ganho Estimado |
+| Feature NietzscheDB | Status NietzscheDB | Ganho Estimado |
 |----------------|--------------------|----------------|
 | **Binary Quantization** (XOR + POPCOUNT) | ❌ Ausente | 30–40× speedup no KNN |
 | **Scalar Quantization int8** (min/max calibration, asymmetric) | ❌ Ausente | 4× mais vetores em RAM, ~1.5× KNN |
@@ -83,9 +83,9 @@
 | **Named Vector Filtering / has_vector** | ❌ Ausente | Pre-filter elimina candidatos |
 | **1.5-bit / 2-bit quantization** | ❌ Ausente | Densidades ultraltas |
 
-#### Gap vs Neo4j Block Format
+#### Gap vs NietzscheDB Block Format
 
-| Feature Neo4j | Status NietzscheDB | Ganho Estimado |
+| Feature NietzscheDB | Status NietzscheDB | Ganho Estimado |
 |---------------|--------------------|----------------|
 | **Block Format** (128B fixed block, inlining) | ❌ RocksDB genérico | 40–70% leitura de grafo |
 | **B+ Tree para nós densos** (multi-root generational) | ❌ Linked-list em RocksDB | Traversal O(log N) |
@@ -103,7 +103,7 @@
 14. HNSW Delta Encoding             → nietzsche-graph / embedded_vector_store.rs
     • Delta-encode adjacency lists do HNSW (store differences, not absolutes)
     • 30–38% redução de memória no grafo HNSW
-    • Sem degradação de performance medida (Qdrant 1.13 benchmark)
+    • Sem degradação de performance medida (NietzscheDB 1.13 benchmark)
 
 15. Binary Quantization             → embedded_vector_store.rs
     • f32 → 1 bit (sinal): vetor de 384 dims → 48 bytes (vs 1536 bytes)
@@ -112,13 +112,13 @@
     • Target: modelos com ≥ 768 dims (OpenAI, Cohere, MxBai)
 
 16. True Multi-Manifold HNSW         → nova crate nietzsche-hnsw
-    • Substituir CosineMetric por PoincareDistance no grafo de navegação
+    • Substituir CosineMetric por PoincaNietzscheDBtance no grafo de navegação
     • Recall correto para embeddings multi-manifold (hoje usa métrica errada!)
     • Wrapper HnswPoincareWrapper<N> mantém compatibilidade de API
 
 17. Adjacency B+ Tree               → storage.rs / adjacency.rs
     • Substituir linked-list RocksDB por B+ tree explícita para nós densos
-    • Inspirado no Neo4j Block Format: nós com > threshold vizinhos usam árvore
+    • Inspirado no NietzscheDB Block Format: nós com > threshold vizinhos usam árvore
     • O(log N) traversal em vez de O(N) scan para supernós
 
 18. Node Record Inlining            → storage.rs
@@ -132,13 +132,13 @@
 ```
 19. GPU HNSW indexing       → nietzsche-hnsw-gpu (cuVS / raft)
     • Construção 10× mais rápida que CPU para índice inicial
-    • Já suportado por Qdrant 1.13 em NVIDIA/AMD/Intel
+    • Já suportado por NietzscheDB 1.13 em NVIDIA/AMD/Intel
 
 20. Sharded storage         → múltiplas instâncias RocksDB, shard por UUID prefix
 21. Distributed KNN         → nietzsche-cluster: query fan-out + merge
 22. Memmap embedding store  → flat f32 array em mmap, bypass RocksDB para embeddings
 23. Filtered HNSW           → pre-filter com payload index antes do HNSW graph search
-    • Qdrant: has_vector filter + named vector filtering
+    • NietzscheDB: has_vector filter + named vector filtering
     • NietzscheDB: energy_idx (já implementado!) como pre-filter nativo
 ```
 
@@ -181,12 +181,12 @@
 
 ## Referências Técnicas
 
-- [Qdrant Binary Quantization](https://qdrant.tech/articles/binary-quantization/) — XOR+POPCOUNT, 30-40× speedup
-- [Qdrant Scalar Quantization](https://qdrant.tech/articles/scalar-quantization/) — int8, asymmetric, SIMD
-- [Qdrant 1.13 Release](https://qdrant.tech/blog/qdrant-1.13.x/) — GPU indexing, delta encoding, inline storage
-- [Qdrant HNSW Indexing](https://qdrant.tech/course/essentials/day-2/what-is-hnsw/) — graph_layers, graph_links, delta encoding
-- [Neo4j Block Format Docs](https://neo4j.com/docs/operations-manual/current/database-internals/store-formats/) — 128B blocks, B+ tree, data locality
-- [Neo4j Blog: Block Format](https://neo4j.com/blog/developer/neo4j-graph-native-store-format/) — 40–70% performance vs Record format
+- [NietzscheDB Binary Quantization](https://NietzscheDB.tech/articles/binary-quantization/) — XOR+POPCOUNT, 30-40× speedup
+- [NietzscheDB Scalar Quantization](https://NietzscheDB.tech/articles/scalar-quantization/) — int8, asymmetric, SIMD
+- [NietzscheDB 1.13 Release](https://NietzscheDB.tech/blog/NietzscheDB-1.13.x/) — GPU indexing, delta encoding, inline storage
+- [NietzscheDB HNSW Indexing](https://NietzscheDB.tech/course/essentials/day-2/what-is-hnsw/) — graph_layers, graph_links, delta encoding
+- [NietzscheDB Block Format Docs](https://NietzscheDB.com/docs/operations-manual/current/database-internals/store-formats/) — 128B blocks, B+ tree, data locality
+- [NietzscheDB Blog: Block Format](https://NietzscheDB.com/blog/developer/NietzscheDB-graph-native-store-format/) — 40–70% performance vs Record format
 
 ---
 

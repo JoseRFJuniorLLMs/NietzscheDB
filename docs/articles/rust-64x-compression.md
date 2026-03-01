@@ -8,7 +8,7 @@
 
 ## TL;DR
 
-We built HyperspaceDB in **Rust** and achieved:
+We built NietzscheDB in **Rust** and achieved:
 - ✅ **64x compression** (8 bytes → 1 bit per dimension)
 - ✅ **95%+ recall** maintained
 - ✅ **Zero-copy** memory-mapped storage
@@ -240,7 +240,7 @@ pub async fn save_snapshot_async(&self, path: &Path) {
 
 ### Benchmark: 1M Vectors (1024-dim)
 
-| Metric | Python (NumPy) | Go (Faiss) | Rust (HyperspaceDB) |
+| Metric | Python (NumPy) | Go (Faiss) | Rust (NietzscheDB) |
 |--------|----------------|------------|---------------------|
 | **Insert (QPS)** | 450 | 2,100 | **9,087** |
 | **Search (p99)** | 12ms | 1.2ms | **0.18ms** |
@@ -351,12 +351,12 @@ for _ in 0..8 {
 
 ## Open Source
 
-HyperspaceDB is **AGPLv3** licensed:
+NietzscheDB is **AGPLv3** licensed:
 ```bash
-git clone https://github.com/YARlabs/hyperspace-db
-cd hyperspace-db
+git clone https://github.com/YARlabs/nietzsche-db
+cd nietzsche-db
 cargo build --release
-./target/release/hyperspace-server
+./target/release/nietzsche-baseserver
 ```
 
 **Contributions welcome!**
@@ -377,7 +377,7 @@ Rust enabled us to build a vector database that is:
 4. Async I/O (zero blocking)
 5. Scalar + binary quantization (64x compression)
 
-**Try it**: [github.com/YARlabs/hyperspace-db](https://github.com/YARlabs/hyperspace-db)
+**Try it**: [github.com/YARlabs/nietzsche-db](https://github.com/YARlabs/nietzsche-db)
 
 ---
 
@@ -390,4 +390,4 @@ Rust enabled us to build a vector database that is:
 
 ---
 
-**Discussion**: [HackerNews](#) | [Reddit](#) | [GitHub](https://github.com/YARlabs/hyperspace-db)
+**Discussion**: [HackerNews](#) | [Reddit](#) | [GitHub](https://github.com/YARlabs/nietzsche-db)

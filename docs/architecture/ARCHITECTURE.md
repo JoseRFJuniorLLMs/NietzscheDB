@@ -57,11 +57,11 @@ NietzscheDB maps the hyperbolic Poincaré ball coordinates to the Bloch sphere, 
 │  Observe:    nietzsche-metrics                                               │
 │  Storage:    nietzsche-table    nietzsche-media      nietzsche-kafka          │
 ├──────────────────────────────────────────────────────────────────────────────┤
-│                     HyperspaceDB Layer (9 crates — fork base)                │
+│                     NietzscheDB Layer (9 crates — fork base)                │
 │                                                                              │
-│  hyperspace-core   hyperspace-index   hyperspace-store                       │
-│  hyperspace-server hyperspace-proto   hyperspace-cli                         │
-│  hyperspace-embed  hyperspace-wasm    hyperspace-sdk                         │
+│  nietzsche-core   nietzsche-hnsw   nietzsche-vecstore                       │
+│  nietzsche-baseserver nietzsche-proto   nietzsche-cli                         │
+│  nietzsche-embed  nietzsche-wasm    nietzsche-rsdk                         │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -87,7 +87,7 @@ Client Request
                          │                            │
                          ▼                            ▼
               ┌──────────────────┐          ┌──────────────────┐
-              │ HyperspaceDB    │          │ Background Tasks  │
+              │ NietzscheDB    │          │ Background Tasks  │
               │ (HNSW index +   │          │ Sleep, Zaratustra │
               │  mmap vectors)  │          │ Daemons, Agency   │
               └──────────────────┘          └──────────────────┘
@@ -273,7 +273,7 @@ merge_edges(local_set, remote_set):
 
 ---
 
-# HyperspaceDB Architecture (Fork Base)
+# NietzscheDB Architecture (Fork Base)
 
 ## System Overview
 
@@ -518,12 +518,12 @@ graph TD
 graph TB
     subgraph "Browser (WASM)"
         WASM_APP[Web App]
-        WASM_DB[HyperspaceDB<br/>WASM Core]
+        WASM_DB[NietzscheDB<br/>WASM Core]
         IDB[IndexedDB]
     end
     
     subgraph "Cloud"
-        SERVER[HyperspaceDB<br/>Server]
+        SERVER[NietzscheDB<br/>Server]
         DISK[Persistent<br/>Storage]
     end
     
@@ -588,7 +588,7 @@ graph LR
 ### Single Node
 ```
 ┌─────────────────┐
-│  HyperspaceDB   │
+│  NietzscheDB   │
 │   (Standalone)  │
 └─────────────────┘
 ```
@@ -624,16 +624,16 @@ graph LR
 ## Memory Management & Stability
 
 ### Cold Storage Architecture
-HyperspaceDB implements a "Cold Storage" mechanism to handle large numbers of collections efficiently:
+NietzscheDB implements a "Cold Storage" mechanism to handle large numbers of collections efficiently:
 1.  **Lazy Loading**: Collections are not loaded into RAM at startup. Instead, only metadata is scanned. The actual collection (vector index, storage) is instantiated from disk only upon the first `get()` request.
 2.  **Idle Eviction (Reaper)**: A background task runs every 60 seconds to scan for idle collections. Any collection not accessed for a configurable period (default: 1 hour) is automatically unloaded from memory to free up RAM.
 3.  **Graceful Shutdown**: When a collection is evicted or deleted, its `Drop` implementation ensures that all associated background tasks (indexing, snapshotting) are immediately aborted, preventing resource leaks and panicked threads.
 
-This architecture allows HyperspaceDB to support thousands of collections while keeping the active memory footprint low, scaling based on actual usage rather than total data.
+This architecture allows NietzscheDB to support thousands of collections while keeping the active memory footprint low, scaling based on actual usage rather than total data.
 
 ## 🏙 Multi-Tenancy (v2.0)
 
-HyperspaceDB 2.0 introduces native SaaS multi-tenancy.
+NietzscheDB 2.0 introduces native SaaS multi-tenancy.
 
 - **Logical Isolation**: Collections are prefixed with `user_id` in the storage layer. The `CollectionManager` ensures that requests without the correctly matching `user_id` cannot access or even list other tenants' data.
 - **Usage Accounting**: The `UserUsage` report provides per-tenant metrics including total vector count and real disk usage (calculating the size of `mmap` segments and snapshots), facilitating integration with billing systems.

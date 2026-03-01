@@ -1,5 +1,5 @@
 
-from hyperspace import HyperspaceClient
+from nietzsche_legacy import NietzscheBaseClient
 import time
 import sys
 
@@ -7,7 +7,7 @@ def test_hybrid():
     print("--- Hybrid Search Test (RRF) ---")
     
     try:
-        client = HyperspaceClient("localhost:50051", api_key="supersecret")
+        client = NietzscheBaseClient("localhost:50051", api_key="supersecret")
     except Exception as e:
         print(f"Connection failed: {e}")
         sys.exit(1)

@@ -47,7 +47,7 @@
 | 5 | `nietzsche-named-vectors`| Collections Page (dimensão, métrica)                  | Parcial   |
 | 6 | `nietzsche-pq`           | Overview → campo "Quantization: I8"                   | Mínima    |
 | 7 | `nietzsche-secondary-idx`| Data Explorer → metadata display                      | Mínima    |
-| 8 | `hyperspace-*` (9 crates)| Base storage refletido em stats/health                | Indireta  |
+| 8 | `nietzsche-*` (9 crates)| Base storage refletido em stats/health                | Indireta  |
 
 ### ⚠️ PARCIALMENTE VISÍVEL — Backend tem endpoint, dashboard NÃO consome
 

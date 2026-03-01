@@ -1,1 +1,1 @@
-export { HyperspaceStore, HyperspaceStoreArgs } from "./vectorstores";
+export { NietzscheDBStore, NietzscheDBStoreArgs } from "./vectorstores";

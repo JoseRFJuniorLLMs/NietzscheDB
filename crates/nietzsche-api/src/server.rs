@@ -729,7 +729,7 @@ impl NietzscheDb for NietzscheServer {
                     // We drop the read lock and acquire a write lock briefly.
                     drop(db);
                     {
-                        let mut db_w = shared.write().await;
+                        let db_w = shared.write().await;
                         if let Ok(Some(mut meta)) = db_w.storage().get_node_meta(&id) {
                             meta.energy = (meta.energy + 0.01).min(1.0);
                             let _ = db_w.storage().put_node_meta(&meta);
@@ -1008,7 +1008,7 @@ impl NietzscheDb for NietzscheServer {
                 }
                 QueryResult::ApplyDreamRequest { dream_id } => {
                     drop(db);
-                    let mut db_w = shared.write().await;
+                    let db_w = shared.write().await;
                     let session = self.dream_engine.apply_dream(db_w.storage(), &dream_id)
                         .map_err(|e| Status::internal(format!("dream apply error: {e}")))?;
                     
@@ -1185,6 +1185,23 @@ impl NietzscheDb for NietzscheServer {
                         entry
                     }).collect();
                     scalar_rows.push(nietzsche::ScalarRow { entries });
+                }
+
+                // ── NQL 2.0: Intent-based results ──────────────
+                QueryResult::UnwindRequest { expr, alias } => {
+                    path_ids.push(format!("unwind:{}:{}", alias, expr));
+                }
+                QueryResult::ShortestPathRequest { from_alias, from_label, to_alias, to_label, limit } => {
+                    path_ids.push(format!("shortest_path:{}({:?})->{}({:?}):limit={:?}",
+                        from_alias, from_label, to_alias, to_label, limit));
+                }
+                QueryResult::MeasureTensionRequest { node_a_alias, node_a_label, node_b_alias, node_b_label } => {
+                    path_ids.push(format!("measure_tension:{}({:?})<->{}({:?})",
+                        node_a_alias, node_a_label, node_b_alias, node_b_label));
+                }
+                QueryResult::FindNearestRequest { space, target, limit } => {
+                    path_ids.push(format!("find_nearest:space={:?}:target={}:limit={:?}",
+                        space, target, limit));
                 }
             }
         }
@@ -1437,6 +1454,44 @@ impl NietzscheDb for NietzscheServer {
             elite_node_ids:     elite_ids,
             duration_ms:        report.duration_ms,
             cycles_run:         cycles as u32,
+        }))
+    }
+
+    // ── Defibrillator (one-time thermodynamic ignition) ──────────────────
+
+    #[instrument(skip(self, req))]
+    async fn defibrillate(
+        &self,
+        req: Request<nietzsche::DefibrillateRequest>,
+    ) -> Result<Response<nietzsche::DefibrillateResponse>, Status> {
+        require_admin(&req)?;
+        let r = req.into_inner();
+
+        let shared = get_col!(self.cm, &r.collection);
+        // Write lock: exclusive access during energy injection.
+        let db = shared.read().await;
+
+        let report = db.defibrillate().map_err(graph_err)?;
+
+        self.cdc.publish(CdcEventType::Zaratustra, Uuid::nil(), col(&r.collection));
+        warn!(
+            collection = %col(&r.collection),
+            total = report.total_nodes,
+            revived = report.revived_count,
+            singletons = report.singleton_count,
+            max_energy = report.max_energy,
+            mean_energy = report.mean_energy,
+            duration_ms = report.duration_ms,
+            "⚡ DEFIBRILLATOR completed"
+        );
+
+        Ok(Response::new(nietzsche::DefibrillateResponse {
+            total_nodes:     report.total_nodes,
+            revived_count:   report.revived_count,
+            singleton_count: report.singleton_count,
+            max_energy:      report.max_energy,
+            mean_energy:     report.mean_energy,
+            duration_ms:     report.duration_ms,
         }))
     }
 
@@ -2461,7 +2516,7 @@ impl NietzscheDb for NietzscheServer {
         Ok(Response::new(nietzsche::ListIndexesResponse { fields }))
     }
 
-    // ── Cache (Phase C — Redis replacement) ──────────────────────────────
+    // ── Cache (Phase C — NietzscheDB replacement) ──────────────────────────────
 
     #[instrument(skip(self, req))]
     async fn cache_set(
@@ -3282,7 +3337,7 @@ impl NietzscheDb for NietzscheServer {
             // Record hit for EvolutionDaemon
             drop(db);
             {
-                let mut db_w = shared.write().await;
+                let db_w = shared.write().await;
                 if let Ok(Some(mut node)) = db_w.storage().get_node(&best_id) {
                     let hits = node.content.get("mcts_hits").and_then(|v| v.as_u64()).unwrap_or(0);
                     let mut content = node.content.clone();
@@ -3336,7 +3391,7 @@ impl NietzscheDb for NietzscheServer {
 
         let shared = get_col!(self.cm, &r.collection);
         // We need write lock to apply changes to the graph
-        let mut db = shared.write().await;
+        let db = shared.write().await;
 
         let session = self.dream_engine.apply_dream(db.storage(), &r.dream_id)
             .map_err(|e| Status::internal(e.to_string()))?;

@@ -1,7 +1,7 @@
 {
-    "name": "hyperspace-showcase",
+    "name": "nietzsche-showcase",
     "version": "1.0.0",
-    "description": "Showcase of HyperspaceDB with LangChain",
+    "description": "Showcase of NietzscheDBDB with LangChain",
     "main": "src/index.ts",
     "scripts": {
         "start": "ts-node src/index.ts",
@@ -9,8 +9,8 @@
         "search": "ts-node src/search.ts"
     },
     "dependencies": {
-        "langchain-hyperspace": "file:../../integrations/langchain-js",
-        "hyperspace-sdk-ts": "file:../../sdks/ts",
+        "langchain-nietzsche": "file:../../integrations/langchain-js",
+        "nietzsche-rsdk-ts": "file:../../sdks/ts",
         "@langchain/openai": "^0.0.14",
         "@langchain/core": "^0.1.5",
         "dotenv": "^16.0.0"

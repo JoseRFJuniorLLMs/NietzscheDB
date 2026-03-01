@@ -12,7 +12,7 @@ Only the latest major version is currently supported with security updates.
 
 ## Reporting a Vulnerability
 
-We take security seriously. If you discover a vulnerability in HyperspaceDB, please do not disclose it publicly.
+We take security seriously. If you discover a vulnerability in NietzscheDB, please do not disclose it publicly.
 
 **Please report vulnerabilities directly via email to:**
 `hi@yar.ink`

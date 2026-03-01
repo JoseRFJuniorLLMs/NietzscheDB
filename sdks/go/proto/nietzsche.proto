@@ -74,6 +74,9 @@ service NietzscheDB {
   // ── Zaratustra — autonomous evolution engine (Phase Z) ───────────────
   rpc InvokeZaratustra (ZaratustraRequest)  returns (ZaratustraResponse);
 
+  // ── Defibrillator — one-time thermodynamic ignition ─────────────────
+  rpc Defibrillate (DefibrillateRequest) returns (DefibrillateResponse);
+
   // ── Batch CRUD ────────────────────────────────────────────────────────
   rpc BatchInsertNodes (BatchInsertNodesRequest) returns (BatchInsertNodesResponse);
   rpc BatchInsertEdges (BatchInsertEdgesRequest) returns (BatchInsertEdgesResponse);
@@ -133,7 +136,7 @@ service NietzscheDB {
   rpc DropIndex    (DropIndexRequest)    returns (StatusResponse);
   rpc ListIndexes  (ListIndexesRequest)  returns (ListIndexesResponse);
 
-  // ── Cache (Phase C — Redis replacement) ────────────────────────
+  // ── Cache (Phase C — NietzscheDB replacement) ────────────────────────
   rpc CacheSet     (CacheSetRequest)     returns (StatusResponse);
   rpc CacheGet     (CacheGetRequest)     returns (CacheGetResponse);
   rpc CacheDel     (CacheDelRequest)     returns (StatusResponse);
@@ -360,7 +363,7 @@ message EdgeIdRequest {
   string collection = 2;  // empty → "default"
 }
 
-// ── Merge messages (FASE D — Neo4j MERGE replacement) ────────────────────
+// ── Merge messages (FASE D — NietzscheDB MERGE replacement) ────────────────────
 
 message MergeNodeRequest {
   string         collection    = 1;  // empty → "default"
@@ -666,6 +669,21 @@ message ZaratustraResponse {
   uint32 cycles_run          = 14;
 }
 
+// ── Defibrillator messages (one-time thermodynamic ignition) ───────────────
+
+message DefibrillateRequest {
+  string collection = 1;
+}
+
+message DefibrillateResponse {
+  uint64 total_nodes     = 1;
+  uint64 revived_count   = 2;
+  uint64 singleton_count = 3;
+  float  max_energy      = 4;
+  float  mean_energy     = 5;
+  uint64 duration_ms     = 6;
+}
+
 // ── Graph Algorithm messages ──────────────────────────────────────────────
 
 // -- Requests --
@@ -879,7 +897,7 @@ message ListLenResponse {
   uint64 length = 1;
 }
 
-// ── Cache messages (Phase C — Redis replacement) ──────────────────────────
+// ── Cache messages (Phase C — NietzscheDB replacement) ──────────────────────────
 
 message CacheSetRequest {
   string collection = 1;

@@ -7,9 +7,9 @@ import os
 import sys
 
 SERVER_URL = "http://localhost:50050"
-SERVER_BIN = "./target/release/hyperspace-server"
+SERVER_BIN = "./target/release/nietzsche-baseserver"
 COLLECTION_NAME = "test_idle"
-API_KEY = "I_LOVE_HYPERSPACEDB"
+API_KEY = "I_LOVE_NIETZSCHEDB"
 
 def log(msg):
     print(f"[TEST] {msg}")
@@ -51,7 +51,7 @@ def verify_metrics():
     try:
         with request("/metrics") as res:
             body = res.read().decode()
-            if "hyperspace_active_collections" in body:
+            if "nietzsche_active_collections" in body:
                 print("✅ PASS: Prometheus metrics found.")
             else:
                 print(f"❌ FAIL: Prometheus metrics missing keys. Body: {body[:200]}...")

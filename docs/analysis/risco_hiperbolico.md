@@ -84,7 +84,7 @@ O embedding continua existindo — apenas muda onde é armazenado. A geometria P
 |-------|-----------|-----------|
 | Migração de dados | **ALTO** | CF_NODES existentes contêm `Vec<f64>` serializado — todos os dados precisam ser remigrados |
 | Breaking API | **ALTO** | Todos os callers de `node.embedding` precisam ser refatorados para ler do HNSW store separado |
-| API de leitura de embedding | **ALTO** | `hyperspace-store` não expõe leitura por ID sem busca — precisa de nova API |
+| API de leitura de embedding | **ALTO** | `nietzsche-vecstore` não expõe leitura por ID sem busca — precisa de nova API |
 | Sleep cycle | **MÉDIO** | Adam optimizer acessa `node.embedding` durante reconsolidação — precisa ser adaptado |
 | L-System engine | **MÉDIO** | Gera coordenadas novas a partir de embeddings existentes — precisa de acesso ao novo store |
 
@@ -234,7 +234,7 @@ alpha  = 2.0 / 127.0 ≈ 0.0157
 offset = −1.0
 ```
 
-Sem necessidade de P2 quantile estimator (o Qdrant usa estimador estatístico porque não conhece o range a priori). Para Poincaré, o range é matematicamente garantido.
+Sem necessidade de P2 quantile estimator (o NietzscheDB usa estimador estatístico porque não conhece o range a priori). Para Poincaré, o range é matematicamente garantido.
 
 ### 3.3 Risco hiperbólico — nós de fronteira
 
@@ -259,7 +259,7 @@ Para ‖x‖ = 0.99 (nó episódico extremo):
 
 ### 3.4 Mitigação — Oversampling obrigatório
 
-Idêntico ao padrão Qdrant:
+Idêntico ao padrão NietzscheDB:
 
 1. KNN quantizado retorna `k × oversampling_factor` candidatos
 2. Rescore dos candidatos com coordenadas originais (f32 ou f64)
@@ -275,7 +275,7 @@ Idêntico ao padrão Qdrant:
 
 ### 3.5 Componentes afetados
 
-Esta funcionalidade requer nova crate `nietzsche-quantization` (ou integração com `hyperspace-core`). Não é breaking para dados existentes se implementado como índice secundário (original mantido, Int8 é índice acelerador).
+Esta funcionalidade requer nova crate `nietzsche-quantization` (ou integração com `nietzsche-core`). Não é breaking para dados existentes se implementado como índice secundário (original mantido, Int8 é índice acelerador).
 
 ### 3.6 Decisão do comitê necessária
 
@@ -297,7 +297,7 @@ Para dim=3072: 3072 bits = 384 bytes (vs 24.576 bytes em f64 = 64× menor)
 Score ≈ dim − 2 × Hamming(sign(u), sign(v))  ≈  cosine(u, v)
 ```
 
-O Qdrant usa esta técnica com sucesso para embeddings de texto/imagem.
+O NietzscheDB usa esta técnica com sucesso para embeddings de texto/imagem.
 
 ### 4.2 Por que é INCOMPATÍVEL com Poincaré ball como métrica primária
 
@@ -362,7 +362,7 @@ Para registro do comitê: os seguintes bugs críticos foram corrigidos antes des
 **Correção aplicada**:
 - Adicionado `HnswPoincareWrapper<N>` com `HnswIndex<N, PoincareMetric>`
 - `VectorMetric::PoincareBall` agora roteia para `make_poincare_hnsw()`
-- `PoincareMetric` já existia em `hyperspace-core` com implementação completa de `acosh`
+- `PoincareMetric` já existia em `nietzsche-core` com implementação completa de `acosh`
 - Zero risco — é correção de bug, não mudança de comportamento intencional
 - Compile limpo: `cargo check -p nietzsche-graph` → 0 erros, 3 warnings pré-existentes
 
@@ -579,7 +579,7 @@ Nunca como métrica primária
 
 *Parecer Grok recebido em 2026-02-19 — adicionado à PARTE 9 desta revisão*
 *Documento preparado pela auditoria técnica interna — 2026-02-19*
-*Referências: `AUDITORIA_PERFORMANCE.md`, `pesquisar1.md`, código-fonte Qdrant commit 9f433b1*
+*Referências: `AUDITORIA_PERFORMANCE.md`, `pesquisar1.md`, código-fonte NietzscheDB commit 9f433b1*
 *Revisões: `md/hiperbolica.md` (revisão 1), `md/hiperbolica2.md` (parecer Grok)*
 
 ---

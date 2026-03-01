@@ -34,15 +34,15 @@
 
 | Crate | Funcao | LOC aprox |
 |-------|--------|-----------|
-| `hyperspace-core` | Metricas Poincare/Euclidean/Cosine/Lorentz + SIMD | ~2.000 |
-| `hyperspace-store` | WAL v3 + mmap segments + RAM store | ~1.500 |
-| `hyperspace-index` | HNSW nativo hiperbolico com ArcSwap | ~3.000 |
-| `hyperspace-proto` | Protobuf gRPC (legacy) | ~200 |
-| `hyperspace-server` | Servidor gRPC standalone | ~1.500 |
-| `hyperspace-sdk` | Client Rust async | ~800 |
-| `hyperspace-embed` | ONNX + remote embedder | ~400 |
-| `hyperspace-wasm` | WebAssembly + IndexedDB | ~500 |
-| `hyperspace-cli` | TUI ratatui + stress tests | ~1.200 |
+| `nietzsche-core` | Metricas Poincare/Euclidean/Cosine/Lorentz + SIMD | ~2.000 |
+| `nietzsche-vecstore` | WAL v3 + mmap segments + RAM store | ~1.500 |
+| `nietzsche-hnsw` | HNSW nativo hiperbolico com ArcSwap | ~3.000 |
+| `nietzsche-proto` | Protobuf gRPC (legacy) | ~200 |
+| `nietzsche-baseserver` | Servidor gRPC standalone | ~1.500 |
+| `nietzsche-rsdk` | Client Rust async | ~800 |
+| `nietzsche-embed` | ONNX + remote embedder | ~400 |
+| `nietzsche-wasm` | WebAssembly + IndexedDB | ~500 |
+| `nietzsche-cli` | TUI ratatui + stress tests | ~1.200 |
 | `nietzsche-hyp-ops` | SSoT geometria hiperbolica | ~600 |
 | `nietzsche-graph` | Engine core RocksDB 10 CFs | ~5.000 |
 | `nietzsche-query` | NQL parser PEG + executor | ~2.500 |
@@ -125,15 +125,15 @@
 | nietzsche-sensory | 22 | Bom - encoders, types |
 | nietzsche-api | 21 | Bom - validacao de input |
 | nietzsche-sleep | 21 | Bom - cycle, Riemannian, snapshots |
-| hyperspace-core | 20 | Bom - metricas, quantizacao |
-| hyperspace-index | 3 integ | Muito bom - concurrency, property-based |
-| hyperspace-store | 2 integ | Bom - WAL corruption, property-based |
+| nietzsche-core | 20 | Bom - metricas, quantizacao |
+| nietzsche-hnsw | 3 integ | Muito bom - concurrency, property-based |
+| nietzsche-vecstore | 2 integ | Bom - WAL corruption, property-based |
 | nietzsche-tpu | 28 | Bom - staging buffer, VectorStore trait, kNN CPU, L2 distance, concurrency |
 | nietzsche-cugraph | 41 | Excelente - CSR, BFS, Dijkstra, PageRank, error types, topologias diversas |
 | nietzsche-sdk | 28 | Bom - params, defaults, proto re-exports, batch, URI parsing, serialization |
-| hyperspace-wasm | 30 | Bom - ID mapping, dim validation, metricas Poincare/L2/Cosine, concurrency |
-| hyperspace-embed | 49 | Excelente - Metric/ApiProvider enums, normalization Poincare/L2, mean pooling, RemoteVectorizer, Gemini error, trait objects, batch stress |
-| hyperspace-cli | 47 | Excelente - proto structs, TUI TestBackend rendering, tab cycling, app state, Poincare normalization, stress test math |
+| nietzsche-wasm | 30 | Bom - ID mapping, dim validation, metricas Poincare/L2/Cosine, concurrency |
+| nietzsche-embed | 49 | Excelente - Metric/ApiProvider enums, normalization Poincare/L2, mean pooling, RemoteVectorizer, Gemini error, trait objects, batch stress |
+| nietzsche-cli | 47 | Excelente - proto structs, TUI TestBackend rendering, tab cycling, app state, Poincare normalization, stress test math |
 | nietzsche-wiederkehr | 18 | Bom - store, evaluator, engine, priority scheduler |
 | nietzsche-dream | 8 | Bom - store, engine lifecycle |
 | nietzsche-narrative | 4 | Bom - engine, energy stats |
@@ -158,9 +158,9 @@
 | **nietzsche-tpu** | 0 testes | **+28 testes** (staging buffer, upsert/delete, kNN CPU fallback, L2 distance, concurrency, high-dim) |
 | **nietzsche-cugraph** | 0 testes | **+41 testes** (CSR construction, BFS, Dijkstra, PageRank, error types, star/diamond/cycle graphs) |
 | **nietzsche-sdk** | 0 testes | **+28 testes** (InsertNodeParams, InsertEdgeParams, SleepParams, proto re-exports, batch, URI, JSON serialization) |
-| **hyperspace-wasm** | 0 testes | **+30 testes** (ID mapping, dimension validation, distance metrics Poincare/L2/Cosine, concurrency, serde) |
-| **hyperspace-embed** | 0 testes | **+49 testes** (sprint 3: Metric/ApiProvider enums, normalization, mean pooling, RemoteVectorizer, Gemini error, trait objects) |
-| **hyperspace-cli** | 0 testes | **+47 testes** (sprint 3: proto structs, TUI TestBackend, tab cycling, app state, Poincare normalization) |
+| **nietzsche-wasm** | 0 testes | **+30 testes** (ID mapping, dimension validation, distance metrics Poincare/L2/Cosine, concurrency, serde) |
+| **nietzsche-embed** | 0 testes | **+49 testes** (sprint 3: Metric/ApiProvider enums, normalization, mean pooling, RemoteVectorizer, Gemini error, trait objects) |
+| **nietzsche-cli** | 0 testes | **+47 testes** (sprint 3: proto structs, TUI TestBackend, tab cycling, app state, Poincare normalization) |
 
 ---
 
@@ -170,18 +170,18 @@
 
 | # | Bug | Arquivo | Linha | Tipo |
 |---|-----|---------|-------|------|
-| B1 | **unwrap() em snapshot deserialize** - panic se snapshot corrompido | `hyperspace-index/src/lib.rs` | 216 | Panic |
-| B2 | **Use-after-free no RAM store** - retorna slice de memoria desbloqueada | `hyperspace-store/src/ram_impl.rs` | 67-88 | UB |
-| B3 | **Pointer arithmetic sem bounds check** no mmap | `hyperspace-store/src/mmap_impl.rs` | 134-136 | UB |
+| B1 | **unwrap() em snapshot deserialize** - panic se snapshot corrompido | `nietzsche-hnsw/src/lib.rs` | 216 | Panic |
+| B2 | **Use-after-free no RAM store** - retorna slice de memoria desbloqueada | `nietzsche-vecstore/src/ram_impl.rs` | 67-88 | UB |
+| B3 | **Pointer arithmetic sem bounds check** no mmap | `nietzsche-vecstore/src/mmap_impl.rs` | 134-136 | UB |
 
 ### ALTOS (race conditions, panics potenciais)
 
 | # | Bug | Arquivo | Linha | Tipo |
 |---|-----|---------|-------|------|
-| B4 | **Segment growth race** - so adiciona 1 segmento quando precisa de N | `hyperspace-store/src/ram_impl.rs` | 44-52 | Race |
-| B5 | **Layer bounds sem check** no HNSW insert | `hyperspace-index/src/lib.rs` | 1368, 1409 | OOB |
-| B6 | **peek().unwrap()** em heap vazio durante busca | `hyperspace-index/src/lib.rs` | 1058 | Panic |
-| B7 | **Metadata silenciosamente perdida** - unwrap_or_default em bitmap corrompido | `hyperspace-index/src/lib.rs` | 273-288 | Data Loss |
+| B4 | **Segment growth race** - so adiciona 1 segmento quando precisa de N | `nietzsche-vecstore/src/ram_impl.rs` | 44-52 | Race |
+| B5 | **Layer bounds sem check** no HNSW insert | `nietzsche-hnsw/src/lib.rs` | 1368, 1409 | OOB |
+| B6 | **peek().unwrap()** em heap vazio durante busca | `nietzsche-hnsw/src/lib.rs` | 1058 | Panic |
+| B7 | **Metadata silenciosamente perdida** - unwrap_or_default em bitmap corrompido | `nietzsche-hnsw/src/lib.rs` | 273-288 | Data Loss |
 
 ### MEDIOS
 
@@ -239,30 +239,30 @@
 
 ## 5. TENDENCIAS QUE O NietzscheDB NAO TEM
 
-Pesquisa de mercado Q1 2026 - features que competitors (Pinecone, Qdrant, Milvus, Weaviate, pgvector, LanceDB) oferecem:
+Pesquisa de mercado Q1 2026 - features que competitors (Pinecone, NietzscheDB, Milvus, Weaviate, pgvector, LanceDB) oferecem:
 
 | Tendencia | Quem tem | NietzscheDB tem? | Prioridade |
 |-----------|----------|-------------------|------------|
 | **DiskANN/Vamana** (busca em disco, billions) | SQL Server 2025, Milvus, Azure PG | NAO | ALTA |
-| **Sparse Vectors** (SPLADE/BGE-M3) | Qdrant, Milvus, Pinecone, Elastic | **SIM** (Sprint 2026-02-21) | ~~ALTA~~ FEITO |
+| **Sparse Vectors** (SPLADE/BGE-M3) | NietzscheDB, Milvus, Pinecone, Elastic | **SIM** (Sprint 2026-02-21) | ~~ALTA~~ FEITO |
 | **Matryoshka Embeddings** (dimensao adaptativa) | Supabase, Pinecone | **REJEITADO** (ITEM F) | N/A |
 | **Serverless/Scale-to-zero** | Pinecone, Weaviate | **REJEITADO** (filosofia) | N/A |
 | **Auto-tuning HNSW params** | OpenSearch, VDTuner | **SIM** (Sprint 2026-02-21) | ~~MEDIA~~ FEITO |
 | **Streaming ingestion** (Kafka connector) | Striim, Milvus | **SIM** (Expansion Sprint) | ~~MEDIA~~ FEITO |
-| **Raft consensus** (strong consistency) | Qdrant | NAO | MEDIA |
+| **Raft consensus** (strong consistency) | NietzscheDB | NAO | MEDIA |
 | **Versioning/Time-travel** de embeddings | LanceDB | **SIM** (Sprint 2026-02-21) | ~~MEDIA~~ FEITO |
-| **In-database embedding** generation | Weaviate, ChromaDB | PARCIAL (hyperspace-embed) | MEDIA |
-| **Tiered multi-tenancy** | Qdrant 1.16 | NAO | MEDIA |
+| **In-database embedding** generation | Weaviate, ChromaDB | PARCIAL (nietzsche-embed) | MEDIA |
+| **Tiered multi-tenancy** | NietzscheDB 1.16 | NAO | MEDIA |
 | **Differential privacy** em embeddings | Pesquisa | **REJEITADO** (requer ruido Riemanniano) | N/A |
 | **CMEK** (Customer Managed Keys) | Enterprise trend | NAO | MEDIA |
 | **Query latency metrics** (p50/p95/p99) | Todos | **SIM** (nietzsche-metrics histograms) | ~~MEDIA~~ FEITO |
-| **MCP Server** (Model Context Protocol) | Pinecone, Qdrant, Milvus, Chroma, LanceDB, Neo4j | **SIM** (nietzsche-mcp, 19 tools) | ~~CRITICO~~ FEITO |
-| **Agentic Memory API** | Pinecone, Qdrant, Weaviate Agents | **SIM** (nietzsche-agency + wiederkehr + dream) | ~~CRITICO~~ FEITO |
-| **Prometheus / OpenTelemetry** | Qdrant, Milvus, Weaviate | **SIM** (nietzsche-metrics, 12 metricas) | ~~ALTO~~ FEITO |
-| **Named Vectors / Multi-Vector** | Qdrant, Weaviate, Milvus, Vespa | **SIM** (nietzsche-named-vectors) | ~~ALTO~~ FEITO |
-| **ColBERT / Late Interaction** | Qdrant (native ColPali), Vespa | NAO | ALTO |
-| **Product Quantization (PQ)** | Milvus, Qdrant, LanceDB, Vespa, Weaviate | **SIM** (nietzsche-pq, magnitude-preserving) | ~~ALTO~~ FEITO |
-| **Geo-Distributed Replication** | Pinecone, Qdrant, Milvus, Weaviate, Vespa | NAO | ALTO |
+| **MCP Server** (Model Context Protocol) | Pinecone, NietzscheDB, Milvus, Chroma, LanceDB, NietzscheDB | **SIM** (nietzsche-mcp, 19 tools) | ~~CRITICO~~ FEITO |
+| **Agentic Memory API** | Pinecone, NietzscheDB, Weaviate Agents | **SIM** (nietzsche-agency + wiederkehr + dream) | ~~CRITICO~~ FEITO |
+| **Prometheus / OpenTelemetry** | NietzscheDB, Milvus, Weaviate | **SIM** (nietzsche-metrics, 12 metricas) | ~~ALTO~~ FEITO |
+| **Named Vectors / Multi-Vector** | NietzscheDB, Weaviate, Milvus, Vespa | **SIM** (nietzsche-named-vectors) | ~~ALTO~~ FEITO |
+| **ColBERT / Late Interaction** | NietzscheDB (native ColPali), Vespa | NAO | ALTO |
+| **Product Quantization (PQ)** | Milvus, NietzscheDB, LanceDB, Vespa, Weaviate | **SIM** (nietzsche-pq, magnitude-preserving) | ~~ALTO~~ FEITO |
+| **Geo-Distributed Replication** | Pinecone, NietzscheDB, Milvus, Weaviate, Vespa | NAO | ALTO |
 | **Managed Cloud / DBaaS** | TODOS os concorrentes | NAO | CRITICO |
 
 ### Fontes da pesquisa de mercado
@@ -274,7 +274,7 @@ Pesquisa de mercado Q1 2026 - features que competitors (Pinecone, Qdrant, Milvus
 - [Best Vector Databases in 2026: Complete Comparison | Firecrawl](https://www.firecrawl.dev/blog/best-vector-databases)
 - [SQL Server 2025 DiskANN: Scaling Vector Search to Billions](https://www.mytechmantra.com/sql-server/sql-server-2025-diskann-vector-indexing-guide/)
 - [Optimizing Vector Search with NVIDIA cuVS | NVIDIA](https://developer.nvidia.com/blog/optimizing-vector-search-for-indexing-and-real-time-retrieval-with-nvidia-cuvs/)
-- [Qdrant 1.16 - Tiered Multitenancy & Disk-Efficient Search](https://qdrant.tech/blog/qdrant-1.16.x/)
+- [NietzscheDB 1.16 - Tiered Multitenancy & Disk-Efficient Search](https://NietzscheDB.tech/blog/NietzscheDB-1.16.x/)
 - [HONEYBEE: Efficient RBAC for Vector Databases | arXiv](https://arxiv.org/abs/2505.01538)
 - [VDTuner: Automated Performance Tuning for Vector Data Management | arXiv](https://arxiv.org/html/2404.10413v1)
 - [Matryoshka Embedding Models | Hugging Face](https://huggingface.co/blog/matryoshka)
@@ -284,7 +284,7 @@ Pesquisa de mercado Q1 2026 - features que competitors (Pinecone, Qdrant, Milvus
 - [Weaviate in 2025: Reliable Foundations for Agentic Systems](https://weaviate.io/blog/weaviate-in-2025)
 - [Milvus 2.6 Launch | SiliconAngle](https://siliconangle.com/2025/06/12/zilliz-launches-milvus-2-6-reduce-ai-infrastructure-costs/)
 - [SurrealDB 3.0 | VentureBeat](https://venturebeat.com/data/surrealdb-3-0-wants-to-replace-your-five-database-rag-stack-with-one/)
-- [Neo4j Vector Search with Filters 2026.01](https://neo4j.com/blog/genai/vector-search-with-filters-in-neo4j-v2026-01-preview/)
+- [NietzscheDB Vector Search with Filters 2026.01](https://NietzscheDB.com/blog/genai/vector-search-with-filters-in-NietzscheDB-v2026-01-preview/)
 
 ---
 
@@ -431,10 +431,10 @@ Apos revisar o codigo REAL (nao apenas relatorios), muitos "bugs" reportados era
 
 | # | Feature | Quem tem | Impacto | Status NietzscheDB |
 |---|---------|----------|---------|-------------------|
-| 1 | **MCP Server** | Pinecone, Qdrant, Milvus, Chroma, LanceDB, Neo4j | Visibilidade no ecossistema AI | **RESOLVIDO** — nietzsche-mcp (19 tools) |
-| 2 | **Agentic Memory API** | Pinecone, Qdrant, Weaviate | Multi-agent systems | **RESOLVIDO** — agency + wiederkehr + dream |
-| 3 | **Streaming Ingestion** | Weaviate, Milvus, Qdrant, Neo4j, Vespa | Enterprise pipelines | **RESOLVIDO** — nietzsche-kafka |
-| 4 | **Prometheus / OpenTelemetry** | Qdrant, Milvus, Weaviate | Enterprise readiness | **RESOLVIDO** — nietzsche-metrics (12 metricas) |
+| 1 | **MCP Server** | Pinecone, NietzscheDB, Milvus, Chroma, LanceDB, NietzscheDB | Visibilidade no ecossistema AI | **RESOLVIDO** — nietzsche-mcp (19 tools) |
+| 2 | **Agentic Memory API** | Pinecone, NietzscheDB, Weaviate | Multi-agent systems | **RESOLVIDO** — agency + wiederkehr + dream |
+| 3 | **Streaming Ingestion** | Weaviate, Milvus, NietzscheDB, NietzscheDB, Vespa | Enterprise pipelines | **RESOLVIDO** — nietzsche-kafka |
+| 4 | **Prometheus / OpenTelemetry** | NietzscheDB, Milvus, Weaviate | Enterprise readiness | **RESOLVIDO** — nietzsche-metrics (12 metricas) |
 | 5 | **Managed Cloud / DBaaS** | TODOS os concorrentes | Adocao massiva | **PENDENTE** |
 | 6 | **Serverless / Consumption Pricing** | Pinecone, Zilliz, LanceDB, Turbopuffer, Weaviate | Pay-per-query | **REJEITADO** (filosofia — organismo vivo) |
 
@@ -442,17 +442,17 @@ Apos revisar o codigo REAL (nao apenas relatorios), muitos "bugs" reportados era
 
 | # | Feature | Quem tem | Impacto | Status NietzscheDB |
 |---|---------|----------|---------|-------------------|
-| 7 | **Named Vectors / Multi-Vector** | Qdrant, Weaviate, Milvus, Vespa | Multimodal workflows | **RESOLVIDO** — nietzsche-named-vectors |
-| 8 | **ColBERT / Late Interaction** | Qdrant (native ColPali), Vespa | Qualidade de retrieval | **PENDENTE** |
-| 9 | **Product Quantization (PQ)** | Milvus, Qdrant, LanceDB, Vespa, Weaviate | Compressao de memoria | **RESOLVIDO** — nietzsche-pq (magnitude-preserving) |
-| 10 | **Geo-Distributed Replication** | Pinecone, Qdrant, Milvus/Zilliz, Weaviate, Vespa | Multi-region | **PENDENTE** |
+| 7 | **Named Vectors / Multi-Vector** | NietzscheDB, Weaviate, Milvus, Vespa | Multimodal workflows | **RESOLVIDO** — nietzsche-named-vectors |
+| 8 | **ColBERT / Late Interaction** | NietzscheDB (native ColPali), Vespa | Qualidade de retrieval | **PENDENTE** |
+| 9 | **Product Quantization (PQ)** | Milvus, NietzscheDB, LanceDB, Vespa, Weaviate | Compressao de memoria | **RESOLVIDO** — nietzsche-pq (magnitude-preserving) |
+| 10 | **Geo-Distributed Replication** | Pinecone, NietzscheDB, Milvus/Zilliz, Weaviate, Vespa | Multi-region | **PENDENTE** |
 
 ### MEDIO (nice-to-have competitivo)
 
 | # | Feature | Quem tem | Impacto |
 |---|---------|----------|---------|
 | 11 | **Unified Multi-Modal Search API** | LanceDB, Milvus, Weaviate, Vespa | Query unica cross-modal (texto+imagem+audio) |
-| 12 | **Point-in-Time Recovery (PITR)** | Pinecone, Qdrant, Milvus, Weaviate (cloud) | Requisito enterprise de disaster recovery |
+| 12 | **Point-in-Time Recovery (PITR)** | Pinecone, NietzscheDB, Milvus, Weaviate (cloud) | Requisito enterprise de disaster recovery |
 | 13 | **Java / C# SDKs** | Weaviate (C#), Milvus (Java), Pinecone (Java) | Java = enorme mercado enterprise |
 | 14 | **Learned Re-Ranking** (Hybrid Search 2.0) | Weaviate | BM25 + vector + modelo de re-ranking treinado |
 
@@ -470,7 +470,7 @@ Apos revisar o codigo REAL (nao apenas relatorios), muitos "bugs" reportados era
 | **Hausdorff Dimension Pruning** | Auto-poda fractal baseada em metricas de dimensao de Hausdorff | Nenhum |
 | **GPU + TPU Acceleration** | NVIDIA cuVS CAGRA (GPU) E Google TPU PJRT (v5e/v6e/v7) simultaneos | Milvus (so GPU) |
 | **NQL** | Linguagem declarativa com primitivas hiperbolicas de primeira classe | Nenhum |
-| **Dual-Store Atomico** | Cada insert vai para RocksDB (grafo) e HyperspaceDB (embedding) atomicamente | SurrealDB (sem hiperbolico) |
+| **Dual-Store Atomico** | Cada insert vai para RocksDB (grafo) e NietzscheDB (embedding) atomicamente | SurrealDB (sem hiperbolico) |
 
 ---
 
@@ -1204,7 +1204,7 @@ Isso nao e apenas um software. Se bem executado, isso e:
 *Auditoria realizada por Claude Opus 4.6 (Anthropic) em 2026-02-21*
 *Metodologia: analise estatica de 37.942 LOC + pesquisa de mercado Q1 2026*
 *Revisao de bugs: leitura manual de codigo-fonte para validar cada bug reportado*
-*Gap analysis: comparacao com Pinecone, Qdrant, Weaviate, Milvus, Neo4j, SurrealDB, LanceDB, Turbopuffer, Vespa, Memgraph, TigerGraph, ArangoDB*
+*Gap analysis: comparacao com Pinecone, NietzscheDB, Weaviate, Milvus, NietzscheDB, SurrealDB, LanceDB, Turbopuffer, Vespa, Memgraph, TigerGraph, ArangoDB*
 
 ---
 

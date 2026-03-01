@@ -64,7 +64,7 @@ class StressTestRunner:
                 q_vecs = self.gen_vecs(self.count_srch)
                 t0 = time.time()
                 with ThreadPoolExecutor(max_workers=c) as ex:
-                    if name.lower() == "hyperspace":
+                    if name.lower() == "nietzsche":
                         batch_size = 64
                         for i in range(0, len(q_vecs), batch_size):
                             ex.submit(search_fn, db_context, coll, q_vecs[i:i + batch_size])
@@ -275,7 +275,7 @@ class StressTestRunner:
 
 def run_stress_test():
     parser = argparse.ArgumentParser(description="Multi-DB Stress Test Runner")
-    parser.add_argument("--db", nargs="+", help="Specific DBs to test (hyperspace qdrant milvus chroma weaviate)")
+    parser.add_argument("--db", nargs="+", help="Specific DBs to test (nietzsche NietzscheDB milvus chroma weaviate)")
     parser.add_argument("--dim", type=int, default=1024, help="Vector dimension")
     args = parser.parse_args()
 
@@ -298,12 +298,12 @@ def run_stress_test():
         chromadb.telemetry.product.noop.NoopTelemetry = UniversalNoopTelemetry
     except: pass
 
-    # --- HYPERSPACE ---
-    if not target_dbs or "hyperspace" in target_dbs:
+    # --- NIETZSCHE ---
+    if not target_dbs or "nietzsche" in target_dbs:
         try:
-            from hyperspace import HyperspaceClient
+            from nietzsche_legacy import NietzscheBaseClient
             def hs_setup(c):
-                client = HyperspaceClient("localhost:50051", api_key="I_LOVE_HYPERSPACEDB")
+                client = NietzscheBaseClient("localhost:50051", api_key="I_LOVE_NIETZSCHEDB")
                 try: client.delete_collection(c)
                 except: pass
                 client.create_collection(c, dimension=args.dim, metric="cosine")
@@ -323,23 +323,23 @@ def run_stress_test():
                     client.search(v, top_k=10, collection=c)
             def hs_wait(client, coll):
                 url = f"http://localhost:50050/api/collections/{coll}/stats"
-                headers = {"x-api-key": "I_LOVE_HYPERSPACEDB"}
+                headers = {"x-api-key": "I_LOVE_NIETZSCHEDB"}
                 for _ in range(60):
                     try:
                         r = requests.get(url, headers=headers).json()
                         if r.get("indexing_queue", 0) == 0 and r.get("count", 0) > 0: return
                     except: pass
                     time.sleep(1)
-            runner.run_concurrency("Hyperspace", hs_setup, hs_ins, hs_srch, lambda cl, c: cl.delete_collection(c), hs_wait)
-        except Exception as e: print(f"Skipping Hyperspace: {e}")
+            runner.run_concurrency("NietzscheDB", hs_setup, hs_ins, hs_srch, lambda cl, c: cl.delete_collection(c), hs_wait)
+        except Exception as e: print(f"Skipping NietzscheDB: {e}")
 
-    # --- QDRANT ---
-    if not target_dbs or "qdrant" in target_dbs:
+    # --- NietzscheDB ---
+    if not target_dbs or "NietzscheDB" in target_dbs:
         try:
-            from qdrant_client import QdrantClient
-            from qdrant_client.models import Distance, PointStruct, VectorParams
+            from NietzscheDB_client import NietzscheDBClient
+            from NietzscheDB_client.models import Distance, PointStruct, VectorParams
             def qd_setup(c):
-                client = QdrantClient(host="localhost", port=6334, prefer_grpc=True)
+                client = NietzscheDBClient(host="localhost", port=6334, prefer_grpc=True)
                 try: client.delete_collection(c)
                 except: pass
                 client.create_collection(c, vectors_config=VectorParams(size=args.dim, distance=Distance.COSINE))
@@ -351,8 +351,8 @@ def run_stress_test():
                     points = [PointStruct(id=start_id + i + k, vector=v, payload={}) for k, v in enumerate(chunk)]
                     client.upsert(c, points, wait=True)
             def qd_srch(client, c, v): client.search(c, query_vector=v, limit=10)
-            runner.run_concurrency("Qdrant", qd_setup, qd_ins, qd_srch, lambda cl, c: cl.delete_collection(c))
-        except Exception as e: print(f"Skipping Qdrant: {e}")
+            runner.run_concurrency("NietzscheDB", qd_setup, qd_ins, qd_srch, lambda cl, c: cl.delete_collection(c))
+        except Exception as e: print(f"Skipping NietzscheDB: {e}")
 
     # --- MILVUS ---
     if not target_dbs or "milvus" in target_dbs:

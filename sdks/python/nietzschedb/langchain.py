@@ -4,7 +4,7 @@
 """
 LangChain VectorStore integration for NietzscheDB.
 Implements the LangChain VectorStore interface so NietzscheDB can be used
-as a drop-in replacement for Chroma, Pinecone, Qdrant, etc.
+as a drop-in replacement for Chroma, Pinecone, NietzscheDB, etc.
 
 Usage:
     from nietzschedb.langchain import NietzscheVectorStore

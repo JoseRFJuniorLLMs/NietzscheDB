@@ -124,13 +124,13 @@ pub fn poincare_batch_knn(
     let ptx = compile_ptx(POINCARE_BATCH_KERNEL)
         .map_err(|e| CuGraphError::KernelCompile(format!("{e}")))?;
 
-    let module = device
+    device
         .load_ptx(ptx, "poincare_batch", &["poincare_batch_all"])
         .map_err(|e| CuGraphError::Cuda(format!("load_ptx: {e}")))?;
 
-    let kernel = module
-        .get_function("poincare_batch_all")
-        .map_err(|e| CuGraphError::Cuda(format!("get_function: {e}")))?;
+    let kernel = device
+        .get_func("poincare_batch", "poincare_batch_all")
+        .ok_or_else(|| CuGraphError::Cuda("get_func: kernel not found".into()))?;
 
     // ── Upload embeddings (used as both db and queries) ─────────────────────
     let d_db = device

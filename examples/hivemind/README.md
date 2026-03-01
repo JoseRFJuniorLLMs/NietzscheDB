@@ -1,14 +1,14 @@
 # HiveMind - Edge-Cloud Federation Demo
 
-**Local-First AI** showcase application demonstrating HyperspaceDB's Edge-Cloud capabilities.
+**Local-First AI** showcase application demonstrating NietzscheDB's Edge-Cloud capabilities.
 
 ## Features
 
-- 🧠 **Embedded Vector Database**: HyperspaceDB core runs directly in the desktop app
+- 🧠 **Embedded Vector Database**: NietzscheDB core runs directly in the desktop app
 - 📄 **PDF Ingestion**: Extract text from PDFs and store locally
 - 🔍 **Offline Search**: Full-text and semantic search without internet
 - 💾 **Local Persistence**: Data stored in `~/.hivemind`
-- 🔄 **Background Sync**: (Planned) Sync with cloud HyperspaceDB server
+- 🔄 **Background Sync**: (Planned) Sync with cloud NietzscheDB server
 
 ## Architecture
 
@@ -23,7 +23,7 @@
 ┌──────────────▼──────────────────────┐
 │   Tauri Backend (Rust)              │
 │   ┌─────────────────────────────┐   │
-│   │  HyperspaceDB (Embedded)    │   │
+│   │  NietzscheDB (Embedded)    │   │
 │   │  - HNSW Index               │   │
 │   │  - MMap Storage             │   │
 │   │  - Snapshot Persistence     │   │
@@ -64,7 +64,7 @@ npm run tauri build
 ## Implementation Status
 
 - [x] Tauri app structure
-- [x] Embedded HyperspaceDB
+- [x] Embedded NietzscheDB
 - [x] PDF text extraction
 - [x] Local storage (~/.hivemind)
 - [x] Basic UI dashboard

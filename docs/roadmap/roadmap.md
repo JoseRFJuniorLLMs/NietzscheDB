@@ -1,8 +1,8 @@
 # Nietzsche Database — Roadmap Completo
 
-## Construindo um banco multi-manifold + grafo + fractal em Rust sobre HyperspaceDB
+## Construindo um banco multi-manifold + grafo + fractal em Rust sobre NietzscheDB
 
-> **Premissa**: HyperspaceDB como camada vetorial Poincaré nativa (HNSW). Tudo o mais é construído em Rust por cima, resultando num banco de dados multi-manifold completo original.
+> **Premissa**: NietzscheDB como camada vetorial Poincaré nativa (HNSW). Tudo o mais é construído em Rust por cima, resultando num banco de dados multi-manifold completo original.
 
 ---
 
@@ -29,16 +29,16 @@ TOTAL ESTIMADO:  ~18-24 meses (solo, tempo integral)
 
 ## FASE 0 — Fundação e ambiente
 
-**Duração:** 2-3 semanas **Objetivo:** Entender o código do HyperspaceDB e preparar o workspace
+**Duração:** 2-3 semanas **Objetivo:** Entender o código do NietzscheDB e preparar o workspace
 
-### 0.1 — Ler e mapear o HyperspaceDB
+### 0.1 — Ler e mapear o NietzscheDB
 
 ```
-Repositório:  github.com/YARlabs/hyperspace-db
+Repositório:  github.com/YARlabs/nietzsche-db
 Arquivos-chave a estudar:
   crates/                    ← core do banco
-  crates/hyperspace-core/    ← HNSW hiperbólico
-  crates/hyperspace-server/  ← gRPC server
+  crates/nietzsche-core/    ← HNSW hiperbólico
+  crates/nietzsche-baseserver/  ← gRPC server
   ARCHITECTURE.md            ← visão geral
 ```
 
@@ -55,7 +55,7 @@ Arquivos-chave a estudar:
 # Cargo.toml (workspace)
 [workspace]
 members = [
-    "crates/hyperspace-db",     # fork do HyperspaceDB
+    "crates/nietzsche-db",     # fork do NietzscheDB
     "crates/nietzsche-graph",   # grafo que você vai construir
     "crates/nietzsche-query",   # linguagem de query (NQL)
     "crates/nietzsche-lsystem", # L-System engine
@@ -69,16 +69,16 @@ members = [
 ### 0.3 — Fork e branching strategy
 
 ```bash
-git clone github.com/YARlabs/hyperspace-db
+git clone github.com/YARlabs/nietzsche-db
 # Criar fork próprio — AGPL-3.0 permite
 # Manter upstream sync para pegar updates de HNSW hiperbólico
-git remote add upstream github.com/YARlabs/hyperspace-db
+git remote add upstream github.com/YARlabs/nietzsche-db
 ```
 
 ### Critério de saída da Fase 0
 
 ```
-✓ Consegue compilar e rodar HyperspaceDB localmente
+✓ Consegue compilar e rodar NietzscheDB localmente
 ✓ Consegue inserir vetores no Poincaré ball via Python SDK
 ✓ Entendeu onde o HNSW hiperbólico vive no código
 ✓ Workspace Rust configurado com todos os crates
@@ -99,7 +99,7 @@ use uuid::Uuid;
 use std::collections::HashMap;
 
 /// Nó no grafo hiperbólico
-/// Vive tanto no HyperspaceDB (embedding) quanto no grafo (relações)
+/// Vive tanto no NietzscheDB (embedding) quanto no grafo (relações)
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Node {
     pub id: Uuid,
@@ -223,7 +223,7 @@ impl AdjacencyIndex {
 
 ## FASE 2 — Storage engine de grafo
 
-**Duração:** 6-10 semanas **Objetivo:** Persistir nós e arestas em disco, separado do HyperspaceDB
+**Duração:** 6-10 semanas **Objetivo:** Persistir nós e arestas em disco, separado do NietzscheDB
 
 ### 2.1 — Escolha do storage backend
 
@@ -308,7 +308,7 @@ impl GraphStorage {
 
 ```rust
 // Write-Ahead Log para operações de grafo
-// Separado do WAL do HyperspaceDB (que só cobre vetores)
+// Separado do WAL do NietzscheDB (que só cobre vetores)
 
 pub enum GraphWalEntry {
     InsertNode(Node),
@@ -320,16 +320,16 @@ pub enum GraphWalEntry {
 }
 ```
 
-### 2.4 — Sincronização com HyperspaceDB
+### 2.4 — Sincronização com NietzscheDB
 
 ```rust
 // O ponto crítico: quando você insere um nó no Nietzsche DB,
 // você precisa inserir em DOIS lugares:
-//   1. HyperspaceDB → embedding hiperbólico (busca vetorial)
+//   1. NietzscheDB → embedding hiperbólico (busca vetorial)
 //   2. GraphStorage → nó + arestas (traversal, L-System, etc)
 
 pub struct NietzscheDB {
-    hyperspace: HyperspaceClient,  // cliente gRPC pro HyperspaceDB
+    nietzsche: NietzscheBaseClient,  // cliente gRPC pro NietzscheDB
     graph: GraphStorage,           // RocksDB local
     adjacency: AdjacencyIndex,     // índice em memória
 }
@@ -345,8 +345,8 @@ impl NietzscheDB {
         // 2. Atualiza adjacência em memória
         // (nova inserção não tem arestas ainda)
 
-        // 3. Insere embedding no HyperspaceDB
-        self.hyperspace.insert(
+        // 3. Insere embedding no NietzscheDB
+        self.nietzsche.insert(
             node.id.to_string(),
             node.embedding.coords.clone(),
         ).await?;
@@ -362,7 +362,7 @@ impl NietzscheDB {
 ### Critério de saída da Fase 2
 
 ```
-✓ Inserção de nó persiste em RocksDB E HyperspaceDB atomicamente
+✓ Inserção de nó persiste em RocksDB E NietzscheDB atomicamente
 ✓ Recuperação de nó por ID funciona após restart
 ✓ Adjacência reconstruída do RocksDB na inicialização
 ✓ WAL permite recovery após crash
@@ -623,11 +623,11 @@ pub struct QueryPlanner;
 impl QueryPlanner {
     pub fn plan(&self, ast: NqlAst) -> QueryPlan {
         // Análise do AST → escolha do plano mais eficiente
-        // Similar ao query optimizer do PostgreSQL mas muito mais simples
+        // Similar ao query optimizer do NietzscheDB mas muito mais simples
         match ast {
             NqlAst::Match { pattern, condition, .. } => {
                 if condition.uses_hyperbolic_dist() {
-                    // Pode usar HyperspaceDB para candidate retrieval
+                    // Pode usar NietzscheDB para candidate retrieval
                     QueryPlan::VectorScan { .. }
                 } else {
                     // Traversal puro
@@ -964,13 +964,13 @@ impl NietzscheDB {
 
 ## FASE 7 — Transações ACID em grafo
 
-**Duração:** 6-10 semanas **Objetivo:** Garantir consistência entre GraphStorage e HyperspaceDB
+**Duração:** 6-10 semanas **Objetivo:** Garantir consistência entre GraphStorage e NietzscheDB
 
 ### 7.1 — O problema de duas escritas
 
 ```
 Cada inserção no Nietzsche DB escreve em DOIS sistemas:
-  1. HyperspaceDB (vetores hiperbólicos)
+  1. NietzscheDB (vetores hiperbólicos)
   2. RocksDB (nós + arestas)
 
 Se 1 succeeds e 2 falha → inconsistência
@@ -1024,7 +1024,7 @@ impl NietzscheDB {
                 }
                 TxOperation::InsertNodeVector(id, coords) => {
                     // Se falhar aqui, executa compensations
-                    self.hyperspace.insert(id.to_string(), coords.clone())
+                    self.nietzsche.insert(id.to_string(), coords.clone())
                         .await
                         .map_err(|e| {
                             // Rollback das ops de grafo já feitas
@@ -1135,7 +1135,7 @@ impl NietzscheDB {
             // Commit — reconsolidação preservou a identidade fractal
             for (node_id, new_emb) in &optimized {
                 self.commit_embedding(*node_id, new_emb.clone()).await?;
-                self.hyperspace.update(node_id.to_string(), new_emb.coords.clone()).await?;
+                self.nietzsche.update(node_id.to_string(), new_emb.coords.clone()).await?;
             }
             SleepResult {
                 nodes_updated: optimized.len(),
@@ -1176,7 +1176,7 @@ impl NietzscheDB {
 ✓ delta_hausdorff < 5% em ciclos normais (commit)
 ✓ Rollback acontece em < 10% dos ciclos
 ✓ Embeddings realmente mudam (sem no-op)
-✓ HyperspaceDB e RocksDB ficam em sync após cada ciclo
+✓ NietzscheDB e RocksDB ficam em sync após cada ciclo
 ✓ 10 ciclos consecutivos não divergem
 ```
 
@@ -1386,7 +1386,7 @@ Stack de pré-requisitos Rust:
 NietzscheDB v1.0 — um banco de dados original em Rust:
 
   ✓ Vector store hiperbólica nativa (HNSW no Poincaré ball)
-    → base: HyperspaceDB
+    → base: NietzscheDB
   ✓ Grafo de conhecimento com traversal e Dijkstra hiperbólico
     → construído do zero em RocksDB
   ✓ Linguagem de query declarativa (NQL)
@@ -1396,12 +1396,12 @@ NietzscheDB v1.0 — um banco de dados original em Rust:
   ✓ Difusão fractal multi-escala (heat kernel hiperbólico)
     → Chebyshev approximation
   ✓ Transações ACID com saga pattern
-    → consistência entre HyperspaceDB e RocksDB
+    → consistência entre NietzscheDB e RocksDB
   ✓ Ciclo de reconsolidação (sono) com verificação fractal
     → perturbação + RiemannianAdam + rollback
   ✓ API gRPC + Python/TS SDKs
-  ✓ Dashboard web (herdado do HyperspaceDB + extensões)
+  ✓ Dashboard web (herdado do NietzscheDB + extensões)
 
-Licença: AGPL-3.0 (compatível com HyperspaceDB)
+Licença: AGPL-3.0 (compatível com NietzscheDB)
          ou compra de licença comercial da YARlabs
 ```

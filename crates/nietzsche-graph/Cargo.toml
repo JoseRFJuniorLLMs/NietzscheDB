@@ -5,9 +5,9 @@ edition = "2021"
 description = "Hyperbolic graph engine: nodes, edges, adjacency, traversal, storage, WAL"
 
 [dependencies]
-hyperspace-core  = { workspace = true }
-hyperspace-index = { workspace = true }
-hyperspace-store = { workspace = true }
+nietzsche-core  = { workspace = true }
+nietzsche-hnsw = { workspace = true }
+nietzsche-vecstore = { workspace = true }
 uuid             = { workspace = true }
 dashmap          = { workspace = true }
 rocksdb          = { workspace = true }

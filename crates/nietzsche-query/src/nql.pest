@@ -1,5 +1,11 @@
 // ─────────────────────────────────────────────────────────
-// nql.pest  —  Nietzsche Query Language v2 (PEG grammar)
+// nql.pest  —  Nietzsche Query Language v3 (PEG grammar)
+//
+// NQL 2.0 Upgrade: Added OPTIONAL MATCH, UNION, CASE WHEN,
+// IS NULL/IS NOT NULL, regex, string/math/cast functions,
+// COLLECT, COALESCE, SHORTEST_PATH, UNWIND, EXISTS subquery,
+// MATCH ELITES, MEASURE TENSION/TGC, FIND NEAREST, and
+// cognitive instrumentation functions.
 //
 // Operator precedence in conditions (high → low):
 //   NOT  >  AND  >  OR
@@ -7,13 +13,19 @@
 // Supported query forms:
 //   MATCH (n) WHERE … RETURN …
 //   MATCH (a)-[:TYPE]->(b) WHERE … RETURN …
+//   OPTIONAL MATCH (n) WHERE … RETURN …
+//   MATCH (a) … UNION [ALL] MATCH (b) …
 //   DIFFUSE FROM $node WITH t=[…] MAX_HOPS n RETURN …
-//   RECONSTRUCT $node_id MODALITY … QUALITY …   (Phase 11)
+//   RECONSTRUCT $node_id MODALITY … QUALITY …
+//   SHORTEST_PATH (a, b) [LIMIT n] [RETURN …]
+//   MATCH ELITES [IN "col"] [LIMIT n] [RETURN …]
+//   MEASURE TENSION BETWEEN (a) AND (b)
+//   MEASURE TGC [IN "col"]
+//   FIND NEAREST [IN POINCARE_SPACE] TO $vec [LIMIT n] [RETURN …]
+//   UNWIND expr AS alias RETURN …
 //   EXPLAIN <any query>
-//   INVOKE ZARATUSTRA [IN "col"] [CYCLES n] [ALPHA f] [DECAY f]  (Phase C)
-//   BEGIN                                                          (Phase F)
-//   COMMIT                                                         (Phase F)
-//   ROLLBACK                                                       (Phase F)
+//   INVOKE ZARATUSTRA [IN "col"] [CYCLES n] [ALPHA f] [DECAY f]
+//   BEGIN / COMMIT / ROLLBACK
 // ─────────────────────────────────────────────────────────
 
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
@@ -89,6 +101,28 @@ kw_format         = _{ ^"FORMAT"         }
 kw_psychoanalyze  = _{ ^"PSYCHOANALYZE"  }
 kw_detach         = _{ ^"DETACH"         }
 
+// ── NQL 2.0 Keywords ────────────────────────────────────
+
+kw_optional    = _{ ^"OPTIONAL" }
+kw_union       = _{ ^"UNION"   }
+kw_all         = _{ ^"ALL"     }
+kw_case        = _{ ^"CASE"    }
+kw_end         = _{ ^"END"     }
+kw_else        = _{ ^"ELSE"    }
+kw_is          = _{ ^"IS"      }
+kw_null        = _{ ^"NULL"    }
+kw_unwind      = _{ ^"UNWIND"  }
+kw_exists      = _{ ^"EXISTS"  }
+kw_shortest    = _{ ^"SHORTEST" }
+kw_path        = _{ ^"PATH"    }
+kw_elites      = _{ ^"ELITES"  }
+kw_measure     = _{ ^"MEASURE" }
+kw_tension     = _{ ^"TENSION" }
+kw_tgc         = _{ ^"TGC"     }
+kw_nearest     = _{ ^"NEAREST" }
+kw_find        = _{ ^"FIND"    }
+kw_void_born   = _{ ^"VOID_BORN" }
+
 // ── Terminals ────────────────────────────────────────────
 
 integer = @{ ASCII_DIGIT+ }
@@ -119,18 +153,13 @@ hyperbolic_dist = { "HYPERBOLIC_DIST" ~ "(" ~ prop ~ "," ~ hdist_arg ~ ")" }
 sdist_arg    = { param }
 sensory_dist = { "SENSORY_DIST" ~ "(" ~ prop ~ "," ~ sdist_arg ~ ")" }
 
-// ── Mathematician-named built-in functions ────────────────
+// ── Mathematician-named + NQL 2.0 built-in functions ────
 //
-// These functions honour the mathematicians whose work underpins
-// NietzscheDB's hyperbolic geometry, spectral diffusion, and
-// graph-theoretic foundations.
+// NQL 2.0 adds: string functions, math functions, type casting,
+// null handling, and cognitive instrumentation functions.
 //
-// Signature categories:
-//   dist(prop, arg)      — POINCARE_DIST, KLEIN_DIST, LOBACHEVSKY_ANGLE
-//   norm(prop)           — MINKOWSKI_NORM
-//   node(alias)          — RIEMANN_CURVATURE, HAUSDORFF_DIM, EULER_CHAR,
-//                          LAPLACIAN_SCORE, DIRICHLET_ENERGY, RAMANUJAN_EXPANSION
-//   node(alias, scalar)  — GAUSS_KERNEL, CHEBYSHEV_COEFF, FOURIER_COEFF
+// IMPORTANT: Longer names must come before shorter prefixes
+// due to PEG ordered choice (e.g. LOG10 before LOG).
 
 math_func_name = @{
     ( "POINCARE_DIST"
@@ -149,6 +178,42 @@ math_func_name = @{
     | "NOW"
     | "EPOCH_MS"
     | "INTERVAL"
+    // ── NQL 2.0: String functions ──
+    | "UPPER"
+    | "LOWER"
+    | "TRIM"
+    | "LTRIM"
+    | "RTRIM"
+    | "SUBSTRING"
+    | "REPLACE"
+    | "CONCAT"
+    | "REVERSE"
+    | "SPLIT"
+    | "LENGTH"
+    // ── NQL 2.0: Math functions (LOG10 before LOG!) ──
+    | "ABS"
+    | "CEIL"
+    | "FLOOR"
+    | "ROUND"
+    | "SQRT"
+    | "LOG10"
+    | "LOG"
+    | "POW"
+    | "SIGN"
+    | "MOD"
+    // ── NQL 2.0: Type casting ──
+    | "TO_STRING"
+    | "TO_FLOAT"
+    | "TO_INT"
+    | "TO_BOOL"
+    // ── NQL 2.0: Null handling ──
+    | "COALESCE"
+    // ── NQL 2.0: Cognitive instrumentation (physicist/mathematician names) ──
+    | "BOLTZMANN_SURVIVAL"
+    | "HELMHOLTZ_GRADIENT"
+    | "ERDOS_EDGE_PROB"
+    | "LYAPUNOV_DELTA"
+    | "PRIGOGINE_BASIN"
     ) ~ !ident_tail
 }
 
@@ -157,18 +222,32 @@ math_func     = { math_func_name ~ "(" ~ (math_func_arg ~ ("," ~ math_func_arg)*
 
 // ── Aggregation functions ───────────────────────────────
 
-agg_func_name = @{ ("COUNT" | "SUM" | "AVG" | "MIN" | "MAX") ~ !ident_tail }
+agg_func_name = @{ ("COLLECT" | "COUNT" | "SUM" | "AVG" | "MIN" | "MAX") ~ !ident_tail }
 star          = { "*" }
 agg_arg       = { prop | star | ident }
 agg_func      = { agg_func_name ~ "(" ~ agg_arg ~ ")" }
 
+// ── CASE WHEN expression ────────────────────────────────
+//
+// CASE WHEN condition THEN value [WHEN condition THEN value]* [ELSE value] END
+
+case_when_branch = { kw_when ~ conditions ~ kw_then ~ case_atom }
+case_else_branch = { kw_else ~ case_atom }
+// case_atom is like atom but without case_expr to avoid left-recursion
+case_atom = { math_func | hyperbolic_dist | sensory_dist | boolean | float | integer | string | param | prop }
+case_expr = { kw_case ~ case_when_branch+ ~ case_else_branch? ~ kw_end }
+
 // ── Atom  (leaf operand) ────────────────────────────────
 
-atom = { math_func | hyperbolic_dist | sensory_dist | boolean | float | integer | string | param | prop }
+atom = { case_expr | math_func | hyperbolic_dist | sensory_dist | boolean | float | integer | string | param | prop }
 
 // ── Comparison operators ────────────────────────────────
 
 comp_op = { "<=" | ">=" | "!=" | "<" | ">" | "=" }
+
+// ── Regex operator ──────────────────────────────────────
+
+regex_op = { "=~" }
 
 // ── String match operators ──────────────────────────────
 
@@ -181,9 +260,13 @@ in_list      = { "(" ~ atom ~ ("," ~ atom)* ~ ")" }
 in_cond      = { atom ~ kw_in ~ in_list }
 between_cond = { atom ~ kw_between ~ atom ~ kw_and ~ atom }
 string_cond  = { atom ~ string_op ~ atom }
+regex_cond   = { atom ~ regex_op ~ atom }
+is_not_null_cond = { atom ~ kw_is ~ kw_not ~ kw_null }
+is_null_cond     = { atom ~ kw_is ~ kw_null }
+exists_cond      = { kw_exists ~ "{" ~ match_clause ~ where_clause? ~ "}" }
 not_cond     = { kw_not ~ primary_cond }
 paren_cond   = { "(" ~ or_cond ~ ")" }
-primary_cond = { not_cond | paren_cond | in_cond | between_cond | string_cond | comparison }
+primary_cond = { not_cond | paren_cond | exists_cond | in_cond | between_cond | string_cond | is_not_null_cond | is_null_cond | regex_cond | comparison }
 and_cond     = { primary_cond ~ (kw_and ~ primary_cond)* }
 or_cond      = { and_cond ~ (kw_or ~ and_cond)* }
 conditions   = { or_cond }
@@ -209,6 +292,10 @@ path_pattern = { node_pattern ~ edge_dir ~ node_pattern }
 // Either a path or a lone node
 pattern      = { path_pattern | node_pattern }
 match_clause = { kw_match ~ pattern }
+
+// ── OPTIONAL MATCH (NQL 2.0) ────────────────────────────
+
+optional_match_clause = { kw_optional ~ kw_match ~ pattern }
 
 // ── RETURN ──────────────────────────────────────────────
 
@@ -275,15 +362,17 @@ merge_query = {
     ~ return_clause?
 }
 
-// ── MATCH query (extended with SET / DELETE) ────────────
+// ── MATCH query (extended with SET / DELETE / OPTIONAL MATCH) ──
 //
-// Three forms:
-//   MATCH (n) WHERE … RETURN …                  — read query
-//   MATCH (n) WHERE … SET n.x = val [RETURN …]  — update query
-//   MATCH (n) WHERE … DELETE n                   — delete query
+// Forms:
+//   MATCH (n) WHERE … RETURN …                     — read query
+//   MATCH (n) WHERE … SET n.x = val [RETURN …]     — update query
+//   MATCH (n) WHERE … DELETE n                      — delete query
+//   MATCH (n) OPTIONAL MATCH (n)-[:R]->(m) RETURN … — left join
 
 match_query = {
     match_clause
+    ~ optional_match_clause*
     ~ where_clause?
     ~ as_of_cycle_clause?
     ~ (set_clause ~ return_clause? | detach_delete_clause | delete_clause | return_clause)
@@ -464,6 +553,78 @@ narrate_query = {
 psychoanalyze_target = { param | ident }
 psychoanalyze_query  = { kw_psychoanalyze ~ psychoanalyze_target }
 
+// ═════════════════════════════════════════════════════════
+// ── NQL 2.0: New Query Types ────────────────────────────
+// ═════════════════════════════════════════════════════════
+
+// ── UNWIND expression AS alias RETURN … ─────────────────
+//
+// UNWIND $list AS item RETURN item
+
+unwind_query = { kw_unwind ~ atom ~ kw_as ~ ident ~ return_clause }
+
+// ── SHORTEST_PATH (a, b) [LIMIT n] [RETURN …] ──────────
+//
+// SHORTEST_PATH ((src), (dst)) LIMIT 1 RETURN src, dst
+
+shortest_path_query = {
+    kw_shortest ~ kw_path
+    ~ "(" ~ node_pattern ~ "," ~ node_pattern ~ ")"
+    ~ (kw_limit ~ integer)?
+    ~ return_clause?
+}
+
+// ── MATCH ELITES [IN "col"] [LIMIT n] [RETURN …] ───────
+//
+// Returns top-N nodes by energy (metabolic elites).
+
+match_elites_query = {
+    kw_match ~ kw_elites
+    ~ (kw_in ~ string)?
+    ~ (kw_limit ~ integer)?
+    ~ return_clause?
+}
+
+// ── MEASURE TENSION BETWEEN (a) AND (b) ─────────────────
+//
+// Computes dialectical tension between two nodes.
+
+measure_tension_query = {
+    kw_measure ~ kw_tension
+    ~ kw_between ~ node_pattern ~ kw_and ~ node_pattern
+}
+
+// ── MEASURE TGC [IN "col"] ──────────────────────────────
+//
+// Returns global telemetry: Entropy, Energy, Thermodynamic
+// Graph Consciousness (TGC) metric for a collection.
+
+measure_tgc_query = {
+    kw_measure ~ kw_tgc
+    ~ (kw_in ~ string)?
+}
+
+// ── FIND NEAREST [IN POINCARE_SPACE] TO $vec [LIMIT n] ──
+//
+// KNN search in hyperbolic space (Poincaré disk).
+
+find_nearest_query = {
+    kw_find ~ kw_nearest
+    ~ (kw_in ~ ident)?
+    ~ kw_to ~ atom
+    ~ (kw_limit ~ integer)?
+    ~ return_clause?
+}
+
+// ── UNION [ALL] ─────────────────────────────────────────
+//
+// MATCH (a) RETURN a UNION MATCH (b) RETURN b
+// MATCH (a) RETURN a UNION ALL MATCH (b) RETURN b
+
+union_all_kw   = { kw_all }
+union_sep      = { kw_union ~ union_all_kw? }
+union_query    = { match_query ~ (union_sep ~ match_query)+ }
+
 // ── Top-level ───────────────────────────────────────────
 
-query = { SOI ~ (explain_query | invoke_zaratustra_query | begin_tx_query | commit_tx_query | rollback_tx_query | reconstruct_query | diffuse_query | show_dreams_query | apply_dream_query | reject_dream_query | dream_from_query | show_archetypes_query | share_archetype_query | show_daemons_query | drop_daemon_query | create_daemon_query | counterfactual_query | translate_query | psychoanalyze_query | narrate_query | create_query | merge_query | match_query) ~ EOI }
+query = { SOI ~ (explain_query | invoke_zaratustra_query | begin_tx_query | commit_tx_query | rollback_tx_query | reconstruct_query | diffuse_query | show_dreams_query | apply_dream_query | reject_dream_query | dream_from_query | show_archetypes_query | share_archetype_query | show_daemons_query | drop_daemon_query | create_daemon_query | counterfactual_query | translate_query | psychoanalyze_query | narrate_query | create_query | merge_query | union_query | shortest_path_query | match_elites_query | measure_tension_query | measure_tgc_query | find_nearest_query | unwind_query | match_query) ~ EOI }

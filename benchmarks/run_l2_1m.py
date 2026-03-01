@@ -10,12 +10,12 @@ import sys
 # Ensure we can import the SDK
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 try:
-    from sdks.python.hyperspace import HyperspaceClient
-    from sdks.python.hyperspace.client import Durability
+    from sdks.python.nietzsche_legacy import NietzscheBaseClient
+    from sdks.python.nietzsche_legacy.client import Durability
 except ImportError:
-    print("⚠️  Hyperspace SDK not found in path. Trying pip installed package...")
-    from hyperspace import HyperspaceClient
-    from hyperspace.client import Durability
+    print("⚠️  NietzscheDB SDK not found in path. Trying pip installed package...")
+    from nietzsche_legacy import NietzscheBaseClient
+    from nietzsche_legacy.client import Durability
 
 def run_benchmark_scenario(env_mode, api_durability):
     mode_name = env_mode
@@ -29,11 +29,11 @@ def run_benchmark_scenario(env_mode, api_durability):
     
     # We rely on .env having HS_METRIC=l2 and HS_DIMENSION=1024
     env = os.environ.copy()
-    env["HYPERSPACE_WAL_SYNC_MODE"] = env_mode
+    env["NDB_WAL_SYNC_MODE"] = env_mode
     env["HS_HNSW_EF_CONSTRUCT"] = "100"
     
     server = subprocess.Popen(
-        ["cargo", "run", "--release", "-p", "hyperspace-server"],
+        ["cargo", "run", "--release", "-p", "nietzsche-baseserver"],
         env=env,
         cwd=os.path.join(os.path.dirname(__file__), ".."),
         stdout=subprocess.DEVNULL,
@@ -59,7 +59,7 @@ def run_benchmark_scenario(env_mode, api_durability):
             return None
 
         time.sleep(2)
-        client = HyperspaceClient("localhost:50051", api_key="I_LOVE_HYPERSPACEDB")
+        client = NietzscheBaseClient("localhost:50051", api_key="I_LOVE_NIETZSCHEDB")
         
         try:
              client.create_collection("bench_l2", dimension=1024, metric="l2")

@@ -306,6 +306,12 @@ fn condition_references_field(cond: &Condition, field_name: &str) -> bool {
         Condition::StringOp { left, right, .. } => {
             expr_has_field(left, field_name) || expr_has_field(right, field_name)
         }
+        // ── NQL 2.0 conditions ──
+        Condition::IsNull { expr } | Condition::IsNotNull { expr } => expr_has_field(expr, field_name),
+        Condition::Regex { expr, pattern } => {
+            expr_has_field(expr, field_name) || expr_has_field(pattern, field_name)
+        }
+        Condition::Exists { .. } => false, // subquery — don't inspect for index hints
     }
 }
 
@@ -324,6 +330,12 @@ fn extract_property_field(cond: &Condition) -> Option<String> {
         Condition::StringOp { left, right, .. } => {
             extract_field_from_expr(left).or_else(|| extract_field_from_expr(right))
         }
+        // ── NQL 2.0 conditions ──
+        Condition::IsNull { expr } | Condition::IsNotNull { expr } => extract_field_from_expr(expr),
+        Condition::Regex { expr, pattern } => {
+            extract_field_from_expr(expr).or_else(|| extract_field_from_expr(pattern))
+        }
+        Condition::Exists { .. } => None,
     }
 }
 

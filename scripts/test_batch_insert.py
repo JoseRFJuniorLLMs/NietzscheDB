@@ -6,10 +6,10 @@ import os
 
 # Add SDK path
 sys.path.append(os.path.abspath("sdks/python"))
-from hyperspace import HyperspaceClient
+from nietzsche_legacy import NietzscheBaseClient
 
 def test_batch_insert():
-    client = HyperspaceClient(api_key="I_LOVE_HYPERSPACEDB")
+    client = NietzscheBaseClient(api_key="I_LOVE_NIETZSCHEDB")
     name = "batch_test"
     dim = 1024
     count = 10_000

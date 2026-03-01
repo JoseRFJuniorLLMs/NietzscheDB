@@ -7,12 +7,12 @@ The official Python client provides an ergonomic wrapper around the gRPC interfa
 Currently, install directly from the source:
 
 ```bash
-git clone https://github.com/yarlabs/hyperspace-db
-cd hyperspace-db/sdks/python
+git clone https://github.com/yarlabs/nietzsche-db
+cd nietzsche-db/sdks/python
 pip install .
 ```
 
-(Coming soon to PyPI as `hyperspacedb`)
+(Coming soon to PyPI as `nietzschedb`)
 
 ## Client-Side Vectorization (Fat Client)
 
@@ -31,14 +31,14 @@ pip install ".[all]"
 ### Usage
 
 ```python
-from hyperspace import HyperspaceClient, OpenAIEmbedder
+from nietzsche import NietzscheBaseClient, OpenAIEmbedder
 
 # 1. Init with Embedder
 embedder = OpenAIEmbedder(api_key="sk-...")
-client = HyperspaceClient(embedder=embedder)
+client = NietzscheBaseClient(embedder=embedder)
 
 # 2. Insert Document
-client.insert(id=1, document="HyperspaceDB supports Hyperbolic geometry.", metadata={"tag": "math"})
+client.insert(id=1, document="NietzscheDB supports Hyperbolic geometry.", metadata={"tag": "math"})
 
 # 3. Search by Text
 results = client.search(query_text="non-euclidean geometry", top_k=5)
@@ -46,10 +46,10 @@ results = client.search(query_text="non-euclidean geometry", top_k=5)
 
 ## Reference
 
-### `HyperspaceClient`
+### `NietzscheBaseClient`
 
 ```python
-class HyperspaceClient(host="localhost:50051", api_key=None, embedder=None)
+class NietzscheBaseClient(host="localhost:50051", api_key=None, embedder=None)
 ```
 
 *   `embedder`: Instance of `BaseEmbedder` subclass.

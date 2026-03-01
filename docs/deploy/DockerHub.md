@@ -1,9 +1,9 @@
 ```markdown
-# [H] HyperspaceDB
+# [H] NietzscheDB
 
 ![Banner](https://img.shields.io/badge/Status-v1.0_Gold-00FFFF?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-AGPL_v3-blue?style=for-the-badge)
-![Size](https://img.shields.io/docker/image-size/yarlabs/hyperspacedb/latest?style=for-the-badge)
+![Size](https://img.shields.io/docker/image-size/yarlabs/nietzschedb/latest?style=for-the-badge)
 
 **The Spatial Memory for AI.**
 NietzscheDB is a high-performance, multi-manifold graph database written in Rust. It features 4 non-Euclidean geometries (Poincaré · Klein · Riemann · Minkowski), 1-bit quantization, async replication, and native support for hierarchical datasets.
@@ -13,7 +13,7 @@ NietzscheDB is a high-performance, multi-manifold graph database written in Rust
 ## 🚀 Quick Reference
 
 * **Maintained by:** [YARlabs](https://github.com/yarlabs)
-* **Where to get help:** [GitHub Issues](https://github.com/yarlabs/hyperspace-db/issues), [Discord](https://discord.gg/hyperspace-db)
+* **Where to get help:** [GitHub Issues](https://github.com/yarlabs/nietzsche-db/issues), [Discord](https://discord.gg/nietzsche-db)
 * **Supported architectures:** `linux/amd64`, `linux/arm64` (Apple Silicon compatible)
 
 ---
@@ -26,9 +26,9 @@ To start the database and expose the gRPC port (50051):
 
 ```bash
 docker run -d \
-  --name hyperspace \
+  --name nietzsche \
   -p 50051:50051 \
-  glukhota/hyperspace-db:latest
+  glukhota/nietzsche-db:latest
 
 ```
 
@@ -38,22 +38,22 @@ By default, data is stored inside the container. To prevent data loss when the c
 
 ```bash
 docker run -d \
-  --name hyperspace \
+  --name nietzsche \
   -p 50051:50051 \
   -v $(pwd)/hs_data:/data \
-  glukhota/hyperspace-db:latest
+  glukhota/nietzsche-db:latest
 
 ```
 
 ### 3. Using Docker Compose
 
-The easiest way to run HyperspaceDB in production or development.
+The easiest way to run NietzscheDB in production or development.
 
 ```yaml
 services:
-  hyperspace:
-    image: glukhota/hyperspace-db:latest
-    container_name: hyperspace
+  nietzsche:
+    image: glukhota/nietzsche-db:latest
+    container_name: nietzsche
     restart: unless-stopped
     ports:
       - "50051:50051"
@@ -69,7 +69,7 @@ services:
 
 ## ⚙️ Configuration
 
-HyperspaceDB is configured via environment variables passed to the container.
+NietzscheDB is configured via environment variables passed to the container.
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -87,11 +87,11 @@ HyperspaceDB is configured via environment variables passed to the container.
 
 ## 🏷 Image Variants
 
-### `glukhota/hyperspace-db:latest`
+### `glukhota/nietzsche-db:latest`
 
 This is the defacto image. It contains the latest stable release of the database. Use this for most use cases.
 
-### `glukhota/hyperspace-db:1.0.0`
+### `glukhota/nietzsche-db:1.0.0`
 
 Specific version tags. Use these in production to ensure immutability and prevent unexpected updates.
 
@@ -99,12 +99,12 @@ Specific version tags. Use these in production to ensure immutability and preven
 
 ## 🔒 License
 
-HyperspaceDB is licensed under a dual-license model:
+NietzscheDB is licensed under a dual-license model:
 
 1. **Open Source (AGPLv3):** Free for open source projects.
 2. **Commercial:** Required for proprietary/closed-source products.
 
-View full license details on [GitHub](https://github.com/yarlabs/hyperspace-db/blob/main/LICENSE).
+View full license details on [GitHub](https://github.com/yarlabs/nietzsche-db/blob/main/LICENSE).
 
 ```
 

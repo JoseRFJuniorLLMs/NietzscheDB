@@ -13,7 +13,7 @@ import (
 
 // MergeNode performs an upsert: finds a node by node_type + match_keys, or creates one.
 //
-// This is the NietzscheDB equivalent of Neo4j's MERGE statement:
+// This is the NietzscheDB equivalent of NietzscheDB's MERGE statement:
 //
 //	MERGE (t:Topic {name: $name})
 //	ON CREATE SET t.created = datetime()
@@ -86,7 +86,7 @@ func (c *NietzscheClient) MergeNode(ctx context.Context, opts MergeNodeOpts) (*M
 
 // MergeEdge performs an upsert: finds an edge by (from, to, type), or creates one.
 //
-// This is the NietzscheDB equivalent of Neo4j's MERGE on relationships:
+// This is the NietzscheDB equivalent of NietzscheDB's MERGE on relationships:
 //
 //	MERGE (a)-[:KNOWS]->(b)
 func (c *NietzscheClient) MergeEdge(ctx context.Context, opts MergeEdgeOpts) (*MergeEdgeResult, error) {

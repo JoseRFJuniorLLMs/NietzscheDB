@@ -8,12 +8,12 @@ from db_plugins.base import DatabasePlugin
 from plugin_runtime import BenchmarkContext, Result
 
 
-class QdrantPlugin(DatabasePlugin):
-    name = "qdrant"
+class NietzscheDBPlugin(DatabasePlugin):
+    name = "NietzscheDB"
 
     def is_available(self) -> bool:
         try:
-            from qdrant_client import QdrantClient  # noqa: F401
+            from NietzscheDB_client import NietzscheDBClient  # noqa: F401
 
             return True
         except Exception:
@@ -23,13 +23,13 @@ class QdrantPlugin(DatabasePlugin):
         import run_benchmark_legacy as legacy
 
         if ctx.doc_vecs_euc is None or ctx.q_vecs_euc is None:
-            return Result("Qdrant", 0, "Euclidean", "Cosine", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "0", "missing vectors")
+            return Result("NietzscheDB", 0, "Euclidean", "Cosine", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "0", "missing vectors")
 
-        from qdrant_client import QdrantClient
-        from qdrant_client.models import Distance, PointStruct, VectorParams
+        from NietzscheDB_client import NietzscheDBClient
+        from NietzscheDB_client.models import Distance, PointStruct, VectorParams
 
         try:
-            client = QdrantClient(host="localhost", port=6334, prefer_grpc=True)
+            client = NietzscheDBClient(host="localhost", port=6334, prefer_grpc=True)
             name = "bench_semantic"
             try:
                 client.delete_collection(name)
@@ -39,7 +39,7 @@ class QdrantPlugin(DatabasePlugin):
             client.create_collection(name, vectors_config=VectorParams(size=ctx.cfg.dim_base, distance=Distance.COSINE))
             t0 = time.time()
             q_batch_size = max(10, int(3_000_000 / (ctx.cfg.dim_base * 8)))
-            for i in tqdm(range(0, len(ctx.doc_vecs_euc), q_batch_size), desc="Qdrant Insert"):
+            for i in tqdm(range(0, len(ctx.doc_vecs_euc), q_batch_size), desc="NietzscheDB Insert"):
                 batch_vecs = ctx.doc_vecs_euc[i : i + q_batch_size]
                 batch_ids = ctx.doc_ids[i : i + q_batch_size]
                 points = [PointStruct(id=i + j, vector=v.tolist(), payload={"doc_id": batch_ids[j]}) for j, v in enumerate(batch_vecs)]
@@ -51,7 +51,7 @@ class QdrantPlugin(DatabasePlugin):
             all_gt_ids = []
             lats = []
             search_t0 = time.time()
-            for i, q_vec in enumerate(tqdm(ctx.q_vecs_euc, desc="Qdrant Search")):
+            for i, q_vec in enumerate(tqdm(ctx.q_vecs_euc, desc="NietzscheDB Search")):
                 q_id = ctx.test_query_ids[i]
                 all_gt_ids.append(ctx.valid_qrels.get(q_id, []))
 
@@ -79,18 +79,18 @@ class QdrantPlugin(DatabasePlugin):
 
             q_list = ctx.q_vecs_euc[0].tolist()
 
-            def qdrant_query() -> None:
+            def NietzscheDB_query() -> None:
                 if hasattr(client, "search"):
                     client.search(collection_name=name, query_vector=q_list, limit=10)
                 else:
                     client.query_points(collection_name=name, query=q_list, limit=10)
 
-            conc = legacy.run_concurrency_profile(qdrant_query)
-            disk = legacy.format_size(legacy.get_docker_disk("qdrant"))
+            conc = legacy.run_concurrency_profile(NietzscheDB_query)
+            disk = legacy.format_size(legacy.get_docker_disk("NietzscheDB"))
             client.delete_collection(name)
 
             return Result(
-                database="Qdrant",
+                database="NietzscheDB",
                 dimension=ctx.cfg.dim_base,
                 geometry="Euclidean",
                 metric="Cosine",
@@ -110,7 +110,7 @@ class QdrantPlugin(DatabasePlugin):
                 status="Success",
             )
         except Exception as exc:
-            return Result("Qdrant", ctx.cfg.dim_base, "Euclidean", "Cosine", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "0", f"Error: {exc}")
+            return Result("NietzscheDB", ctx.cfg.dim_base, "Euclidean", "Cosine", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "0", f"Error: {exc}")
 
 
-PLUGIN = QdrantPlugin()
+PLUGIN = NietzscheDBPlugin()

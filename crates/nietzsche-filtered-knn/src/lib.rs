@@ -18,7 +18,7 @@
 //!
 //! ## Relationship to HNSW
 //!
-//! The HNSW index in `hyperspace-index` already has internal Roaring Bitmap
+//! The HNSW index in `nietzsche-hnsw` already has internal Roaring Bitmap
 //! support for metadata-based filtering. This crate provides an **orthogonal**
 //! filtered KNN that operates at the NietzscheDB graph layer (content fields,
 //! energy, node type) rather than the raw vector metadata layer. The two can

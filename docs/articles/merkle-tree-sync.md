@@ -59,7 +59,7 @@ A Merkle Tree is a hash-based data structure where:
 
 ---
 
-## HyperspaceDB's Implementation
+## NietzscheDB's Implementation
 
 ### 1. **Bucket-Based Merkle Tree**
 
@@ -221,7 +221,7 @@ async fn sync_with_leader(follower: &mut Follower, leader: &Leader) {
 
 ## Comparison with Git
 
-| Feature | Git | HyperspaceDB |
+| Feature | Git | NietzscheDB |
 |---------|-----|--------------|
 | **Data Structure** | Merkle DAG | Merkle Tree |
 | **Granularity** | File-level | Bucket-level (256) |
@@ -251,15 +251,15 @@ async fn sync_with_leader(follower: &mut Follower, leader: &Leader) {
 
 Merkle Trees aren't just for Git and blockchains. They're a powerful primitive for **any distributed system** that needs efficient synchronization.
 
-In HyperspaceDB, Merkle-based sync enables:
+In NietzscheDB, Merkle-based sync enables:
 - ✅ **10x faster replication** for typical workloads
 - ✅ **Edge-cloud federation** (WASM ↔ Server)
 - ✅ **Multi-region deployments** with minimal overhead
 
 **Try it yourself**:
 ```bash
-git clone https://github.com/YARlabs/hyperspace-db
-cd hyperspace-db
+git clone https://github.com/YARlabs/nietzsche-db
+cd nietzsche-db
 ./scripts/run_cluster_tests.sh
 ```
 
@@ -273,4 +273,4 @@ cd hyperspace-db
 
 ---
 
-**Discussion**: [HackerNews](#) | [Reddit](#) | [GitHub](https://github.com/YARlabs/hyperspace-db)
+**Discussion**: [HackerNews](#) | [Reddit](#) | [GitHub](https://github.com/YARlabs/nietzsche-db)

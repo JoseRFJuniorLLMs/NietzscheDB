@@ -10,7 +10,6 @@
 
 use cudarc::driver::{CudaDevice, LaunchAsync, LaunchConfig};
 use cudarc::nvrtc::compile_ptx;
-use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{CuGraphError, CuGraphIndex};
@@ -111,13 +110,13 @@ pub fn poincare_knn(
     let ptx = compile_ptx(POINCARE_KNN_KERNEL)
         .map_err(|e| CuGraphError::KernelCompile(format!("{e}")))?;
 
-    let module = device
+    device
         .load_ptx(ptx, "poincare", &["poincare_brute_knn"])
         .map_err(|e| CuGraphError::Cuda(format!("load_ptx: {e}")))?;
 
-    let kernel = module
-        .get_function("poincare_brute_knn")
-        .map_err(|e| CuGraphError::Cuda(format!("get_function: {e}")))?;
+    let kernel = device
+        .get_func("poincare", "poincare_brute_knn")
+        .ok_or_else(|| CuGraphError::Cuda("get_func: kernel not found".into()))?;
 
     // ── Upload data ───────────────────────────────────────────────────────────
     let d_db = device

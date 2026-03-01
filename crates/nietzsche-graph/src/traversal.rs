@@ -18,7 +18,7 @@ use crate::storage::GraphStorage;
 // Thread-local pool of reusable HashSet<Uuid> instances.
 // Each BFS call acquires a pre-allocated set and returns it when done —
 // eliminating ~1–3 µs of allocator overhead per traversal on a warm pool.
-// Based on Qdrant's get_visited_list_from_pool pattern (hnsw/graph_layers.rs).
+// Based on NietzscheDB's get_visited_list_from_pool pattern (hnsw/graph_layers.rs).
 thread_local! {
     static VISITED_POOL: RefCell<Vec<HashSet<Uuid>>> = RefCell::new(Vec::with_capacity(4));
 }

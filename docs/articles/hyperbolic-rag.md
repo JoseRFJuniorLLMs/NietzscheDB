@@ -8,7 +8,7 @@
 
 ## TL;DR
 
-Most vector databases use **Euclidean distance** (straight lines). This works for flat data but **fails catastrophically** for hierarchical data (taxonomies, org charts, knowledge graphs). We built HyperspaceDB with native **Poincaré ball** support, achieving **2-3x better recall** on hierarchical datasets.
+Most vector databases use **Euclidean distance** (straight lines). This works for flat data but **fails catastrophically** for hierarchical data (taxonomies, org charts, knowledge graphs). We built NietzscheDB with native **Poincaré ball** support, achieving **2-3x better recall** on hierarchical datasets.
 
 ---
 
@@ -123,7 +123,7 @@ d(Dev, Finance) = 1.42  // 4 hops (different subtrees)
 | Embedding | Recall@10 | Recall@100 | MAP |
 |-----------|-----------|------------|-----|
 | **Euclidean (OpenAI)** | 0.42 | 0.68 | 0.51 |
-| **Poincaré (HyperspaceDB)** | **0.89** | **0.96** | **0.92** |
+| **Poincaré (NietzscheDB)** | **0.89** | **0.96** | **0.92** |
 
 **Winner**: 🏆 **Poincaré** (2.1x better recall)
 
@@ -134,7 +134,7 @@ d(Dev, Finance) = 1.42  // 4 hops (different subtrees)
 
 ---
 
-## Implementation in HyperspaceDB
+## Implementation in NietzscheDB
 
 ### 1. **Distance Metric**
 
@@ -288,12 +288,12 @@ fn fast_acosh(x: f64) -> f64 {
 ## Try It Yourself
 
 ```bash
-# Clone HyperspaceDB
-git clone https://github.com/YARlabs/hyperspace-db
-cd hyperspace-db
+# Clone NietzscheDB
+git clone https://github.com/YARlabs/nietzsche-db
+cd nietzsche-db
 
 # Run with Poincaré metric
-cargo run --release --bin hyperspace-server -- --metric poincare
+cargo run --release --bin nietzsche-baseserver -- --metric poincare
 
 # Insert hierarchical data
 python3 examples/wordnet_embedding.py
@@ -310,7 +310,7 @@ python3 examples/wordnet_embedding.py
 - ✅ Org charts
 - ✅ Scientific ontologies
 
-HyperspaceDB is the **first production vector database** with native Poincaré support, achieving **2-3x better recall** on hierarchical datasets.
+NietzscheDB is the **first production vector database** with native Poincaré support, achieving **2-3x better recall** on hierarchical datasets.
 
 ---
 
@@ -322,4 +322,4 @@ HyperspaceDB is the **first production vector database** with native Poincaré s
 
 ---
 
-**Discussion**: [HackerNews](#) | [Reddit](#) | [GitHub](https://github.com/YARlabs/hyperspace-db)
+**Discussion**: [HackerNews](#) | [Reddit](#) | [GitHub](https://github.com/YARlabs/nietzsche-db)

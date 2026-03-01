@@ -5,9 +5,9 @@ use std::sync::Arc;
 use serde::Serialize;
 use std::collections::HashMap;
 
-use hyperspace_index::HnswIndex;
-use hyperspace_core::{EuclideanMetric, GlobalConfig, QuantizationMode};
-use hyperspace_store::VectorStore;
+use nietzsche_hnsw::HnswIndex;
+use nietzsche_core::{EuclideanMetric, GlobalConfig, QuantizationMode};
+use nietzsche_vecstore::VectorStore;
 
 type LocalIndex = HnswIndex<1024, EuclideanMetric>;
 

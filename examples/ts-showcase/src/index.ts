@@ -1,5 +1,5 @@
-import { HyperspaceStore } from "langchain-hyperspace";
-import { HyperspaceClient } from "hyperspace-sdk-ts";
+import { NietzscheDBStore } from "langchain-nietzsche";
+import { NietzscheBaseClient } from "nietzsche-rsdk-ts";
 import { Embeddings } from "@langchain/core/embeddings";
 import { Document } from "@langchain/core/documents";
 
@@ -27,8 +27,8 @@ class FakeEmbeddings extends Embeddings {
 async function main() {
     console.log("🚀 Starting HiveMind Showcase...");
 
-    // 1. Connect to HyperspaceDB
-    const client = new HyperspaceClient("localhost:50051", "I_LOVE_HYPERSPACEDB");
+    // 1. Connect to NietzscheDBDB
+    const client = new NietzscheBaseClient("localhost:50051", "I_LOVE_NIETZSCHEDB");
     const collectionName = "hivemind_demo";
 
     // Create collection (if not exists logic handled by server usually, but let's try creating)
@@ -42,7 +42,7 @@ async function main() {
 
     // 2. Initialize VectorStore
     const embeddings = new FakeEmbeddings(1024);
-    const vectorStore = new HyperspaceStore(embeddings, {
+    const vectorStore = new NietzscheDBStore(embeddings, {
         client,
         collectionName,
         enableDeduplication: true
@@ -55,7 +55,7 @@ async function main() {
         "Shopping list: Milk, Eggs, Bread, and Coffee.",
         "Idea for blog: 'Why Euclidean Geometry Kills RAG' - discuss hyperbolic spaces.",
         "Reminder: Call Alice about the server migration on Tuesday.",
-        "Tech stack: Rust, TypeScript, HyperspaceDB, React."
+        "Tech stack: Rust, TypeScript, NietzscheDBDB, React."
     ];
 
     const docs = notes.map((text, i) => new Document({

@@ -4,11 +4,11 @@ Once the server is running on `localhost:50051`, you can interact with it using 
 
 ## Using the CLI Dashboard (TUI)
 
-HyperspaceDB comes with a beautiful terminal interface for monitoring and basic administration.
+NietzscheDB comes with a beautiful terminal interface for monitoring and basic administration.
 
 ```bash
 # Assuming you built from source
-./target/release/hyperspace-cli
+./target/release/nietzsche-cli
 ```
 
 *   **Metric 1: Compression**: Shows how much RAM you are saving with `ScalarI8`.
@@ -18,10 +18,10 @@ HyperspaceDB comes with a beautiful terminal interface for monitoring and basic 
 ## First Interaction (Python)
 
 ```python
-from hyperspace import HyperspaceClient
+from nietzsche import NietzscheBaseClient
 
 # 1. Connect
-client = HyperspaceClient("localhost:50051")
+client = NietzscheBaseClient("localhost:50051")
 
 # 2. Insert (ID must be uint32)
 # Vectors must be inside the Poincaré ball (norm < 1.0)

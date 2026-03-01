@@ -1,6 +1,6 @@
-# Contributing to HyperspaceDB
+# Contributing to NietzscheDB
 
-By submitting contributions to HyperspaceDB, you agree that
+By submitting contributions to NietzscheDB, you agree that
 YARlabs may use your contributions under both the AGPLv3 license
 and under commercial licenses.
 
@@ -58,9 +58,9 @@ cargo clippy --tests --workspace -- -W clippy::pedantic
 ## 📐 Adding New Metrics
 
 To implement a new metric:
-1.  Implement `Metric<N>` trait in `crates/hyperspace-core/src/lib.rs`.
+1.  Implement `Metric<N>` trait in `crates/nietzsche-core/src/lib.rs`.
 2.  Implement `distance`, `validate`, and quantized distance methods (`distance_quantized`, `distance_binary`).
-3.  Register alias and instantiation logic in `crates/hyperspace-server/src/manager.rs`.
+3.  Register alias and instantiation logic in `crates/nietzsche-baseserver/src/manager.rs`.
 4.  Add integration tests in `tests/`.
 
 ## 🚀 Future Roadmap
@@ -73,7 +73,7 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
 * **v1.1**: ✅ **Multi-Tenancy (Collections)**. Support for named Collections within a single instance. *Completed.*
 * **v1.2**: ✅ **Web Dashboard & Euclidean Support**. Full management UI, L2 Metric support, and Presets. *Completed.*
 * **v1.3**: ✅ **Universal TypeScript SDK**. Native bindings for Node.js, Deno, and Bun. *Completed.*
-* **v1.4**: ✅ **WASM Core ("Edge Memory")**. Compiling `hyperspace-core` to WebAssembly to run directly in the browser (Local-First AI). Zero latency, zero network calls. *Core implementation ready.*
+* **v1.4**: ✅ **WASM Core ("Edge Memory")**. Compiling `nietzsche-core` to WebAssembly to run directly in the browser (Local-First AI). Zero latency, zero network calls. *Core implementation ready.*
 
 ### Phase 2: Scale & Structure (v2.x)
 *The goal: Serverless Economy and Cloud-Native Architecture.*
@@ -86,7 +86,7 @@ We focus on building the **Universal Spatial Memory** for AI Agents.
 ### Phase 3: Collective Intelligence (v3.x)
 *The goal: Beyond storage. The "Digital Thalamus" realization.*
 
-* **v3.0**: **Federated Swarm Protocol**. Connecting independent HyperspaceDB instances into a decentralized knowledge graph. Allows agents to "share memories" without centralized servers.
+* **v3.0**: **Federated Swarm Protocol**. Connecting independent NietzscheDB instances into a decentralized knowledge graph. Allows agents to "share memories" without centralized servers.
 * **v3.1**: **Generative Memory**. Optional integration with LLMs to perform "Retrieval-Augmented Generation" directly inside the database query pipeline.
 
 Join us in pushing the boundaries of multi-manifold graph search!

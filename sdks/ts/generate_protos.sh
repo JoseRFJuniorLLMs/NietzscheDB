@@ -13,8 +13,8 @@ mkdir -p src/proto
     --ts_out=grpc_js:src/proto \
     --plugin=protoc-gen-grpc=./node_modules/.bin/grpc_tools_node_protoc_plugin \
     --plugin=protoc-gen-ts=./node_modules/.bin/protoc-gen-ts \
-    -I ../../crates/hyperspace-proto/proto \
-    ../../crates/hyperspace-proto/proto/hyperspace.proto
+    -I ../../crates/nietzsche-proto/proto \
+    ../../crates/nietzsche-proto/proto/nietzsche_db.proto
 
 # Build TS
 npm run build

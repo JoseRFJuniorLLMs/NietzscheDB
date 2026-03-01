@@ -1,11 +1,11 @@
 """
-RAG Chatbot Example using HyperspaceDB and LangChain
+RAG Chatbot Example using NietzscheDB and LangChain
 
 This example demonstrates how to build a Retrieval-Augmented Generation (RAG)
-chatbot using HyperspaceDB as the vector store.
+chatbot using NietzscheDB as the vector store.
 
 Requirements:
-    pip install langchain-hyperspace langchain-openai langchain
+    pip install langchain-nietzsche langchain-openai langchain
 
 Usage:
     export OPENAI_API_KEY=your_key_here
@@ -20,19 +20,19 @@ from langchain.memory import ConversationBufferMemory
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
-from langchain_hyperspace import HyperspaceVectorStore
+from langchain_nietzsche import NietzscheVectorStore
 
 
 def load_sample_documents() -> List[str]:
-    """Load sample documents about HyperspaceDB."""
+    """Load sample documents about NietzscheDB."""
     return [
         """
-        HyperspaceDB is a hyperbolic vector database designed for hierarchical embeddings.
+        NietzscheDB is a hyperbolic vector database designed for hierarchical embeddings.
         It uses the Poincaré ball model to represent data in hyperbolic space, which is
         particularly effective for hierarchical and tree-like data structures.
         """,
         """
-        HyperspaceDB features Edge-Cloud Federation, allowing it to work offline-first.
+        NietzscheDB features Edge-Cloud Federation, allowing it to work offline-first.
         Data is stored locally on edge devices and automatically synchronized with cloud
         servers when connectivity is available. This makes it ideal for mobile and IoT applications.
         """,
@@ -43,30 +43,30 @@ def load_sample_documents() -> List[str]:
         data transfer during sync operations.
         """,
         """
-        HyperspaceDB implements 1-bit binary quantization, reducing memory usage by 64x
+        NietzscheDB implements 1-bit binary quantization, reducing memory usage by 64x
         compared to full-precision vectors. Despite this aggressive compression, it
         maintains high accuracy for most similarity search tasks.
         """,
         """
-        Built in Rust, HyperspaceDB achieves high performance with insert rates exceeding
+        Built in Rust, NietzscheDB achieves high performance with insert rates exceeding
         10,000 vectors per second and search latencies under 10ms at p99. The use of
         memory-mapped files (mmap) allows for efficient handling of large datasets.
         """,
     ]
 
 
-def create_vectorstore() -> HyperspaceVectorStore:
-    """Create and populate HyperspaceDB vector store."""
-    print("🔧 Initializing HyperspaceDB...")
+def create_vectorstore() -> NietzscheVectorStore:
+    """Create and populate NietzscheDB vector store."""
+    print("🔧 Initializing NietzscheDB...")
     
     # Initialize embeddings
     embeddings = OpenAIEmbeddings()
     
     # Create vector store
-    vectorstore = HyperspaceVectorStore(
+    vectorstore = NietzscheVectorStore(
         host="localhost",
         port=50051,
-        collection_name="hyperspace_docs",
+        collection_name="nietzsche_docs",
         embedding_function=embeddings,
         enable_deduplication=True,
     )
@@ -87,14 +87,14 @@ def create_vectorstore() -> HyperspaceVectorStore:
         texts.extend(text_splitter.split_text(doc.strip()))
     
     # Add to vector store
-    print(f"💾 Adding {len(texts)} text chunks to HyperspaceDB...")
+    print(f"💾 Adding {len(texts)} text chunks to NietzscheDB...")
     vectorstore.add_texts(texts)
     
     print("✅ Vector store ready!")
     return vectorstore
 
 
-def create_chatbot(vectorstore: HyperspaceVectorStore) -> ConversationalRetrievalChain:
+def create_chatbot(vectorstore: NietzscheVectorStore) -> ConversationalRetrievalChain:
     """Create conversational RAG chatbot."""
     print("🤖 Creating chatbot...")
     
@@ -128,7 +128,7 @@ def create_chatbot(vectorstore: HyperspaceVectorStore) -> ConversationalRetrieva
 def main():
     """Run the RAG chatbot."""
     print("=" * 60)
-    print("🚀 HyperspaceDB RAG Chatbot Example")
+    print("🚀 NietzscheDB RAG Chatbot Example")
     print("=" * 60)
     print()
     
@@ -150,7 +150,7 @@ def main():
     
     # Sample questions
     sample_questions = [
-        "What is HyperspaceDB?",
+        "What is NietzscheDB?",
         "How does it handle offline scenarios?",
         "What makes it fast?",
     ]
@@ -192,7 +192,7 @@ def main():
             break
         except Exception as e:
             print(f"❌ Error: {e}")
-            print("Please make sure HyperspaceDB server is running on localhost:50051")
+            print("Please make sure NietzscheDB server is running on localhost:50051")
             break
 
 

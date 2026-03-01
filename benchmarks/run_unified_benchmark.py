@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Unified Vector Database Benchmark
-Tests HyperspaceDB, Qdrant, Weaviate, and Milvus with identical workloads
+Tests NietzscheDB, NietzscheDB, Weaviate, and Milvus with identical workloads
 """
 
 import time
@@ -18,19 +18,19 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../sdks
 
 # Database clients
 try:
-    from hyperspace import HyperspaceClient
-    HYPERSPACE_AVAILABLE = True
+    from nietzsche_legacy import NietzscheBaseClient
+    NIETZSCHE_AVAILABLE = True
 except ImportError:
-    HYPERSPACE_AVAILABLE = False
-    print("⚠️  HyperspaceDB Python SDK not found")
+    NIETZSCHE_AVAILABLE = False
+    print("⚠️  NietzscheDB Python SDK not found")
 
 try:
-    from qdrant_client import QdrantClient
-    from qdrant_client.models import Distance, VectorParams, PointStruct
-    QDRANT_AVAILABLE = True
+    from NietzscheDB_client import NietzscheDBClient
+    from NietzscheDB_client.models import Distance, VectorParams, PointStruct
+    NietzscheDB_AVAILABLE = True
 except ImportError:
-    QDRANT_AVAILABLE = False
-    print("⚠️  Qdrant client not found: pip install qdrant-client")
+    NietzscheDB_AVAILABLE = False
+    print("⚠️  NietzscheDB client not found: pip install NietzscheDB-client")
 
 try:
     import weaviate
@@ -107,7 +107,7 @@ def get_docker_disk_usage(container: str, path: str) -> float:
 # import threading
 
 # class ResourceMonitor:
-#     def __init__(self, target_process_name: str = "hyperspace-server"):
+#     def __init__(self, target_process_name: str = "nietzsche-baseserver"):
 #         self.target_name = target_process_name
 #         self.running = False
 #         self.cpu_usage = []
@@ -155,11 +155,11 @@ def get_docker_disk_usage(container: str, path: str) -> float:
 # def ResourceMonitor... (omitted)
 
 def wait_for_indexing(host="localhost", port=50050, collection="benchmark", timeout=600):
-    """Wait for HyperspaceDB background indexing to complete"""
+    """Wait for NietzscheDB background indexing to complete"""
     import requests
     print(f"⏳ Monitoring indexing for '{collection}'...")
     url = f"http://{host}:{port}/api/collections/{collection}/stats"
-    headers = {"x-api-key": "I_LOVE_HYPERSPACEDB"}
+    headers = {"x-api-key": "I_LOVE_NIETZSCHEDB"}
     
     start_time = time.time()
     while True:
@@ -295,13 +295,13 @@ class VectorDBBenchmark:
                 memory_mb=0, disk_usage_mb=0, errors=errors  # cpu_percent=0.0, disk_usage_mb=0.0,
             )
     
-    def benchmark_qdrant(self) -> BenchmarkResult:
-        """Benchmark Qdrant"""
-        print("\n🔷 Benchmarking Qdrant...")
+    def benchmark_NietzscheDB(self) -> BenchmarkResult:
+        """Benchmark NietzscheDB"""
+        print("\n🔷 Benchmarking NietzscheDB...")
         errors = []
         
         try:
-            client = QdrantClient(host="localhost", port=6333)
+            client = NietzscheDBClient(host="localhost", port=6333)
             collection_name = "benchmark"
             
             # Create collection
@@ -351,7 +351,7 @@ class VectorDBBenchmark:
             latencies.sort()
             
             # Disk Usage
-            disk_usage = get_docker_disk_usage("benchmarks-qdrant-1", "/qdrant/storage")
+            disk_usage = get_docker_disk_usage("benchmarks-NietzscheDB-1", "/NietzscheDB/storage")
 
             # Cleanup
             try:
@@ -361,7 +361,7 @@ class VectorDBBenchmark:
                 print(f"  ⚠️ Cleanup failed: {e}")
             
             return BenchmarkResult(
-                database="Qdrant",
+                database="NietzscheDB",
                 version="latest",
                 insert_qps=insert_qps,
                 insert_total_time=insert_time,
@@ -377,7 +377,7 @@ class VectorDBBenchmark:
         except Exception as e:
             errors.append(str(e))
             return BenchmarkResult(
-                database="Qdrant",
+                database="NietzscheDB",
                 version="latest",
                 insert_qps=0, insert_total_time=0,
                 search_avg_ms=0, search_p50_ms=0, search_p95_ms=0, search_p99_ms=0,
@@ -398,7 +398,7 @@ class VectorDBBenchmark:
             # Weaviate v4 API
             client = weaviate.connect_to_local(
                 port=8080,
-                grpc_port=50052,  # Avoid conflict with HyperspaceDB on 50051
+                grpc_port=50052,  # Avoid conflict with NietzscheDB on 50051
                 skip_init_checks=False
             )
             collection_name = "Benchmark"
@@ -490,13 +490,13 @@ class VectorDBBenchmark:
             if client:
                 client.close()
     
-    def benchmark_hyperspace(self) -> BenchmarkResult:
-        """Benchmark HyperspaceDB"""
-        print("\n🚀 Benchmarking HyperspaceDB...")
+    def benchmark_nietzsche(self) -> BenchmarkResult:
+        """Benchmark NietzscheDB"""
+        print("\n🚀 Benchmarking NietzscheDB...")
         errors = []
         
         try:
-            client = HyperspaceClient("localhost:50051", api_key="I_LOVE_HYPERSPACEDB")
+            client = NietzscheBaseClient("localhost:50051", api_key="I_LOVE_NIETZSCHEDB")
             
             # Create collection
             try:
@@ -505,7 +505,7 @@ class VectorDBBenchmark:
                 print(f"  Collection may already exist: {e}")
             
             # Start monitoring
-            # monitor = ResourceMonitor("hyperspace-server")
+            # monitor = ResourceMonitor("nietzsche-baseserver")
             # monitor.start()
 
             # Insert benchmark
@@ -569,7 +569,7 @@ class VectorDBBenchmark:
                 print(f"  ⚠️ Cleanup failed: {e}")
             
             return BenchmarkResult(
-                database="HyperspaceDB",
+                database="NietzscheDB",
                 version="1.5.0",
                 insert_qps=insert_qps,
                 insert_total_time=insert_time,
@@ -586,7 +586,7 @@ class VectorDBBenchmark:
         except Exception as e:
             errors.append(str(e))
             return BenchmarkResult(
-                database="HyperspaceDB",
+                database="NietzscheDB",
                 version="1.5.0",
                 insert_qps=0, insert_total_time=0,
                 search_avg_ms=0, search_p50_ms=0, search_p95_ms=0, search_p99_ms=0,
@@ -600,14 +600,14 @@ class VectorDBBenchmark:
         if MILVUS_AVAILABLE:
             results.append(self.benchmark_milvus())
 
-        if QDRANT_AVAILABLE:
-            results.append(self.benchmark_qdrant())
+        if NietzscheDB_AVAILABLE:
+            results.append(self.benchmark_NietzscheDB())
         
         if WEAVIATE_AVAILABLE:
             results.append(self.benchmark_weaviate())
 
-        if HYPERSPACE_AVAILABLE:
-            results.append(self.benchmark_hyperspace())
+        if NIETZSCHE_AVAILABLE:
+            results.append(self.benchmark_nietzsche())
         
         return results
 

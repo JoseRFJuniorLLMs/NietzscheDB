@@ -3,17 +3,17 @@ set -e
 
 # Build binaries first
 echo "🔨 Building binaries..."
-cargo build --release --bin hyperspace-server
+cargo build --release --bin nietzsche-baseserver
 cargo build --release --bin integration_tests
 
 # Start Leader
 echo "🚀 Starting Leader (50051)..."
-./target/release/hyperspace-server --port 50051 --http-port 50050 > leader.log 2>&1 &
+./target/release/nietzsche-baseserver --port 50051 --http-port 50050 > leader.log 2>&1 &
 LEADER_PID=$!
 
 # Start Follower
 echo "🚀 Starting Follower (50052)..."
-./target/release/hyperspace-server --port 50052 --http-port 50060 --role follower --leader http://localhost:50051 > follower.log 2>&1 &
+./target/release/nietzsche-baseserver --port 50052 --http-port 50060 --role follower --leader http://localhost:50051 > follower.log 2>&1 &
 FOLLOWER_PID=$!
 
 echo "⏳ Waiting 5s for cluster startup..."

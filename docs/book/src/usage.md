@@ -2,7 +2,7 @@
 
 ## Server Configuration
 
-HyperspaceDB is configured via environment variables or a `.env` file.
+NietzscheDB is configured via environment variables or a `.env` file.
 
 ### Core Settings
 
@@ -30,12 +30,12 @@ HyperspaceDB is configured via environment variables or a `.env` file.
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `HYPERSPACE_WAL_SYNC_MODE` | `batch` | WAL Sync strategy: `strict` (fsync), `batch` (100ms lag), `async` (OS cache) |
-| `HYPERSPACE_WAL_BATCH_INTERVAL` | `100` | Batch interval in milliseconds |
+| `NDB_WAL_SYNC_MODE` | `batch` | WAL Sync strategy: `strict` (fsync), `batch` (100ms lag), `async` (OS cache) |
+| `NDB_WAL_BATCH_INTERVAL` | `100` | Batch interval in milliseconds |
 
 ### Memory Management (Jemalloc)
 
-HyperspaceDB uses **Jemalloc** for efficient memory allocation. Tune it via `MALLOC_CONF`:
+NietzscheDB uses **Jemalloc** for efficient memory allocation. Tune it via `MALLOC_CONF`:
 
 * **Low RAM (Aggressive)**: `MALLOC_CONF=background_thread:true,dirty_decay_ms:0,muzzy_decay_ms:0`
 * **Balanced (Default)**: `MALLOC_CONF=background_thread:true,dirty_decay_ms:5000,muzzy_decay_ms:5000`
@@ -44,22 +44,22 @@ HyperspaceDB uses **Jemalloc** for efficient memory allocation. Tune it via `MAL
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `HYPERSPACE_API_KEY` | - | If set, requires `x-api-key` header for all requests |
+| `NDB_API_KEY` | - | If set, requires `x-api-key` header for all requests |
 
 ### Multi-Tenancy
 
-HyperspaceDB supports strict data isolation via the `x-hyperspace-user-id` header.
+NietzscheDB supports strict data isolation via the `x-nietzsche-user-id` header.
 
-*   **Isolation**: Every request with a `x-hyperspace-user-id` header operates within that user's private namespace.
+*   **Isolation**: Every request with a `x-nietzsche-user-id` header operates within that user's private namespace.
 *   **Internal Naming**: Collections are stored internally as `userid_collectionname`.
-*   **Default Admin**: If `x-hyperspace-user-id` is omitted but a valid `x-api-key` is provided, the user is treated as `default_admin`.
+*   **Default Admin**: If `x-nietzsche-user-id` is omitted but a valid `x-api-key` is provided, the user is treated as `default_admin`.
 *   **SaaS Integration**: Gateways should inject this header after authenticating users.
 
 ---
 
 ## Web Dashboard
 
-HyperspaceDB includes a comprehensive Web Dashboard at `http://localhost:50050`.
+NietzscheDB includes a comprehensive Web Dashboard at `http://localhost:50050`.
 
 **Features:**
 * **Cluster Status**: View node role (Leader/Follower) and topology.
@@ -72,7 +72,7 @@ HyperspaceDB includes a comprehensive Web Dashboard at `http://localhost:50050`.
 For terminal-based monitoring:
 
 ```bash
-./hyperspace-cli
+./nietzsche-cli
 ```
 
 ### Key Controls

@@ -12,20 +12,20 @@
 ### 1.1 Complete Crate Dependency Graph (Existing)
 
 ```
-FOUNDATION LAYER (HyperspaceDB fork)
+FOUNDATION LAYER (NietzscheDB fork)
 ==============================================
-hyperspace-core        (v2.0 - distance metrics, PoincareMetric, SIMD, vector ops)
+nietzsche-core        (v2.0 - distance metrics, PoincareMetric, SIMD, vector ops)
     |
-    +-- hyperspace-store   (v2.0 - mmap vector storage, segments, WAL)
+    +-- nietzsche-vecstore   (v2.0 - mmap vector storage, segments, WAL)
     |       |
-    +-- hyperspace-index   (v2.0 - HNSW graph, Poincare/Cosine/Euclidean, rkyv snapshots)
+    +-- nietzsche-hnsw   (v2.0 - HNSW graph, Poincare/Cosine/Euclidean, rkyv snapshots)
             |
-            depends on: hyperspace-core, hyperspace-store
+            depends on: nietzsche-core, nietzsche-vecstore
 
 CORE GRAPH ENGINE
 ==============================================
 nietzsche-graph        (THE HUB - nodes, edges, adjacency, storage, RocksDB, CollectionManager)
-    depends on: hyperspace-core, hyperspace-index, hyperspace-store
+    depends on: nietzsche-core, nietzsche-hnsw, nietzsche-vecstore
     |
     +-- nietzsche-query        (NQL parser/executor)
     |       depends on: nietzsche-graph
@@ -170,7 +170,7 @@ EVA (Go, port 8091)
   |   |-- client.go               -- gRPC connection via nietzsche-sdk (Go)
   |   |-- graph_adapter.go        -- InsertNode, GetNode, InsertEdge, BFS, Dijkstra
   |   |-- vector_adapter.go       -- KnnSearch, HybridSearch
-  |   |-- cache_adapter.go        -- CacheSet/Get/Del (Redis replacement)
+  |   |-- cache_adapter.go        -- CacheSet/Get/Del (NietzscheDB replacement)
   |   |-- manifold_adapter.go     -- Synthesis, CausalNeighbors, KleinPath
   |   |-- algo_adapter.go         -- PageRank, Louvain, etc.
   |   |-- sensory_adapter.go      -- InsertSensory, Reconstruct
@@ -234,12 +234,12 @@ EVA (Go, port 8091)
         [InsertNode]          [KnnSearch]          [Query (NQL)]
               |                     |                    |
               v                     v                    v
-       [nietzsche-graph]    [hyperspace-index]    [nietzsche-query]
+       [nietzsche-graph]    [nietzsche-hnsw]    [nietzsche-query]
        (RocksDB CF_NODES)    (HNSW graph walk)    (parse -> plan -> exec)
        (adjacency lists)     (Poincare distance)        |
               |                     |              [nietzsche-graph]
               v                     v              [nietzsche-pregel]
-      [hyperspace-store]   [hyperspace-core]            |
+      [nietzsche-vecstore]   [nietzsche-core]            |
       (mmap vector data)   (PoincareMetric)        (heat kernel)
               |                     |                    |
               v                     v                    v
@@ -250,7 +250,7 @@ EVA (Go, port 8091)
 
 | Path | Components | Target Latency |
 |------|-----------|----------------|
-| **KNN Search** | nietzsche-api -> nietzsche-graph -> hyperspace-index -> hyperspace-core (Poincare distance) | < 10ms p99 |
+| **KNN Search** | nietzsche-api -> nietzsche-graph -> nietzsche-hnsw -> nietzsche-core (Poincare distance) | < 10ms p99 |
 | **InsertNode** | nietzsche-api -> nietzsche-graph -> RocksDB write + async HNSW indexing | < 5ms p99 |
 | **GetNode** | nietzsche-api -> nietzsche-graph -> RocksDB read (currently ~25KB, target ~340B after NodeMeta split) | < 1ms p99 |
 | **NQL WHERE filter** | nietzsche-query -> nietzsche-graph -> RocksDB scan with secondary indexes | < 50ms p99 |
@@ -300,16 +300,16 @@ nietzsche-neural       (NEW - ModelRegistry, ONNX runtime wrapper, tensor ops)
 
 ```
 Layer 0: STANDALONE (no internal deps)
-    hyperspace-core, nietzsche-hyp-ops, nietzsche-pq,
+    nietzsche-core, nietzsche-hyp-ops, nietzsche-pq,
     nietzsche-cluster, nietzsche-metrics, nietzsche-table,
     nietzsche-media
 
 Layer 1: STORAGE
-    hyperspace-store  (depends: hyperspace-core)
-    hyperspace-index  (depends: hyperspace-core, hyperspace-store)
+    nietzsche-vecstore  (depends: nietzsche-core)
+    nietzsche-hnsw  (depends: nietzsche-core, nietzsche-vecstore)
 
 Layer 2: GRAPH HUB
-    nietzsche-graph   (depends: hyperspace-core/index/store)
+    nietzsche-graph   (depends: nietzsche-core/index/store)
 
 Layer 3: GRAPH SERVICES
     nietzsche-query, nietzsche-lsystem, nietzsche-pregel,
@@ -931,7 +931,7 @@ For each new crate (`nietzsche-neural`, `nietzsche-gnn`, etc.):
 | `D:\DEV\EVA\internal\brainstem\infrastructure\nietzsche\client.go` | NietzscheDB gRPC client |
 | `D:\DEV\EVA\internal\memory\krylov\krylov_manager.go` | Krylov subspace compression |
 | `D:\DEV\EVA\internal\cortex\voice\speaker\embedder.go` | ONNX runtime usage in Go |
-| `D:\DEV\NietzscheDB\docs\book\src\architecture.md` | HyperspaceDB architecture guide |
+| `D:\DEV\NietzscheDB\docs\book\src\architecture.md` | NietzscheDB architecture guide |
 
 ---
 

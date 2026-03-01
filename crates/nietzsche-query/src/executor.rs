@@ -191,6 +191,37 @@ pub enum QueryResult {
         node_id:    Uuid,
         lineage:    serde_json::Value,
     },
+
+    // ═══════════════════════════════════════════════════
+    // ── NQL 2.0: New Query Result Types ─────────────
+    // ═══════════════════════════════════════════════════
+
+    /// `UNWIND expr AS alias RETURN …` — caller must expand the array.
+    UnwindRequest {
+        expr:  String,
+        alias: String,
+    },
+    /// `SHORTEST_PATH((src),(dst))` — caller performs BFS/Dijkstra.
+    ShortestPathRequest {
+        from_alias: String,
+        from_label: Option<String>,
+        to_alias:   String,
+        to_label:   Option<String>,
+        limit:      Option<usize>,
+    },
+    /// `MEASURE TENSION BETWEEN (a) AND (b)` — caller computes dialectical tension.
+    MeasureTensionRequest {
+        node_a_alias: String,
+        node_a_label: Option<String>,
+        node_b_alias: String,
+        node_b_label: Option<String>,
+    },
+    /// `FIND NEAREST [IN space] TO $vec [LIMIT n]` — caller performs KNN.
+    FindNearestRequest {
+        space:  Option<String>,
+        target: String,
+        limit:  Option<usize>,
+    },
 }
 
 /// A typed scalar value returned by aggregation or property-projection queries.
@@ -370,6 +401,101 @@ pub fn execute_with_indexes_and_gas(
         }]),
         // ── Psychoanalyze (Lineage) ─────────────────────────
         Query::Psychoanalyze(pq) => execute_psychoanalyze(pq, storage, adjacency, params),
+
+        // ═══════════════════════════════════════════════════
+        // ── NQL 2.0: New query types ─────────────────────
+        // ═══════════════════════════════════════════════════
+
+        Query::Union(uq) => {
+            let mut results = Vec::new();
+            for (i, mq) in uq.queries.iter().enumerate() {
+                let mut sub_results = execute_match(mq, storage, adjacency, params, indexed_fields, gas)?;
+                if i > 0 && !uq.all.get(i - 1).copied().unwrap_or(false) {
+                    // UNION (not ALL) — deduplicate by node ID
+                    let existing_ids: HashSet<Uuid> = results.iter().filter_map(|r| {
+                        if let QueryResult::Node(n) = r { Some(n.id) } else { None }
+                    }).collect();
+                    sub_results.retain(|r| {
+                        if let QueryResult::Node(n) = r { !existing_ids.contains(&n.id) } else { true }
+                    });
+                }
+                results.extend(sub_results);
+            }
+            Ok(results)
+        }
+
+        Query::Unwind(uq) => {
+            // UNWIND returns intent — caller must expand the array
+            Ok(vec![QueryResult::UnwindRequest {
+                expr:  format!("{:?}", uq.expr),
+                alias: uq.alias.clone(),
+            }])
+        }
+
+        Query::ShortestPath(sp) => {
+            Ok(vec![QueryResult::ShortestPathRequest {
+                from_alias: sp.from.alias.clone(),
+                from_label: sp.from.label.clone(),
+                to_alias:   sp.to.alias.clone(),
+                to_label:   sp.to.label.clone(),
+                limit:      sp.limit,
+            }])
+        }
+
+        Query::MatchElites(me) => {
+            // Execute directly: scan all nodes, sort by energy DESC, take top N
+            let limit = me.limit.unwrap_or(10);
+            let mut nodes: Vec<Node> = storage.scan_nodes()?;
+            nodes.sort_by(|a, b| b.energy.partial_cmp(&a.energy).unwrap_or(std::cmp::Ordering::Equal));
+            nodes.truncate(limit);
+            Ok(nodes.into_iter().map(QueryResult::Node).collect())
+        }
+
+        Query::MeasureTension(mt) => {
+            Ok(vec![QueryResult::MeasureTensionRequest {
+                node_a_alias: mt.node_a.alias.clone(),
+                node_a_label: mt.node_a.label.clone(),
+                node_b_alias: mt.node_b.alias.clone(),
+                node_b_label: mt.node_b.label.clone(),
+            }])
+        }
+
+        Query::MeasureTgc(_tgc) => {
+            // Execute directly: compute global telemetry
+            let nodes: Vec<Node> = storage.scan_nodes()?;
+            let n = nodes.len() as f64;
+            if n == 0.0 {
+                return Ok(vec![QueryResult::Scalar(vec![
+                    ("total_nodes".into(), ScalarValue::Int(0)),
+                    ("avg_energy".into(), ScalarValue::Float(0.0)),
+                    ("entropy".into(), ScalarValue::Float(0.0)),
+                    ("tgc".into(), ScalarValue::Float(0.0)),
+                ])]);
+            }
+            let total_energy: f64 = nodes.iter().map(|n| n.energy as f64).sum();
+            let avg_energy = total_energy / n;
+            // Shannon entropy of energy distribution
+            let entropy: f64 = nodes.iter().map(|node| {
+                let p = (node.energy as f64) / total_energy.max(1e-15);
+                if p > 1e-15 { -p * p.ln() } else { 0.0 }
+            }).sum();
+            // TGC = entropy * avg_energy * ln(N)
+            let tgc_val = entropy * avg_energy * n.ln();
+            Ok(vec![QueryResult::Scalar(vec![
+                ("total_nodes".into(), ScalarValue::Int(nodes.len() as i64)),
+                ("avg_energy".into(), ScalarValue::Float(avg_energy)),
+                ("entropy".into(), ScalarValue::Float(entropy)),
+                ("tgc".into(), ScalarValue::Float(tgc_val)),
+            ])])
+        }
+
+        Query::FindNearest(fq) => {
+            Ok(vec![QueryResult::FindNearestRequest {
+                space:  fq.space.clone(),
+                target: format!("{:?}", fq.target),
+                limit:  fq.limit,
+            }])
+        }
     }
 }
 
@@ -484,6 +610,21 @@ fn execute_explain(
         Query::ShareArchetype(s)=> format!("ShareArchetype(to={})", s.target_collection),
         Query::Narrate(n)       => format!("Narrate(window={:?}, format={:?})", n.window_hours, n.format),
         Query::Psychoanalyze(_) => "Psychoanalyze(MetaScan + AdjacencyScan)".to_string(),
+        // ── NQL 2.0 EXPLAIN entries ──────────────────────
+        Query::Union(uq) => format!("Union(queries={}, dedup={})",
+            uq.queries.len(),
+            uq.all.iter().filter(|a| !**a).count(),
+        ),
+        Query::Unwind(uq) => format!("Unwind(alias={})", uq.alias),
+        Query::ShortestPath(sp) => format!("ShortestPath({} -> {}, limit={:?})",
+            sp.from.alias, sp.to.alias, sp.limit),
+        Query::MatchElites(me) => format!("MatchElites(limit={}, collection={:?})",
+            me.limit.unwrap_or(10), me.collection),
+        Query::MeasureTension(mt) => format!("MeasureTension({} vs {})",
+            mt.node_a.alias, mt.node_b.alias),
+        Query::MeasureTgc(tgc) => format!("MeasureTgc(collection={:?})", tgc.collection),
+        Query::FindNearest(fq) => format!("FindNearest(space={:?}, limit={:?})",
+            fq.space, fq.limit),
     };
     let full_plan = format!("{} | {}", plan, cost);
     Ok(vec![QueryResult::ExplainPlan(full_plan)])
@@ -1215,6 +1356,7 @@ fn value_to_json(val: &Value) -> serde_json::Value {
         Value::Float(f) => serde_json::json!(*f),
         Value::Str(s)   => serde_json::json!(s),
         Value::Bool(b)  => serde_json::json!(*b),
+        Value::Null     => serde_json::Value::Null,
     }
 }
 
@@ -1437,6 +1579,98 @@ fn eval_condition_with_edges(
                 }),
             }
         }
+
+        // ── NQL 2.0: IS NULL ──────────────────────────────
+        Condition::IsNull { expr } => {
+            // Try evaluating the expression; if it resolves to Null or fails (field not found), it's null
+            match eval_expr_with_edges(expr, binding, edge_bindings, params, storage, adjacency) {
+                Ok(val) => Ok(val.is_null()),
+                Err(_) => Ok(true), // field doesn't exist → treat as null
+            }
+        }
+
+        // ── NQL 2.0: IS NOT NULL ──────────────────────────
+        Condition::IsNotNull { expr } => {
+            match eval_expr_with_edges(expr, binding, edge_bindings, params, storage, adjacency) {
+                Ok(val) => Ok(!val.is_null()),
+                Err(_) => Ok(false), // field doesn't exist → is null → IS NOT NULL = false
+            }
+        }
+
+        // ── NQL 2.0: Regex =~ ─────────────────────────────
+        Condition::Regex { expr, pattern } => {
+            let val = eval_expr_with_edges(expr, binding, edge_bindings, params, storage, adjacency)?;
+            let pat = eval_expr_with_edges(pattern, binding, edge_bindings, params, storage, adjacency)?;
+            match (&val, &pat) {
+                (Value::Str(text), Value::Str(regex_str)) => {
+                    // Compile regex and match
+                    let re = regex::Regex::new(regex_str)
+                        .map_err(|e| QueryError::Execution(format!("invalid regex '{}': {}", regex_str, e)))?;
+                    Ok(re.is_match(text))
+                }
+                _ => Err(QueryError::Execution(
+                    format!("=~ requires string operands, got {} =~ {}", val.type_name(), pat.type_name()),
+                )),
+            }
+        }
+
+        // ── NQL 2.0: EXISTS { MATCH … WHERE … } ──────────
+        Condition::Exists { pattern, conditions } => {
+            // EXISTS evaluates a subquery pattern against current bindings
+            // It returns true if any nodes/edges match the inner pattern + conditions
+            match pattern {
+                Pattern::Node(np) => {
+                    let nodes = storage.scan_nodes()
+                        .map_err(|e| QueryError::Execution(e.to_string()))?;
+                    let typed: Vec<&Node> = if let Some(label) = &np.label {
+                        let label_lc = label.to_lowercase();
+                        nodes.iter()
+                            .filter(|n| format!("{:?}", n.node_type).to_lowercase() == label_lc)
+                            .collect()
+                    } else {
+                        nodes.iter().collect()
+                    };
+                    for node in typed {
+                        // Extend existing binding with the inner alias
+                        let mut inner_binding: Vec<(&str, &Node)> = binding.to_vec();
+                        inner_binding.push((np.alias.as_str(), node));
+                        if eval_conditions_with_edges(conditions, &inner_binding, edge_bindings, params, storage, adjacency)? {
+                            return Ok(true);
+                        }
+                    }
+                    Ok(false)
+                }
+                Pattern::Path(pp) => {
+                    let edges = storage.scan_edges()
+                        .map_err(|e| QueryError::Execution(e.to_string()))?;
+                    for edge in &edges {
+                        let (from_id, to_id) = match pp.direction {
+                            Direction::Out => (edge.from, edge.to),
+                            Direction::In  => (edge.to, edge.from),
+                        };
+                        if let Some(label) = &pp.edge_label {
+                            let type_str = format!("{:?}", edge.edge_type).to_lowercase();
+                            if type_str != label.to_lowercase() { continue; }
+                        }
+                        let from_node = match storage.get_node(&from_id) {
+                            Ok(Some(n)) => n,
+                            _ => continue,
+                        };
+                        let to_node = match storage.get_node(&to_id) {
+                            Ok(Some(n)) => n,
+                            _ => continue,
+                        };
+                        let mut inner_binding: Vec<(&str, &Node)> = binding.to_vec();
+                        inner_binding.push((pp.from.alias.as_str(), &from_node));
+                        inner_binding.push((pp.to.alias.as_str(), &to_node));
+                        if eval_conditions_with_edges(conditions, &inner_binding, edge_bindings, params, storage, adjacency)? {
+                            return Ok(true);
+                        }
+                    }
+                    Ok(false)
+                }
+            }
+        }
     }
 }
 
@@ -1449,6 +1683,7 @@ enum Value {
     Float(f64),
     Str(String),
     Bool(bool),
+    Null,
 }
 
 impl Value {
@@ -1457,13 +1692,19 @@ impl Value {
             Value::Float(_) => "float",
             Value::Str(_)   => "string",
             Value::Bool(_)  => "bool",
+            Value::Null     => "null",
         }
+    }
+
+    fn is_null(&self) -> bool {
+        matches!(self, Value::Null)
     }
 }
 
 /// Check if two Values are equal (used by IN operator).
 fn values_equal(a: &Value, b: &Value) -> bool {
     match (a, b) {
+        (Value::Null, Value::Null)         => true,
         (Value::Float(l), Value::Float(r)) => (l - r).abs() < 1e-10,
         (Value::Str(l),   Value::Str(r))   => l == r,
         (Value::Bool(l),  Value::Bool(r))  => l == r,
@@ -1564,6 +1805,20 @@ fn eval_expr_with_edges(
                 ArithOp::Sub => l - r,
             }))
         }
+
+        // ── NQL 2.0: CASE WHEN ────────────────────────────
+        Expr::CaseWhen { branches, else_expr } => {
+            for (cond, val_expr) in branches {
+                if eval_condition_with_edges(cond, binding, edge_bindings, params, storage, adjacency)? {
+                    return eval_expr_with_edges(val_expr, binding, edge_bindings, params, storage, adjacency);
+                }
+            }
+            if let Some(else_val) = else_expr {
+                eval_expr_with_edges(else_val, binding, edge_bindings, params, storage, adjacency)
+            } else {
+                Ok(Value::Null)
+            }
+        }
     }
 }
 
@@ -1635,7 +1890,7 @@ fn json_to_value(val: &serde_json::Value) -> Result<Value, QueryError> {
         serde_json::Value::Number(n) => Ok(Value::Float(n.as_f64().unwrap_or(0.0))),
         serde_json::Value::String(s) => Ok(Value::Str(s.clone())),
         serde_json::Value::Bool(b)   => Ok(Value::Bool(*b)),
-        serde_json::Value::Null      => Ok(Value::Float(0.0)),
+        serde_json::Value::Null      => Ok(Value::Null),
         _ => Err(QueryError::Execution(format!("field value is not a scalar: {val}"))),
     }
 }
@@ -1645,6 +1900,14 @@ fn json_to_value(val: &serde_json::Value) -> Result<Value, QueryError> {
 // ─────────────────────────────────────────────
 
 fn compare_values(left: &Value, op: &CompOp, right: &Value) -> Result<bool, QueryError> {
+    // NULL comparisons: NULL = NULL is true, NULL != non-null is true, anything else with NULL is false
+    if left.is_null() || right.is_null() {
+        return Ok(match op {
+            CompOp::Eq  => left.is_null() && right.is_null(),
+            CompOp::Neq => left.is_null() != right.is_null(),
+            _ => false, // NULL < x, NULL > x, etc. are always false
+        });
+    }
     match (left, right) {
         (Value::Float(l), Value::Float(r)) => Ok(apply_num_op(*l, op, *r)),
         (Value::Str(l),   Value::Str(r))   => Ok(apply_str_op(l, op, r)?),
@@ -1815,7 +2078,7 @@ fn eval_math_func(
 ) -> Result<Value, QueryError> {
     match func {
         // ── Poincaré (alias for HYPERBOLIC_DIST) ──────────────
-        MathFunc::PoincareDist => {
+        MathFunc::PoincaNietzscheDBt => {
             let (node, query_vec) = resolve_dist_args(args, binding, params)?;
             Ok(Value::Float(node.embedding.distance(&query_vec)))
         }
@@ -2008,6 +2271,235 @@ fn eval_math_func(
             let seconds = parse_interval_str(&duration_str)?;
             Ok(Value::Float(seconds))
         }
+
+        // ═══════════════════════════════════════════════════
+        // ── NQL 2.0: String Functions ────────────────────
+        // ═══════════════════════════════════════════════════
+
+        MathFunc::Upper => {
+            let s = resolve_string_arg(&args[0], binding, params, storage, adjacency)?;
+            Ok(Value::Str(s.to_uppercase()))
+        }
+        MathFunc::Lower => {
+            let s = resolve_string_arg(&args[0], binding, params, storage, adjacency)?;
+            Ok(Value::Str(s.to_lowercase()))
+        }
+        MathFunc::Trim => {
+            let s = resolve_string_arg(&args[0], binding, params, storage, adjacency)?;
+            Ok(Value::Str(s.trim().to_string()))
+        }
+        MathFunc::Ltrim => {
+            let s = resolve_string_arg(&args[0], binding, params, storage, adjacency)?;
+            Ok(Value::Str(s.trim_start().to_string()))
+        }
+        MathFunc::Rtrim => {
+            let s = resolve_string_arg(&args[0], binding, params, storage, adjacency)?;
+            Ok(Value::Str(s.trim_end().to_string()))
+        }
+        MathFunc::Length => {
+            let s = resolve_string_arg(&args[0], binding, params, storage, adjacency)?;
+            Ok(Value::Float(s.chars().count() as f64))
+        }
+        MathFunc::Substring => {
+            let s = resolve_string_arg(&args[0], binding, params, storage, adjacency)?;
+            let start = resolve_scalar_arg(&args[1], binding, params, storage, adjacency)? as usize;
+            let len = resolve_scalar_arg(&args[2], binding, params, storage, adjacency)? as usize;
+            let result: String = s.chars().skip(start).take(len).collect();
+            Ok(Value::Str(result))
+        }
+        MathFunc::Replace => {
+            let s = resolve_string_arg(&args[0], binding, params, storage, adjacency)?;
+            let search = resolve_string_arg(&args[1], binding, params, storage, adjacency)?;
+            let replacement = resolve_string_arg(&args[2], binding, params, storage, adjacency)?;
+            Ok(Value::Str(s.replace(&search, &replacement)))
+        }
+        MathFunc::Concat => {
+            let mut result = String::new();
+            for arg in args {
+                let s = resolve_string_arg(arg, binding, params, storage, adjacency)?;
+                result.push_str(&s);
+            }
+            Ok(Value::Str(result))
+        }
+        MathFunc::Reverse => {
+            let s = resolve_string_arg(&args[0], binding, params, storage, adjacency)?;
+            Ok(Value::Str(s.chars().rev().collect()))
+        }
+        MathFunc::Split => {
+            let s = resolve_string_arg(&args[0], binding, params, storage, adjacency)?;
+            let delim = resolve_string_arg(&args[1], binding, params, storage, adjacency)?;
+            // Return as a JSON-like string representation of the array
+            let parts: Vec<String> = s.split(&delim).map(|p| p.to_string()).collect();
+            Ok(Value::Str(format!("{:?}", parts)))
+        }
+
+        // ═══════════════════════════════════════════════════
+        // ── NQL 2.0: Math Functions ──────────────────────
+        // ═══════════════════════════════════════════════════
+
+        MathFunc::Abs => {
+            let x = resolve_scalar_arg(&args[0], binding, params, storage, adjacency)?;
+            Ok(Value::Float(x.abs()))
+        }
+        MathFunc::Ceil => {
+            let x = resolve_scalar_arg(&args[0], binding, params, storage, adjacency)?;
+            Ok(Value::Float(x.ceil()))
+        }
+        MathFunc::Floor => {
+            let x = resolve_scalar_arg(&args[0], binding, params, storage, adjacency)?;
+            Ok(Value::Float(x.floor()))
+        }
+        MathFunc::Round => {
+            let x = resolve_scalar_arg(&args[0], binding, params, storage, adjacency)?;
+            Ok(Value::Float(x.round()))
+        }
+        MathFunc::Sqrt => {
+            let x = resolve_scalar_arg(&args[0], binding, params, storage, adjacency)?;
+            Ok(Value::Float(x.sqrt()))
+        }
+        MathFunc::Log => {
+            let x = resolve_scalar_arg(&args[0], binding, params, storage, adjacency)?;
+            Ok(Value::Float(x.ln()))
+        }
+        MathFunc::Log10 => {
+            let x = resolve_scalar_arg(&args[0], binding, params, storage, adjacency)?;
+            Ok(Value::Float(x.log10()))
+        }
+        MathFunc::Pow => {
+            let base = resolve_scalar_arg(&args[0], binding, params, storage, adjacency)?;
+            let exp = resolve_scalar_arg(&args[1], binding, params, storage, adjacency)?;
+            Ok(Value::Float(base.powf(exp)))
+        }
+        MathFunc::Sign => {
+            let x = resolve_scalar_arg(&args[0], binding, params, storage, adjacency)?;
+            Ok(Value::Float(if x > 0.0 { 1.0 } else if x < 0.0 { -1.0 } else { 0.0 }))
+        }
+        MathFunc::Mod => {
+            let x = resolve_scalar_arg(&args[0], binding, params, storage, adjacency)?;
+            let y = resolve_scalar_arg(&args[1], binding, params, storage, adjacency)?;
+            Ok(Value::Float(x % y))
+        }
+
+        // ═══════════════════════════════════════════════════
+        // ── NQL 2.0: Type Casting ────────────────────────
+        // ═══════════════════════════════════════════════════
+
+        MathFunc::ToInt => {
+            let val = resolve_any_arg(&args[0], binding, params, storage, adjacency)?;
+            match val {
+                Value::Float(f) => Ok(Value::Float((f as i64) as f64)),
+                Value::Str(s)   => Ok(Value::Float(s.parse::<i64>().unwrap_or(0) as f64)),
+                Value::Bool(b)  => Ok(Value::Float(if b { 1.0 } else { 0.0 })),
+                Value::Null     => Ok(Value::Null),
+            }
+        }
+        MathFunc::ToFloat => {
+            let val = resolve_any_arg(&args[0], binding, params, storage, adjacency)?;
+            match val {
+                Value::Float(f) => Ok(Value::Float(f)),
+                Value::Str(s)   => Ok(Value::Float(s.parse::<f64>().unwrap_or(0.0))),
+                Value::Bool(b)  => Ok(Value::Float(if b { 1.0 } else { 0.0 })),
+                Value::Null     => Ok(Value::Null),
+            }
+        }
+        MathFunc::ToString => {
+            let val = resolve_any_arg(&args[0], binding, params, storage, adjacency)?;
+            match val {
+                Value::Float(f) => Ok(Value::Str(format!("{}", f))),
+                Value::Str(s)   => Ok(Value::Str(s)),
+                Value::Bool(b)  => Ok(Value::Str(format!("{}", b))),
+                Value::Null     => Ok(Value::Str("null".to_string())),
+            }
+        }
+        MathFunc::ToBool => {
+            let val = resolve_any_arg(&args[0], binding, params, storage, adjacency)?;
+            match val {
+                Value::Float(f) => Ok(Value::Bool(f != 0.0)),
+                Value::Str(s)   => Ok(Value::Bool(!s.is_empty() && s != "false" && s != "0")),
+                Value::Bool(b)  => Ok(Value::Bool(b)),
+                Value::Null     => Ok(Value::Bool(false)),
+            }
+        }
+
+        // ═══════════════════════════════════════════════════
+        // ── NQL 2.0: Null Handling ───────────────────────
+        // ═══════════════════════════════════════════════════
+
+        MathFunc::Coalesce => {
+            for arg in args {
+                let val = resolve_any_arg(arg, binding, params, storage, adjacency)?;
+                if !val.is_null() {
+                    return Ok(val);
+                }
+            }
+            Ok(Value::Null)
+        }
+
+        // ═══════════════════════════════════════════════════
+        // ── NQL 2.0: Cognitive Instrumentation ───────────
+        // ═══════════════════════════════════════════════════
+
+        // Ludwig Boltzmann — BOLTZMANN_SURVIVAL(n): L-System cycles survived
+        // Approximation: lsystem_generation + energy-based survival estimate
+        MathFunc::BoltzmannSurvival => {
+            let node = resolve_alias_node(args, binding)?;
+            // Cycles survived ≈ generation + 1 (alive since creation)
+            let cycles = node.lsystem_generation as f64 + 1.0;
+            Ok(Value::Float(cycles))
+        }
+
+        // Hermann von Helmholtz — HELMHOLTZ_GRADIENT(n): temporal energy derivative
+        // Without historical data, use a heuristic: (energy - avg_neighbor_energy) / degree
+        MathFunc::HelmholtzGradient => {
+            let node = resolve_alias_node(args, binding)?;
+            let neighbors = adjacency.neighbors_out(&node.id);
+            if neighbors.is_empty() {
+                return Ok(Value::Float(0.0));
+            }
+            let mut neighbor_energy_sum = 0.0f64;
+            let mut count = 0usize;
+            for nid in &neighbors {
+                if let Ok(Some(n)) = storage.get_node(nid) {
+                    neighbor_energy_sum += n.energy as f64;
+                    count += 1;
+                }
+            }
+            if count == 0 { return Ok(Value::Float(0.0)); }
+            let avg_neighbor = neighbor_energy_sum / count as f64;
+            let gradient = (node.energy as f64 - avg_neighbor) / count as f64;
+            Ok(Value::Float(gradient))
+        }
+
+        // Aleksandr Lyapunov — LYAPUNOV_DELTA(n.prop, cycles): property variation
+        // Without temporal history, returns 0.0 (placeholder for future cycle snapshots)
+        MathFunc::LyapunovDelta => {
+            // Returns 0.0 as placeholder — would require cycle-indexed storage
+            Ok(Value::Float(0.0))
+        }
+
+        // Ilya Prigogine — PRIGOGINE_BASIN(n): basin of attraction in Poincaré space
+        // Returns the angular sector (0..2π) of the node in the Poincaré disk
+        MathFunc::PrigoginBasin => {
+            let node = resolve_alias_node(args, binding)?;
+            let coords = node.embedding.coords_f64();
+            if coords.len() >= 2 {
+                let angle = coords[1].atan2(coords[0]); // atan2(y, x)
+                let basin = if angle < 0.0 { angle + 2.0 * std::f64::consts::PI } else { angle };
+                Ok(Value::Float(basin))
+            } else {
+                Ok(Value::Float(0.0))
+            }
+        }
+
+        // Paul Erdős — ERDOS_EDGE_PROB(a, b): predicted edge emergence probability
+        // Uses logistic decay on Poincaré distance as proxy
+        MathFunc::ErdosEdgeProb => {
+            let (node_a, node_b) = resolve_two_alias_nodes(args, binding)?;
+            let dist = node_a.embedding.distance(&node_b.embedding);
+            // Logistic decay: P = 1 / (1 + exp(dist - 1))
+            let prob = 1.0 / (1.0 + (dist - 1.0).exp());
+            Ok(Value::Float(prob))
+        }
     }
 }
 
@@ -2108,6 +2600,113 @@ fn resolve_alias_and_scalar<'a>(
         _ => return Err(QueryError::Execution("second arg must be a scalar or $param".into())),
     };
     Ok((node, scalar))
+}
+
+/// Resolve a MathFuncArg to a string value (for string functions).
+fn resolve_string_arg(
+    arg:       &MathFuncArg,
+    binding:   &[(&str, &Node)],
+    params:    &Params,
+    _storage:  &GraphStorage,
+    _adjacency: &AdjacencyIndex,
+) -> Result<String, QueryError> {
+    match arg {
+        MathFuncArg::Str(s) => Ok(s.clone()),
+        MathFuncArg::Param(name) => match params.get(name.as_str()) {
+            Some(ParamValue::Str(s)) => Ok(s.clone()),
+            Some(ParamValue::Float(f)) => Ok(format!("{}", f)),
+            Some(ParamValue::Int(i)) => Ok(format!("{}", i)),
+            _ => Err(QueryError::Execution(format!("param ${name} is not a string"))),
+        },
+        MathFuncArg::Property(alias, field) => {
+            let node = find_node(alias, binding)?;
+            match eval_field(node, field)? {
+                Value::Str(s) => Ok(s),
+                Value::Float(f) => Ok(format!("{}", f)),
+                Value::Bool(b) => Ok(format!("{}", b)),
+                Value::Null => Ok("null".to_string()),
+            }
+        }
+        MathFuncArg::Alias(alias) => {
+            let node = find_node(alias, binding)?;
+            Ok(node.id.to_string())
+        }
+        _ => Err(QueryError::Execution("expected string argument".into())),
+    }
+}
+
+/// Resolve a MathFuncArg to a scalar f64 value (for math functions).
+fn resolve_scalar_arg(
+    arg:       &MathFuncArg,
+    binding:   &[(&str, &Node)],
+    params:    &Params,
+    _storage:  &GraphStorage,
+    _adjacency: &AdjacencyIndex,
+) -> Result<f64, QueryError> {
+    match arg {
+        MathFuncArg::Float(f) => Ok(*f),
+        MathFuncArg::Int(i) => Ok(*i as f64),
+        MathFuncArg::Param(name) => match params.get(name.as_str()) {
+            Some(ParamValue::Float(f)) => Ok(*f),
+            Some(ParamValue::Int(i)) => Ok(*i as f64),
+            _ => Err(QueryError::ParamTypeMismatch {
+                name: name.clone(), expected: "numeric", got: "other".into(),
+            }),
+        },
+        MathFuncArg::Property(alias, field) => {
+            let node = find_node(alias, binding)?;
+            match eval_field(node, field)? {
+                Value::Float(f) => Ok(f),
+                _ => Err(QueryError::Execution(format!("{}.{} is not numeric", alias, field))),
+            }
+        }
+        _ => Err(QueryError::Execution("expected scalar argument".into())),
+    }
+}
+
+/// Resolve a MathFuncArg to any Value (for type casting / coalesce).
+fn resolve_any_arg(
+    arg:       &MathFuncArg,
+    binding:   &[(&str, &Node)],
+    params:    &Params,
+    _storage:  &GraphStorage,
+    _adjacency: &AdjacencyIndex,
+) -> Result<Value, QueryError> {
+    match arg {
+        MathFuncArg::Float(f) => Ok(Value::Float(*f)),
+        MathFuncArg::Int(i) => Ok(Value::Float(*i as f64)),
+        MathFuncArg::Str(s) => Ok(Value::Str(s.clone())),
+        MathFuncArg::Param(name) => match params.get(name.as_str()) {
+            Some(ParamValue::Float(f)) => Ok(Value::Float(*f)),
+            Some(ParamValue::Int(i)) => Ok(Value::Float(*i as f64)),
+            Some(ParamValue::Str(s)) => Ok(Value::Str(s.clone())),
+            Some(ParamValue::Uuid(u)) => Ok(Value::Str(u.to_string())),
+            Some(ParamValue::Vector(_)) => Err(QueryError::Execution("Vector not supported here".into())),
+            None => Ok(Value::Null),
+        },
+        MathFuncArg::Property(alias, field) => {
+            let node = find_node(alias, binding)?;
+            match eval_field(node, field) {
+                Ok(v) => Ok(v),
+                Err(_) => Ok(Value::Null), // field doesn't exist → null
+            }
+        }
+        MathFuncArg::Alias(alias) => {
+            let node = find_node(alias, binding)?;
+            Ok(Value::Str(node.id.to_string()))
+        }
+        MathFuncArg::Vector(_) => Err(QueryError::Execution("Vector not supported here".into())),
+    }
+}
+
+/// Resolve two alias arguments to two Nodes (for ERDOS_EDGE_PROB).
+fn resolve_two_alias_nodes<'a>(
+    args:    &[MathFuncArg],
+    binding: &[(&str, &'a Node)],
+) -> Result<(&'a Node, &'a Node), QueryError> {
+    let a = resolve_alias_node(&args[..1], binding)?;
+    let b = resolve_alias_node(&args[1..], binding)?;
+    Ok((a, b))
 }
 
 /// Convert Poincaré ball coordinates to Klein model: k = 2p/(1+‖p‖²).
@@ -2432,6 +3031,31 @@ fn compute_aggregate(
                 _ => unreachable!(),
             }
         }
+
+        AggFunc::Collect => {
+            // COLLECT aggregates values into a JSON array (returned as string)
+            match arg {
+                AggArg::Property(a, field) => {
+                    if a != alias { return Err(QueryError::UnknownAlias { alias: a.clone() }); }
+                    let mut items = Vec::new();
+                    for node in nodes {
+                        if let Ok(val) = eval_field(node, field) {
+                            items.push(format!("{:?}", val));
+                        }
+                    }
+                    Ok(ScalarValue::Str(format!("[{}]", items.join(", "))))
+                }
+                AggArg::Alias(a) => {
+                    if a != alias { return Err(QueryError::UnknownAlias { alias: a.clone() }); }
+                    let ids: Vec<String> = nodes.iter().map(|n| format!("\"{}\"", n.id)).collect();
+                    Ok(ScalarValue::Str(format!("[{}]", ids.join(", "))))
+                }
+                AggArg::Star => {
+                    let ids: Vec<String> = nodes.iter().map(|n| format!("\"{}\"", n.id)).collect();
+                    Ok(ScalarValue::Str(format!("[{}]", ids.join(", "))))
+                }
+            }
+        }
     }
 }
 
@@ -2462,6 +3086,7 @@ fn value_to_scalar(v: &Value) -> ScalarValue {
         Value::Float(f) => ScalarValue::Float(*f),
         Value::Str(s)   => ScalarValue::Str(s.clone()),
         Value::Bool(b)  => ScalarValue::Bool(*b),
+        Value::Null     => ScalarValue::Null,
     }
 }
 

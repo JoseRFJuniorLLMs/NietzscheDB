@@ -1,6 +1,6 @@
 //! EmbeddedVectorStore — real HNSW-backed vector store.
 //!
-//! Replaces `MockVectorStore` in production. Wraps `hyperspace-index`'s
+//! Replaces `MockVectorStore` in production. Wraps `nietzsche-hnsw`'s
 //! `HnswIndex<N, M>` with type erasure so the dimension and metric are
 //! chosen at runtime via environment variables.
 //!
@@ -24,9 +24,9 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use uuid::Uuid;
 
-use hyperspace_core::{CosineMetric, EuclideanMetric, PoincareMetric, GlobalConfig, QuantizationMode};
-use hyperspace_index::HnswIndex;
-use hyperspace_store::VectorStore as RawStore;
+use nietzsche_core::{CosineMetric, EuclideanMetric, PoincareMetric, GlobalConfig, QuantizationMode};
+use nietzsche_hnsw::HnswIndex;
+use nietzsche_vecstore::VectorStore as RawStore;
 
 use crate::db::VectorStore;
 use crate::error::GraphError;
@@ -62,7 +62,7 @@ trait DynHnsw: Send + Sync {
         query: &[f64],
         k: usize,
         filter: &HashMap<String, String>,
-        complex_filters: &[hyperspace_core::FilterExpr],
+        complex_filters: &[nietzsche_core::FilterExpr],
     ) -> Vec<(u32, f64)>;
 
     /// Soft-delete a node by its internal HNSW id.
@@ -84,7 +84,7 @@ struct HnswCosineWrapper<const N: usize> {
 impl<const N: usize> HnswCosineWrapper<N> {
     fn new(storage_dir: &Path) -> Self {
         // element_size = size_of::<HyperVector<N>>() via the public SIZE const.
-        let element_size = hyperspace_core::vector::HyperVector::<N>::SIZE;
+        let element_size = nietzsche_core::vector::HyperVector::<N>::SIZE;
         let storage = Arc::new(RawStore::new(storage_dir, element_size));
         let config = Arc::new(GlobalConfig::default());
         Self {
@@ -96,7 +96,7 @@ impl<const N: usize> HnswCosineWrapper<N> {
     ///
     /// `CosineMetric` delegates to `EuclideanMetric`, so ranking is preserved
     /// when all stored vectors and queries are unit-normalized.
-    /// Mirrors the `normalize_if_cosine` logic in `hyperspace-server`.
+    /// Mirrors the `normalize_if_cosine` logic in `nietzsche-baseserver`.
     #[inline]
     fn normalize(vector: &[f64]) -> Vec<f64> {
         let norm_sq: f64 = vector.iter().map(|x| x * x).sum();
@@ -139,7 +139,7 @@ impl<const N: usize> DynHnsw for HnswCosineWrapper<N> {
         query: &[f64],
         k: usize,
         filter: &HashMap<String, String>,
-        complex_filters: &[hyperspace_core::FilterExpr],
+        complex_filters: &[nietzsche_core::FilterExpr],
     ) -> Vec<(u32, f64)> {
         let normalized = Self::normalize(query);
         let ef = (k * 4).max(16).min(512);
@@ -176,7 +176,7 @@ struct HnswRawWrapper<const N: usize> {
 
 impl<const N: usize> HnswRawWrapper<N> {
     fn new(storage_dir: &Path) -> Self {
-        let element_size = hyperspace_core::vector::HyperVector::<N>::SIZE;
+        let element_size = nietzsche_core::vector::HyperVector::<N>::SIZE;
         let storage = Arc::new(RawStore::new(storage_dir, element_size));
         let config = Arc::new(GlobalConfig::default());
         Self {
@@ -212,7 +212,7 @@ impl<const N: usize> DynHnsw for HnswRawWrapper<N> {
         query: &[f64],
         k: usize,
         filter: &HashMap<String, String>,
-        complex_filters: &[hyperspace_core::FilterExpr],
+        complex_filters: &[nietzsche_core::FilterExpr],
     ) -> Vec<(u32, f64)> {
         let ef = (k * 4).max(16).min(512);
         self.index.search(query, k, ef, filter, complex_filters, None, None)
@@ -237,7 +237,7 @@ impl<const N: usize> DynHnsw for HnswRawWrapper<N> {
 
 // ─── Concrete Poincaré HNSW wrapper ──────────────────────────────────────────
 //
-// Uses `PoincareMetric` from `hyperspace-core` — the geometrically correct metric
+// Uses `PoincareMetric` from `nietzsche-core` — the geometrically correct metric
 // for NietzscheDB's hyperbolic knowledge graph.
 //
 // HNSW neighbours are built with d(u,v) = acosh(1 + 2‖u-v‖²/((1-‖u‖²)(1-‖v‖²))),
@@ -251,7 +251,7 @@ struct HnswPoincareWrapper<const N: usize> {
 
 impl<const N: usize> HnswPoincareWrapper<N> {
     fn new(storage_dir: &Path) -> Self {
-        let element_size = hyperspace_core::vector::HyperVector::<N>::SIZE;
+        let element_size = nietzsche_core::vector::HyperVector::<N>::SIZE;
         let storage = Arc::new(RawStore::new(storage_dir, element_size));
         let config = Arc::new(GlobalConfig::default());
         Self {
@@ -287,7 +287,7 @@ impl<const N: usize> DynHnsw for HnswPoincareWrapper<N> {
         query: &[f64],
         k: usize,
         filter: &HashMap<String, String>,
-        complex_filters: &[hyperspace_core::FilterExpr],
+        complex_filters: &[nietzsche_core::FilterExpr],
     ) -> Vec<(u32, f64)> {
         let ef = (k * 4).max(16).min(512);
         self.index.search(query, k, ef, filter, complex_filters, None, None)
@@ -389,7 +389,7 @@ pub enum VectorMetric {
 
 /// Real HNSW-backed `VectorStore` that replaces `MockVectorStore` in production.
 ///
-/// Uses `CosineMetric` from `hyperspace-index` (squared L2 on unit-normalized vectors).
+/// Uses `CosineMetric` from `nietzsche-hnsw` (squared L2 on unit-normalized vectors).
 /// Supports runtime-configurable dimensions via env vars.
 ///
 /// ## Storage
@@ -472,7 +472,7 @@ impl EmbeddedVectorStore {
 /// `(legacy_tags, complex_filters)`.
 fn metadata_filter_to_hnsw(
     filter: &crate::db::MetadataFilter,
-) -> (HashMap<String, String>, Vec<hyperspace_core::FilterExpr>) {
+) -> (HashMap<String, String>, Vec<nietzsche_core::FilterExpr>) {
     let mut tags = HashMap::new();
     let mut exprs = Vec::new();
     collect_filter(filter, &mut tags, &mut exprs);
@@ -482,12 +482,12 @@ fn metadata_filter_to_hnsw(
 fn collect_filter(
     filter: &crate::db::MetadataFilter,
     tags: &mut HashMap<String, String>,
-    exprs: &mut Vec<hyperspace_core::FilterExpr>,
+    exprs: &mut Vec<nietzsche_core::FilterExpr>,
 ) {
     match filter {
         crate::db::MetadataFilter::Eq { field, value } => {
             // Use the complex filter Match for exact equality (inverted index lookup).
-            exprs.push(hyperspace_core::FilterExpr::Match {
+            exprs.push(nietzsche_core::FilterExpr::Match {
                 key: field.clone(),
                 value: value.clone(),
             });
@@ -502,7 +502,7 @@ fn collect_filter(
             }
         }
         crate::db::MetadataFilter::Range { field, gte, lte } => {
-            exprs.push(hyperspace_core::FilterExpr::Range {
+            exprs.push(nietzsche_core::FilterExpr::Range {
                 key: field.clone(),
                 gte: *gte,
                 lte: *lte,
@@ -514,7 +514,7 @@ fn collect_filter(
                 collect_filter(sub, tags, &mut sub_exprs);
             }
             if !sub_exprs.is_empty() {
-                exprs.push(hyperspace_core::FilterExpr::And(sub_exprs));
+                exprs.push(nietzsche_core::FilterExpr::And(sub_exprs));
             }
         }
         crate::db::MetadataFilter::Or(subs) => {
@@ -523,24 +523,24 @@ fn collect_filter(
                 collect_filter(sub, tags, &mut sub_exprs);
             }
             if !sub_exprs.is_empty() {
-                exprs.push(hyperspace_core::FilterExpr::Or(sub_exprs));
+                exprs.push(nietzsche_core::FilterExpr::Or(sub_exprs));
             }
         }
         crate::db::MetadataFilter::Not(sub) => {
             let mut sub_exprs = Vec::new();
             collect_filter(sub, tags, &mut sub_exprs);
             if let Some(expr) = sub_exprs.pop() {
-                exprs.push(hyperspace_core::FilterExpr::Not(Box::new(expr)));
+                exprs.push(nietzsche_core::FilterExpr::Not(Box::new(expr)));
             }
         }
         crate::db::MetadataFilter::Contains { field, value } => {
-            exprs.push(hyperspace_core::FilterExpr::Contains {
+            exprs.push(nietzsche_core::FilterExpr::Contains {
                 key: field.clone(),
                 value: value.clone(),
             });
         }
         crate::db::MetadataFilter::Exists { field } => {
-            exprs.push(hyperspace_core::FilterExpr::Exists {
+            exprs.push(nietzsche_core::FilterExpr::Exists {
                 key: field.clone(),
             });
         }

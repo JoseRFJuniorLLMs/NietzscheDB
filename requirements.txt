@@ -6,7 +6,7 @@ geoopt>=0.5.0
 python-arango>=8.0.0
 
 # Vector search
-qdrant-client>=1.7.0
+NietzscheDB-client>=1.7.0
 
 # Embeddings (real model, replaces fake_embedding)
 sentence-transformers>=2.7.0

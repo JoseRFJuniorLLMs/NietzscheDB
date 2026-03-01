@@ -1,7 +1,7 @@
-import { HyperspaceClient } from '../../sdks/ts/src/client';
+import { NietzscheBaseClient } from '../../sdks/ts/src/client';
 
 async function main() {
-    const client = new HyperspaceClient('localhost:50051', 'I_LOVE_HYPERSPACEDB');
+    const client = new NietzscheBaseClient('localhost:50051', 'I_LOVE_NIETZSCHEDB');
     const colName = 'ts_sdk_example';
 
     try {

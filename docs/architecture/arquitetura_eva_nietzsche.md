@@ -34,7 +34,7 @@
 | EVA-Back         |  | EVA (Go)         |
 | FastAPI :8001    |  | Backend :8091    |
 | Python           |  | Go               |
-| PostgreSQL       |  | Cerebro da EVA   |
+| NietzscheDB       |  | Cerebro da EVA   |
 +--------+---------+  +--------+---------+
          |                      |
          | REST API             | gRPC (principal)
@@ -73,7 +73,7 @@
 ||  |  | client.go        |  | graph_adapter.go |  | vector_adapter |  |  ||
 ||  |  | NietzscheClient  |  | GraphAdapter     |  | VectorAdapter  |  |  ||
 ||  |  |                  |  | (substitui       |  | (substitui     |  |  ||
-||  |  | 40+ metodos gRPC |  |  Neo4j)          |  |  Qdrant)       |  |  ||
+||  |  | 40+ metodos gRPC |  |  NietzscheDB)          |  |  NietzscheDB)       |  |  ||
 ||  |  +--------+---------+  +--------+---------+  +-------+--------+  |  ||
 ||  |           |                      |                    |           |  ||
 ||  +------------------------------------------------------------------+  ||
@@ -96,7 +96,7 @@
 ||  ||   - InsertNode                - Bfs (busca em largura)          ||  ||
 ||  ||   - GetNode                   - Dijkstra (caminho minimo)       ||  ||
 ||  ||   - DeleteNode                - Diffuse (difusao termica)       ||  ||
-||  ||   - MergeNode (MERGE Neo4j)   - ShortestPath (A* via gRPC)     ||  ||
+||  ||   - MergeNode (MERGE NietzscheDB)   - ShortestPath (A* via gRPC)     ||  ||
 ||  ||                                                                 ||  ||
 ||  ||  CRUD Arestas:                Busca Vetorial:                   ||  ||
 ||  ||   - InsertEdge                - KnnSearch (HNSW hiperbolico)    ||  ||
@@ -434,7 +434,7 @@
 | 8080   | NietzscheDB REST     | HTTP/JSON     | Dashboard + API REST              |
 | 8091   | EVA Backend          | HTTP/JSON     | Backend Go da EVA                 |
 | 8090   | Nginx Proxy          | HTTPS/WSS     | Proxy reverso SSL                 |
-| 8001   | EVA-Back FastAPI     | HTTP/JSON     | Backend Python (PostgreSQL)       |
+| 8001   | EVA-Back FastAPI     | HTTP/JSON     | Backend Python (NietzscheDB)       |
 | 3000   | EVA-Front (dev)      | HTTP          | Frontend React (desenvolvimento)  |
 | 11434  | Ollama               | HTTP          | LLM local (embeddings/traducao)   |
 | 9090   | Prometheus           | HTTP          | Metricas de monitoramento         |
@@ -466,9 +466,9 @@
 
 | Antes (Legacy)       | Depois (NietzscheDB)           | Protocolo    |
 |----------------------|--------------------------------|--------------|
-| Neo4j (Cypher)       | NietzscheDB (NQL)              | gRPC :50051  |
-| Qdrant (REST)        | NietzscheDB (KnnSearch)        | gRPC :50051  |
-| Redis (Cache)        | NietzscheDB (CF_META + TTL)    | gRPC :50051  |
+| NietzscheDB (Cypher)       | NietzscheDB (NQL)              | gRPC :50051  |
+| NietzscheDB (REST)        | NietzscheDB (KnnSearch)        | gRPC :50051  |
+| NietzscheDB (Cache)        | NietzscheDB (CF_META + TTL)    | gRPC :50051  |
 | 3 bancos separados   | 1 banco unificado              | 1 protocolo  |
 
 ---

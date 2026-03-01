@@ -1,23 +1,23 @@
-# Relatorio Comparativo: NietzscheDB vs HyperspaceDB
+# Relatorio Comparativo: NietzscheDB vs NietzscheDB
 
 **Data**: 2026-02-20
 **Contexto**: Analise tecnica para decisao arquitetural do projeto EVA-Mind
-**Versoes analisadas**: NietzscheDB (fork HyperspaceDB v2.0+) vs HyperspaceDB v2.1.0
+**Versoes analisadas**: NietzscheDB (fork NietzscheDB v2.0+) vs NietzscheDB v2.1.0
 
 ---
 
 ## 1. RESUMO EXECUTIVO
 
-O NietzscheDB **ja e um fork do HyperspaceDB**. O projeto incorporou os 9 crates originais do HyperspaceDB como camada base e adicionou 12+ crates proprios por cima. A questao real nao e "qual escolher", mas sim:
+O NietzscheDB **ja e um fork do NietzscheDB**. O projeto incorporou os 9 crates originais do NietzscheDB como camada base e adicionou 12+ crates proprios por cima. A questao real nao e "qual escolher", mas sim:
 
-> **Continuar com o fork independente ou migrar para o HyperspaceDB upstream e contribuir como extensao?**
+> **Continuar com o fork independente ou migrar para o NietzscheDB upstream e contribuir como extensao?**
 
 ### Veredicto Rapido
 
-| Aspecto | NietzscheDB | HyperspaceDB |
+| Aspecto | NietzscheDB | NietzscheDB |
 |---|---|---|
 | **Geometria Hiperbolica** | Poincare (f32 storage + f64 math) | Poincare + Lorentz (f64 nativo) |
-| **HNSW** | Herdado do HyperspaceDB | Identico (mesma base de codigo) |
+| **HNSW** | Herdado do NietzscheDB | Identico (mesma base de codigo) |
 | **Grafo** | Grafo completo (BFS, Dijkstra, adjacencia) | Sem API de grafo (interno apenas) |
 | **Query Language** | NQL completo (14 funcoes matematicas) | Sem query language |
 | **L-System** | Crescimento fractal autonomo | Nao existe |
@@ -34,7 +34,7 @@ O NietzscheDB **ja e um fork do HyperspaceDB**. O projeto incorporou os 9 crates
 
 #### Poincare Ball Model
 
-| Caracteristica | NietzscheDB | HyperspaceDB |
+| Caracteristica | NietzscheDB | NietzscheDB |
 |---|---|---|
 | **Formula** | `d(u,v) = acosh(1 + 2*||u-v||^2 / ((1-||u||^2)*(1-||v||^2)))` | Identica |
 | **Precisao de armazenamento** | `Vec<f32>` (PoincareVector) | `[f64; N]` (HyperVector) |
@@ -46,13 +46,13 @@ O NietzscheDB **ja e um fork do HyperspaceDB**. O projeto incorporou os 9 crates
 | **Dimensoes** | Dinamicas (`Vec<f32>`) | Fixas em compile-time (8-2048) |
 | **SIMD** | f64x8 (nightly feature) | f64x8 para Poincare, f32x8 para Euclidean |
 
-**Analise**: O NietzscheDB usa `f32` para armazenamento (50% menos memoria a 3072 dims: 12KB vs 24KB), promovendo para `f64` apenas no kernel de distancia. Decisao documentada como "ITEM C" pelo comite tecnico. O HyperspaceDB usa `f64` nativo em toda a pipeline Poincare.
+**Analise**: O NietzscheDB usa `f32` para armazenamento (50% menos memoria a 3072 dims: 12KB vs 24KB), promovendo para `f64` apenas no kernel de distancia. Decisao documentada como "ITEM C" pelo comite tecnico. O NietzscheDB usa `f64` nativo em toda a pipeline Poincare.
 
-**Implicacao pratica**: Para embeddings de 3072 dimensoes (GPT-4 class), NietzscheDB usa ~12KB/vetor vs ~24KB/vetor no HyperspaceDB. Em 1M vetores: **12GB vs 24GB apenas em embeddings**.
+**Implicacao pratica**: Para embeddings de 3072 dimensoes (GPT-4 class), NietzscheDB usa ~12KB/vetor vs ~24KB/vetor no NietzscheDB. Em 1M vetores: **12GB vs 24GB apenas em embeddings**.
 
 #### Modelo de Lorentz
 
-| Caracteristica | NietzscheDB | HyperspaceDB v2.1 |
+| Caracteristica | NietzscheDB | NietzscheDB v2.1 |
 |---|---|---|
 | **Implementacao** | Mencionado no NQL (`KLEIN_DIST`), parcial | Completo com validacao rigorosa |
 | **Formula** | N/A | `d(x,y) = acosh(-<x,y>_L)` (Minkowski inner product) |
@@ -61,9 +61,9 @@ O NietzscheDB **ja e um fork do HyperspaceDB**. O projeto incorporou os 9 crates
 | **Quantizacao** | N/A | NAO suportada (panic explicito) |
 | **Estabilidade numerica** | N/A | `arg.max(1.0 + 1e-12)` |
 
-**Analise**: O HyperspaceDB tem vantagem clara aqui. A implementacao do Lorentz e production-ready na v2.1. O NietzscheDB menciona Klein/Lobachevsky no NQL grammar mas nao tem implementacao completa.
+**Analise**: O NietzscheDB tem vantagem clara aqui. A implementacao do Lorentz e production-ready na v2.1. O NietzscheDB menciona Klein/Lobachevsky no NQL grammar mas nao tem implementacao completa.
 
-**RECOMENDACAO**: Incorporar a implementacao Lorentz do HyperspaceDB v2.1. Como mencionado no email, o modelo Lorentz mitiga significativamente a instabilidade perto da borda do ball de Poincare.
+**RECOMENDACAO**: Incorporar a implementacao Lorentz do NietzscheDB v2.1. Como mencionado no email, o modelo Lorentz mitiga significativamente a instabilidade perto da borda do ball de Poincare.
 
 ---
 
@@ -83,7 +83,7 @@ A implementacao HNSW e **identica** em ambos (mesma base de codigo). Parametros 
 
 **Diferencas sutis**:
 
-| Aspecto | NietzscheDB | HyperspaceDB v2.1 |
+| Aspecto | NietzscheDB | NietzscheDB v2.1 |
 |---|---|---|
 | **ArcSwap** | Presente (herdado) | Presente (lock-free reads) |
 | **Async indexing** | Presente (WAL -> queue -> graph) | Presente |
@@ -100,7 +100,7 @@ A implementacao HNSW e **identica** em ambos (mesma base de codigo). Parametros 
 
 **ESTA E A MAIOR DIFERENCA ENTRE OS DOIS PROJETOS.**
 
-| Capacidade | NietzscheDB | HyperspaceDB |
+| Capacidade | NietzscheDB | NietzscheDB |
 |---|---|---|
 | **Modelo de nos** | `NodeMeta` (100 bytes) + `PoincareVector` (separados) | Vetor + metadata (acoplados) |
 | **Modelo de arestas** | `Edge` com tipo, peso, regra L-System | NAO EXISTE |
@@ -113,7 +113,7 @@ A implementacao HNSW e **identica** em ambos (mesma base de codigo). Parametros 
 | **Tipos de arestas** | Association, LSystemGenerated, Hierarchical, Pruned | NAO EXISTE |
 | **Transacoes ACID** | Saga pattern (WAL -> RocksDB -> vector store) | WAL basico |
 
-**O email do HyperspaceDB menciona**: "Na v2.3 (1-2 semanas), lançaremos a API de Travessia de Grafos Hiperbolicos expondo as primitivas internas do HNSW."
+**O email do NietzscheDB menciona**: "Na v2.3 (1-2 semanas), lançaremos a API de Travessia de Grafos Hiperbolicos expondo as primitivas internas do HNSW."
 
 **Analise critica da promessa v2.3**:
 - O grafo HNSW e um **grafo de proximidade para ANN**, nao um grafo semantico. Os vizinhos no HNSW sao vizinhos por distancia vetorial, nao por relacao semantica.
@@ -121,13 +121,13 @@ A implementacao HNSW e **identica** em ambos (mesma base de codigo). Parametros 
 - A estrutura multicamadas do HNSW (camada 0 densa, camadas superiores esparsas) nao corresponde a uma hierarquia semantica, e sim a uma hierarquia de **granularidade de busca**.
 - Expor vizinhos HNSW como "pai/filho" seria semanticamente incorreto para o caso de uso do NietzscheDB.
 
-**VEREDICTO**: A API de travessia HNSW do HyperspaceDB v2.3 **NAO substitui** o grafo completo do NietzscheDB. E uma feature diferente com proposito diferente.
+**VEREDICTO**: A API de travessia HNSW do NietzscheDB v2.3 **NAO substitui** o grafo completo do NietzscheDB. E uma feature diferente com proposito diferente.
 
 ---
 
 ### 2.4 L-System e Crescimento Fractal
 
-**Exclusivo do NietzscheDB. NAO EXISTE no HyperspaceDB.**
+**Exclusivo do NietzscheDB. NAO EXISTE no NietzscheDB.**
 
 | Componente | Descricao |
 |---|---|
@@ -142,7 +142,7 @@ A implementacao HNSW e **identica** em ambos (mesma base de codigo). Parametros 
 
 ### 2.5 Sleep / Reconsolidacao
 
-**Exclusivo do NietzscheDB. NAO EXISTE no HyperspaceDB.**
+**Exclusivo do NietzscheDB. NAO EXISTE no NietzscheDB.**
 
 | Componente | Descricao |
 |---|---|
@@ -156,7 +156,7 @@ A implementacao HNSW e **identica** em ambos (mesma base de codigo). Parametros 
 
 ### 2.6 Query Language
 
-| Aspecto | NietzscheDB (NQL) | HyperspaceDB |
+| Aspecto | NietzscheDB (NQL) | NietzscheDB |
 |---|---|---|
 | **Query language** | NQL completo (PEG grammar via pest) | Nenhum |
 | **Pattern matching** | `MATCH (n) WHERE ... RETURN ...` | Busca vetorial + filtros |
@@ -172,10 +172,10 @@ A implementacao HNSW e **identica** em ambos (mesma base de codigo). Parametros 
 
 ### 2.7 Storage e Persistencia
 
-| Aspecto | NietzscheDB | HyperspaceDB |
+| Aspecto | NietzscheDB | NietzscheDB |
 |---|---|---|
 | **Engine** | RocksDB (8 column families) | mmap segments (65K vetores/chunk) |
-| **WAL** | V3 (via HyperspaceDB) + Saga ACID | V3 (Magic + Length + CRC32 + Payload) |
+| **WAL** | V3 (via NietzscheDB) + Saga ACID | V3 (Magic + Length + CRC32 + Payload) |
 | **Snapshots** | rkyv (zero-copy) | rkyv + memmap2 |
 | **Separacao hot/cold** | NodeMeta (hot CF) vs Embedding (cold CF) | Vetor unico por slot |
 | **Energy index** | RocksDB CF secundario (IEEE 754 sortable) | NAO EXISTE |
@@ -183,13 +183,13 @@ A implementacao HNSW e **identica** em ambos (mesma base de codigo). Parametros 
 | **Compressao** | LZ4 + Zstd | Nao documentado |
 | **Block cache** | 512 MiB shared LRU | OS page cache (mmap) |
 
-**Analise**: O NietzscheDB tem storage mais sofisticado (RocksDB com 8 CFs), otimizado para o pattern de acesso onde metadados sao lidos frequentemente mas embeddings raramente. O HyperspaceDB usa mmap puro, que e mais simples e pode ser mais rapido para workloads puramente vetoriais.
+**Analise**: O NietzscheDB tem storage mais sofisticado (RocksDB com 8 CFs), otimizado para o pattern de acesso onde metadados sao lidos frequentemente mas embeddings raramente. O NietzscheDB usa mmap puro, que e mais simples e pode ser mais rapido para workloads puramente vetoriais.
 
 ---
 
 ### 2.8 APIs e SDKs
 
-| Aspecto | NietzscheDB | HyperspaceDB |
+| Aspecto | NietzscheDB | NietzscheDB |
 |---|---|---|
 | **gRPC RPCs** | 22 (grafo + query + traversal + sleep + sensory + zaratustra) | ~16 (CRUD + search + admin + replication) |
 | **REST API** | Dashboard basico (health, collections) | Completa (Axum, 15+ endpoints) |
@@ -199,16 +199,16 @@ A implementacao HNSW e **identica** em ambos (mesma base de codigo). Parametros 
 | **Go SDK** | 22 RPCs, 25 tests | NAO EXISTE |
 | **WASM** | NAO EXISTE | Sim (browser-native) |
 | **Prometheus** | NAO documentado | Endpoint `/metrics` |
-| **Multi-tenancy** | Por collection | Header `x-hyperspace-user-id` |
+| **Multi-tenancy** | Por collection | Header `x-nietzsche-user-id` |
 | **Auth** | NAO documentado | API key (SHA-256, constant-time) |
 
-**Analise**: HyperspaceDB tem REST API mais completa, auth, multi-tenancy, e suporte WASM. NietzscheDB tem APIs mais ricas semanticamente (grafo, NQL, difusao) mas infraestrutura menos madura.
+**Analise**: NietzscheDB tem REST API mais completa, auth, multi-tenancy, e suporte WASM. NietzscheDB tem APIs mais ricas semanticamente (grafo, NQL, difusao) mas infraestrutura menos madura.
 
 ---
 
 ### 2.9 Replicacao e Clustering
 
-| Aspecto | NietzscheDB | HyperspaceDB |
+| Aspecto | NietzscheDB | NietzscheDB |
 |---|---|---|
 | **Modelo** | NAO documentado | Leader-Follower async |
 | **Sync** | NAO documentado | Merkle tree (256-bucket XOR) |
@@ -216,29 +216,29 @@ A implementacao HNSW e **identica** em ambos (mesma base de codigo). Parametros 
 | **Cold storage** | NAO documentado | Idle eviction (60s check, 3600s timeout) |
 | **Cluster state** | NAO documentado | `cluster.json` com UUID |
 
-**Analise**: HyperspaceDB tem replicacao e clustering production-ready. NietzscheDB nao documenta essas capacidades (pode ter herdado mas nao customizou).
+**Analise**: NietzscheDB tem replicacao e clustering production-ready. NietzscheDB nao documenta essas capacidades (pode ter herdado mas nao customizou).
 
 ---
 
 ### 2.10 Dimensoes Suportadas
 
-| Aspecto | NietzscheDB | HyperspaceDB |
+| Aspecto | NietzscheDB | NietzscheDB |
 |---|---|---|
 | **Tipo** | Dinamico (`Vec<f32>`, qualquer dimensao) | Fixo compile-time (8,16,32,64,128,768,1024,1536,2048) |
 | **Adicionando nova dim** | Runtime, sem recompilacao | Requer recompilacao + novo match arm |
 | **Max dimensao** | Ilimitado (limitado por memoria) | 2048 |
 
-**Analise critica**: Para embeddings modernos (GPT-4: 3072d, text-embedding-3-large: 3072d), o HyperspaceDB **NAO suporta** sem recompilacao. O NietzscheDB suporta qualquer dimensao.
+**Analise critica**: Para embeddings modernos (GPT-4: 3072d, text-embedding-3-large: 3072d), o NietzscheDB **NAO suporta** sem recompilacao. O NietzscheDB suporta qualquer dimensao.
 
 ---
 
-## 3. O QUE O HYPERSPACE v2.3 PROMETE vs O QUE O NIETZSCHE JA TEM
+## 3. O QUE O NIETZSCHE v2.3 PROMETE vs O QUE O NIETZSCHE JA TEM
 
 | Feature prometida (v2.3) | NietzscheDB ja tem? | Analise |
 |---|---|---|
 | API de Travessia de Grafos Hiperbolicos | **SIM** (BFS, Dijkstra, diffusion walk, shortest path) | NietzscheDB tem implementacao mais rica com arestas tipadas |
-| "Clusters semanticos pai/filho do No A" | **SIM** (`neighbors_out`, `neighbors_in`, com tipos de aresta) | HyperspaceDB expora vizinhos HNSW, nao relacoes semanticas reais |
-| Eliminar banco duplo (vetor + grafo) | **JA ELIMINADO** (NietzscheDB e self-contained, sem Neo4j/ArangoDB) | - |
+| "Clusters semanticos pai/filho do No A" | **SIM** (`neighbors_out`, `neighbors_in`, com tipos de aresta) | NietzscheDB expora vizinhos HNSW, nao relacoes semanticas reais |
+| Eliminar banco duplo (vetor + grafo) | **JA ELIMINADO** (NietzscheDB e self-contained, sem NietzscheDB/ArangoDB) | - |
 | Velocidades de microssegundos | **52us BFS**, **81us Dijkstra** (chain-50 nos, M2) | - |
 
 ---
@@ -247,21 +247,21 @@ A implementacao HNSW e **identica** em ambos (mesma base de codigo). Parametros 
 
 ### 4.1 Riscos de manter o fork divergente
 
-1. **Drift do upstream**: Cada release do HyperspaceDB (v2.1, v2.3, etc.) requer merge manual nos 9 crates base. Com Lorentz na v2.1, isso ja e um gap.
-2. **Bugs criticos upstream**: Correcoes de seguranca e performance no HyperspaceDB precisam ser backportadas manualmente.
-3. **Embedding model hiperbolico**: O HyperspaceDB esta treinando um modelo de embedding hiperbolico nativo. Isso seria extremamente valioso para o NietzscheDB mas requer compatibilidade.
-4. **Comunidade**: Contribuicoes da comunidade HyperspaceDB nao chegam automaticamente ao fork.
+1. **Drift do upstream**: Cada release do NietzscheDB (v2.1, v2.3, etc.) requer merge manual nos 9 crates base. Com Lorentz na v2.1, isso ja e um gap.
+2. **Bugs criticos upstream**: Correcoes de seguranca e performance no NietzscheDB precisam ser backportadas manualmente.
+3. **Embedding model hiperbolico**: O NietzscheDB esta treinando um modelo de embedding hiperbolico nativo. Isso seria extremamente valioso para o NietzscheDB mas requer compatibilidade.
+4. **Comunidade**: Contribuicoes da comunidade NietzscheDB nao chegam automaticamente ao fork.
 
 ### 4.2 Riscos de migrar para upstream
 
 1. **Perda de controle**: Dependencia de prioridades de terceiros.
-2. **API incompativel**: As 12 crates do NietzscheDB dependem de APIs internas do HyperspaceDB que podem mudar.
+2. **API incompativel**: As 12 crates do NietzscheDB dependem de APIs internas do NietzscheDB que podem mudar.
 3. **Performance regression**: Otimizacoes do NietzscheDB (f32 storage, NodeMeta split) podem conflitar com decisoes upstream.
-4. **Dimensoes fixas**: O HyperspaceDB usa const generics com set fixo de dimensoes. O NietzscheDB precisa de dimensoes dinamicas.
+4. **Dimensoes fixas**: O NietzscheDB usa const generics com set fixo de dimensoes. O NietzscheDB precisa de dimensoes dinamicas.
 
-### 4.3 Risco da proposta "eliminar Neo4j/ArangoDB"
+### 4.3 Risco da proposta "eliminar NietzscheDB/ArangoDB"
 
-O email sugere que o HNSW do HyperspaceDB pode substituir um banco de grafos. **Isso e tecnicamente incorreto** para o caso de uso do NietzscheDB:
+O email sugere que o HNSW do NietzscheDB pode substituir um banco de grafos. **Isso e tecnicamente incorreto** para o caso de uso do NietzscheDB:
 
 - **HNSW vizinhos != relacoes semanticas**: Um vizinho no HNSW e o ponto mais proximo em distancia vetorial, nao um no relacionado semanticamente.
 - **Sem arestas tipadas**: O HNSW nao tem conceito de `Association` vs `Hierarchical` vs `LSystemGenerated`.
@@ -284,11 +284,11 @@ O email sugere que o HNSW do HyperspaceDB pode substituir um banco de grafos. **
 
 ### Opcao B: Migrar para upstream como extensao
 
-1. **Publicar nietzsche-* como crates separados** que dependem de `hyperspace-*` via Cargo.
+1. **Publicar nietzsche-* como crates separados** que dependem de `nietzsche-*` via Cargo.
 2. **Perda de otimizacoes** (f32 storage, NodeMeta split).
 3. **Risco de breaking changes** no upstream.
 
-### Opcao C: Upstream puro + Neo4j (NAO RECOMENDADO)
+### Opcao C: Upstream puro + NietzscheDB (NAO RECOMENDADO)
 
 1. **Volta ao problema original**: sincronizar banco de vetores + banco de grafos.
 2. **Latencia**: RPC entre servicos vs in-process.
@@ -305,7 +305,7 @@ O email sugere que o HNSW do HyperspaceDB pode substituir um banco de grafos. **
 - **Embedding hiperbolico nativo**: Acompanhar de perto. Eliminaria a projecao euclidiana.
 
 ### Recusar educadamente:
-- **"Voce nao precisa do Neo4j/ArangoDB"**: Ja nao usamos. Mas tambem nao precisamos que o HNSW substitua nosso grafo. O grafo HNSW e de proximidade, nao semantico.
+- **"Voce nao precisa do NietzscheDB/ArangoDB"**: Ja nao usamos. Mas tambem nao precisamos que o HNSW substitua nosso grafo. O grafo HNSW e de proximidade, nao semantico.
 - **"A geometria e o grafo"**: Verdade em teoria, mas na pratica precisamos de arestas tipadas, pesos, e traversal com predicados que a geometria pura nao fornece.
 
 ### Propor:
@@ -318,7 +318,7 @@ O email sugere que o HNSW do HyperspaceDB pode substituir um banco de grafos. **
 
 ## 7. TABELA FINAL DE DECISAO
 
-| Aspecto | Usar NietzscheDB | Usar HyperspaceDB | Incorporar do HyperspaceDB |
+| Aspecto | Usar NietzscheDB | Usar NietzscheDB | Incorporar do NietzscheDB |
 |---|---|---|---|
 | Poincare distance | X | | |
 | Lorentz distance | | | X (v2.1) |

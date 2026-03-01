@@ -10,16 +10,16 @@ if [ -d "venv" ]; then
 fi
 
 python3 -m grpc_tools.protoc \
-    -I ../../crates/hyperspace-proto/proto \
-    --python_out=hyperspace/proto \
-    --grpc_python_out=hyperspace/proto \
-    ../../crates/hyperspace-proto/proto/hyperspace.proto
+    -I ../../crates/nietzsche-proto/proto \
+    --python_out=nietzsche/proto \
+    --grpc_python_out=nietzsche/proto \
+    ../../crates/nietzsche-proto/proto/nietzsche_db.proto
 
 # Fix import in generated grpc file
 if [[ "$OSTYPE" == "darwin"* ]]; then
-  sed -i '' 's/import hyperspace_pb2 as hyperspace__pb2/from . import hyperspace_pb2 as hyperspace__pb2/' hyperspace/proto/hyperspace_pb2_grpc.py
+  sed -i '' 's/import nietzsche_db_pb2 as nietzsche_db__pb2/from . import nietzsche_db_pb2 as nietzsche_db__pb2/' nietzsche/proto/nietzsche_db_pb2_grpc.py
 else
-  sed -i 's/import hyperspace_pb2 as hyperspace__pb2/from . import hyperspace_pb2 as hyperspace__pb2/' hyperspace/proto/hyperspace_pb2_grpc.py
+  sed -i 's/import nietzsche_db_pb2 as nietzsche_db__pb2/from . import nietzsche_db_pb2 as nietzsche_db__pb2/' nietzsche/proto/nietzsche_db_pb2_grpc.py
 fi
 
 echo "Python protos generated and patched."

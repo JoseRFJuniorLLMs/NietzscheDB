@@ -54,9 +54,9 @@ NietzscheDB is now the world's first **Multi-Manifold Graph Database**, operatin
     *   Leaders replay missing operations from WAL to ensure consistency.
 *   **Multi-Tenancy**: Native support for SaaS-style multi-tenancy.
     *   **Namespace Isolation**: Collections are prefixed with `user_id` (e.g., `{user_id}_{collection_name}`).
-    *   **Context Propagation**: `x-hyperspace-user-id` header is propagated through HTTP and gRPC layers.
+    *   **Context Propagation**: `x-nietzsche-user-id` header is propagated through HTTP and gRPC layers.
     *   **Billing Foundations**: New `/api/admin/usage` endpoint provides disk and vector usage breakdown per user.
-*   **WASM Flexibility**: Completely refactored `hyperspace-wasm` to support dynamic configurations.
+*   **WASM Flexibility**: Completely refactored `nietzsche-wasm` to support dynamic configurations.
     *   Supports multiple dimensions (384, 768, 1024, 1536) and metrics (Euclidean, Cosine).
     *   Automatic index type selection based on initialization parameters.
 *   **Persistence Upgrades**:
@@ -92,7 +92,7 @@ NietzscheDB is now the world's first **Multi-Manifold Graph Database**, operatin
 
 ### Added
 *   **Multi-Manifold Efficiency**: Optimized Poincaré ball model implementation for 64d vectors, achieving 2.47ms p99 latency with significant storage savings (64d vs 1024d is 16x compression).
-*   **Benchmarks**: Added comprehensive benchmarking suite comparisons against Milvus, Qdrant, and Weaviate.
+*   **Benchmarks**: Added comprehensive benchmarking suite comparisons against Milvus, NietzscheDB, and Weaviate.
     *   `run_benchmark_hyperbolic.py`: Specific script for demonstrating Multi-Manifold vs Euclidean efficiency.
     *   `BENCHMARK_RESULTS.md` and `HYPERBOLIC_BENCHMARK_RESULTS.md`: Official performance reports.
 
@@ -108,14 +108,14 @@ NietzscheDB is now the world's first **Multi-Manifold Graph Database**, operatin
 
 ### Fixed
 *   **Panic in Search**: Resolved `Index out of bounds` panic in `search_layer` caused by empty layers in edge cases.
-*   **WASM Compatibility**: Fixed missing `export` and `from_bytes` methods in `hyperspace-wasm` when using `mmap` feature.
+*   **WASM Compatibility**: Fixed missing `export` and `from_bytes` methods in `nietzsche-wasm` when using `mmap` feature.
 *   **Benchmark Script**: Fixed API key authentication issues and Weaviate deprecation warnings in benchmark scripts.
 
 ## [1.4.0] - 2026-02-05
 
 ### Added
-*   **WebAssembly Core**: `hyperspace-core` and indexes now compile to WASM (`wasm32-unknown-unknown`).
-*   **Edge Database**: New `hyperspace-wasm` crate for running the database purely in-browser (RamStore backend).
+*   **WebAssembly Core**: `nietzsche-core` and indexes now compile to WASM (`wasm32-unknown-unknown`).
+*   **Edge Database**: New `nietzsche-wasm` crate for running the database purely in-browser (RamStore backend).
 *   **Architecture**:
     *   **RAM Vector Store**: In-memory storage backend for runtime environments without disk access.
     *   **Feature Gating**: Optional `mmap` and `persistence` features for `no_std` / WASM compatibility.
@@ -128,7 +128,7 @@ NietzscheDB is now the world's first **Multi-Manifold Graph Database**, operatin
     * Persistent metadata storage (`meta.json`) for collection configuration.
     * gRPC APIs: `CreateCollection`, `DeleteCollection`, `ListCollections`, `GetCollectionStats`.
 * **Web Dashboard**: Professional React-based management interface.
-    * **Authentication**: API key-based access control (default: `I_LOVE_HYPERSPACEDB`).
+    * **Authentication**: API key-based access control (default: `I_LOVE_NIETZSCHEDB`).
     * **Collection Management**: Create/delete collections with preset configurations:
         * Hyperbolic: 16D, 32D, 64D, 128D (Poincaré metric)
         * Euclidean: 1024D, 1536D, 2048D (L2 metric)
@@ -184,9 +184,9 @@ NietzscheDB is now the world's first **Multi-Manifold Graph Database**, operatin
 
 ## [1.0.0] - 2026-01-25
 
-### 🚀 Initial Release ("Hyperspace One")
+### 🚀 Initial Release ("NietzscheDB One")
 
-HyperspaceDB v1.0 is the first production-ready release of a native Poincaré-ball vector database (now evolved into the NietzscheDB multi-manifold graph database).
+NietzscheDB v1.0 is the first production-ready release of a native Poincaré-ball vector database (now evolved into the NietzscheDB multi-manifold graph database).
 
 ### Features
 *   **Core Engine**: Poincaré Ball HNSW implementation (multi-manifold foundation).

@@ -58,6 +58,14 @@ fn parse_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
             Rule::narrate_query            => return Ok(Query::Narrate(parse_narrate(inner)?)),
             // Psychoanalyze (Lineage)
             Rule::psychoanalyze_query      => return Ok(Query::Psychoanalyze(parse_psychoanalyze(inner)?)),
+            // ── NQL 2.0: New query types ──
+            Rule::union_query              => return Ok(Query::Union(parse_union_query(inner)?)),
+            Rule::unwind_query             => return Ok(Query::Unwind(parse_unwind_query(inner)?)),
+            Rule::shortest_path_query      => return Ok(Query::ShortestPath(parse_shortest_path_query(inner)?)),
+            Rule::match_elites_query       => return Ok(Query::MatchElites(parse_match_elites_query(inner)?)),
+            Rule::measure_tension_query    => return Ok(Query::MeasureTension(parse_measure_tension_query(inner)?)),
+            Rule::measure_tgc_query        => return Ok(Query::MeasureTgc(parse_measure_tgc_query(inner)?)),
+            Rule::find_nearest_query       => return Ok(Query::FindNearest(parse_find_nearest_query(inner)?)),
             Rule::EOI                      => {}
             r => return Err(QueryError::Parse(format!("unexpected rule: {r:?}"))),
         }
@@ -81,19 +89,24 @@ fn parse_explain_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
 /// Parse a unified match_query which may contain SET or DELETE clauses.
 /// Returns Query::Match, Query::MatchSet, or Query::MatchDelete.
 fn parse_match_or_mutate_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
-    let mut pattern      = None;
-    let mut conditions   = Vec::new();
-    let mut ret          = None;
-    let mut assignments  = Vec::new();
-    let mut targets      = Vec::new();
-    let mut has_set      = false;
-    let mut has_delete   = false;
-    let mut has_detach   = false;
-    let mut as_of_cycle  = None;
+    let mut pattern          = None;
+    let mut optional_matches = Vec::new();
+    let mut conditions       = Vec::new();
+    let mut ret              = None;
+    let mut assignments      = Vec::new();
+    let mut targets          = Vec::new();
+    let mut has_set          = false;
+    let mut has_delete       = false;
+    let mut has_detach       = false;
+    let mut as_of_cycle      = None;
 
     for inner in pair.into_inner() {
         match inner.as_rule() {
             Rule::match_clause  => { pattern = Some(parse_pattern(inner)?); }
+            Rule::optional_match_clause => {
+                let opt_pat = parse_optional_match_clause(inner)?;
+                optional_matches.push(opt_pat);
+            }
             Rule::where_clause  => { conditions = parse_where_clause(inner)?; }
             Rule::return_clause => { ret = Some(parse_return_clause(inner)?); }
             Rule::as_of_cycle_clause => {
@@ -159,9 +172,10 @@ fn parse_match_or_mutate_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
         }))
     } else {
         Ok(Query::Match(MatchQuery {
-            pattern:      pat,
+            pattern:          pat,
+            optional_matches,
             conditions,
-            ret:          ret.ok_or_else(|| QueryError::Parse("missing RETURN clause".into()))?,
+            ret:              ret.ok_or_else(|| QueryError::Parse("missing RETURN clause".into()))?,
             as_of_cycle,
         }))
     }
@@ -512,10 +526,14 @@ fn parse_primary_cond(pair: Pair<Rule>) -> Result<Condition, QueryError> {
                 .ok_or_else(|| QueryError::Parse("empty paren".into()))?;
             parse_or_cond(or)
         }
-        Rule::in_cond      => parse_in_cond(inner),
-        Rule::between_cond => parse_between_cond(inner),
-        Rule::string_cond  => parse_string_cond(inner),
-        Rule::comparison   => parse_comparison(inner),
+        Rule::exists_cond      => parse_exists_cond(inner),
+        Rule::in_cond          => parse_in_cond(inner),
+        Rule::between_cond     => parse_between_cond(inner),
+        Rule::string_cond      => parse_string_cond(inner),
+        Rule::is_not_null_cond => parse_is_not_null_cond(inner),
+        Rule::is_null_cond     => parse_is_null_cond(inner),
+        Rule::regex_cond       => parse_regex_cond(inner),
+        Rule::comparison       => parse_comparison(inner),
         r => Err(QueryError::Parse(format!("unexpected primary_cond inner: {r:?}"))),
     }
 }
@@ -579,6 +597,7 @@ fn parse_atom(pair: Pair<Rule>) -> Result<Expr, QueryError> {
     let inner = pair.into_inner().next()
         .ok_or_else(|| QueryError::Parse("empty atom".into()))?;
     match inner.as_rule() {
+        Rule::case_expr       => parse_case_expr(inner),
         Rule::math_func       => parse_math_func_expr(inner),
         Rule::hyperbolic_dist => parse_hyperbolic_dist_expr(inner),
         Rule::sensory_dist    => parse_sensory_dist_expr(inner),
@@ -708,7 +727,7 @@ fn parse_math_func_parts(pair: Pair<Rule>) -> Result<(MathFunc, Vec<MathFuncArg>
 
 fn parse_math_func_name(s: &str) -> Result<MathFunc, QueryError> {
     match s {
-        "POINCARE_DIST"        => Ok(MathFunc::PoincareDist),
+        "POINCARE_DIST"        => Ok(MathFunc::PoincaNietzscheDBt),
         "KLEIN_DIST"           => Ok(MathFunc::KleinDist),
         "MINKOWSKI_NORM"       => Ok(MathFunc::MinkowskiNorm),
         "LOBACHEVSKY_ANGLE"    => Ok(MathFunc::LobachevskyAngle),
@@ -724,6 +743,42 @@ fn parse_math_func_name(s: &str) -> Result<MathFunc, QueryError> {
         "NOW"                  => Ok(MathFunc::Now),
         "EPOCH_MS"             => Ok(MathFunc::EpochMs),
         "INTERVAL"             => Ok(MathFunc::Interval),
+        // ── NQL 2.0: String functions ──
+        "UPPER"                => Ok(MathFunc::Upper),
+        "LOWER"                => Ok(MathFunc::Lower),
+        "TRIM"                 => Ok(MathFunc::Trim),
+        "LTRIM"                => Ok(MathFunc::Ltrim),
+        "RTRIM"                => Ok(MathFunc::Rtrim),
+        "LENGTH"               => Ok(MathFunc::Length),
+        "SUBSTRING"            => Ok(MathFunc::Substring),
+        "REPLACE"              => Ok(MathFunc::Replace),
+        "CONCAT"               => Ok(MathFunc::Concat),
+        "REVERSE"              => Ok(MathFunc::Reverse),
+        "SPLIT"                => Ok(MathFunc::Split),
+        // ── NQL 2.0: Math functions ──
+        "ABS"                  => Ok(MathFunc::Abs),
+        "CEIL"                 => Ok(MathFunc::Ceil),
+        "FLOOR"                => Ok(MathFunc::Floor),
+        "ROUND"                => Ok(MathFunc::Round),
+        "SQRT"                 => Ok(MathFunc::Sqrt),
+        "LOG"                  => Ok(MathFunc::Log),
+        "LOG10"                => Ok(MathFunc::Log10),
+        "POW"                  => Ok(MathFunc::Pow),
+        "SIGN"                 => Ok(MathFunc::Sign),
+        "MOD"                  => Ok(MathFunc::Mod),
+        // ── NQL 2.0: Type casting ──
+        "TO_INT"               => Ok(MathFunc::ToInt),
+        "TO_FLOAT"             => Ok(MathFunc::ToFloat),
+        "TO_STRING"            => Ok(MathFunc::ToString),
+        "TO_BOOL"              => Ok(MathFunc::ToBool),
+        // ── NQL 2.0: Null handling ──
+        "COALESCE"             => Ok(MathFunc::Coalesce),
+        // ── NQL 2.0: Cognitive instrumentation (physicist/mathematician names) ──
+        "BOLTZMANN_SURVIVAL"  => Ok(MathFunc::BoltzmannSurvival),
+        "HELMHOLTZ_GRADIENT"  => Ok(MathFunc::HelmholtzGradient),
+        "LYAPUNOV_DELTA"      => Ok(MathFunc::LyapunovDelta),
+        "PRIGOGINE_BASIN"     => Ok(MathFunc::PrigoginBasin),
+        "ERDOS_EDGE_PROB"     => Ok(MathFunc::ErdosEdgeProb),
         s => Err(QueryError::Parse(format!("unknown math function: {s}"))),
     }
 }
@@ -759,7 +814,7 @@ fn parse_math_func_arg(pair: Pair<Rule>) -> Result<MathFuncArg, QueryError> {
 fn validate_math_func_arity(func: &MathFunc, n: usize) -> Result<(), QueryError> {
     let (min, max) = match func {
         // dist(prop, arg) — 2 args
-        MathFunc::PoincareDist     => (2, 2),
+        MathFunc::PoincaNietzscheDBt     => (2, 2),
         MathFunc::KleinDist        => (2, 2),
         MathFunc::LobachevskyAngle => (2, 2),
         // norm(prop) — 1 arg
@@ -779,6 +834,42 @@ fn validate_math_func_arity(func: &MathFunc, n: usize) -> Result<(), QueryError>
         MathFunc::Now     => (0, 0),
         MathFunc::EpochMs => (0, 0),
         MathFunc::Interval => (1, 1),
+        // ── NQL 2.0: String functions ──
+        MathFunc::Upper    => (1, 1),
+        MathFunc::Lower    => (1, 1),
+        MathFunc::Trim     => (1, 1),
+        MathFunc::Ltrim    => (1, 1),
+        MathFunc::Rtrim    => (1, 1),
+        MathFunc::Length   => (1, 1),
+        MathFunc::Reverse  => (1, 1),
+        MathFunc::Substring => (2, 3),  // SUBSTRING(str, start[, len])
+        MathFunc::Replace   => (3, 3),  // REPLACE(str, search, replacement)
+        MathFunc::Concat    => (1, 16), // CONCAT(s1, s2, ...)
+        MathFunc::Split     => (2, 2),  // SPLIT(str, delimiter)
+        // ── NQL 2.0: Math functions ──
+        MathFunc::Abs   => (1, 1),
+        MathFunc::Ceil  => (1, 1),
+        MathFunc::Floor => (1, 1),
+        MathFunc::Round => (1, 1),
+        MathFunc::Sqrt  => (1, 1),
+        MathFunc::Log   => (1, 1),
+        MathFunc::Log10 => (1, 1),
+        MathFunc::Sign  => (1, 1),
+        MathFunc::Pow   => (2, 2),
+        MathFunc::Mod   => (2, 2),
+        // ── NQL 2.0: Type casting ──
+        MathFunc::ToInt    => (1, 1),
+        MathFunc::ToFloat  => (1, 1),
+        MathFunc::ToString => (1, 1),
+        MathFunc::ToBool   => (1, 1),
+        // ── NQL 2.0: Null handling ──
+        MathFunc::Coalesce => (1, 16),
+        // ── NQL 2.0: Cognitive instrumentation (physicist/mathematician names) ──
+        MathFunc::BoltzmannSurvival => (1, 1),
+        MathFunc::HelmholtzGradient => (1, 1),
+        MathFunc::LyapunovDelta     => (2, 2),  // LYAPUNOV_DELTA(prop, cycles)
+        MathFunc::PrigoginBasin     => (1, 1),
+        MathFunc::ErdosEdgeProb     => (2, 2),
     };
     if n < min || n > max {
         return Err(QueryError::Parse(format!(
@@ -867,11 +958,12 @@ fn parse_agg_func(pair: Pair<Rule>) -> Result<ReturnExpr, QueryError> {
     let func_name = inner.next()
         .ok_or_else(|| QueryError::Parse("aggregate missing function name".into()))?;
     let func = match func_name.as_str() {
-        "COUNT" => AggFunc::Count,
-        "SUM"   => AggFunc::Sum,
-        "AVG"   => AggFunc::Avg,
-        "MIN"   => AggFunc::Min,
-        "MAX"   => AggFunc::Max,
+        "COUNT"   => AggFunc::Count,
+        "SUM"     => AggFunc::Sum,
+        "AVG"     => AggFunc::Avg,
+        "MIN"     => AggFunc::Min,
+        "MAX"     => AggFunc::Max,
+        "COLLECT" => AggFunc::Collect,
         s => return Err(QueryError::Parse(format!("unknown aggregate: {s}"))),
     };
 
@@ -1373,6 +1465,322 @@ fn parse_psychoanalyze(pair: Pair<Rule>) -> Result<PsychoanalyzeQuery, QueryErro
     Ok(PsychoanalyzeQuery { target })
 }
 
+// ═══════════════════════════════════════════════════════════
+// ── NQL 2.0: New Parsers ─────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+
+// ── CASE WHEN expression ──────────────────────────────────
+
+fn parse_case_expr(pair: Pair<Rule>) -> Result<Expr, QueryError> {
+    let mut branches = Vec::new();
+    let mut else_expr = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::case_when_branch => {
+                let mut it = inner.into_inner();
+                let cond_pair = it.next()
+                    .ok_or_else(|| QueryError::Parse("CASE WHEN missing condition".into()))?;
+                let cond = parse_or_cond(
+                    cond_pair.into_inner().next()
+                        .ok_or_else(|| QueryError::Parse("empty WHEN condition".into()))?
+                )?;
+                let val_pair = it.next()
+                    .ok_or_else(|| QueryError::Parse("CASE WHEN missing THEN value".into()))?;
+                let val = parse_case_atom(val_pair)?;
+                branches.push((cond, Box::new(val)));
+            }
+            Rule::case_else_branch => {
+                let val_pair = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("CASE ELSE missing value".into()))?;
+                else_expr = Some(Box::new(parse_case_atom(val_pair)?));
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Expr::CaseWhen { branches, else_expr })
+}
+
+fn parse_case_atom(pair: Pair<Rule>) -> Result<Expr, QueryError> {
+    let inner = pair.into_inner().next()
+        .ok_or_else(|| QueryError::Parse("empty case_atom".into()))?;
+    match inner.as_rule() {
+        Rule::math_func       => parse_math_func_expr(inner),
+        Rule::hyperbolic_dist => parse_hyperbolic_dist_expr(inner),
+        Rule::sensory_dist    => parse_sensory_dist_expr(inner),
+        Rule::boolean => Ok(Expr::Bool(inner.as_str() == "true")),
+        Rule::float => {
+            let f: f64 = inner.as_str().parse()
+                .map_err(|_| QueryError::Parse(format!("bad float: {}", inner.as_str())))?;
+            Ok(Expr::Float(f))
+        }
+        Rule::integer => {
+            let i: i64 = inner.as_str().parse()
+                .map_err(|_| QueryError::Parse(format!("bad integer: {}", inner.as_str())))?;
+            Ok(Expr::Int(i))
+        }
+        Rule::string => {
+            let s = inner.as_str();
+            Ok(Expr::Str(s[1..s.len()-1].to_string()))
+        }
+        Rule::param => Ok(Expr::Param(inner.as_str()[1..].to_string())),
+        Rule::prop => {
+            let (alias, field) = parse_prop(inner)?;
+            Ok(Expr::Property { alias, field })
+        }
+        r => Err(QueryError::Parse(format!("unexpected case_atom inner: {r:?}"))),
+    }
+}
+
+// ── New condition parsers ─────────────────────────────────
+
+fn parse_is_null_cond(pair: Pair<Rule>) -> Result<Condition, QueryError> {
+    let mut inner = pair.into_inner();
+    let expr = parse_atom(inner.next()
+        .ok_or_else(|| QueryError::Parse("IS NULL missing expression".into()))?)?;
+    Ok(Condition::IsNull { expr })
+}
+
+fn parse_is_not_null_cond(pair: Pair<Rule>) -> Result<Condition, QueryError> {
+    let mut inner = pair.into_inner();
+    let expr = parse_atom(inner.next()
+        .ok_or_else(|| QueryError::Parse("IS NOT NULL missing expression".into()))?)?;
+    Ok(Condition::IsNotNull { expr })
+}
+
+fn parse_regex_cond(pair: Pair<Rule>) -> Result<Condition, QueryError> {
+    let mut inner = pair.into_inner();
+    let expr = parse_atom(inner.next()
+        .ok_or_else(|| QueryError::Parse("regex missing expression".into()))?)?;
+    let _op = inner.next(); // skip regex_op "=~"
+    let pattern = parse_atom(inner.next()
+        .ok_or_else(|| QueryError::Parse("regex missing pattern".into()))?)?;
+    Ok(Condition::Regex { expr, pattern })
+}
+
+fn parse_exists_cond(pair: Pair<Rule>) -> Result<Condition, QueryError> {
+    let mut pattern = None;
+    let mut conditions = Vec::new();
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::match_clause  => { pattern = Some(parse_pattern(inner)?); }
+            Rule::where_clause  => { conditions = parse_where_clause(inner)?; }
+            _ => {}
+        }
+    }
+
+    Ok(Condition::Exists {
+        pattern: pattern.ok_or_else(|| QueryError::Parse("EXISTS missing MATCH pattern".into()))?,
+        conditions,
+    })
+}
+
+// ── OPTIONAL MATCH clause parser ──────────────────────────
+
+fn parse_optional_match_clause(pair: Pair<Rule>) -> Result<Pattern, QueryError> {
+    let inner = pair.into_inner().next()
+        .ok_or_else(|| QueryError::Parse("OPTIONAL MATCH missing pattern".into()))?;
+    match inner.as_rule() {
+        Rule::pattern => parse_pattern_inner(inner),
+        r => Err(QueryError::Parse(format!("expected pattern in OPTIONAL MATCH, got {r:?}"))),
+    }
+}
+
+// ── UNION query parser ────────────────────────────────────
+
+fn parse_union_query(pair: Pair<Rule>) -> Result<UnionQuery, QueryError> {
+    let mut queries = Vec::new();
+    let mut all_flags = Vec::new();
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::match_query => {
+                let mq = parse_match_or_mutate_query(inner)?;
+                if let Query::Match(m) = mq {
+                    queries.push(m);
+                } else {
+                    return Err(QueryError::Parse("UNION only supports MATCH queries".into()));
+                }
+            }
+            Rule::union_sep => {
+                let has_all = inner.into_inner().any(|c| c.as_rule() == Rule::union_all_kw);
+                all_flags.push(has_all);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(UnionQuery { queries, all: all_flags })
+}
+
+// ── UNWIND query parser ───────────────────────────────────
+
+fn parse_unwind_query(pair: Pair<Rule>) -> Result<UnwindQuery, QueryError> {
+    let mut expr = None;
+    let mut alias = None;
+    let mut ret = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::atom         => { expr = Some(parse_atom(inner)?); }
+            Rule::ident        => { alias = Some(inner.as_str().to_string()); }
+            Rule::return_clause => { ret = Some(parse_return_clause(inner)?); }
+            r => return Err(QueryError::Parse(format!("unexpected in unwind_query: {r:?}"))),
+        }
+    }
+
+    Ok(UnwindQuery {
+        expr:  expr.ok_or_else(|| QueryError::Parse("UNWIND missing expression".into()))?,
+        alias: alias.ok_or_else(|| QueryError::Parse("UNWIND missing alias".into()))?,
+        ret:   ret.ok_or_else(|| QueryError::Parse("UNWIND missing RETURN clause".into()))?,
+    })
+}
+
+// ── SHORTEST_PATH query parser ────────────────────────────
+
+fn parse_shortest_path_query(pair: Pair<Rule>) -> Result<ShortestPathQuery, QueryError> {
+    let mut from = None;
+    let mut to = None;
+    let mut limit = None;
+    let mut ret = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::node_pattern => {
+                if from.is_none() {
+                    from = Some(parse_node_pattern(inner)?);
+                } else {
+                    to = Some(parse_node_pattern(inner)?);
+                }
+            }
+            Rule::limit_clause => {
+                let n: usize = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("LIMIT missing value".into()))?
+                    .as_str().parse()
+                    .map_err(|_| QueryError::Parse("bad LIMIT value".into()))?;
+                limit = Some(n);
+            }
+            Rule::return_clause => { ret = Some(parse_return_clause(inner)?); }
+            _ => {}
+        }
+    }
+
+    Ok(ShortestPathQuery {
+        from: from.ok_or_else(|| QueryError::Parse("SHORTEST_PATH missing source node".into()))?,
+        to:   to.ok_or_else(|| QueryError::Parse("SHORTEST_PATH missing target node".into()))?,
+        limit,
+        ret,
+    })
+}
+
+// ── MATCH ELITES query parser ─────────────────────────────
+
+fn parse_match_elites_query(pair: Pair<Rule>) -> Result<MatchElitesQuery, QueryError> {
+    let mut collection = None;
+    let mut limit = None;
+    let mut ret = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::string => {
+                let s = inner.as_str();
+                collection = Some(s[1..s.len()-1].to_string());
+            }
+            Rule::integer => {
+                let n: usize = inner.as_str().parse()
+                    .map_err(|_| QueryError::Parse("bad LIMIT value".into()))?;
+                limit = Some(n);
+            }
+            Rule::limit_clause => {
+                let n: usize = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("LIMIT missing value".into()))?
+                    .as_str().parse()
+                    .map_err(|_| QueryError::Parse("bad LIMIT value".into()))?;
+                limit = Some(n);
+            }
+            Rule::return_clause => { ret = Some(parse_return_clause(inner)?); }
+            _ => {}
+        }
+    }
+
+    Ok(MatchElitesQuery { collection, limit, ret })
+}
+
+// ── MEASURE TENSION query parser ──────────────────────────
+
+fn parse_measure_tension_query(pair: Pair<Rule>) -> Result<MeasureTensionQuery, QueryError> {
+    let mut node_a = None;
+    let mut node_b = None;
+
+    for inner in pair.into_inner() {
+        if inner.as_rule() == Rule::node_pattern {
+            if node_a.is_none() {
+                node_a = Some(parse_node_pattern(inner)?);
+            } else {
+                node_b = Some(parse_node_pattern(inner)?);
+            }
+        }
+    }
+
+    Ok(MeasureTensionQuery {
+        node_a: node_a.ok_or_else(|| QueryError::Parse("MEASURE TENSION missing first node".into()))?,
+        node_b: node_b.ok_or_else(|| QueryError::Parse("MEASURE TENSION missing second node".into()))?,
+    })
+}
+
+// ── MEASURE TGC query parser ──────────────────────────────
+
+fn parse_measure_tgc_query(pair: Pair<Rule>) -> Result<MeasureTgcQuery, QueryError> {
+    let mut collection = None;
+
+    for inner in pair.into_inner() {
+        if inner.as_rule() == Rule::string {
+            let s = inner.as_str();
+            collection = Some(s[1..s.len()-1].to_string());
+        }
+    }
+
+    Ok(MeasureTgcQuery { collection })
+}
+
+// ── FIND NEAREST query parser ─────────────────────────────
+
+fn parse_find_nearest_query(pair: Pair<Rule>) -> Result<FindNearestQuery, QueryError> {
+    let mut space = None;
+    let mut target = None;
+    let mut limit = None;
+    let mut ret = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::ident => {
+                space = Some(inner.as_str().to_string());
+            }
+            Rule::atom => {
+                target = Some(parse_atom(inner)?);
+            }
+            Rule::limit_clause => {
+                let n: usize = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("LIMIT missing value".into()))?
+                    .as_str().parse()
+                    .map_err(|_| QueryError::Parse("bad LIMIT value".into()))?;
+                limit = Some(n);
+            }
+            Rule::return_clause => { ret = Some(parse_return_clause(inner)?); }
+            _ => {}
+        }
+    }
+
+    Ok(FindNearestQuery {
+        space,
+        target: target.ok_or_else(|| QueryError::Parse("FIND NEAREST missing TO target".into()))?,
+        limit,
+        ret,
+    })
+}
+
 // ── RECONSTRUCT (Phase 11) ────────────────────────────────
 
 fn parse_reconstruct_query(pair: Pair<Rule>) -> Result<ReconstructQuery, QueryError> {
@@ -1760,7 +2168,7 @@ mod tests {
         let Query::Match(m) = q else { panic!() };
         if let Condition::Compare { left, .. } = &m.conditions[0] {
             if let Expr::MathFunc { func, args } = left {
-                assert_eq!(*func, MathFunc::PoincareDist);
+                assert_eq!(*func, MathFunc::PoincaNietzscheDBt);
                 assert_eq!(args.len(), 2);
             } else { panic!("expected MathFunc") }
         } else { panic!("expected Compare") }
@@ -1866,7 +2274,7 @@ mod tests {
         ).unwrap();
         let Query::Match(m) = q else { panic!() };
         let order = m.ret.order_by.unwrap();
-        assert!(matches!(order.expr, OrderExpr::MathFunc { func: MathFunc::PoincareDist, .. }));
+        assert!(matches!(order.expr, OrderExpr::MathFunc { func: MathFunc::PoincaNietzscheDBt, .. }));
         assert_eq!(order.dir, OrderDir::Asc);
     }
 

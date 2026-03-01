@@ -1358,7 +1358,7 @@ impl GraphStorage {
 
     /// Read a range of values from a named list (LRANGE).
     ///
-    /// `start` and `stop` are 0-based indices (inclusive, like Redis LRANGE).
+    /// `start` and `stop` are 0-based indices (inclusive, like NietzscheDB LRANGE).
     /// Use `stop = -1` (as `i64`) for "to the end".
     pub fn list_lrange(
         &self,
@@ -1590,9 +1590,15 @@ impl GraphStorage {
     pub fn rebuild_adjacency(&self) -> Result<AdjacencyIndex, GraphError> {
         let index = AdjacencyIndex::new();
         let edges = self.scan_edges()?;
+        let edge_count = edges.len();
         for edge in &edges {
             index.add_edge(edge);
         }
+        tracing::info!(
+            edges_loaded = edge_count,
+            adjacency_nodes = index.node_count(),
+            "rebuild_adjacency: cortical index reconstructed from RocksDB"
+        );
         Ok(index)
     }
 

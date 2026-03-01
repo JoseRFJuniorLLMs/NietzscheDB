@@ -1,6 +1,6 @@
 # 🤝 Federated Clustering (v1.2)
 
-HyperspaceDB v1.2 introduces a **Federated Leader-Follower** architecture. This goes beyond simple read-replication, introducing `Node Identity`, `Logical Clocks`, and `Topology Awareness` to support future Edge-Cloud synchronization scenarios.
+NietzscheDB v1.2 introduces a **Federated Leader-Follower** architecture. This goes beyond simple read-replication, introducing `Node Identity`, `Logical Clocks`, and `Topology Awareness` to support future Edge-Cloud synchronization scenarios.
 
 ## Concepts
 
@@ -25,14 +25,14 @@ Every node in the cluster is assigned a persistent, unique UUID (`node_id`) upon
 Simply start the server. By default, it assumes the **Leader** role.
 
 ```bash
-./hyperspace-server --port 50051
+./nietzsche-baseserver --port 50051
 ```
 
 ### Follower
 Start with `--role follower` and point to the leader's URL.
 
 ```bash
-./hyperspace-server --port 50052 --role follower --leader http://127.0.0.1:50051
+./nietzsche-baseserver --port 50052 --role follower --leader http://127.0.0.1:50051
 ```
 
 ## Monitoring Topology

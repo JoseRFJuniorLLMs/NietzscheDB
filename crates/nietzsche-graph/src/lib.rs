@@ -13,7 +13,7 @@
 //! - [`storage::GraphStorage`]     — RocksDB persistence (6 column families)
 //! - [`wal::GraphWal`]             — binary append-only Write-Ahead Log
 //! - [`db::NietzscheDB`]           — dual-write coordinator (graph + vector store)
-//! - [`db::VectorStore`]           — trait abstraction over HyperspaceDB / mock
+//! - [`db::VectorStore`]           — trait abstraction over NietzscheDB / mock
 //! - [`transaction::Transaction`]  — ACID saga transaction (Phase 7)
 //!
 //! # Architectural Decisions — Committee 2026-02-19
@@ -53,7 +53,7 @@ pub mod wal;
 
 pub use adjacency::{AdjacencyIndex, AdjEntry};
 pub use collection_manager::{CollectionConfig, CollectionInfo, CollectionManager};
-pub use db::{BackpressureSignal, MetadataFilter, MockVectorStore, NietzscheDB, VectorStore};
+pub use db::{BackpressureSignal, DefibrillateReport, MetadataFilter, MockVectorStore, NietzscheDB, VectorStore};
 pub use embedded_vector_store::{AnyVectorStore, EmbeddedVectorStore, VectorMetric};
 pub use error::GraphError;
 pub use model::{CausalType, Edge, EdgeType, Node, NodeMeta, NodeType, PoincareVector, SparseVector};

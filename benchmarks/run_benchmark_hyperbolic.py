@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Comprehensive Hyperbolic Efficiency Benchmark
-Compares HyperspaceDB, Milvus, Qdrant, and Weaviate.
+Compares NietzscheDB, Milvus, NietzscheDB, and Weaviate.
 Metrics: QPS, Latency (P50/P95/P99), Recall@10, MRR, NDCG@10, Concurrency QPS (1/10/30), Disk Usage.
 """
 
@@ -25,11 +25,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../sdks
 
 # --- Imports & Availability ---
 try:
-    from hyperspace import HyperspaceClient
-    HYPERSPACE_AVAILABLE = True
+    from nietzsche_legacy import NietzscheBaseClient
+    NIETZSCHE_AVAILABLE = True
 except ImportError:
-    HYPERSPACE_AVAILABLE = False
-    print("⚠️  HyperspaceDB Python SDK not found")
+    NIETZSCHE_AVAILABLE = False
+    print("⚠️  NietzscheDB Python SDK not found")
 
 try:
     from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType, utility
@@ -38,11 +38,11 @@ except ImportError:
     MILVUS_AVAILABLE = False
 
 try:
-    from qdrant_client import QdrantClient
-    from qdrant_client.models import Distance, VectorParams, PointStruct
-    QDRANT_AVAILABLE = True
+    from NietzscheDB_client import NietzscheDBClient
+    from NietzscheDB_client.models import Distance, VectorParams, PointStruct
+    NietzscheDB_AVAILABLE = True
 except ImportError:
-    QDRANT_AVAILABLE = False
+    NietzscheDB_AVAILABLE = False
 
 try:
     import chromadb
@@ -190,7 +190,7 @@ def get_docker_disk(container_keyword: str) -> str:
         containers = ps.stdout.strip().split('\n')
         target = next((c for c in containers if container_keyword in c), None)
         if not target: return "N/A"
-        path = "/var/lib/milvus" if "milvus" in container_keyword else ("/qdrant/storage" if "qdrant" in container_keyword else "/data")
+        path = "/var/lib/milvus" if "milvus" in container_keyword else ("/NietzscheDB/storage" if "NietzscheDB" in container_keyword else "/data")
         res = subprocess.run(["docker", "exec", target, "du", "-sh", path], capture_output=True, text=True)
         return res.stdout.split()[0] if res.returncode == 0 else "Err"
     except: return "N/A"
@@ -201,7 +201,7 @@ def get_local_disk(path: str) -> str:
         return f"{total / (1024*1024):.1f}M"
     except: return "N/A"
 
-def detect_hyperspace_metric(host: str) -> Optional[str]:
+def detect_nietzsche_metric(host: str) -> Optional[str]:
     # Ports to check for the dashboard / status API
     for port in (50051, 50050, 50052):
         url = f"http://{host}:{port}/api/status"
@@ -241,7 +241,7 @@ def log_batch(i, total, batch_start, last_batch_qps, size=1000):
 def extract_ids(res_obj):
     """
     Normalize search responses across SDKs:
-    - list[dict(id=...)]  (Hyperspace python SDK)
+    - list[dict(id=...)]  (NietzscheDB python SDK)
     - list[obj.id]        (other SDK wrappers)
     """
     ids = []
@@ -280,9 +280,9 @@ def run_concurrency_profile(query_fn, workers_list=(1, 10, 30), queries=1000):
     return result
 
 def wait_for_indexing(host="localhost", port=50050, collection="bench_semantic", timeout=600):
-    """Wait for HyperspaceDB background indexing and optimize graph"""
+    """Wait for NietzscheDB background indexing and optimize graph"""
     import requests
-    headers = {"x-api-key": "I_LOVE_HYPERSPACEDB"}
+    headers = {"x-api-key": "I_LOVE_NIETZSCHEDB"}
     
     # 1. Trigger explicit optimization if possible
     try:
@@ -405,13 +405,13 @@ def run_milvus(cfg: Config, data: TreeGenerator) -> Result:
             recall=0, mrr=0, ndcg=0, c1_qps=0, c10_qps=0, c30_qps=0, disk_usage="0", status=f"Fail@{stage}: {str(e)[:80]}"
         )
 
-def run_qdrant(cfg: Config, data: TreeGenerator) -> Result:
-    print(f"\n🔷 Qdrant ({cfg.milvus_dim}d Euclidean)")
-    if not QDRANT_AVAILABLE: return Result("Qdrant", cfg.milvus_dim, "Euclidean", "Cosine", 0,0,0,0,0,0,0,0,0,0,0,"N/A", "Skipped")
+def run_NietzscheDB(cfg: Config, data: TreeGenerator) -> Result:
+    print(f"\n🔷 NietzscheDB ({cfg.milvus_dim}d Euclidean)")
+    if not NietzscheDB_AVAILABLE: return Result("NietzscheDB", cfg.milvus_dim, "Euclidean", "Cosine", 0,0,0,0,0,0,0,0,0,0,0,"N/A", "Skipped")
     try:
         stage = "init_client"
         # Use gRPC if possible for better multithreaded stability
-        client = QdrantClient(host=cfg.host, port=6334, timeout=120, prefer_grpc=True)
+        client = NietzscheDBClient(host=cfg.host, port=6334, timeout=120, prefer_grpc=True)
         name = "bench_hyper_suite"
         stage = "delete_collection"
         try: client.delete_collection(name)
@@ -468,16 +468,16 @@ def run_qdrant(cfg: Config, data: TreeGenerator) -> Result:
 
         # Concurrency profile
         q_list = data.query_vecs_euc[0].tolist()
-        def qdrant_query():
+        def NietzscheDB_query():
             client.query_points(collection_name=name, query=q_list, limit=cfg.top_k)
-        conc = run_concurrency_profile(qdrant_query, queries=min(3000, cfg.search_queries))
+        conc = run_concurrency_profile(NietzscheDB_query, queries=min(3000, cfg.search_queries))
             
-        disk = get_docker_disk("qdrant")
+        disk = get_docker_disk("NietzscheDB")
         stage = "cleanup_delete_collection"
         try: client.delete_collection(name)
         except: pass
         return Result(
-            database="Qdrant",
+            database="NietzscheDB",
             dimension=cfg.milvus_dim,
             geometry="Euclidean",
             metric="Cosine",
@@ -497,7 +497,7 @@ def run_qdrant(cfg: Config, data: TreeGenerator) -> Result:
         )
     except Exception as e:
         return Result(
-            database="Qdrant", dimension=cfg.milvus_dim, geometry="Euclidean", metric="Cosine",
+            database="NietzscheDB", dimension=cfg.milvus_dim, geometry="Euclidean", metric="Cosine",
             insert_qps=0, search_qps=0, p50=0, p95=0, p99=0,
             recall=0, mrr=0, ndcg=0, c1_qps=0, c10_qps=0, c30_qps=0, disk_usage="0", status=f"Fail@{stage}: {str(e)[:80]}"
         )
@@ -572,20 +572,20 @@ def run_chroma(cfg: Config, data: TreeGenerator) -> Result:
             recall=0, mrr=0, ndcg=0, c1_qps=0, c10_qps=0, c30_qps=0, disk_usage="0", status=f"Fail@{stage}: {str(e)[:80]}"
         )
 
-def run_hyperspace(cfg: Config, data: TreeGenerator, use_hyper: bool) -> Result:
+def run_nietzsche(cfg: Config, data: TreeGenerator, use_hyper: bool) -> Result:
     dim = cfg.hyper_dim if use_hyper else cfg.milvus_dim
     metric = "poincare" if use_hyper else "cosine"
     geom = "Poincaré" if use_hyper else "Euclidean"
-    label = f"HyperspaceDB ({geom} {dim}d)"
+    label = f"NietzscheDB ({geom} {dim}d)"
     print(f"\n🚀 {label}")
-    if not HYPERSPACE_AVAILABLE: return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0,0,0,"N/A", "Skipped")
+    if not NIETZSCHE_AVAILABLE: return Result("NietzscheDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0,0,0,"N/A", "Skipped")
     try:
         stage = "init_client"
-        client = HyperspaceClient(f"{cfg.host}:50051", api_key="I_LOVE_HYPERSPACEDB")
+        client = NietzscheBaseClient(f"{cfg.host}:50051", api_key="I_LOVE_NIETZSCHEDB")
         stage = "detect_server_metric"
-        server_metric = detect_hyperspace_metric(cfg.host)
-        if server_metric in ("poincare", "hyperbolic") and not use_hyper: return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0,0,0,"N/A", f"Skipped: server={server_metric}")
-        if server_metric in ("cosine", "l2", "euclidean") and use_hyper: return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0,0,0,"N/A", f"Skipped: server={server_metric}")
+        server_metric = detect_nietzsche_metric(cfg.host)
+        if server_metric in ("poincare", "hyperbolic") and not use_hyper: return Result("NietzscheDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0,0,0,"N/A", f"Skipped: server={server_metric}")
+        if server_metric in ("cosine", "l2", "euclidean") and use_hyper: return Result("NietzscheDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0,0,0,"N/A", f"Skipped: server={server_metric}")
 
         name = "bench_suite_hyper" if use_hyper else "bench_suite_euc"
         stage = "delete_collection"
@@ -593,7 +593,7 @@ def run_hyperspace(cfg: Config, data: TreeGenerator, use_hyper: bool) -> Result:
         except: pass
         stage = "create_collection"
         if not client.create_collection(name, dimension=dim, metric=metric):
-            return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0,0,0,"0", f"Fail: create_collection({name})")
+            return Result("NietzscheDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0,0,0,"0", f"Fail: create_collection({name})")
         
         vecs = data.vecs_hyper if use_hyper else data.vecs_euc
         q_vecs = data.query_vecs_hyper if use_hyper else data.query_vecs_euc
@@ -609,7 +609,7 @@ def run_hyperspace(cfg: Config, data: TreeGenerator, use_hyper: bool) -> Result:
             ids = list(range(i, i + len(batch)))
             ok = client.batch_insert(batch.tolist(), ids, [{"i": str(k)} for k in ids], collection=name)
             if not ok:
-                return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0,0,0,"0", f"Fail: batch_insert({name})")
+                return Result("NietzscheDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0,0,0,"0", f"Fail: batch_insert({name})")
             last_qps = log_batch(i, data.count, bs, last_qps, h_batch)
         dur = time.time() - t0
         print(f"\n   Ingestion complete. Time: {dur:.2f}s")
@@ -625,7 +625,7 @@ def run_hyperspace(cfg: Config, data: TreeGenerator, use_hyper: bool) -> Result:
         for q_vec in q_vecs:
             res = client.search(q_vec.tolist(), top_k=cfg.top_k, collection=name)
             if not res:
-                return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0,0,0,"0", f"Fail: empty search({name})")
+                return Result("NietzscheDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0,0,0,"0", f"Fail: empty search({name})")
             results.append(extract_ids(res))
         recall, mrr, ndcg = calculate_accuracy(results, gt, cfg.top_k)
         
@@ -639,23 +639,23 @@ def run_hyperspace(cfg: Config, data: TreeGenerator, use_hyper: bool) -> Result:
             ts = time.time()
             res = client.search(q_one, top_k=cfg.top_k, collection=name)
             if not res:
-                return Result("HyperspaceDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0,0,0,"0", f"Fail: empty search({name})")
+                return Result("NietzscheDB", dim, geom, metric, 0,0,0,0,0,0,0,0,0,0,0,"0", f"Fail: empty search({name})")
             lats.append((time.time() - ts) * 1000)
         search_dur = time.time() - search_t0
         search_qps = cfg.search_queries / search_dur if search_dur > 0 else 0.0
 
         # Concurrency profile
         q_list = q_vecs[0].tolist()
-        def hyperspace_query():
+        def nietzsche_query():
             client.search(q_list, top_k=cfg.top_k, collection=name)
-        conc = run_concurrency_profile(hyperspace_query, queries=min(3000, cfg.search_queries))
+        conc = run_concurrency_profile(nietzsche_query, queries=min(3000, cfg.search_queries))
             
         disk = get_local_disk("../data")
         stage = "cleanup_delete_collection"
         try: client.delete_collection(name)
         except: pass
         return Result(
-            database="HyperspaceDB",
+            database="NietzscheDB",
             dimension=dim,
             geometry=geom,
             metric=metric,
@@ -675,7 +675,7 @@ def run_hyperspace(cfg: Config, data: TreeGenerator, use_hyper: bool) -> Result:
         )
     except Exception as e:
         return Result(
-            database="HyperspaceDB", dimension=dim, geometry=geom, metric=metric,
+            database="NietzscheDB", dimension=dim, geometry=geom, metric=metric,
             insert_qps=0, search_qps=0, p50=0, p95=0, p99=0,
             recall=0, mrr=0, ndcg=0, c1_qps=0, c10_qps=0, c30_qps=0, disk_usage="0", status=f"Fail@{stage}: {str(e)[:100]}"
         )
@@ -696,15 +696,15 @@ if __name__ == "__main__":
     cfg = Config()
     
     # 1. Detection Phase
-    print(f"🔍 Detecting HyperspaceDB configuration on {cfg.host}:50051...")
-    server_metric = detect_hyperspace_metric(cfg.host)
+    print(f"🔍 Detecting NietzscheDB configuration on {cfg.host}:50051...")
+    server_metric = detect_nietzsche_metric(cfg.host)
     
     if server_metric:
-        print(f"✨ HyperspaceDB is running in '{server_metric}' mode.")
-        is_hyper_server = server_metric in ("poincare", "hyperbolic")
+        print(f"✨ NietzscheDB is running in '{server_metric}' mode.")
+        is_nietzsche_server = server_metric in ("poincare", "hyperbolic")
     else:
-        print("⚠️  Could not detect HyperspaceDB metric via API. Assuming Poincaré 64d by default.")
-        is_hyper_server = True
+        print("⚠️  Could not detect NietzscheDB metric via API. Assuming Poincaré 64d by default.")
+        is_nietzsche_server = True
 
     # 2. Data Generation Phase
     data = TreeGenerator(cfg)
@@ -719,15 +719,15 @@ if __name__ == "__main__":
     if not target_db or "milvus" in target_db:
         res.append(run_milvus(cfg, data))
     
-    if not target_db or "qdrant" in target_db:
-        res.append(run_qdrant(cfg, data))
+    if not target_db or "NietzscheDB" in target_db:
+        res.append(run_NietzscheDB(cfg, data))
     
     if not target_db or "chroma" in target_db:
         res.append(run_chroma(cfg, data))
     
-    # Run Hyperspace (Only matching mode)
+    # Run NietzscheDB (Only matching mode)
     if not target_db or "hyper" in target_db:
-        res.append(run_hyperspace(cfg, data, use_hyper=is_hyper_server))
+        res.append(run_nietzsche(cfg, data, use_hyper=is_nietzsche_server))
     
     # 4. Reporting
     print_table(res)
@@ -735,7 +735,7 @@ if __name__ == "__main__":
     with open("BENCHMARK_STORY.md", "w") as f:
         f.write("# 📐 The Hyperbolic Advantage: Full Accuracy Suite\n\n")
         f.write(f"Testing with **{cfg.num_nodes:,}** nodes. Accuracy based on **{cfg.test_queries}** query vectors.\n")
-        f.write(f"HyperspaceDB Mode: **{'Poincaré 64d' if is_hyper_server else 'Euclidean 1024d'}**\n\n")
+        f.write(f"NietzscheDB Mode: **{'Poincaré 64d' if is_nietzsche_server else 'Euclidean 1024d'}**\n\n")
         f.write("| Database | Dim | Geometry | Metric | QPS | P99 | Recall@10 | MRR | NDCG@10 | C1 QPS | C10 QPS | C30 QPS | Disk |\n")
         f.write("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
         for r in res:
@@ -743,8 +743,8 @@ if __name__ == "__main__":
                 f.write(f"| **{r.database}** | {r.dimension} | {r.geometry} | {r.metric} | {r.insert_qps:,.0f} | {r.p99:.2f}ms | {r.recall:.1%} | {r.mrr:.2f} | {r.ndcg:.2f} | {r.c1_qps:,.0f} | {r.c10_qps:,.0f} | {r.c30_qps:,.0f} | {r.disk_usage} |\n")
         
         f.write("\n## 💡 Accuracy Analysis\n")
-        h_hyp = next((r for r in res if r.database == "HyperspaceDB" and r.geometry == "Poincaré"), None)
+        h_hyp = next((r for r in res if r.database == "NietzscheDB" and r.geometry == "Poincaré"), None)
         if h_hyp:
-            f.write(f"HyperspaceDB Poincaré ({h_hyp.recall:.1%} recall) demonstrates that accuracy remains high despite a **{(1024/64):.0f}x reduction** in dimensions.\n")
-        elif is_hyper_server == False:
-            f.write("HyperspaceDB is currently tested in Euclidean mode. Point the server to Poincaré to see the Hyperbolic Advantage.\n")
+            f.write(f"NietzscheDB Poincaré ({h_hyp.recall:.1%} recall) demonstrates that accuracy remains high despite a **{(1024/64):.0f}x reduction** in dimensions.\n")
+        elif is_nietzsche_server == False:
+            f.write("NietzscheDB is currently tested in Euclidean mode. Point the server to Poincaré to see the Hyperbolic Advantage.\n")

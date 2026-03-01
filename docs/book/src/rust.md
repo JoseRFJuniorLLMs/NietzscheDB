@@ -8,32 +8,32 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-hyperspace-sdk = { git = "https://github.com/yarlabs/hyperspace-db" }
+nietzsche-rsdk = { git = "https://github.com/yarlabs/nietzsche-db" }
 tokio = { version = "1", features = ["full"] }
 ```
 
 ## Usage
 
 ```rust
-use hyperspace_sdk::Client;
+use nietzsche_rsdk::Client;
 use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Connect (with optional API Key)
-    let api_key = std::env::var("HYPERSPACE_API_KEY").ok();
+    let api_key = std::env::var("NDB_API_KEY").ok();
     let mut client = Client::connect("http://127.0.0.1:50051".into(), api_key).await?;
 
     // --- Optional: Configure Embedder (Feature: "embedders") ---
     #[cfg(feature = "embedders")]
     {
         // Example: OpenAI
-        use hyperspace_sdk::OpenAIEmbedder;
+        use nietzsche_rsdk::OpenAIEmbedder;
         let openai_key = std::env::var("OPENAI_API_KEY").unwrap();
         let embedder = OpenAIEmbedder::new(openai_key, "text-embedding-3-small".to_string());
         
         // Or: Voyage AI
-        // use hyperspace_sdk::VoyageEmbedder;
+        // use nietzsche_rsdk::VoyageEmbedder;
         // let embedder = VoyageEmbedder::new(api_key, "voyage-large-2".to_string());
 
         client.set_embedder(Box::new(embedder));
