@@ -32,5 +32,9 @@ path = "src/bin/simulate_forgetting.rs"
 name = "experiment_link_prediction"
 path = "src/bin/experiment_link_prediction.rs"
 
+[[bin]]
+name = "experiment_amnesia"
+path = "src/bin/experiment_amnesia.rs"
+
 [dev-dependencies]
 tempfile = "3"
