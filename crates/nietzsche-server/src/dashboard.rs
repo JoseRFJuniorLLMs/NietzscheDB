@@ -244,7 +244,7 @@ pub async fn serve(
                 .allow_origin(AllowOrigin::predicate(|origin, _| {
                     // Allow localhost origins for development
                     let o = origin.as_bytes();
-                    o.starts_with(b"http://localhost") || o.starts_with(b"http://127.0.0.1") || o.starts_with(b"https://34.123.223.50")
+                    o.starts_with(b"http://localhost") || o.starts_with(b"http://127.0.0.1") || o.starts_with(b"https://136.111.0.47")
                 }))
                 .allow_methods(tower_http::cors::Any)
                 .allow_headers(tower_http::cors::Any),
