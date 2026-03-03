@@ -52,6 +52,14 @@
 //! - [`evolution::MetabolicInput`] — pre-computed snapshot for metabolic cycle
 //! - [`evolution::CycleReport`] — complete auditable cycle output
 //!
+//! ## Layer 8 — Riemannian Sleep & Cognitive Metabolism (Phase VII)
+//! - [`metabolism::PathEntropyEstimator`] — H_path via hyperbolic random walks
+//! - [`metabolism::MetabolicSleepManager`] — adaptive τ_relax from S = [λ₂, E_g, H_path]
+//! - [`metabolism::CuriosityEngine`] — controlled perturbation (Option D: adaptive combination)
+//! - [`metabolism::StateVector`] — sovereign triad of metabolic observables
+//! - [`metabolism::CognitiveState`] — Stagnation / Convergence / Turbulence / Cruising
+//! - [`metabolism::MetabolicReport`] — full physiological cycle audit
+//!
 //! # Design Principles
 //!
 //! 1. **Every inference carries a Rationale** — no black-box reasoning
@@ -65,6 +73,8 @@
 //! 9. **Sandbox quarantine tests before committing** — no untested knowledge enters the manifold
 //! 10. **Criticality is formally defined** — edge-of-chaos = spectral band ∩ energy variance ∩ bounded velocity
 //! 11. **Damping is adaptive** — λ(t) = λ₀ + k·(σ²-σ²_crit)/σ²_crit prevents oscillation AND death
+//! 12. **Sleep is Riemannian** — τ_relax = 1/‖∇S‖ where S = [λ₂, E_g, H_path], organism breathes at its own rhythm
+//! 13. **Curiosity is forced when stagnant** — geometric perturbation + anti-hub reweight + walk extension (Option D)
 
 pub mod representation;
 pub mod rationale;
@@ -83,6 +93,7 @@ pub mod discovery;
 pub mod innovation;
 pub mod sandbox;
 pub mod criticality;
+pub mod metabolism;
 pub mod error;
 
 // ── Public re-exports ──
@@ -112,3 +123,11 @@ pub use sandbox::{SandboxEvaluator, SandboxEntry, SandboxVerdict};
 // ── Phase VI+ re-exports (Criticality & Metabolic Dynamics) ──
 pub use criticality::{CriticalityDetector, CriticalityMetrics, RegimeState};
 pub use evolution::{MetabolicInput, CycleReport};
+
+// ── Phase VII re-exports (Riemannian Sleep & Cognitive Metabolism) ──
+pub use metabolism::{
+    PathEntropyEstimator, PathEntropyReport,
+    MetabolicSleepManager, SleepReport,
+    CuriosityEngine, CuriosityActions,
+    StateVector, CognitiveState, MetabolicReport,
+};
