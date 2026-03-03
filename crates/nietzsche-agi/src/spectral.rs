@@ -579,6 +579,181 @@ impl DriftTracker {
         }
         self.history.iter().sum::<f64>() / self.history.len() as f64
     }
+
+    /// Get the λ₂ variance over the tracked history.
+    /// High variance = unstable regime. Near zero = steady state.
+    pub fn variance(&self) -> f64 {
+        if self.history.len() < 2 {
+            return 0.0;
+        }
+        let mean = self.mean_lambda2();
+        self.history.iter().map(|&x| (x - mean).powi(2)).sum::<f64>()
+            / (self.history.len() - 1) as f64
+    }
+}
+
+// ─────────────────────────────────────────────
+// AdaptiveBand — mobile target band for λ₂
+// ─────────────────────────────────────────────
+
+/// Mobile target band for λ₂ that evolves with the system.
+///
+/// The fundamental insight of the Evolutionary Model (Option B): instead of
+/// forcing λ₂ to a fixed value, we allow it to drift slowly within a band
+/// that itself adapts based on the system's energy state.
+///
+/// ## Band Evolution Rule
+///
+/// ```text
+/// λ_target(t+1) = λ_target(t) + ε · ΔE_global
+/// ```
+///
+/// Where:
+/// - `ε` is the adaptation rate (small → conservative, large → aggressive)
+/// - `ΔE_global` is the global energy change (positive = system improving)
+/// - The band is clamped to `[min_target, max_target]`
+///
+/// ## Why Adaptive?
+///
+/// A growing knowledge graph **should** become more connected over time.
+/// Forcing constant λ₂ would either:
+/// - Prevent natural growth (if too high)
+/// - Allow fragmentation (if too low)
+///
+/// The adaptive band allows the system to find its own equilibrium:
+/// improving energy → tighter connectivity expected → target rises.
+///
+/// ## Edge of Chaos
+///
+/// For regime C (critically poised), ε should be small enough that the
+/// band moves slowly relative to individual cycle fluctuations, but large
+/// enough to track genuine structural evolution.
+#[derive(Debug, Clone)]
+pub struct AdaptiveBand {
+    /// Current target λ₂ (center of the band).
+    pub target: f64,
+
+    /// Half-width of the acceptable band around the target.
+    /// λ₂ is "healthy" if |λ₂ - target| ≤ half_width.
+    pub half_width: f64,
+
+    /// Adaptation rate ε: how fast the target responds to energy changes.
+    /// Default: 0.01 (conservative, suitable for edge-of-chaos regime)
+    pub epsilon: f64,
+
+    /// Absolute minimum target. The band can never drift below this.
+    /// Default: 0.05 (ensures minimal connectivity)
+    pub min_target: f64,
+
+    /// Absolute maximum target. The band can never drift above this.
+    /// Default: 5.0 (prevents unrealistic rigidity demands)
+    pub max_target: f64,
+
+    /// History of target adjustments (for auditing).
+    adjustments: Vec<BandAdjustment>,
+    max_adjustments: usize,
+}
+
+/// Record of a single band adjustment.
+#[derive(Debug, Clone)]
+pub struct BandAdjustment {
+    /// The energy delta that caused this adjustment.
+    pub energy_delta: f64,
+    /// The target before adjustment.
+    pub old_target: f64,
+    /// The target after adjustment.
+    pub new_target: f64,
+    /// The λ₂ at the time of adjustment.
+    pub lambda2: f64,
+}
+
+impl AdaptiveBand {
+    pub fn new(initial_target: f64, half_width: f64, epsilon: f64) -> Self {
+        Self {
+            target: initial_target,
+            half_width,
+            epsilon,
+            min_target: 0.05,
+            max_target: 5.0,
+            adjustments: Vec::new(),
+            max_adjustments: 50,
+        }
+    }
+
+    pub fn with_defaults() -> Self {
+        Self::new(0.5, 0.2, 0.01)
+    }
+
+    /// Adjust the target band based on global energy change.
+    ///
+    /// # Arguments
+    /// - `energy_delta`: ΔE_global (positive = system improved this cycle)
+    /// - `current_lambda2`: the measured λ₂ this cycle
+    ///
+    /// # Returns
+    /// The new target value.
+    pub fn adjust(&mut self, energy_delta: f64, current_lambda2: f64) -> f64 {
+        let old_target = self.target;
+
+        // λ_target(t+1) = λ_target(t) + ε · ΔE
+        self.target += self.epsilon * energy_delta;
+        self.target = self.target.clamp(self.min_target, self.max_target);
+
+        // Record adjustment
+        self.adjustments.push(BandAdjustment {
+            energy_delta,
+            old_target,
+            new_target: self.target,
+            lambda2: current_lambda2,
+        });
+
+        if self.adjustments.len() > self.max_adjustments {
+            self.adjustments.remove(0);
+        }
+
+        self.target
+    }
+
+    /// Check if a λ₂ measurement is within the acceptable band.
+    ///
+    /// Returns true if |λ₂ - target| ≤ half_width.
+    pub fn is_within_band(&self, lambda2: f64) -> bool {
+        (lambda2 - self.target).abs() <= self.half_width
+    }
+
+    /// Get the lower bound of the acceptable band.
+    pub fn lower(&self) -> f64 {
+        (self.target - self.half_width).max(0.0)
+    }
+
+    /// Get the upper bound of the acceptable band.
+    pub fn upper(&self) -> f64 {
+        self.target + self.half_width
+    }
+
+    /// Get the distance from λ₂ to the band center (signed).
+    /// Positive = above target, negative = below target.
+    pub fn deviation(&self, lambda2: f64) -> f64 {
+        lambda2 - self.target
+    }
+
+    /// Get the most recent adjustments for auditing.
+    pub fn recent_adjustments(&self) -> &[BandAdjustment] {
+        &self.adjustments
+    }
+}
+
+impl std::fmt::Display for AdaptiveBand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Band[target={:.3}, range=[{:.3}, {:.3}], ε={:.4}]",
+            self.target,
+            self.lower(),
+            self.upper(),
+            self.epsilon,
+        )
+    }
 }
 
 #[cfg(test)]
@@ -813,5 +988,103 @@ mod tests {
         assert!(tracker.latest_drift().is_none());
         assert!(tracker.is_healthy());
         assert_eq!(tracker.trend(), 0.0);
+    }
+
+    #[test]
+    fn test_drift_tracker_variance() {
+        let mut tracker = DriftTracker::with_defaults();
+        tracker.record(1.0);
+        tracker.record(1.0);
+        tracker.record(1.0);
+        assert!(tracker.variance() < 1e-10, "Constant series should have zero variance");
+
+        let mut tracker2 = DriftTracker::with_defaults();
+        tracker2.record(0.5);
+        tracker2.record(1.5);
+        tracker2.record(0.5);
+        tracker2.record(1.5);
+        assert!(tracker2.variance() > 0.2, "Oscillating series should have high variance");
+    }
+
+    // ── AdaptiveBand tests ──
+
+    #[test]
+    fn test_band_defaults() {
+        let band = AdaptiveBand::with_defaults();
+        assert!((band.target - 0.5).abs() < 1e-10);
+        assert!(band.is_within_band(0.5));
+        assert!(band.is_within_band(0.3)); // 0.5 - 0.2 = 0.3
+        assert!(band.is_within_band(0.7)); // 0.5 + 0.2 = 0.7
+        assert!(!band.is_within_band(0.05)); // Too low
+        assert!(!band.is_within_band(1.0));  // Too high
+    }
+
+    #[test]
+    fn test_band_adjust_positive_energy() {
+        let mut band = AdaptiveBand::with_defaults();
+        // System improving → target should rise
+        let old = band.target;
+        band.adjust(1.0, 0.5); // ΔE = +1.0
+        assert!(
+            band.target > old,
+            "Target should rise with positive energy: {} → {}",
+            old, band.target
+        );
+    }
+
+    #[test]
+    fn test_band_adjust_negative_energy() {
+        let mut band = AdaptiveBand::with_defaults();
+        let old = band.target;
+        band.adjust(-1.0, 0.5); // ΔE = -1.0 → target drops
+        assert!(
+            band.target < old,
+            "Target should drop with negative energy: {} → {}",
+            old, band.target
+        );
+    }
+
+    #[test]
+    fn test_band_clamped_to_limits() {
+        let mut band = AdaptiveBand::new(0.5, 0.2, 1.0); // Large ε
+        band.adjust(100.0, 0.5); // Massive positive energy
+        assert!(
+            band.target <= band.max_target,
+            "Target should be clamped: {}",
+            band.target
+        );
+
+        let mut band2 = AdaptiveBand::new(0.5, 0.2, 1.0);
+        band2.adjust(-100.0, 0.5); // Massive negative
+        assert!(
+            band2.target >= band2.min_target,
+            "Target should be clamped: {}",
+            band2.target
+        );
+    }
+
+    #[test]
+    fn test_band_deviation() {
+        let band = AdaptiveBand::new(1.0, 0.3, 0.01);
+        assert!((band.deviation(1.2) - 0.2).abs() < 1e-10);
+        assert!((band.deviation(0.8) - (-0.2)).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_band_display() {
+        let band = AdaptiveBand::with_defaults();
+        let s = format!("{band}");
+        assert!(s.contains("Band["));
+        assert!(s.contains("target="));
+    }
+
+    #[test]
+    fn test_band_audit_trail() {
+        let mut band = AdaptiveBand::with_defaults();
+        band.adjust(0.5, 0.4);
+        band.adjust(-0.2, 0.5);
+        let history = band.recent_adjustments();
+        assert_eq!(history.len(), 2);
+        assert!((history[0].energy_delta - 0.5).abs() < 1e-10);
     }
 }
