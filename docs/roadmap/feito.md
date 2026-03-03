@@ -135,6 +135,42 @@
 - [x] Session management (Pending/Applied/Rejected)
 - [x] Apply (persiste deltas) / Reject (descarta)
 
+## AGI Inference Layer (`nietzsche-agi`) — 6,994 LOC, 123 testes
+
+### Layer 1-2: Representacao e Navegacao Verificavel
+- [x] `SynthesisNode` — wrapper AGI com metadata de inferencia — `representation.rs`
+- [x] `Rationale` com `InferenceType` (6 tipos), `fidelity`, `energy_seal`, `certification` — `rationale.rs`
+- [x] `GeodesicTrajectory` com validacao GCS (collinearidade Klein + gradiente radial Poincare) — `trajectory.rs`
+- [x] `GeodesicCoherenceScore` — media harmonica por-hop, range [0, 1] — `trajectory.rs`
+
+### Layer 3: Inferencia Explicita
+- [x] `InferenceEngine` — motor de regras: trajectory → Generalization/Specialization/Bridge/Analogy/Dialectic/Rupture — `inference_engine.rs`
+- [x] `FrechetSynthesizer` — sintese dialetica via media de Frechet na esfera de Riemann — `synthesis.rs`
+- [x] `DialecticDetector` — detecao de pares de tensao cross-cluster — `dialectic.rs`
+
+### Layer 4: Atualizacao Dinamica
+- [x] `FeedbackLoop` com `simulate()` (off-graph) + `prepare()` (re-insercao) — `feedback_loop.rs`
+- [x] `HomeostasisGuard` + `RadialField` — repulsao suave quadratica perto da origem — `homeostasis.rs`
+- [x] `RelevanceDecay` — decay baseado em frequencia + boost por acesso — `relevance_decay.rs`
+- [x] `EvolutionScheduler` — heartbeat autonomo coordenando todos sub-sistemas — `evolution.rs`
+
+### Layer 5: Motor de Estabilidade (Phase V)
+- [x] `StabilityEvaluator` com E(τ) = w₁·H_GCS + w₂·θ_klein + w₃·causal + w₄·entropy — `stability.rs`
+- [x] `CertificationLevel` 4-tier: StableInference(≥0.75) / WeakBridge(≥0.50) / MetaphoricDrift(≥0.25) / LogicalRupture(<0.25) — `certification.rs`
+- [x] `CertificationSeal` — selo imutavel de qualidade epistemologica — `certification.rs`
+- [x] `SpectralMonitor` — λ₂ Fiedler eigenvalue via Jacobi + power iteration — `spectral.rs`
+- [x] `ConnectivityClass` — Rigid/Stable/Fragile/Disconnected — `spectral.rs`
+
+### Layer 6: Equilibrio Metabolico (Phase VI)
+- [x] `DiscoveryField` com D(τ) = w_g·|∇E| + w_c·θ_cluster — friccao produtiva — `discovery.rs`
+- [x] `InnovationEvaluator` com Φ(τ) = αS + βD - γR (α=0.50, β=0.35, γ=0.60) — `innovation.rs`
+- [x] `AcceptanceDecision` — Accept (Φ≥0.50) / Sandbox (0.20≤Φ<0.50) / Reject (Φ<0.20) — `innovation.rs`
+- [x] `SandboxEvaluator` — quarentena com peso 0.3x, decay 3x, monitorizacao Δλ₂ — `sandbox.rs`
+- [x] `DriftTracker` — tracking de evolucao λ₂ para Modelo Evolutivo (drift controlado) — `spectral.rs`
+
+### Exemplo
+- [x] `pipeline_ignition.rs` — demo completa do pipeline AGI (detect → traverse → validate → infer → synthesize)
+
 ## Agency Engine (`nietzsche-agency`) — 5,734 LOC
 
 - [x] Event Bus (tokio broadcast, 7 event types)
@@ -194,8 +230,8 @@
 
 ## Testes
 
-- [x] ~957 testes unitarios/integracao
-- [x] 17/17 modulos com cobertura (100%)
+- [x] ~1080 testes unitarios/integracao (957 engine + 123 AGI)
+- [x] 18/18 modulos com cobertura (100%) — inclui nietzsche-agi
 - [x] 6 benchmarks Criterion
 - [x] CI/CD GitHub Actions
 
@@ -219,7 +255,7 @@
 | # | Feature | Status | Impacto | Evidencia no Codigo |
 |---|---------|--------|---------|---------------------|
 | 1 | **Raft/Paxos Consensus** | ❌ | MEDIO | `nietzsche-cluster/src/lib.rs:13` → "No Raft in this phase". Apenas gossip basico |
-| 2 | **Semantic Drift Validation** | ❌ | ALTO | `nietzsche-sleep/src/cycle.rs` → Hausdorff geometry check apenas, sem oracle semantico |
+| 2 | **Semantic Drift Validation** | ✅ | ALTO | `nietzsche-agi/src/spectral.rs` → DriftTracker (λ₂ evolution) + StabilityEvaluator (E(τ)) |
 | 3 | **Manifold Visualizer** | 🟡 | BAIXO | `dashboard/GraphExplorerPage.tsx` → Cosmograph Euclidiano, sem Poincare disk |
 | 4 | **HNSW Distributed Sharding** | ❌ | BAIXO | `nietzsche-graph/vector_store.rs` → Collection-level apenas, sem cross-shard KNN |
 | 5 | **DX Integrations** | ❌ | CRITICO | `sdks/python/` → NietzscheDB (nome antigo), sem LangChain/DSPy/OGM |

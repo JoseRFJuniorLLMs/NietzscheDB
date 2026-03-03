@@ -1,6 +1,6 @@
 # NietzscheDB Architecture
 
-NietzscheDB is a **Multi-Manifold Graph Database** built as a Rust nightly workspace with **38 crates** in two layers. It operates across **4 non-Euclidean geometries** simultaneously (Poincaré · Klein · Riemann · Minkowski) and features autonomous AGI subsystems including a Hegelian dialectic engine, probabilistic Schrödinger edges, emotional valence/arousal vectors, Code-as-Data reactive rules, Semantic CRDTs, and anti-tumor energy circuit breakers.
+NietzscheDB is a **Multi-Manifold Graph Database** built as a Rust nightly workspace with **39 crates** in two layers. It operates across **4 non-Euclidean geometries** simultaneously (Poincaré · Klein · Riemann · Minkowski) and features autonomous AGI subsystems including a Hegelian dialectic engine, probabilistic Schrödinger edges, emotional valence/arousal vectors, Code-as-Data reactive rules, Semantic CRDTs, and anti-tumor energy circuit breakers.
 
 ## Multi-Manifold Geometry (4 Geometries · 1 Storage · 0 Duplication)
 
@@ -41,9 +41,10 @@ NietzscheDB maps the hyperbolic Poincaré ball coordinates to the Bloch sphere, 
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                         NietzscheDB Layer (29 crates)                        │
+│                         NietzscheDB Layer (30 crates)                        │
 │                                                                              │
 │  Engine:     nietzsche-graph    nietzsche-query     nietzsche-hyp-ops        │
+│  AGI:        nietzsche-agi (17 modules, 7K LOC, 123 tests)                  │
 │  Growth:     nietzsche-lsystem  nietzsche-pregel    nietzsche-sleep          │
 │  Evolution:  nietzsche-zaratustra                                            │
 │  Analytics:  nietzsche-algo     nietzsche-sensory                            │
@@ -130,9 +131,57 @@ The Zaratustra cycle operates in three philosophical phases:
 3.  **Ubermensch**: Nodes crossing a specific energy/complexity threshold are promoted to "Elite" status, making them globally accessible as Archetypes.
 
 
-## AGI Subsystems (Sprint 2026-02-22)
+## AGI Subsystems
 
-NietzscheDB includes autonomous graph intelligence subsystems:
+NietzscheDB includes two generations of autonomous graph intelligence:
+
+### nietzsche-agi — Formal Inference Layer (7K LOC, 123 tests)
+
+The `nietzsche-agi` crate provides **explicit reasoning with verifiable trajectories** across all 4 geometries. It operates in 6 layers:
+
+```
+Layer 6 — Metabolic Equilibrium
+│  DiscoveryField       D(τ) = w_g·|∇E| + w_c·θ_cluster
+│  InnovationEvaluator  Φ(τ) = αS + βD - γR  →  Accept / Sandbox / Reject
+│  SandboxEvaluator     Quarantine lifecycle with Δλ₂ promotion
+│
+Layer 5 — Stability Motor
+│  StabilityEvaluator   E(τ) = w₁·H_GCS + w₂·θ_klein + w₃·causal + w₄·entropy
+│  CertificationSeal    StableInference / WeakBridge / MetaphoricDrift / LogicalRupture
+│  SpectralMonitor      λ₂ Fiedler eigenvalue (Jacobi + power iteration)
+│  DriftTracker         λ₂ evolution for Evolutionary Model
+│
+Layer 4 — Dynamic Update
+│  FeedbackLoop         Off-graph simulation + graph re-insertion
+│  HomeostasisGuard     Origin guard + RadialField (smooth repulsion/attraction)
+│  RelevanceDecay       Frequency-based weight decay + boost
+│  EvolutionScheduler   Autonomous heartbeat (all sub-systems coordinated)
+│
+Layer 3 — Explicit Inference
+│  InferenceEngine      Rule engine: trajectory → Generalization/Specialization/Bridge/...
+│  FrechetSynthesizer   Dialectical synthesis via Riemann Frechet mean
+│  DialecticDetector    Cross-cluster tension pair detection
+│
+Layer 2 — Verifiable Navigation
+│  GeodesicTrajectory   Validated path through Poincare ball
+│  GeodesicCoherenceScore  Per-hop quality (collinearity × radial gradient)
+│
+Layer 1 — Representation
+   SynthesisNode        AGI wrapper with inference metadata
+   Rationale            Proof object + InferenceType + energy seal + certification
+```
+
+**Key invariants:**
+- Every inference carries a Rationale (no black-box reasoning)
+- GCS validates every hop (broken geodesics → LogicalRupture)
+- Synthesis uses Frechet mean (not Euclidean average)
+- Homeostasis prevents origin collapse (radial field)
+- Innovation is metabolized via Φ(τ) = αS + βD - γR (Accept/Sandbox/Reject)
+- Sandbox quarantine tests with Δλ₂ before promoting to permanent memory
+
+### nietzsche-agency — Runtime AGI Subsystems (5,734 LOC)
+
+The existing agency layer provides runtime graph intelligence:
 
 ### NodeMeta Emotional Dimensions
 
