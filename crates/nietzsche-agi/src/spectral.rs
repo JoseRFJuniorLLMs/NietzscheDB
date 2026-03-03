@@ -486,6 +486,101 @@ fn normalize(v: &mut [f64]) {
     }
 }
 
+// ─────────────────────────────────────────────
+// DriftTracker — λ₂ evolution monitoring (Option B)
+// ─────────────────────────────────────────────
+
+/// Tracks λ₂ evolution over time for the Evolutionary Model (Option B).
+///
+/// Instead of enforcing constant λ₂, allows slow controlled drift
+/// that enables the graph to evolve while detecting destabilization.
+///
+/// ```text
+/// Healthy drift:   |Δλ₂| ≤ max_rate per cycle
+/// Destabilization: |Δλ₂| > max_rate for N cycles
+/// ```
+#[derive(Debug, Clone)]
+pub struct DriftTracker {
+    /// Historical λ₂ values (most recent last).
+    pub history: Vec<f64>,
+
+    /// Maximum entries to keep in history.
+    pub max_history: usize,
+
+    /// Maximum acceptable drift per cycle.
+    pub max_drift_rate: f64,
+
+    /// Number of consecutive violations before alarm.
+    pub alarm_threshold: usize,
+}
+
+impl DriftTracker {
+    pub fn new(max_drift_rate: f64, max_history: usize, alarm_threshold: usize) -> Self {
+        Self {
+            history: Vec::new(),
+            max_history,
+            max_drift_rate,
+            alarm_threshold,
+        }
+    }
+
+    pub fn with_defaults() -> Self {
+        Self::new(0.05, 100, 3)
+    }
+
+    /// Record a new λ₂ measurement.
+    pub fn record(&mut self, lambda2: f64) {
+        self.history.push(lambda2);
+        if self.history.len() > self.max_history {
+            self.history.remove(0);
+        }
+    }
+
+    /// Get the latest drift (Δλ₂ from previous to current).
+    pub fn latest_drift(&self) -> Option<f64> {
+        if self.history.len() < 2 {
+            return None;
+        }
+        let n = self.history.len();
+        Some(self.history[n - 1] - self.history[n - 2])
+    }
+
+    /// Count consecutive violations of the drift threshold.
+    pub fn consecutive_violations(&self) -> usize {
+        if self.history.len() < 2 {
+            return 0;
+        }
+        self.history
+            .windows(2)
+            .rev()
+            .take_while(|w| (w[1] - w[0]).abs() > self.max_drift_rate)
+            .count()
+    }
+
+    /// Check if the drift is within acceptable bounds (healthy evolution).
+    pub fn is_healthy(&self) -> bool {
+        self.consecutive_violations() < self.alarm_threshold
+    }
+
+    /// Get the overall trend (positive = λ₂ increasing = stronger connectivity).
+    pub fn trend(&self) -> f64 {
+        if self.history.len() < 2 {
+            return 0.0;
+        }
+        let first = self.history[0];
+        let last = *self.history.last().unwrap();
+        (last - first) / self.history.len() as f64
+    }
+
+    /// Get the mean λ₂ over the tracked history.
+    pub fn mean_lambda2(&self) -> f64 {
+        if self.history.is_empty() {
+            return 0.0;
+        }
+        self.history.iter().sum::<f64>() / self.history.len() as f64
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -669,5 +764,54 @@ mod tests {
             path_health.fiedler_eigenvalue,
             disc_health.fiedler_eigenvalue,
         );
+    }
+
+    // ── DriftTracker tests ──
+
+    #[test]
+    fn test_drift_tracker_healthy() {
+        let mut tracker = DriftTracker::with_defaults();
+        tracker.record(1.0);
+        tracker.record(1.02);
+        tracker.record(1.04);
+        tracker.record(1.03);
+        assert!(tracker.is_healthy());
+        assert_eq!(tracker.consecutive_violations(), 0);
+    }
+
+    #[test]
+    fn test_drift_tracker_violation() {
+        let mut tracker = DriftTracker::new(0.05, 100, 2);
+        tracker.record(1.0);
+        tracker.record(0.8); // drift = -0.2 (violation)
+        tracker.record(0.5); // drift = -0.3 (violation)
+        assert!(!tracker.is_healthy());
+        assert_eq!(tracker.consecutive_violations(), 2);
+    }
+
+    #[test]
+    fn test_drift_tracker_trend() {
+        let mut tracker = DriftTracker::with_defaults();
+        tracker.record(1.0);
+        tracker.record(1.1);
+        tracker.record(1.2);
+        let trend = tracker.trend();
+        assert!(trend > 0.0, "Upward trend: {}", trend);
+    }
+
+    #[test]
+    fn test_drift_tracker_latest() {
+        let mut tracker = DriftTracker::with_defaults();
+        tracker.record(1.0);
+        tracker.record(1.05);
+        assert!((tracker.latest_drift().unwrap() - 0.05).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_drift_tracker_empty() {
+        let tracker = DriftTracker::with_defaults();
+        assert!(tracker.latest_drift().is_none());
+        assert!(tracker.is_healthy());
+        assert_eq!(tracker.trend(), 0.0);
     }
 }
