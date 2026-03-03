@@ -17,11 +17,14 @@
 
 use std::time::{Duration, Instant};
 
+use crate::certification::CertificationConfig;
 use crate::dialectic::{DialecticConfig, DialecticDetector};
 use crate::feedback_loop::{FeedbackConfig, FeedbackLoop};
 use crate::homeostasis::HomeostasisGuard;
 use crate::inference_engine::{InferenceConfig, InferenceEngine};
 use crate::relevance_decay::{RelevanceConfig, RelevanceDecay};
+use crate::spectral::{SpectralConfig, SpectralMonitor};
+use crate::stability::{StabilityConfig, StabilityEvaluator};
 use crate::synthesis::{FrechetSynthesizer, SynthesisConfig};
 use crate::trajectory::GcsConfig;
 
@@ -51,6 +54,11 @@ pub struct EvolutionConfig {
     pub dialectic: DialecticConfig,
     pub feedback: FeedbackConfig,
     pub relevance: RelevanceConfig,
+
+    // Phase V sub-configurations
+    pub stability: StabilityConfig,
+    pub certification: CertificationConfig,
+    pub spectral: SpectralConfig,
 }
 
 impl Default for EvolutionConfig {
@@ -65,6 +73,9 @@ impl Default for EvolutionConfig {
             dialectic: DialecticConfig::default(),
             feedback: FeedbackConfig::default(),
             relevance: RelevanceConfig::default(),
+            stability: StabilityConfig::default(),
+            certification: CertificationConfig::default(),
+            spectral: SpectralConfig::default(),
         }
     }
 }
@@ -85,6 +96,10 @@ pub struct EvolutionScheduler {
     pub relevance_decay: RelevanceDecay,
     pub homeostasis: HomeostasisGuard,
 
+    // Phase V sub-systems
+    pub stability_evaluator: StabilityEvaluator,
+    pub spectral_monitor: SpectralMonitor,
+
     // Stats
     pub total_cycles: u64,
     pub total_syntheses: u64,
@@ -101,6 +116,8 @@ impl EvolutionScheduler {
         let feedback_loop = FeedbackLoop::new(config.feedback.clone());
         let relevance_decay = RelevanceDecay::new(config.relevance.clone());
         let homeostasis = HomeostasisGuard::new(config.synthesis.min_synthesis_radius);
+        let stability_evaluator = StabilityEvaluator::new(config.stability.clone());
+        let spectral_monitor = SpectralMonitor::new(config.spectral.clone());
 
         Self {
             config,
@@ -110,6 +127,8 @@ impl EvolutionScheduler {
             feedback_loop,
             relevance_decay,
             homeostasis,
+            stability_evaluator,
+            spectral_monitor,
             total_cycles: 0,
             total_syntheses: 0,
             total_ruptures: 0,

@@ -27,8 +27,15 @@
 //! ## Layer 4 — Dynamic Update
 //! - [`feedback_loop::FeedbackLoop`] — re-insertion of conclusions into the graph
 //! - [`homeostasis::HomeostasisGuard`] — radial repulsion preventing center collapse
+//! - [`homeostasis::RadialField`] — smooth gradient-based homeostasis (Phase V)
 //! - [`relevance_decay::RelevanceDecay`] — frequency-based weight adjustment
 //! - [`evolution::EvolutionScheduler`] — autonomous evolution orchestrator
+//!
+//! ## Layer 5 — Stability Motor (Phase V)
+//! - [`stability::StabilityEvaluator`] — continuous energy function E(τ)
+//! - [`certification::CertificationLevel`] — 4-tier epistemological classification
+//! - [`certification::CertificationSeal`] — immutable quality stamp
+//! - [`spectral::SpectralMonitor`] — λ₂ Laplacian connectivity monitoring
 //!
 //! # Design Principles
 //!
@@ -37,6 +44,8 @@
 //! 3. **Synthesis preserves manifold structure** — Fréchet mean, not Euclidean average
 //! 4. **Homeostasis prevents collapse** — synthesis nodes can't converge at origin
 //! 5. **All operations use f64 internally** — promoted from f32 storage for precision
+//! 6. **Every rationale carries an energy seal** — E(τ) certifies epistemological quality
+//! 7. **Spectral health monitors structural integrity** — λ₂ detects fragmentation
 
 pub mod representation;
 pub mod rationale;
@@ -48,6 +57,9 @@ pub mod feedback_loop;
 pub mod homeostasis;
 pub mod relevance_decay;
 pub mod evolution;
+pub mod stability;
+pub mod certification;
+pub mod spectral;
 pub mod error;
 
 // ── Public re-exports ──
@@ -60,6 +72,11 @@ pub use inference_engine::InferenceEngine;
 pub use synthesis::FrechetSynthesizer;
 pub use dialectic::DialecticDetector;
 pub use feedback_loop::FeedbackLoop;
-pub use homeostasis::HomeostasisGuard;
+pub use homeostasis::{HomeostasisGuard, RadialField};
 pub use relevance_decay::RelevanceDecay;
 pub use evolution::EvolutionScheduler;
+
+// ── Phase V re-exports ──
+pub use stability::{StabilityEvaluator, StabilityReport};
+pub use certification::{CertificationLevel, CertificationSeal, certify, certify_default};
+pub use spectral::{SpectralMonitor, SpectralHealth, ConnectivityClass};
