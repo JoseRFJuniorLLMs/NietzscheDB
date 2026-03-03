@@ -141,6 +141,61 @@ type MctsOpts struct {
 	Collection  string // "" → "default"
 }
 
+// ── KNN Filter types ────────────────────────────────────────────────────────
+
+// KnnFilter represents a server-side metadata filter for KNN search.
+// Use KnnMatchFilter or KnnRangeFilter constructors to create instances.
+type KnnFilter struct {
+	matchField string
+	matchValue string
+	rangeField string
+	rangeGte   float64
+	rangeGteSet bool
+	rangeLte   float64
+	rangeLteSet bool
+	isRange    bool
+}
+
+// KnnMatchFilter creates a filter that requires an exact string match on a content field.
+// Example: KnnMatchFilter("user_id", "42") filters nodes where content.user_id == "42".
+func KnnMatchFilter(field, value string) KnnFilter {
+	return KnnFilter{matchField: field, matchValue: value}
+}
+
+// KnnRangeFilter creates a filter that requires a numeric field to be within [gte, lte].
+// Use math.NaN() or 0 for unbounded sides (only one side required).
+// Example: KnnRangeFilter("energy", 0.5, 1.0) filters nodes where 0.5 <= energy <= 1.0.
+func KnnRangeFilter(field string, gte, lte float64) KnnFilter {
+	return KnnFilter{
+		rangeField:  field,
+		rangeGte:    gte,
+		rangeGteSet: true,
+		rangeLte:    lte,
+		rangeLteSet: true,
+		isRange:     true,
+	}
+}
+
+// KnnRangeFilterGte creates a range filter with only a lower bound.
+func KnnRangeFilterGte(field string, gte float64) KnnFilter {
+	return KnnFilter{
+		rangeField:  field,
+		rangeGte:    gte,
+		rangeGteSet: true,
+		isRange:     true,
+	}
+}
+
+// KnnRangeFilterLte creates a range filter with only an upper bound.
+func KnnRangeFilterLte(field string, lte float64) KnnFilter {
+	return KnnFilter{
+		rangeField:  field,
+		rangeLte:    lte,
+		rangeLteSet: true,
+		isRange:     true,
+	}
+}
+
 // ── Result types ────────────────────────────────────────────────────────────
 
 // NodeResult represents a node returned by NietzscheDB.
@@ -154,6 +209,7 @@ type NodeResult struct {
 	CreatedAt      int64
 	Content        map[string]interface{}
 	NodeType       string
+	QuantumPurity  float64
 }
 
 // KnnResult represents a single nearest-neighbour result.
@@ -164,12 +220,14 @@ type KnnResult struct {
 
 // SleepResult contains metrics from a reconsolidation sleep cycle.
 type SleepResult struct {
-	HausdorffBefore float32
-	HausdorffAfter  float32
-	HausdorffDelta  float32
-	Committed       bool
-	NodesPerturbed  uint32
-	SnapshotNodes   uint32
+	HausdorffBefore  float32
+	HausdorffAfter   float32
+	HausdorffDelta   float32
+	Committed        bool
+	NodesPerturbed   uint32
+	SnapshotNodes    uint32
+	SemanticDriftAvg float64
+	SemanticDriftMax float64
 }
 
 // CollectionInfo describes a single collection.

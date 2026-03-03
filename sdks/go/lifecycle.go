@@ -27,12 +27,14 @@ func (c *NietzscheClient) TriggerSleep(ctx context.Context, opts SleepOpts) (Sle
 	}
 
 	return SleepResult{
-		HausdorffBefore: resp.HausdorffBefore,
-		HausdorffAfter:  resp.HausdorffAfter,
-		HausdorffDelta:  resp.HausdorffDelta,
-		Committed:       resp.Committed,
-		NodesPerturbed:  resp.NodesPerturbed,
-		SnapshotNodes:   resp.SnapshotNodes,
+		HausdorffBefore:  resp.HausdorffBefore,
+		HausdorffAfter:   resp.HausdorffAfter,
+		HausdorffDelta:   resp.HausdorffDelta,
+		Committed:        resp.Committed,
+		NodesPerturbed:   resp.NodesPerturbed,
+		SnapshotNodes:    resp.SnapshotNodes,
+		SemanticDriftAvg: resp.SemanticDriftAvg,
+		SemanticDriftMax: resp.SemanticDriftMax,
 	}, nil
 }
 

@@ -78,11 +78,24 @@ func (c *NietzscheClient) Query(ctx context.Context, nql string, params map[stri
 
 // KnnSearch performs a hyperbolic nearest-neighbour search.
 func (c *NietzscheClient) KnnSearch(ctx context.Context, queryCoords []float64, k uint32, collection string) ([]KnnResult, error) {
-	resp, err := c.stub.KnnSearch(ctx, &pb.KnnRequest{
+	return c.KnnSearchFiltered(ctx, queryCoords, k, collection, nil)
+}
+
+// KnnSearchFiltered performs a KNN search with optional server-side metadata filters.
+// Filters use AND semantics: a node must satisfy ALL filters to be returned.
+// Pass nil filters for unfiltered search (equivalent to KnnSearch).
+func (c *NietzscheClient) KnnSearchFiltered(ctx context.Context, queryCoords []float64, k uint32, collection string, filters []KnnFilter) ([]KnnResult, error) {
+	req := &pb.KnnRequest{
 		QueryCoords: queryCoords,
 		K:           k,
 		Collection:  collection,
-	})
+	}
+
+	for _, f := range filters {
+		req.Filters = append(req.Filters, f.toProto())
+	}
+
+	resp, err := c.stub.KnnSearch(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("nietzsche KnnSearch: %w", err)
 	}
@@ -96,6 +109,30 @@ func (c *NietzscheClient) KnnSearch(ctx context.Context, queryCoords []float64, 
 	}
 
 	return results, nil
+}
+
+// toProto converts a KnnFilter to the protobuf representation.
+func (f KnnFilter) toProto() *pb.KnnFilter {
+	if f.isRange {
+		rf := &pb.KnnFilterRange{Field: f.rangeField}
+		if f.rangeGteSet {
+			rf.Gte = &f.rangeGte
+		}
+		if f.rangeLteSet {
+			rf.Lte = &f.rangeLte
+		}
+		return &pb.KnnFilter{
+			Condition: &pb.KnnFilter_RangeFilter{RangeFilter: rf},
+		}
+	}
+	return &pb.KnnFilter{
+		Condition: &pb.KnnFilter_MatchFilter{
+			MatchFilter: &pb.KnnFilterMatch{
+				Field: f.matchField,
+				Value: f.matchValue,
+			},
+		},
+	}
 }
 
 // convertParams transforms Go map values into protobuf QueryParamValue messages.
@@ -122,6 +159,13 @@ func convertParams(params map[string]interface{}) (map[string]*pb.QueryParamValu
 			pv.Value = &pb.QueryParamValue_IntVal{IntVal: v}
 		case int32:
 			pv.Value = &pb.QueryParamValue_IntVal{IntVal: int64(v)}
+		case bool:
+			// bool not in proto QueryParamValue; encode as string
+			if v {
+				pv.Value = &pb.QueryParamValue_StringVal{StringVal: "true"}
+			} else {
+				pv.Value = &pb.QueryParamValue_StringVal{StringVal: "false"}
+			}
 		case []float64:
 			pv.Value = &pb.QueryParamValue_VecVal{VecVal: &pb.VectorParam{Coords: v}}
 		default:
