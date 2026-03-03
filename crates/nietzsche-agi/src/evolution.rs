@@ -19,11 +19,14 @@ use std::time::{Duration, Instant};
 
 use crate::certification::CertificationConfig;
 use crate::dialectic::{DialecticConfig, DialecticDetector};
+use crate::discovery::{DiscoveryConfig, DiscoveryField};
 use crate::feedback_loop::{FeedbackConfig, FeedbackLoop};
 use crate::homeostasis::HomeostasisGuard;
 use crate::inference_engine::{InferenceConfig, InferenceEngine};
+use crate::innovation::{InnovationConfig, InnovationEvaluator};
 use crate::relevance_decay::{RelevanceConfig, RelevanceDecay};
-use crate::spectral::{SpectralConfig, SpectralMonitor};
+use crate::sandbox::{SandboxConfig, SandboxEvaluator};
+use crate::spectral::{DriftTracker, SpectralConfig, SpectralMonitor};
 use crate::stability::{StabilityConfig, StabilityEvaluator};
 use crate::synthesis::{FrechetSynthesizer, SynthesisConfig};
 use crate::trajectory::GcsConfig;
@@ -59,6 +62,11 @@ pub struct EvolutionConfig {
     pub stability: StabilityConfig,
     pub certification: CertificationConfig,
     pub spectral: SpectralConfig,
+
+    // Phase VI sub-configurations
+    pub discovery: DiscoveryConfig,
+    pub innovation: InnovationConfig,
+    pub sandbox: SandboxConfig,
 }
 
 impl Default for EvolutionConfig {
@@ -76,6 +84,9 @@ impl Default for EvolutionConfig {
             stability: StabilityConfig::default(),
             certification: CertificationConfig::default(),
             spectral: SpectralConfig::default(),
+            discovery: DiscoveryConfig::default(),
+            innovation: InnovationConfig::default(),
+            sandbox: SandboxConfig::default(),
         }
     }
 }
@@ -100,6 +111,12 @@ pub struct EvolutionScheduler {
     pub stability_evaluator: StabilityEvaluator,
     pub spectral_monitor: SpectralMonitor,
 
+    // Phase VI sub-systems
+    pub discovery_field: DiscoveryField,
+    pub innovation_evaluator: InnovationEvaluator,
+    pub sandbox_evaluator: SandboxEvaluator,
+    pub drift_tracker: DriftTracker,
+
     // Stats
     pub total_cycles: u64,
     pub total_syntheses: u64,
@@ -118,6 +135,10 @@ impl EvolutionScheduler {
         let homeostasis = HomeostasisGuard::new(config.synthesis.min_synthesis_radius);
         let stability_evaluator = StabilityEvaluator::new(config.stability.clone());
         let spectral_monitor = SpectralMonitor::new(config.spectral.clone());
+        let discovery_field = DiscoveryField::new(config.discovery.clone());
+        let innovation_evaluator = InnovationEvaluator::new(config.innovation.clone());
+        let sandbox_evaluator = SandboxEvaluator::new(config.sandbox.clone());
+        let drift_tracker = DriftTracker::with_defaults();
 
         Self {
             config,
@@ -129,6 +150,10 @@ impl EvolutionScheduler {
             homeostasis,
             stability_evaluator,
             spectral_monitor,
+            discovery_field,
+            innovation_evaluator,
+            sandbox_evaluator,
+            drift_tracker,
             total_cycles: 0,
             total_syntheses: 0,
             total_ruptures: 0,

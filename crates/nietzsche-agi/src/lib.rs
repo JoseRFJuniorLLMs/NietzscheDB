@@ -36,6 +36,13 @@
 //! - [`certification::CertificationLevel`] — 4-tier epistemological classification
 //! - [`certification::CertificationSeal`] — immutable quality stamp
 //! - [`spectral::SpectralMonitor`] — λ₂ Laplacian connectivity monitoring
+//! - [`spectral::DriftTracker`] — λ₂ evolution tracking (Evolutionary Model)
+//!
+//! ## Layer 6 — Metabolic Equilibrium (Phase VI)
+//! - [`discovery::DiscoveryField`] — D(τ) = |∇E(τ)| + θ_cluster (productive friction)
+//! - [`innovation::InnovationEvaluator`] — Φ(τ) = αS + βD - γR (acceptance function)
+//! - [`innovation::AcceptanceDecision`] — Accept / Sandbox / Reject
+//! - [`sandbox::SandboxEvaluator`] — quarantine + spectral promotion lifecycle
 //!
 //! # Design Principles
 //!
@@ -46,6 +53,8 @@
 //! 5. **All operations use f64 internally** — promoted from f32 storage for precision
 //! 6. **Every rationale carries an energy seal** — E(τ) certifies epistemological quality
 //! 7. **Spectral health monitors structural integrity** — λ₂ detects fragmentation
+//! 8. **Innovation is metabolized, not suppressed** — Φ(τ) balances stability vs discovery
+//! 9. **Sandbox quarantine tests before committing** — no untested knowledge enters the manifold
 
 pub mod representation;
 pub mod rationale;
@@ -60,6 +69,9 @@ pub mod evolution;
 pub mod stability;
 pub mod certification;
 pub mod spectral;
+pub mod discovery;
+pub mod innovation;
+pub mod sandbox;
 pub mod error;
 
 // ── Public re-exports ──
@@ -79,4 +91,9 @@ pub use evolution::EvolutionScheduler;
 // ── Phase V re-exports ──
 pub use stability::{StabilityEvaluator, StabilityReport};
 pub use certification::{CertificationLevel, CertificationSeal, certify, certify_default};
-pub use spectral::{SpectralMonitor, SpectralHealth, ConnectivityClass};
+pub use spectral::{SpectralMonitor, SpectralHealth, ConnectivityClass, DriftTracker};
+
+// ── Phase VI re-exports ──
+pub use discovery::{DiscoveryField, DiscoveryReport};
+pub use innovation::{InnovationEvaluator, InnovationReport, AcceptanceDecision};
+pub use sandbox::{SandboxEvaluator, SandboxEntry, SandboxVerdict};
