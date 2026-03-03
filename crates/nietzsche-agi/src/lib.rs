@@ -44,17 +44,27 @@
 //! - [`innovation::AcceptanceDecision`] — Accept / Sandbox / Reject
 //! - [`sandbox::SandboxEvaluator`] — quarantine + spectral promotion lifecycle
 //!
+//! ## Layer 7 — Criticality & Metabolic Dynamics (Phase VI+)
+//! - [`homeostasis::DampedHomeostasis`] — damped dynamics in tangent space via exp_map
+//! - [`criticality::CriticalityDetector`] — formal edge-of-chaos regime detection
+//! - [`criticality::RegimeState`] — Rigid / Critical / Turbulent classification
+//! - [`spectral::AdaptiveBand`] — mobile λ₂ target band with ε-adaptation
+//! - [`evolution::MetabolicInput`] — pre-computed snapshot for metabolic cycle
+//! - [`evolution::CycleReport`] — complete auditable cycle output
+//!
 //! # Design Principles
 //!
 //! 1. **Every inference carries a Rationale** — no black-box reasoning
 //! 2. **GCS validates every hop** — broken geodesics are rejected (LogicalRupture)
 //! 3. **Synthesis preserves manifold structure** — Fréchet mean, not Euclidean average
-//! 4. **Homeostasis prevents collapse** — synthesis nodes can't converge at origin
+//! 4. **Homeostasis prevents collapse** — radial field + damped dynamics via exp_map
 //! 5. **All operations use f64 internally** — promoted from f32 storage for precision
 //! 6. **Every rationale carries an energy seal** — E(τ) certifies epistemological quality
 //! 7. **Spectral health monitors structural integrity** — λ₂ detects fragmentation
 //! 8. **Innovation is metabolized, not suppressed** — Φ(τ) balances stability vs discovery
 //! 9. **Sandbox quarantine tests before committing** — no untested knowledge enters the manifold
+//! 10. **Criticality is formally defined** — edge-of-chaos = spectral band ∩ energy variance ∩ bounded velocity
+//! 11. **Damping is adaptive** — λ(t) = λ₀ + k·(σ²-σ²_crit)/σ²_crit prevents oscillation AND death
 
 pub mod representation;
 pub mod rationale;
@@ -72,6 +82,7 @@ pub mod spectral;
 pub mod discovery;
 pub mod innovation;
 pub mod sandbox;
+pub mod criticality;
 pub mod error;
 
 // ── Public re-exports ──
@@ -84,16 +95,20 @@ pub use inference_engine::InferenceEngine;
 pub use synthesis::FrechetSynthesizer;
 pub use dialectic::DialecticDetector;
 pub use feedback_loop::FeedbackLoop;
-pub use homeostasis::{HomeostasisGuard, RadialField};
+pub use homeostasis::{HomeostasisGuard, RadialField, DampedHomeostasis, DampingReport};
 pub use relevance_decay::RelevanceDecay;
 pub use evolution::EvolutionScheduler;
 
 // ── Phase V re-exports ──
 pub use stability::{StabilityEvaluator, StabilityReport};
 pub use certification::{CertificationLevel, CertificationSeal, certify, certify_default};
-pub use spectral::{SpectralMonitor, SpectralHealth, ConnectivityClass, DriftTracker};
+pub use spectral::{SpectralMonitor, SpectralHealth, ConnectivityClass, DriftTracker, AdaptiveBand};
 
 // ── Phase VI re-exports ──
 pub use discovery::{DiscoveryField, DiscoveryReport};
 pub use innovation::{InnovationEvaluator, InnovationReport, AcceptanceDecision};
 pub use sandbox::{SandboxEvaluator, SandboxEntry, SandboxVerdict};
+
+// ── Phase VI+ re-exports (Criticality & Metabolic Dynamics) ──
+pub use criticality::{CriticalityDetector, CriticalityMetrics, RegimeState};
+pub use evolution::{MetabolicInput, CycleReport};
