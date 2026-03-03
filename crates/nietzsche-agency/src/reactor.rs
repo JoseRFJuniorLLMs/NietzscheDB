@@ -373,8 +373,9 @@ impl AgencyReactor {
                 ];
                 let state = nietzsche_rl::GrowthState::new(features);
                 
-                let rt = tokio::runtime::Handle::current();
-                match rt.block_on(ppo.suggest_action(&state)) {
+                match tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(ppo.suggest_action(&state))
+                }) {
                     Ok(action) => {
                         strategy = match action {
                             nietzsche_rl::GrowthAction::Balanced => crate::evolution::EvolutionStrategy::Balanced,
