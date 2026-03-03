@@ -169,6 +169,154 @@ impl FeedbackLoop {
     pub fn config(&self) -> &FeedbackConfig {
         &self.config
     }
+
+    /// Simulate inserting a synthesis result without modifying the graph.
+    ///
+    /// This is the **off-graph simulation** step: it evaluates whether
+    /// the insertion would violate homeostasis, produce pathological
+    /// edge weights, or create other structural problems.
+    ///
+    /// # Arguments
+    /// - `node`: the candidate graph node
+    /// - `synthesis`: the AGI metadata
+    /// - `source_infos`: info about source nodes
+    /// - `homeostasis`: the homeostasis guard (for validation)
+    ///
+    /// # Returns
+    /// A [`SimulationResult`] with predicted outcomes and warnings.
+    pub fn simulate(
+        &self,
+        node: &Node,
+        synthesis: &SynthesisNode,
+        source_infos: &[SourceNodeInfo],
+        homeostasis: &crate::homeostasis::HomeostasisGuard,
+    ) -> SimulationResult {
+        let mut warnings = Vec::new();
+
+        // 1. Check homeostasis
+        let norm: f64 = node
+            .embedding
+            .coords
+            .iter()
+            .map(|&x| (x as f64) * (x as f64))
+            .sum::<f64>()
+            .sqrt();
+        let homeostasis_ok = homeostasis.check(norm).is_ok();
+        if !homeostasis_ok {
+            warnings.push(format!(
+                "Homeostasis violation: ‖x‖ = {:.6} < min_radius {:.6}",
+                norm,
+                homeostasis.min_radius()
+            ));
+        }
+
+        // 2. Compute predicted edges (dry run)
+        let result = self.prepare(node.clone(), synthesis.clone(), source_infos);
+
+        // 3. Check edge weight distribution
+        let weights: Vec<f32> = result.edges.iter().map(|e| e.weight).collect();
+        let mean_weight = if weights.is_empty() {
+            0.0
+        } else {
+            weights.iter().sum::<f32>() / weights.len() as f32
+        };
+
+        if mean_weight < 0.3 {
+            warnings.push(format!(
+                "Low mean edge weight: {:.3} (threshold: 0.3)",
+                mean_weight
+            ));
+        }
+
+        // 4. Check causal consistency
+        let acausal_count = result
+            .edges
+            .iter()
+            .filter(|e| e.causal_type == CausalType::Spacelike)
+            .count();
+        let causal_ratio = if result.edges.is_empty() {
+            1.0
+        } else {
+            1.0 - (acausal_count as f64 / result.edges.len() as f64)
+        };
+
+        if causal_ratio < 0.5 {
+            warnings.push(format!(
+                "Low causal ratio: {:.1}% of edges are Spacelike",
+                (1.0 - causal_ratio) * 100.0
+            ));
+        }
+
+        // 5. Check node energy
+        if node.meta.energy < 0.3 {
+            warnings.push(format!(
+                "Low initial energy: {:.3} (nodes < 0.3 decay quickly)",
+                node.meta.energy
+            ));
+        }
+
+        let approved = warnings.is_empty();
+
+        SimulationResult {
+            predicted_edges: result.edges.len(),
+            predicted_norm: norm,
+            homeostasis_ok,
+            mean_edge_weight: mean_weight,
+            causal_ratio,
+            warnings,
+            approved,
+        }
+    }
+}
+
+// ─────────────────────────────────────────────
+// SimulationResult — off-graph insertion preview
+// ─────────────────────────────────────────────
+
+/// Result of simulating an insertion without modifying the graph.
+///
+/// The caller can inspect this to decide whether to proceed with
+/// the actual insertion or abort.
+#[derive(Debug, Clone)]
+pub struct SimulationResult {
+    /// Number of edges that would be created.
+    pub predicted_edges: usize,
+
+    /// Predicted norm of the synthesis point (‖x‖).
+    pub predicted_norm: f64,
+
+    /// Whether the synthesis point passes homeostasis check.
+    pub homeostasis_ok: bool,
+
+    /// Mean weight of predicted edges.
+    pub mean_edge_weight: f32,
+
+    /// Fraction of edges that are causally valid (Timelike).
+    pub causal_ratio: f64,
+
+    /// Warnings about potential problems.
+    pub warnings: Vec<String>,
+
+    /// Whether the simulation approves the insertion (no warnings).
+    pub approved: bool,
+}
+
+impl std::fmt::Display for SimulationResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Simulation[edges={}, ‖x‖={:.4}, homeostasis={}, causal={:.1}%, {}]",
+            self.predicted_edges,
+            self.predicted_norm,
+            if self.homeostasis_ok { "OK" } else { "FAIL" },
+            self.causal_ratio * 100.0,
+            if self.approved {
+                "APPROVED".to_string()
+            } else {
+                format!("{} warnings", self.warnings.len())
+            },
+        )
+    }
 }
 
 #[cfg(test)]
@@ -263,5 +411,78 @@ mod tests {
         // With dt > 0 and close embeddings, should be Timelike (causal)
         assert_eq!(result.edges.len(), 1);
         // The exact causal type depends on the interval calculation
+    }
+
+    // ── Simulation tests ──
+
+    #[test]
+    fn test_simulate_approved() {
+        let fl = FeedbackLoop::with_defaults();
+        let node = make_node(); // norm ≈ 0.18, energy = 1.0
+        let synthesis = make_synthesis(node.meta.id);
+        let homeostasis = crate::homeostasis::HomeostasisGuard::default();
+
+        let sources = vec![SourceNodeInfo {
+            id: synthesis.source_nodes[0],
+            coords: vec![0.3, 0.0, 0.0],
+            created_at: 500,
+        }];
+
+        let sim = fl.simulate(&node, &synthesis, &sources, &homeostasis);
+        assert!(sim.homeostasis_ok, "Should pass homeostasis");
+        assert_eq!(sim.predicted_edges, 1);
+        assert!(sim.approved, "Should be approved: {:?}", sim.warnings);
+    }
+
+    #[test]
+    fn test_simulate_homeostasis_violation() {
+        let fl = FeedbackLoop::with_defaults();
+
+        // Create a node very close to the origin
+        let meta = NodeMeta {
+            id: Uuid::new_v4(),
+            depth: 0.01,
+            content: serde_json::json!({"type": "synthesis"}),
+            node_type: NodeType::Semantic,
+            energy: 1.0,
+            lsystem_generation: 0,
+            hausdorff_local: 1.0,
+            created_at: 1000,
+            expires_at: None,
+            metadata: std::collections::HashMap::new(),
+            valence: 0.0,
+            arousal: 0.0,
+            is_phantom: false,
+        };
+        let node = Node {
+            meta,
+            embedding: PoincareVector {
+                coords: vec![0.001, 0.001, 0.0], // norm ≈ 0.0014
+                dim: 3,
+            },
+        };
+        let synthesis = make_synthesis(node.meta.id);
+        let homeostasis = crate::homeostasis::HomeostasisGuard::new(0.05);
+
+        let sim = fl.simulate(&node, &synthesis, &[], &homeostasis);
+        assert!(!sim.homeostasis_ok, "Should fail homeostasis");
+        assert!(!sim.approved, "Should NOT be approved");
+        assert!(!sim.warnings.is_empty());
+    }
+
+    #[test]
+    fn test_simulation_display() {
+        let sim = SimulationResult {
+            predicted_edges: 3,
+            predicted_norm: 0.186,
+            homeostasis_ok: true,
+            mean_edge_weight: 0.8,
+            causal_ratio: 0.75,
+            warnings: vec![],
+            approved: true,
+        };
+        let s = format!("{sim}");
+        assert!(s.contains("APPROVED"));
+        assert!(s.contains("edges=3"));
     }
 }

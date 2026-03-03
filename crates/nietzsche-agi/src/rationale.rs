@@ -13,6 +13,8 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::certification::CertificationLevel;
+
 // ─────────────────────────────────────────────
 // InferenceType — classification of reasoning patterns
 // ─────────────────────────────────────────────
@@ -148,6 +150,21 @@ pub struct Rationale {
 
     /// Unix timestamp of when this rationale was produced.
     pub created_at: i64,
+
+    // ── Phase V: Stability seal ──
+
+    /// Energy seal E(τ) from the stability evaluator.
+    /// Set by [`StabilityEvaluator::evaluate()`](crate::stability::StabilityEvaluator)
+    /// after the rationale is initially built.
+    /// `None` until the stability evaluator stamps the rationale.
+    #[serde(default)]
+    pub energy_seal: Option<f64>,
+
+    /// Epistemological certification level derived from E(τ).
+    /// Set by the certification module after stability evaluation.
+    /// `None` until sealed.
+    #[serde(default)]
+    pub certification: Option<CertificationLevel>,
 }
 
 impl Rationale {
@@ -170,6 +187,30 @@ impl Rationale {
         // The radial gradient alone doesn't tell us the absolute start depth.
         // Callers should look up the node for the exact value.
         None
+    }
+
+    /// Seal this rationale with a stability energy value and certification level.
+    ///
+    /// This is called by the stability evaluator after computing E(τ).
+    /// Once sealed, the rationale carries its epistemological quality stamp.
+    pub fn seal(&mut self, energy: f64, certification: CertificationLevel) {
+        self.energy_seal = Some(energy);
+        self.certification = Some(certification);
+    }
+
+    /// Returns the certification level, if the rationale has been sealed.
+    pub fn certification_level(&self) -> Option<CertificationLevel> {
+        self.certification
+    }
+
+    /// Returns the energy seal value, if set.
+    pub fn energy(&self) -> Option<f64> {
+        self.energy_seal
+    }
+
+    /// Returns true if this rationale has been sealed with a stability evaluation.
+    pub fn is_sealed(&self) -> bool {
+        self.energy_seal.is_some()
     }
 }
 
@@ -276,6 +317,8 @@ impl RationaleBuilder {
             frechet_point: self.frechet_point,
             synthesis_node_id: self.synthesis_node_id,
             created_at: now,
+            energy_seal: None,
+            certification: None,
         }
     }
 }

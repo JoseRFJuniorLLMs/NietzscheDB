@@ -13,6 +13,21 @@
 //!
 //! This is analogous to biological homeostasis: the system has a "set point"
 //! (minimum radius) and actively resists perturbations that would violate it.
+//!
+//! ## Active Radial Field (Phase V)
+//!
+//! The [`RadialField`] extends homeostasis from hard clamping to a smooth
+//! gradient field. Instead of abruptly pushing a point to `min_radius`,
+//! the field applies a continuous repulsive force that increases as the
+//! point approaches the center:
+//!
+//! ```text
+//! F(r) = strength · ((min_radius - r) / min_radius)²   for r < min_radius
+//! F(r) = 0                                              for min_radius ≤ r ≤ max_radius
+//! F(r) = -strength · ((r - max_radius) / (1 - max_radius))²  for r > max_radius
+//! ```
+//!
+//! The force is radial (preserves direction) and smooth (no discontinuities).
 
 use crate::error::{AgiError, AgiResult};
 
@@ -107,6 +122,141 @@ impl Default for HomeostasisGuard {
     }
 }
 
+// ─────────────────────────────────────────────
+// RadialField — smooth gradient-based homeostasis
+// ─────────────────────────────────────────────
+
+/// A smooth radial force field that maintains points within the homeostatic zone.
+///
+/// Unlike the hard-clamping [`HomeostasisGuard`], the `RadialField` applies
+/// a continuous gradient force:
+///
+/// - **Inside min_radius**: repulsive force pushing outward (quadratic ramp)
+/// - **Inside [min, max]**: no force (homeostatic zone)
+/// - **Outside max_radius**: attractive force pulling inward (quadratic ramp)
+///
+/// The force magnitude is smooth and differentiable at the boundaries.
+#[derive(Debug, Clone)]
+pub struct RadialField {
+    /// Minimum radius (inner boundary of homeostatic zone).
+    pub min_radius: f64,
+    /// Maximum radius (outer boundary of homeostatic zone).
+    pub max_radius: f64,
+    /// Strength of the repulsive/attractive force.
+    /// Default: 0.1 (gentle correction).
+    pub strength: f64,
+}
+
+impl RadialField {
+    pub fn new(min_radius: f64, max_radius: f64, strength: f64) -> Self {
+        Self {
+            min_radius: min_radius.max(0.001),
+            max_radius: max_radius.min(0.999),
+            strength: strength.max(0.0),
+        }
+    }
+
+    /// Compute the scalar force at a given radius.
+    ///
+    /// - Positive: repulsive (push outward)
+    /// - Negative: attractive (pull inward)
+    /// - Zero: in homeostatic zone
+    pub fn force_at(&self, radius: f64) -> f64 {
+        if radius < self.min_radius {
+            // Quadratic repulsion: stronger as radius → 0
+            let violation = (self.min_radius - radius) / self.min_radius;
+            self.strength * violation * violation
+        } else if radius > self.max_radius {
+            // Quadratic attraction: stronger as radius → 1
+            let boundary = 1.0 - self.max_radius;
+            if boundary < 1e-15 {
+                return -self.strength;
+            }
+            let violation = (radius - self.max_radius) / boundary;
+            -self.strength * violation * violation
+        } else {
+            0.0 // In homeostatic zone
+        }
+    }
+
+    /// Compute the potential energy at a given radius.
+    ///
+    /// V(r) = ∫ F(r) dr — the potential well around the homeostatic zone.
+    /// Returns 0 inside the zone, positive outside.
+    pub fn potential(&self, radius: f64) -> f64 {
+        if radius < self.min_radius {
+            let violation = (self.min_radius - radius) / self.min_radius;
+            self.strength * violation * violation * violation / 3.0
+        } else if radius > self.max_radius {
+            let boundary = 1.0 - self.max_radius;
+            if boundary < 1e-15 {
+                return self.strength;
+            }
+            let violation = (radius - self.max_radius) / boundary;
+            self.strength * violation * violation * violation / 3.0
+        } else {
+            0.0
+        }
+    }
+
+    /// Compute the displacement vector for a point in the Poincaré ball.
+    ///
+    /// The displacement pushes the point toward the homeostatic zone
+    /// along the radial direction.
+    ///
+    /// # Returns
+    /// A displacement vector to be **added** to the point.
+    pub fn compute_displacement(&self, point: &[f64]) -> Vec<f64> {
+        let norm: f64 = point.iter().map(|x| x * x).sum::<f64>().sqrt();
+
+        if norm < 1e-15 {
+            // At origin — push along first axis
+            let mut disp = vec![0.0; point.len()];
+            if !disp.is_empty() {
+                disp[0] = self.force_at(0.0);
+            }
+            return disp;
+        }
+
+        let f = self.force_at(norm);
+        if f.abs() < 1e-15 {
+            return vec![0.0; point.len()];
+        }
+
+        // Displacement = F(r) · (x / ‖x‖) — radial direction
+        point.iter().map(|&x| f * x / norm).collect()
+    }
+
+    /// Apply the radial field correction to a point (in-place).
+    ///
+    /// Adds the displacement to the point, then clamps to ensure
+    /// the result stays within the Poincaré ball (‖x‖ < 1).
+    pub fn apply(&self, point: &mut [f64]) {
+        let disp = self.compute_displacement(point);
+        for (x, d) in point.iter_mut().zip(disp.iter()) {
+            *x += d;
+        }
+        // Ensure we're still in the Poincaré ball
+        let norm: f64 = point.iter().map(|x| x * x).sum::<f64>().sqrt();
+        if norm >= 1.0 {
+            let scale = 0.99 / norm;
+            for x in point.iter_mut() {
+                *x *= scale;
+            }
+        }
+    }
+}
+
+impl Default for RadialField {
+    fn default() -> Self {
+        Self {
+            min_radius: 0.05,
+            max_radius: 0.95,
+            strength: 0.1,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,5 +327,67 @@ mod tests {
         for (a, b) in point.iter().zip(original.iter()) {
             assert!((a - b).abs() < 1e-15, "Point should be unchanged");
         }
+    }
+
+    // ── RadialField tests ──
+
+    #[test]
+    fn test_radial_field_no_force_in_zone() {
+        let field = RadialField::default();
+        let f = field.force_at(0.5); // Well inside the zone
+        assert!((f - 0.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_radial_field_repulsion_near_center() {
+        let field = RadialField::default();
+        let f = field.force_at(0.01); // Very close to center
+        assert!(f > 0.0, "Should repel outward: {f}");
+        let f2 = field.force_at(0.03);
+        assert!(f > f2, "Closer to center should have stronger repulsion");
+    }
+
+    #[test]
+    fn test_radial_field_attraction_near_boundary() {
+        let field = RadialField::default();
+        let f = field.force_at(0.98); // Near boundary
+        assert!(f < 0.0, "Should attract inward: {f}");
+    }
+
+    #[test]
+    fn test_radial_field_displacement_direction() {
+        let field = RadialField::new(0.1, 0.9, 0.2);
+        let point = vec![0.02, 0.0, 0.0]; // Inside min_radius
+        let disp = field.compute_displacement(&point);
+        // Displacement should point in same direction as point (radial outward)
+        assert!(disp[0] > 0.0, "Should push outward: {:?}", disp);
+        assert!(disp[1].abs() < 1e-15);
+        assert!(disp[2].abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_radial_field_apply_moves_outward() {
+        let field = RadialField::new(0.2, 0.9, 0.5);
+        let mut point = vec![0.05, 0.0, 0.0]; // Inside min_radius
+        let orig_norm = 0.05_f64;
+        field.apply(&mut point);
+        let new_norm: f64 = point.iter().map(|x| x * x).sum::<f64>().sqrt();
+        assert!(
+            new_norm > orig_norm,
+            "Should move outward: {orig_norm} → {new_norm}"
+        );
+    }
+
+    #[test]
+    fn test_radial_field_potential_zero_in_zone() {
+        let field = RadialField::default();
+        assert!((field.potential(0.5) - 0.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_radial_field_potential_positive_outside() {
+        let field = RadialField::default();
+        assert!(field.potential(0.01) > 0.0);
+        assert!(field.potential(0.98) > 0.0);
     }
 }
