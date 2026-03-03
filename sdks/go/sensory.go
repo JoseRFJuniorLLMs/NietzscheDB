@@ -58,10 +58,11 @@ func (c *NietzscheClient) GetSensory(ctx context.Context, nodeID, collection str
 
 // Reconstruct retrieves the sensory latent vector for decoder input.
 // Quality can be "full", "degraded", or "best_available".
-func (c *NietzscheClient) Reconstruct(ctx context.Context, nodeID, quality string) (*ReconstructResult, error) {
+func (c *NietzscheClient) Reconstruct(ctx context.Context, nodeID, quality, collection string) (*ReconstructResult, error) {
 	resp, err := c.stub.Reconstruct(ctx, &pb.ReconstructRequest{
-		NodeId:  nodeID,
-		Quality: quality,
+		NodeId:     nodeID,
+		Quality:    quality,
+		Collection: collection,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("nietzsche Reconstruct: %w", err)

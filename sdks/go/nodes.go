@@ -104,6 +104,7 @@ func nodeResponseToResult(resp *pb.NodeResponse) NodeResult {
 		HausdorffLocal: resp.HausdorffLocal,
 		CreatedAt:      resp.CreatedAt,
 		NodeType:       resp.NodeType,
+		// QuantumPurity: not yet in proto; reserved for Phase 5
 	}
 
 	if resp.Embedding != nil {
