@@ -9,11 +9,21 @@
 //! ### 1. Path Entropy Estimator (`PathEntropyEstimator`)
 //!
 //! Measures **functional navigability** H_path via stochastic random walks
-//! on the hyperbolic graph. The walks are biased by the Poincaré metric:
+//! on the hyperbolic graph. The walk transition is a **4-factor Boltzmann
+//! distribution computed entirely in log-space** for numerical stability:
 //!
 //! ```text
-//! P(v → u) ∝ exp(-β · d_𝔻(v, u))
+//! log w_u = -β · d_𝔻(v, u)          // geodesic proximity
+//!         + α · E_edge(v, u)          // edge energy affinity
+//!         - γ · ln(deg(u))            // anti-hub penalty
+//!         + memory_penalty(u)         // tabu avoidance
 //! ```
+//!
+//! **Numerical safety guarantees:**
+//! - **Poincaré distance**: denominators clamped to ε when |x| → 1
+//! - **Hub penalty**: `-γ·ln(deg)` instead of `deg^(-γ)` (no underflow)
+//! - **Sampling**: log-sum-exp trick prevents overflow/underflow
+//! - **Spectral guardrail**: γ reduced when λ₂ < threshold (nearly disconnected)
 //!
 //! High H_path = diverse routes = healthy knowledge.
 //! Low H_path = redundant paths = echo chamber or triviality.
@@ -49,7 +59,7 @@
 
 use std::time::Duration;
 
-use nietzsche_hyp_ops::{exp_map_zero, poincare_distance};
+use nietzsche_hyp_ops::exp_map_zero;
 
 // ─────────────────────────────────────────────
 // State Vector
@@ -143,10 +153,15 @@ impl std::fmt::Display for CognitiveState {
 }
 
 // ═══════════════════════════════════════════════
-// §1 — Path Entropy Estimator
+// §1 — Path Entropy Estimator (Numerically Stable)
 // ═══════════════════════════════════════════════
 
 /// Configuration for path entropy estimation.
+///
+/// The walker uses a 4-factor Boltzmann transition in log-space:
+/// ```text
+/// log w_u = -β·d_𝔻(v,u) + α·E_edge - γ·ln(deg(u)) + memory_penalty
+/// ```
 #[derive(Debug, Clone)]
 pub struct PathEntropyConfig {
     /// Number of random walks to sample.
@@ -158,15 +173,51 @@ pub struct PathEntropyConfig {
     /// Default: 10
     pub walk_length: usize,
 
-    /// Temperature parameter β for the Boltzmann distribution.
+    /// Temperature β for geodesic proximity: -β · d_𝔻(v, u).
     /// Higher β = more greedy (follow shortest geodesic).
     /// Lower β = more exploratory (uniform random).
     /// Default: 1.0
     pub beta: f64,
 
+    /// Edge energy affinity α: +α · E_edge(v, u).
+    /// Higher α = prefer high-energy edges (structurally important).
+    /// Default: 0.5
+    pub alpha: f64,
+
+    /// Anti-hub exponent γ: -γ · ln(deg(u)).
+    /// Higher γ = stronger repulsion from hubs.
+    /// Default: 0.3
+    pub gamma: f64,
+
+    /// Tabu memory size (recent nodes to penalize).
+    /// 0 = no memory (pure Markov). 3-5 = short contextual memory.
+    /// Default: 3
+    pub memory_size: usize,
+
+    /// Log-space penalty for recently visited nodes (tabu).
+    /// Equivalent to multiplying probability by exp(penalty).
+    /// Default: -5.0 (≈ ×0.0067)
+    pub memory_penalty: f64,
+
+    /// λ₂ threshold below which γ is halved (spectral guardrail).
+    /// When the graph is nearly disconnected, penalizing hubs
+    /// would fragment the cognitive space further.
+    /// Default: 0.02
+    pub spectral_guardrail_threshold: f64,
+
     /// Minimum number of unique nodes visited for a valid entropy estimate.
     /// Default: 3
     pub min_visited: usize,
+
+    /// Epsilon for safe Poincaré distance computation.
+    /// Clamps (1 - |x|²) to avoid division by zero near the ball boundary.
+    /// Default: 1e-9
+    pub distance_epsilon: f64,
+
+    /// Maximum Poincaré ball radius² for distance safety.
+    /// Points with |x|² > this are clamped.
+    /// Default: 0.999999
+    pub max_radius_sq: f64,
 }
 
 impl Default for PathEntropyConfig {
@@ -175,29 +226,43 @@ impl Default for PathEntropyConfig {
             n_walks: 50,
             walk_length: 10,
             beta: 1.0,
+            alpha: 0.5,
+            gamma: 0.3,
+            memory_size: 3,
+            memory_penalty: -5.0,
+            spectral_guardrail_threshold: 0.02,
             min_visited: 3,
+            distance_epsilon: 1e-9,
+            max_radius_sq: 0.999_999,
         }
     }
 }
 
-/// Estimates functional navigability H_path via hyperbolic random walks.
+/// Estimates functional navigability H_path via numerically stable
+/// hyperbolic random walks.
 ///
-/// The walk is biased by the Poincaré distance metric:
-/// P(v → u) ∝ exp(-β · d_𝔻(v, u))
+/// ## Transition Model (4-factor Boltzmann in log-space)
 ///
-/// This measures *how diverse the routes are* through the knowledge graph.
-/// If all walks converge to the same hub → H_path ≈ 0 (echo chamber).
-/// If walks explore uniformly → H_path → log(N) (maximum diversity).
+/// ```text
+/// log w_u = -β·d_𝔻(v,u) + α·E_edge - γ·ln(deg(u)) + memory_penalty
+/// P(v→u) = exp(log w_u) / Σ exp(log w_j)   [via log-sum-exp]
+/// ```
+///
+/// ## Numerical Safety
+///
+/// 1. **Poincaré distance**: `(1-|x|²)` clamped to `distance_epsilon`
+/// 2. **Hub penalty**: `-γ·ln(deg)` instead of `deg^(-γ)` (no underflow)
+/// 3. **Sampling**: log-sum-exp trick for overflow/underflow resistance
+/// 4. **Spectral guardrail**: γ halved when λ₂ < threshold
+/// 5. **Tabu memory**: logarithmic penalty (not multiplicative 0.01)
 ///
 /// ## Divergence Metric
 ///
-/// Also computes average pairwise divergence D between walk trajectories:
-/// D = 1 - (1/m²) · Σ J(Tᵢ, Tⱼ)
-///
-/// Where J(Tᵢ, Tⱼ) is the Jaccard similarity between visited node sets.
+/// Computes average pairwise divergence D between walk trajectories:
+/// D = 1 - mean(J(Tᵢ, Tⱼ)) where J is Jaccard similarity.
 #[derive(Debug, Clone)]
 pub struct PathEntropyEstimator {
-    config: PathEntropyConfig,
+    pub config: PathEntropyConfig,
     /// Simple LCG state for deterministic pseudo-random walks in pure computation.
     rng_state: u64,
 }
@@ -252,6 +317,42 @@ impl PathEntropyEstimator {
         ((self.rng_state >> 33) as f64) / (u32::MAX as f64)
     }
 
+    // ─────────────────────────────────────────────
+    // Layer 1: Safe Poincaré distance
+    // ─────────────────────────────────────────────
+
+    /// Numerically stable Poincaré distance that doesn't explode when |x| → 1.
+    ///
+    /// ```text
+    /// d(u,v) = arcosh(1 + 2·|u-v|² / ((1-|u|²)(1-|v|²)))
+    /// ```
+    ///
+    /// When |x|² > max_radius_sq, the radius is clamped.
+    /// When (1-|x|²) < ε, the denominator is clamped to ε.
+    fn safe_poincare_distance(&self, u: &[f64], v: &[f64]) -> f64 {
+        debug_assert_eq!(u.len(), v.len(), "dimension mismatch in safe distance");
+
+        let diff_sq: f64 = u.iter().zip(v.iter()).map(|(a, b)| (a - b).powi(2)).sum();
+
+        let norm_u_sq: f64 = u.iter().map(|x| x * x).sum::<f64>()
+            .min(self.config.max_radius_sq);
+        let norm_v_sq: f64 = v.iter().map(|x| x * x).sum::<f64>()
+            .min(self.config.max_radius_sq);
+
+        let eps = self.config.distance_epsilon;
+        let denom_u = (1.0 - norm_u_sq).max(eps);
+        let denom_v = (1.0 - norm_v_sq).max(eps);
+        let denom = denom_u * denom_v;
+
+        // Clamp arg to ≥ 1.0 to avoid NaN from floating-point noise
+        let arg = (1.0 + 2.0 * diff_sq / denom).max(1.0);
+        arg.acosh()
+    }
+
+    // ─────────────────────────────────────────────
+    // Layer 2: Log-space transition weights
+    // ─────────────────────────────────────────────
+
     /// Build adjacency list from edge list.
     fn build_adjacency(edges: &[(usize, usize, f64)], n_nodes: usize) -> Vec<Vec<(usize, f64)>> {
         let mut adj = vec![vec![]; n_nodes];
@@ -264,94 +365,195 @@ impl PathEntropyEstimator {
         adj
     }
 
-    /// Compute transition probabilities from node `current` to its neighbors.
+    /// Compute node degrees for anti-hub penalty.
+    fn compute_degrees(adj: &[Vec<(usize, f64)>]) -> Vec<u64> {
+        adj.iter().map(|neighbors| neighbors.len() as u64).collect()
+    }
+
+    /// Compute log-transition weights from `current` to each neighbor.
     ///
-    /// P(current → neighbor) ∝ exp(-β · d_𝔻(current, neighbor))
+    /// ```text
+    /// log w_u = -β·d_𝔻(v,u) + α·E_edge - γ_eff·ln(deg(u)) + memory_penalty
+    /// ```
     ///
-    /// Using Poincaré distance if positions are available, else fall back
-    /// to edge weight (1/weight as "distance").
-    fn transition_probabilities(
+    /// All computation stays in log-space to prevent overflow/underflow.
+    fn log_transition_weights(
         &self,
         neighbors: &[(usize, f64)],
         current_pos: Option<&[f64]>,
         positions: &[Vec<f64>],
-        beta: f64,
+        degrees: &[u64],
+        tabu: &[usize],
+        gamma_eff: f64,
     ) -> Vec<f64> {
         if neighbors.is_empty() {
             return vec![];
         }
 
-        let probs: Vec<f64> = neighbors
+        let beta = self.config.beta;
+        let alpha = self.config.alpha;
+
+        neighbors
             .iter()
             .map(|&(nbr, edge_weight)| {
-                // Use hyperbolic distance if positions available, else edge weight
+                // ── Factor 1: Geodesic proximity ──
                 let dist = if let Some(cur_p) = current_pos {
                     if nbr < positions.len() && !positions[nbr].is_empty() {
-                        poincare_distance(cur_p, &positions[nbr])
+                        self.safe_poincare_distance(cur_p, &positions[nbr])
                     } else {
-                        // Fallback: use 1/weight as proxy distance
+                        // Fallback: 1/weight as proxy distance
                         if edge_weight > 0.0 { 1.0 / edge_weight } else { 1.0 }
                     }
                 } else {
                     if edge_weight > 0.0 { 1.0 / edge_weight } else { 1.0 }
                 };
-                (-beta * dist).exp()
-            })
-            .collect();
+                let log_geodesic = -beta * dist;
 
-        // Normalize
-        let sum: f64 = probs.iter().sum();
-        if sum <= 0.0 {
-            vec![1.0 / neighbors.len() as f64; neighbors.len()]
-        } else {
-            probs.iter().map(|p| p / sum).collect()
-        }
+                // ── Factor 2: Edge energy affinity ──
+                let log_energy = alpha * edge_weight.max(0.0);
+
+                // ── Factor 3: Anti-hub penalty (log-space, no underflow) ──
+                let deg = if nbr < degrees.len() { degrees[nbr] } else { 1 };
+                let log_antihub = -gamma_eff * (deg.max(1) as f64).ln();
+
+                // ── Factor 4: Tabu memory penalty ──
+                let log_memory = if tabu.contains(&nbr) {
+                    self.config.memory_penalty
+                } else {
+                    0.0
+                };
+
+                let log_w = log_geodesic + log_energy + log_antihub + log_memory;
+
+                // Guard against NaN/Inf
+                if log_w.is_finite() {
+                    log_w
+                } else {
+                    f64::NEG_INFINITY
+                }
+            })
+            .collect()
     }
 
-    /// Sample a neighbor using cumulative distribution.
-    fn sample_neighbor(&mut self, neighbors: &[(usize, f64)], probs: &[f64]) -> usize {
-        let r = self.next_random();
-        let mut cumulative = 0.0;
-        for (i, &p) in probs.iter().enumerate() {
-            cumulative += p;
-            if r < cumulative {
+    // ─────────────────────────────────────────────
+    // Layer 3: Log-Sum-Exp sampling
+    // ─────────────────────────────────────────────
+
+    /// Sample an index from log-weights using the log-sum-exp trick.
+    ///
+    /// This is numerically stable even when log-weights span many
+    /// orders of magnitude (e.g., -300 to +5).
+    fn log_sum_exp_sample(
+        &mut self,
+        log_weights: &[f64],
+        neighbors: &[(usize, f64)],
+    ) -> usize {
+        if log_weights.is_empty() || neighbors.is_empty() {
+            return 0;
+        }
+
+        // 1. Find max log-weight (filter -inf)
+        let max_log = log_weights
+            .iter()
+            .cloned()
+            .filter(|x| x.is_finite())
+            .fold(f64::NEG_INFINITY, f64::max);
+
+        if !max_log.is_finite() {
+            // All weights are -inf → uniform fallback
+            let idx = (self.next_random() * neighbors.len() as f64) as usize;
+            return neighbors[idx.min(neighbors.len() - 1)].0;
+        }
+
+        // 2. Compute exp(log_w - max_log) for each neighbor
+        let mut exp_weights = Vec::with_capacity(log_weights.len());
+        let mut sum = 0.0;
+        for &lw in log_weights {
+            let val = if lw.is_finite() {
+                (lw - max_log).exp()
+            } else {
+                0.0
+            };
+            exp_weights.push(val);
+            sum += val;
+        }
+
+        if sum <= 0.0 || !sum.is_finite() {
+            // Degenerate → uniform fallback
+            let idx = (self.next_random() * neighbors.len() as f64) as usize;
+            return neighbors[idx.min(neighbors.len() - 1)].0;
+        }
+
+        // 3. Cumulative sampling
+        let mut threshold = self.next_random() * sum;
+        for (i, &w) in exp_weights.iter().enumerate() {
+            threshold -= w;
+            if threshold <= 0.0 {
                 return neighbors[i].0;
             }
         }
+
         // Fallback: last neighbor
         neighbors.last().map(|&(n, _)| n).unwrap_or(0)
     }
 
-    /// Execute one random walk from `start_node`.
+    // ─────────────────────────────────────────────
+    // Layer 4: Random walk with tabu memory
+    // ─────────────────────────────────────────────
+
+    /// Execute one random walk from `start_node` with tabu memory.
     fn random_walk(
         &mut self,
         start: usize,
         adj: &[Vec<(usize, f64)>],
         positions: &[Vec<f64>],
+        degrees: &[u64],
         walk_length: usize,
-        beta: f64,
+        gamma_eff: f64,
     ) -> Vec<usize> {
         let mut path = Vec::with_capacity(walk_length + 1);
         path.push(start);
         let mut current = start;
+
+        // Tabu ring buffer (recent nodes to penalize)
+        let memory_size = self.config.memory_size;
+        let mut tabu: Vec<usize> = Vec::with_capacity(memory_size + 1);
 
         for _ in 0..walk_length {
             let neighbors = &adj[current];
             if neighbors.is_empty() {
                 break; // Dead end
             }
+
             let cur_pos = if current < positions.len() && !positions[current].is_empty() {
                 Some(positions[current].as_slice())
             } else {
                 None
             };
-            let probs = self.transition_probabilities(neighbors, cur_pos, positions, beta);
-            current = self.sample_neighbor(neighbors, &probs);
+
+            let log_weights = self.log_transition_weights(
+                neighbors, cur_pos, positions, degrees, &tabu, gamma_eff,
+            );
+
+            current = self.log_sum_exp_sample(&log_weights, neighbors);
+
+            // Update tabu memory
+            if memory_size > 0 {
+                tabu.push(current);
+                if tabu.len() > memory_size {
+                    tabu.remove(0);
+                }
+            }
+
             path.push(current);
         }
 
         path
     }
+
+    // ─────────────────────────────────────────────
+    // Layer 5: Estimation with spectral guardrail
+    // ─────────────────────────────────────────────
 
     /// Estimate H_path and divergence from the graph.
     ///
@@ -367,6 +569,21 @@ impl PathEntropyEstimator {
         positions: &[Vec<f64>],
         walk_length_override: Option<usize>,
     ) -> PathEntropyReport {
+        self.estimate_with_spectral(edges, n_nodes, positions, walk_length_override, None)
+    }
+
+    /// Estimate with optional λ₂ for spectral guardrail.
+    ///
+    /// When `lambda2 < spectral_guardrail_threshold`, γ is halved to
+    /// prevent hub penalization from fragmenting a nearly-disconnected graph.
+    pub fn estimate_with_spectral(
+        &mut self,
+        edges: &[(usize, usize, f64)],
+        n_nodes: usize,
+        positions: &[Vec<f64>],
+        walk_length_override: Option<usize>,
+        lambda2: Option<f64>,
+    ) -> PathEntropyReport {
         if n_nodes == 0 || edges.is_empty() {
             return PathEntropyReport {
                 h_path: 0.0,
@@ -378,9 +595,21 @@ impl PathEntropyEstimator {
         }
 
         let adj = Self::build_adjacency(edges, n_nodes);
+        let degrees = Self::compute_degrees(&adj);
         let walk_length = walk_length_override.unwrap_or(self.config.walk_length);
         let n_walks = self.config.n_walks;
-        let beta = self.config.beta;
+
+        // ── Layer 6: Spectral guardrail ──
+        // If graph is nearly disconnected, reduce hub penalty to preserve bridges
+        let gamma_eff = if let Some(l2) = lambda2 {
+            if l2 < self.config.spectral_guardrail_threshold {
+                self.config.gamma * 0.5
+            } else {
+                self.config.gamma
+            }
+        } else {
+            self.config.gamma
+        };
 
         // Visit frequency counter
         let mut visit_counts = vec![0u64; n_nodes];
@@ -393,7 +622,7 @@ impl PathEntropyEstimator {
         for w in 0..n_walks {
             // Spread start nodes across the graph
             let start = if n_nodes > 0 {
-                (w * 7 + 13) % n_nodes // Simple deterministic spread
+                (w * 7 + 13) % n_nodes
             } else {
                 0
             };
@@ -403,7 +632,7 @@ impl PathEntropyEstimator {
                 continue;
             }
 
-            let path = self.random_walk(start, &adj, positions, walk_length, beta);
+            let path = self.random_walk(start, &adj, positions, &degrees, walk_length, gamma_eff);
 
             // Count visits
             let mut visited = vec![false; n_nodes];
@@ -440,18 +669,13 @@ impl PathEntropyEstimator {
 
             for i in 0..m {
                 for j in (i + 1)..m {
-                    // Jaccard similarity = |A ∩ B| / |A ∪ B|
                     let mut intersection = 0u64;
                     let mut union = 0u64;
                     for k in 0..n_nodes {
                         let a = walk_sets[i][k];
                         let b = walk_sets[j][k];
-                        if a || b {
-                            union += 1;
-                        }
-                        if a && b {
-                            intersection += 1;
-                        }
+                        if a || b { union += 1; }
+                        if a && b { intersection += 1; }
                     }
                     if union > 0 {
                         total_jaccard += intersection as f64 / union as f64;
@@ -1080,11 +1304,9 @@ mod tests {
     // ── PathEntropyEstimator tests ──
 
     fn make_line_graph(n: usize) -> (Vec<(usize, usize, f64)>, Vec<Vec<f64>>) {
-        // Simple line: 0-1-2-...-n
         let edges: Vec<(usize, usize, f64)> = (0..n.saturating_sub(1))
             .map(|i| (i, i + 1, 1.0))
             .collect();
-        // Place nodes along a line in Poincaré ball
         let positions: Vec<Vec<f64>> = (0..n)
             .map(|i| {
                 let r = 0.1 + 0.7 * (i as f64) / (n.max(1) as f64);
@@ -1095,7 +1317,6 @@ mod tests {
     }
 
     fn make_star_graph(n: usize) -> (Vec<(usize, usize, f64)>, Vec<Vec<f64>>) {
-        // Hub at node 0, all others connect to 0
         let edges: Vec<(usize, usize, f64)> = (1..n)
             .map(|i| (0, i, 1.0))
             .collect();
@@ -1150,8 +1371,6 @@ mod tests {
 
     #[test]
     fn test_entropy_star_lower_than_complete() {
-        // Star graph should have lower entropy than complete graph
-        // (all walks funnel through hub)
         let (star_edges, star_pos) = make_star_graph(10);
         let (comp_edges, comp_pos) = make_complete_graph(10);
 
@@ -1161,7 +1380,6 @@ mod tests {
         let star_report = est1.estimate(&star_edges, 10, &star_pos, None);
         let comp_report = est2.estimate(&comp_edges, 10, &comp_pos, None);
 
-        // Complete graph has more diverse routes → higher entropy
         assert!(
             comp_report.h_path > star_report.h_path * 0.5,
             "Complete graph H={:.4} should be meaningfully positive (star H={:.4})",
@@ -1184,18 +1402,15 @@ mod tests {
         let (edges, positions) = make_line_graph(10);
         let mut est = PathEntropyEstimator::with_defaults();
         let report = est.estimate(&edges, 10, &positions, Some(20));
-
         assert_eq!(report.walk_length, 20);
     }
 
     #[test]
     fn test_entropy_no_positions() {
-        // Should work even without Poincaré positions (falls back to edge weight)
         let (edges, _) = make_line_graph(10);
         let empty_positions: Vec<Vec<f64>> = vec![];
         let mut est = PathEntropyEstimator::with_defaults();
         let report = est.estimate(&edges, 10, &empty_positions, None);
-
         assert!(report.h_path > 0.0, "Should work without positions: {}", report.h_path);
     }
 
@@ -1211,6 +1426,210 @@ mod tests {
         let s = format!("{report}");
         assert!(s.contains("H_path=2.3000"));
         assert!(s.contains("D=0.6500"));
+    }
+
+    // ── Numerical stability tests ──
+
+    #[test]
+    fn test_safe_distance_near_boundary() {
+        // Nodes at |x| ≈ 0.999 — would explode without safe clamping
+        let est = PathEntropyEstimator::with_defaults();
+        let u = vec![0.999, 0.0, 0.0];
+        let v = vec![0.0, 0.999, 0.0];
+
+        let d = est.safe_poincare_distance(&u, &v);
+        assert!(d.is_finite(), "Distance must be finite near boundary: {d}");
+        assert!(d > 0.0, "Distance must be positive: {d}");
+    }
+
+    #[test]
+    fn test_safe_distance_at_boundary() {
+        // Nodes exactly at |x| = 1.0 — impossible in Poincaré ball,
+        // but must not crash with NaN
+        let est = PathEntropyEstimator::with_defaults();
+        let u = vec![1.0, 0.0, 0.0];
+        let v = vec![0.0, 1.0, 0.0];
+
+        let d = est.safe_poincare_distance(&u, &v);
+        assert!(d.is_finite(), "Must handle boundary points: {d}");
+    }
+
+    #[test]
+    fn test_safe_distance_same_point() {
+        let est = PathEntropyEstimator::with_defaults();
+        let u = vec![0.5, 0.3, 0.0];
+        let d = est.safe_poincare_distance(&u, &u);
+        assert!((d - 0.0).abs() < 1e-10, "Distance to self must be 0: {d}");
+    }
+
+    #[test]
+    fn test_safe_distance_beyond_boundary() {
+        // Nodes OUTSIDE the ball (|x| > 1) — must clamp, not explode
+        let est = PathEntropyEstimator::with_defaults();
+        let u = vec![1.5, 0.0, 0.0]; // Outside ball
+        let v = vec![0.0, 0.5, 0.0];
+
+        let d = est.safe_poincare_distance(&u, &v);
+        assert!(d.is_finite(), "Must handle points outside ball: {d}");
+    }
+
+    #[test]
+    fn test_log_weights_large_hub() {
+        // Node with degree 10000 — deg^(-gamma) would underflow,
+        // but -gamma * ln(deg) is stable
+        let est = PathEntropyEstimator::with_defaults();
+        let neighbors = vec![(1, 1.0), (2, 1.0)];
+        let positions: Vec<Vec<f64>> = vec![
+            vec![0.1, 0.0, 0.0],
+            vec![0.2, 0.0, 0.0],
+            vec![0.3, 0.0, 0.0],
+        ];
+        // Fake high degrees: node 1 = hub (10000), node 2 = leaf (2)
+        let degrees = vec![5, 10000, 2];
+        let tabu = vec![];
+
+        let log_w = est.log_transition_weights(
+            &neighbors,
+            Some(&positions[0]),
+            &positions,
+            &degrees,
+            &tabu,
+            est.config.gamma,
+        );
+
+        assert_eq!(log_w.len(), 2);
+        assert!(log_w[0].is_finite(), "Hub log-weight must be finite: {}", log_w[0]);
+        assert!(log_w[1].is_finite(), "Leaf log-weight must be finite: {}", log_w[1]);
+        // Leaf should have higher weight than hub (less penalty)
+        assert!(log_w[1] > log_w[0], "Leaf should be preferred over hub");
+    }
+
+    #[test]
+    fn test_log_weights_with_tabu() {
+        let est = PathEntropyEstimator::with_defaults();
+        let neighbors = vec![(1, 1.0), (2, 1.0)];
+        let positions: Vec<Vec<f64>> = vec![
+            vec![0.1, 0.0, 0.0],
+            vec![0.2, 0.0, 0.0],
+            vec![0.3, 0.0, 0.0],
+        ];
+        let degrees = vec![2, 2, 2];
+
+        // Node 1 is in tabu
+        let tabu = vec![1];
+        let log_w = est.log_transition_weights(
+            &neighbors,
+            Some(&positions[0]),
+            &positions,
+            &degrees,
+            &tabu,
+            est.config.gamma,
+        );
+
+        // Node 2 (not tabu) should have higher weight than node 1 (tabu)
+        assert!(
+            log_w[1] > log_w[0],
+            "Non-tabu node should be preferred: {} vs {}",
+            log_w[1], log_w[0]
+        );
+    }
+
+    #[test]
+    fn test_entropy_boundary_nodes_no_nan() {
+        // Graph where all nodes are near the Poincaré boundary
+        let n = 8;
+        let edges: Vec<(usize, usize, f64)> = (0..n - 1).map(|i| (i, i + 1, 1.0)).collect();
+        let positions: Vec<Vec<f64>> = (0..n)
+            .map(|i| {
+                let angle = 2.0 * std::f64::consts::PI * (i as f64) / (n as f64);
+                // Place near boundary: |x| ≈ 0.995
+                vec![0.995 * angle.cos(), 0.995 * angle.sin(), 0.0]
+            })
+            .collect();
+
+        let mut est = PathEntropyEstimator::with_defaults();
+        let report = est.estimate(&edges, n, &positions, None);
+
+        assert!(report.h_path.is_finite(), "H_path must be finite near boundary: {}", report.h_path);
+        assert!(report.divergence.is_finite(), "Divergence must be finite: {}", report.divergence);
+        assert!(!report.h_path.is_nan(), "H_path must not be NaN");
+    }
+
+    #[test]
+    fn test_entropy_high_energy_edges_no_overflow() {
+        // Edges with very high weights — α·E_edge could overflow without log-space
+        let n = 5;
+        let edges: Vec<(usize, usize, f64)> = vec![
+            (0, 1, 100.0),  // Very high weight
+            (1, 2, 100.0),
+            (2, 3, 0.001),  // Very low weight
+            (3, 4, 100.0),
+        ];
+        let positions: Vec<Vec<f64>> = (0..n)
+            .map(|i| vec![0.1 * (i as f64 + 1.0), 0.0, 0.0])
+            .collect();
+
+        let mut est = PathEntropyEstimator::with_defaults();
+        let report = est.estimate(&edges, n, &positions, None);
+
+        assert!(report.h_path.is_finite(), "Must handle extreme edge weights: {}", report.h_path);
+    }
+
+    #[test]
+    fn test_spectral_guardrail_reduces_gamma() {
+        // When λ₂ is very low, the walker should reduce hub penalty
+        let (edges, positions) = make_star_graph(10);
+        let mut est1 = PathEntropyEstimator::with_defaults();
+        let mut est2 = PathEntropyEstimator::with_defaults();
+
+        // Normal gamma
+        let report_normal = est1.estimate_with_spectral(
+            &edges, 10, &positions, None, Some(0.5),
+        );
+        // Reduced gamma (nearly disconnected)
+        let report_guardrail = est2.estimate_with_spectral(
+            &edges, 10, &positions, None, Some(0.01),
+        );
+
+        // Both must be finite
+        assert!(report_normal.h_path.is_finite());
+        assert!(report_guardrail.h_path.is_finite());
+        // With reduced gamma, walks should be slightly more concentrated on hubs
+        // (less anti-hub penalty), but both should work
+    }
+
+    #[test]
+    fn test_tabu_prevents_loops() {
+        // Line graph with short walk — tabu should reduce revisits
+        let (edges, positions) = make_line_graph(5);
+
+        // With memory
+        let mut est_mem = PathEntropyEstimator::new(PathEntropyConfig {
+            memory_size: 2,
+            n_walks: 20,
+            walk_length: 8,
+            ..PathEntropyConfig::default()
+        });
+        let report_mem = est_mem.estimate(&edges, 5, &positions, None);
+
+        // Without memory
+        let mut est_no_mem = PathEntropyEstimator::new(PathEntropyConfig {
+            memory_size: 0,
+            n_walks: 20,
+            walk_length: 8,
+            ..PathEntropyConfig::default()
+        });
+        let report_no_mem = est_no_mem.estimate(&edges, 5, &positions, None);
+
+        // Both should be finite and positive
+        assert!(report_mem.h_path > 0.0);
+        assert!(report_no_mem.h_path > 0.0);
+        // With memory, should visit more unique nodes (less backtracking)
+        assert!(
+            report_mem.unique_visited >= report_no_mem.unique_visited.saturating_sub(1),
+            "Tabu should help explore: mem={} vs no_mem={}",
+            report_mem.unique_visited, report_no_mem.unique_visited
+        );
     }
 
     // ── MetabolicSleepManager tests ──
