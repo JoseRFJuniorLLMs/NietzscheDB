@@ -37,6 +37,7 @@ pub enum CdcEventType {
     BatchInsertEdges { count: u32 },
     SleepCycle,
     Zaratustra,
+    Defibrillate,
     SqlExec,
 }
 
@@ -52,6 +53,7 @@ impl CdcEventType {
             Self::BatchInsertEdges { .. } => "BATCH_INSERT_EDGES",
             Self::SleepCycle => "SLEEP_CYCLE",
             Self::Zaratustra => "ZARATUSTRA",
+            Self::Defibrillate => "DEFIBRILLATE",
             Self::SqlExec => "SQL_EXEC",
         }
     }
@@ -78,7 +80,7 @@ impl CdcBroadcaster {
 
     /// Publish a CDC event. If no subscribers are listening, the event is dropped.
     pub fn publish(&self, event_type: CdcEventType, entity_id: Uuid, collection: &str) {
-        let lsn = self.lsn.fetch_add(1, Ordering::Relaxed);
+        let lsn = self.lsn.fetch_add(1, Ordering::SeqCst);
         let timestamp_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -103,6 +105,6 @@ impl CdcBroadcaster {
 
     /// Current LSN (next event will have this LSN).
     pub fn current_lsn(&self) -> u64 {
-        self.lsn.load(Ordering::Relaxed)
+        self.lsn.load(Ordering::SeqCst)
     }
 }

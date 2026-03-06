@@ -75,6 +75,17 @@
 //! 11. **Damping is adaptive** — λ(t) = λ₀ + k·(σ²-σ²_crit)/σ²_crit prevents oscillation AND death
 //! 12. **Sleep is Riemannian** — τ_relax = 1/‖∇S‖ where S = [λ₂, E_g, H_path], organism breathes at its own rhythm
 //! 13. **Curiosity is forced when stagnant** — geometric perturbation + anti-hub reweight + walk extension (Option D)
+//! 14. **Genome evolves via proportional mutation** — ε(t) = ε₀·exp(-k·Var(TGC))·(1-ρ/ρ_max)
+//! 15. **Ur-Cortex is immutable** — Axiom Drift d_𝔻(C₀, Cₜ) < η·r̄₀ prevents identity dissolution
+//!
+//! ## Layer 9 — Structural Evolution & Identity Shield (Phase VIII)
+//! - [`genome::EvolutionaryGenome`] — DNA-like parameter struct with hard bounds
+//! - [`genome::StructuralEvolutionUnit`] — autonomous α, β, γ evolution orchestrator
+//! - [`genome::GenomicSnapshot`] — checkpoint for rollback on structural regression
+//! - [`genome::RollbackReason`] — spectral rupture / TGC degradation / turbulence / sensitivity
+//! - [`genome::CognitiveBudget`] — computational cost bounds per cycle
+//! - [`identity::AxiomIdentity`] — immutable Ur-Cortex shield with Poincaré drift detection
+//! - [`identity::DriftReport`] — d_𝔻(C₀, Cₜ) measurement with relative threshold
 
 pub mod representation;
 pub mod rationale;
@@ -94,6 +105,8 @@ pub mod innovation;
 pub mod sandbox;
 pub mod criticality;
 pub mod metabolism;
+pub mod genome;
+pub mod identity;
 pub mod error;
 
 // ── Public re-exports ──
@@ -117,7 +130,10 @@ pub use spectral::{SpectralMonitor, SpectralHealth, ConnectivityClass, DriftTrac
 
 // ── Phase VI re-exports ──
 pub use discovery::{DiscoveryField, DiscoveryReport};
-pub use innovation::{InnovationEvaluator, InnovationReport, AcceptanceDecision};
+pub use innovation::{
+    InnovationEvaluator, InnovationReport, AcceptanceDecision,
+    NavigabilityEvaluator, NavigabilityReport, NavigabilityConfig, InnovationGrade,
+};
 pub use sandbox::{SandboxEvaluator, SandboxEntry, SandboxVerdict};
 
 // ── Phase VI+ re-exports (Criticality & Metabolic Dynamics) ──
@@ -130,4 +146,16 @@ pub use metabolism::{
     MetabolicSleepManager, SleepReport,
     CuriosityEngine, CuriosityActions,
     StateVector, CognitiveState, MetabolicReport,
+};
+
+// ── Phase VIII re-exports (Structural Evolution & Identity Shield) ──
+pub use genome::{
+    EvolutionaryGenome, GenomeBounds, GenomicSnapshot,
+    StructuralEvolutionUnit, StructuralEvolutionConfig,
+    EvolutionStepReport, EvolutionUnitStats,
+    RollbackReason, CognitiveBudget,
+};
+pub use identity::{
+    AxiomIdentity, IdentityConfig,
+    DriftReport, AxiomDriftExceeded,
 };

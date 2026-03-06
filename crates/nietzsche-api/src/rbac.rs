@@ -27,6 +27,15 @@ pub fn require_writer<T>(req: &Request<T>) -> Result<(), Status> {
     }
 }
 
+/// Reject the request unless the caller has `Reader`, `Writer`, or `Admin` role.
+/// Fail-closed: if no role is present, the request is rejected.
+pub fn require_reader<T>(req: &Request<T>) -> Result<(), Status> {
+    match req.extensions().get::<Role>() {
+        Some(Role::Admin) | Some(Role::Writer) | Some(Role::Reader) => Ok(()),
+        None => Err(Status::unauthenticated("no authentication context")),
+    }
+}
+
 /// Reject the request unless the caller has `Admin` role.
 /// Fail-closed: if no role is present, the request is rejected.
 pub fn require_admin<T>(req: &Request<T>) -> Result<(), Status> {

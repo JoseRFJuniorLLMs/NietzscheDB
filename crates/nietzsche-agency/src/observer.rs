@@ -1,6 +1,7 @@
 use nietzsche_graph::{AdjacencyIndex, GraphStorage};
 use nietzsche_lsystem::global_hausdorff;
 use tokio::sync::broadcast;
+use uuid::Uuid;
 
 use crate::config::AgencyConfig;
 use crate::error::AgencyError;
@@ -164,19 +165,19 @@ impl MetaObserver {
             .unwrap_or_default()
             .as_millis() as u64;
 
-        // Collect energies for statistics
+        // Collect energies from lightweight NodeMeta (no embeddings loaded)
         let mut energies: Vec<f32> = Vec::new();
-        let mut nodes_for_hausdorff: Vec<nietzsche_graph::Node> = Vec::new();
+        let mut node_ids: Vec<Uuid> = Vec::new();
         let mut total_nodes = 0usize;
 
-        for result in storage.iter_nodes() {
-            let node = match result {
-                Ok(n) => n,
+        for result in storage.iter_nodes_meta() {
+            let meta = match result {
+                Ok(m) => m,
                 Err(_) => continue,
             };
             total_nodes += 1;
-            energies.push(node.energy);
-            nodes_for_hausdorff.push(node);
+            energies.push(meta.energy);
+            node_ids.push(meta.id);
         }
 
         let total_edges = adjacency.edge_count();
@@ -184,7 +185,25 @@ impl MetaObserver {
         // Energy statistics
         let (mean_energy, energy_std, percentiles) = compute_energy_stats(&energies);
 
-        // Global Hausdorff
+        // Global Hausdorff — sample up to 1000 nodes to avoid O(N) full load.
+        // Box-counting accuracy plateaus beyond ~1000 points, so sampling
+        // gives a good estimate without loading every node with embeddings.
+        const HAUSDORFF_SAMPLE_SIZE: usize = 1000;
+        let sampled_ids = if node_ids.len() <= HAUSDORFF_SAMPLE_SIZE {
+            node_ids.clone()
+        } else {
+            // Deterministic stride-based sampling (avoids rand dependency)
+            let step = node_ids.len() / HAUSDORFF_SAMPLE_SIZE;
+            node_ids.iter().step_by(step).take(HAUSDORFF_SAMPLE_SIZE).cloned().collect()
+        };
+
+        let mut nodes_for_hausdorff: Vec<nietzsche_graph::Node> = Vec::with_capacity(sampled_ids.len());
+        for id in &sampled_ids {
+            if let Ok(Some(node)) = storage.get_node(id) {
+                nodes_for_hausdorff.push(node);
+            }
+        }
+
         let global_h = global_hausdorff(&nodes_for_hausdorff);
         let is_fractal = global_h >= 1.2 && global_h <= 1.8;
 

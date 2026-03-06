@@ -167,9 +167,10 @@ impl EncryptionConfig {
     /// Decrypt data from a specific column family.
     ///
     /// Supports both V2 (AES-256-GCM) and legacy V1 (AES-256-CTR) formats.
-    pub fn decrypt(&self, cf_name: &str, item_key: &[u8], data: &[u8]) -> Vec<u8> {
+    /// Returns `Err` if GCM authentication fails (data integrity violation).
+    pub fn decrypt(&self, cf_name: &str, item_key: &[u8], data: &[u8]) -> Result<Vec<u8>, crate::error::GraphError> {
         if !self.enabled {
-            return data.to_vec();
+            return Ok(data.to_vec());
         }
 
         // Check version byte to determine format
@@ -178,15 +179,15 @@ impl EncryptionConfig {
             self.decrypt_gcm(cf_name, &data[1..])
         } else {
             // Legacy V1: AES-256-CTR (for migration compatibility)
-            self.decrypt_ctr_legacy(cf_name, item_key, data)
+            Ok(self.decrypt_ctr_legacy(cf_name, item_key, data))
         }
     }
 
     /// Decrypt using new AES-256-GCM format.
-    fn decrypt_gcm(&self, cf_name: &str, data: &[u8]) -> Vec<u8> {
+    fn decrypt_gcm(&self, cf_name: &str, data: &[u8]) -> Result<Vec<u8>, crate::error::GraphError> {
         if data.len() < GCM_NONCE_SIZE + 16 {
             // Too short to contain nonce + tag; return as-is (likely unencrypted)
-            return data.to_vec();
+            return Ok(data.to_vec());
         }
         let derived = self.derive_key(format!("nietzsche:{cf_name}").as_bytes());
         let nonce = GcmNonce::from_slice(&data[..GCM_NONCE_SIZE]);
@@ -194,11 +195,10 @@ impl EncryptionConfig {
 
         let cipher = Aes256Gcm::new(derived.as_ref().into());
         match cipher.decrypt(nonce, ciphertext) {
-            Ok(plaintext) => plaintext,
+            Ok(plaintext) => Ok(plaintext),
             Err(_) => {
-                tracing::error!(cf = cf_name, "AES-GCM decryption failed — data integrity violation!");
-                // Return empty rather than corrupted data
-                Vec::new()
+                tracing::error!(cf = cf_name, "AES-GCM decryption failed - data integrity violation!");
+                Err(crate::error::GraphError::Storage("AES-GCM decryption failed: data integrity violation".into()))
             }
         }
     }
@@ -281,7 +281,7 @@ mod tests {
         assert!(encrypted.len() > 1 + GCM_NONCE_SIZE + 16);
         assert_ne!(&encrypted[1 + GCM_NONCE_SIZE..], plaintext.as_slice());
 
-        let decrypted = config.decrypt("nodes", item_key.as_bytes(), &encrypted);
+        let decrypted = config.decrypt("nodes", item_key.as_bytes(), &encrypted).unwrap();
         assert_eq!(decrypted, plaintext.to_vec());
     }
 
@@ -297,9 +297,9 @@ mod tests {
         let last = encrypted.len() - 1;
         encrypted[last] ^= 0x01;
 
-        let decrypted = config.decrypt("nodes", &item_key, &encrypted);
-        // GCM should detect tampering and return empty
-        assert!(decrypted.is_empty());
+        let result = config.decrypt("nodes", &item_key, &encrypted);
+        // GCM should detect tampering and return an error
+        assert!(result.is_err());
     }
 
     #[test]
@@ -315,8 +315,8 @@ mod tests {
         assert_ne!(enc1, enc2);
 
         // But both decrypt to the same plaintext
-        assert_eq!(config.decrypt("nodes", &item_key, &enc1), plaintext.to_vec());
-        assert_eq!(config.decrypt("nodes", &item_key, &enc2), plaintext.to_vec());
+        assert_eq!(config.decrypt("nodes", &item_key, &enc1).unwrap(), plaintext.to_vec());
+        assert_eq!(config.decrypt("nodes", &item_key, &enc2).unwrap(), plaintext.to_vec());
     }
 
     #[test]

@@ -175,8 +175,13 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         )?;
         let bytes = serializer.into_serializer().into_inner();
 
-        let mut file = File::create(path).map_err(|e| e.to_string())?;
+        // Write to temp file then rename for atomic snapshot save.
+        // This prevents corruption if the process crashes mid-write.
+        let tmp_path = path.with_extension("tmp");
+        let mut file = File::create(&tmp_path).map_err(|e| e.to_string())?;
         file.write_all(&bytes).map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| e.to_string())?; // fsync before rename
+        std::fs::rename(&tmp_path, path).map_err(|e| e.to_string())?; // atomic on most filesystems
 
         Ok(())
     }
@@ -412,7 +417,8 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         mode: QuantizationMode,
         config: Arc<GlobalConfig>,
     ) -> Result<Self, String> {
-        let archived = unsafe { rkyv::archived_root::<SnapshotData>(data) };
+        let archived = rkyv::check_archived_root::<SnapshotData>(data)
+            .map_err(|e| format!("rkyv validation failed: {e}"))?;
 
         let deserialized: SnapshotData = archived
             .deserialize(&mut rkyv::Infallible)
@@ -890,15 +896,18 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let bytes = self.storage.get(node_id);
         match self.mode {
             QuantizationMode::ScalarI8 => {
-                let q = QuantizedHyperVector::<N>::from_bytes(&bytes);
+                let q = QuantizedHyperVector::<N>::from_bytes(&bytes)
+                    .expect("corrupt storage: QuantizedHyperVector");
                 M::distance_quantized(q, query)
             }
             QuantizationMode::Binary => {
-                let b = BinaryHyperVector::<N>::from_bytes(&bytes);
+                let b = BinaryHyperVector::<N>::from_bytes(&bytes)
+                    .expect("corrupt storage: BinaryHyperVector");
                 M::distance_binary(b, query)
             }
             QuantizationMode::None => {
-                let v = HyperVector::<N>::from_bytes(&bytes);
+                let v = HyperVector::<N>::from_bytes(&bytes)
+                    .expect("corrupt storage: HyperVector");
                 M::distance(&v.coords, &query.coords)
             }
         }
@@ -1167,7 +1176,8 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         let bytes = self.storage.get(id);
         match self.mode {
             QuantizationMode::ScalarI8 => {
-                let q = QuantizedHyperVector::<N>::from_bytes(&bytes);
+                let q = QuantizedHyperVector::<N>::from_bytes(&bytes)
+                    .expect("corrupt storage: QuantizedHyperVector");
                 let mut coords = [0.0; N];
                 if M::name() == "lorentz" {
                     // Lorentz: alpha stores the dynamic-range scale factor
@@ -1189,15 +1199,18 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             }
             QuantizationMode::None => {
                 if self.storage_f32 {
-                    let v = HyperVectorF32::<N>::from_bytes(&bytes);
+                    let v = HyperVectorF32::<N>::from_bytes(&bytes)
+                        .expect("corrupt storage: HyperVectorF32");
                     v.to_float64()
                 } else {
-                    let v = HyperVector::<N>::from_bytes(&bytes);
+                    let v = HyperVector::<N>::from_bytes(&bytes)
+                        .expect("corrupt storage: HyperVector");
                     v.clone()
                 }
             }
             QuantizationMode::Binary => {
-                let b = BinaryHyperVector::<N>::from_bytes(&bytes);
+                let b = BinaryHyperVector::<N>::from_bytes(&bytes)
+                    .expect("corrupt storage: BinaryHyperVector");
                 let mut coords = [0.0; N];
                 let val = 1.0 / (N as f64).sqrt() * 0.99;
                 for (i, coord) in coords.iter_mut().enumerate() {
@@ -1454,10 +1467,17 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             }
         }
 
-        // Update global entry point if needed
+        // Update global entry point if needed.
+        // TODO(safety): max_layer and entry_point are separate AtomicU32s updated non-atomically.
+        // A concurrent reader can observe max_layer updated but entry_point still pointing to the
+        // old node (which may not have layers up to the new max_layer), causing out-of-bounds
+        // layer access. The proper fix is to combine both into a single AtomicU64:
+        //   high 32 bits = max_layer, low 32 bits = entry_point internal node ID
+        // and swap with a single compare_exchange. For now, update entry_point FIRST so that
+        // any reader seeing the new max_layer will also see the new entry_point.
         if (new_level as u32) > max_layer {
-            self.max_layer.store(new_level as u32, Ordering::SeqCst);
             self.entry_point.store(id, Ordering::SeqCst);
+            self.max_layer.store(new_level as u32, Ordering::SeqCst);
         }
 
         Ok(())
@@ -1493,6 +1513,17 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     }
 
     fn prune_connections(&self, node_id: NodeId, level: usize, max_links: usize) {
+        // TODO(TOCTOU): There is a time-of-check-to-time-of-use race here.
+        // Step 1 snapshots the neighbor list under a read lock, step 2 computes
+        // distances without any lock held, and step 3 re-acquires the write lock
+        // to apply the pruned list. Between steps 1 and 3, concurrent inserts can
+        // add new links that are not evaluated by select_neighbors. The mitigation
+        // below (preserving newly-added links) reduces the impact but does not
+        // eliminate it: the new links are kept without distance-based pruning,
+        // which can lead to suboptimal neighbor lists. A full fix would require
+        // holding the write lock across the entire prune operation or using a
+        // versioned compare-and-swap on the neighbor list.
+
         // 1. Snapshot current links (Read Lock)
         let initial_links: Vec<u32> = {
             let nodes = self.nodes.read();

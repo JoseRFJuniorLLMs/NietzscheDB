@@ -224,6 +224,11 @@ impl AgencyDaemon for NezhmetdinovDaemon {
             let vitality = nezhmetdinov_vitality(&self.weights, &input);
 
             // ── Triple Condition ──────────────────────────────────
+            // TODO: The triple condition checks causal centrality (causal
+            // edges) but does NOT check if the node is a topological bridge
+            // (articulation point). Removing a bridge with zero causal edges
+            // could still disconnect the graph. Consider adding a bridge
+            // detection check for nodes with degree >= 2 before condemning.
             let cond1_low_vitality = vitality < nezh.vitality_threshold;
             let cond2_low_energy = nd.energy < nezh.energy_threshold;
             let cond3_no_causal = causal == 0;

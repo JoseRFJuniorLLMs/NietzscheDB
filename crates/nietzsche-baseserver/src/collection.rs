@@ -732,8 +732,15 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         let original_config = self.config.clone();
         let index_link = self.index_link.clone();
 
+        // Capture old reverse_id_map snapshot before vacuum so we can recover user IDs
+        let old_reverse_map: HashMap<u32, u32> = self
+            .reverse_id_map
+            .iter()
+            .map(|entry| (*entry.key(), *entry.value()))
+            .collect();
+
         // Run heavy lifting in blocking thread
-        let (new_index_arc, temp_dir, new_snap_path) = tokio::task::spawn_blocking(move || {
+        let (new_index_arc, temp_dir, new_snap_path, id_remap) = tokio::task::spawn_blocking(move || {
             use nietzsche_core::config::GlobalConfig;
             use nietzsche_vecstore::VectorStore;
             use std::path::PathBuf;
@@ -744,7 +751,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             let count = all_data.len();
 
             if count == 0 {
-                return Ok((None, PathBuf::new(), PathBuf::new())); // Nothing to do
+                return Ok((None, PathBuf::new(), PathBuf::new(), Vec::new())); // Nothing to do
             }
 
             // 2. Setup "Turbo Mode"
@@ -779,11 +786,12 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             let temp_store = Arc::new(VectorStore::new(&temp_dir, element_size));
             let new_index = HnswIndex::<N, M>::new(temp_store, mode, vacuum_config);
 
-            // 4. Sequential Insertion
-            // No yielding needed in blocking thread, OS handles scheduling.
-            for (_old_id, vec, meta) in &all_data {
-                // Ensure insert handles internal logic
-                let _ = new_index.insert(vec, meta.clone());
+            // 4. Sequential Insertion -- track old_internal_id -> new_internal_id for id_map rebuild
+            let mut remap: Vec<(u32, u32)> = Vec::with_capacity(count);
+            for (old_id, vec, meta) in &all_data {
+                if let Ok(new_internal_id) = new_index.insert(vec, meta.clone()) {
+                    remap.push((*old_id, new_internal_id));
+                }
             }
 
             // Save to disk
@@ -792,7 +800,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 return Err(e.clone());
             }
 
-            Ok((Some(Arc::new(new_index)), temp_dir, new_snap_path))
+            Ok((Some(Arc::new(new_index)), temp_dir, new_snap_path, remap))
         })
         .await
         .map_err(|e| e.to_string())??;
@@ -809,6 +817,24 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             // Rename overwrites
             std::fs::rename(&new_snap_path, &snap_path).map_err(|e| e.to_string())?;
             std::fs::remove_dir_all(&temp_dir).ok();
+
+            // 7. Rebuild id_map and reverse_id_map from the remap + old reverse map
+            self.id_map.clear();
+            self.reverse_id_map.clear();
+            let mut all_identity = true;
+            for (old_internal_id, new_internal_id) in &id_remap {
+                // Recover the user ID from the old reverse map; fall back to old internal ID
+                let user_id = old_reverse_map
+                    .get(old_internal_id)
+                    .copied()
+                    .unwrap_or(*old_internal_id);
+                self.id_map.insert(user_id, *new_internal_id);
+                self.reverse_id_map.insert(*new_internal_id, user_id);
+                if user_id != *new_internal_id {
+                    all_identity = false;
+                }
+            }
+            self.ids_are_identity.store(all_identity, Ordering::Release);
 
             println!(
                 "✨ Vacuum Complete in {:?}. Recall upgraded.",
@@ -868,7 +894,14 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
         let original_config = self.config.clone();
         let index_link = self.index_link.clone();
 
-        let (new_index_arc, temp_dir, new_snap_path) = tokio::task::spawn_blocking(move || {
+        // Capture old reverse_id_map snapshot before vacuum so we can recover user IDs
+        let old_reverse_map: HashMap<u32, u32> = self
+            .reverse_id_map
+            .iter()
+            .map(|entry| (*entry.key(), *entry.value()))
+            .collect();
+
+        let (new_index_arc, temp_dir, new_snap_path, id_remap) = tokio::task::spawn_blocking(move || {
             use nietzsche_core::config::GlobalConfig;
             use nietzsche_vecstore::VectorStore;
             use std::path::PathBuf;
@@ -877,7 +910,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             let all_data = current_index.peek_all();
 
             if all_data.is_empty() {
-                return Ok((None, PathBuf::new(), PathBuf::new()));
+                return Ok((None, PathBuf::new(), PathBuf::new(), Vec::new()));
             }
 
             // Filter entries based on the VacuumFilterQuery
@@ -905,7 +938,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
 
             let count = filtered.len();
             if count == 0 {
-                return Ok((None, PathBuf::new(), PathBuf::new()));
+                return Ok((None, PathBuf::new(), PathBuf::new(), Vec::new()));
             }
 
             let vacuum_m = 64;
@@ -937,8 +970,12 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             let temp_store = Arc::new(VectorStore::new(&temp_dir, element_size));
             let new_index = HnswIndex::<N, M>::new(temp_store, mode, vacuum_config);
 
-            for (_old_id, vec, meta) in &filtered {
-                let _ = new_index.insert(vec, meta.clone());
+            // Track old_internal_id -> new_internal_id for id_map rebuild
+            let mut remap: Vec<(u32, u32)> = Vec::with_capacity(count);
+            for (old_id, vec, meta) in &filtered {
+                if let Ok(new_internal_id) = new_index.insert(vec, meta.clone()) {
+                    remap.push((*old_id, new_internal_id));
+                }
             }
 
             let new_snap_path = data_dir.join("index.snap.new");
@@ -946,7 +983,7 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
                 return Err(e.clone());
             }
 
-            Ok((Some(Arc::new(new_index)), temp_dir, new_snap_path))
+            Ok((Some(Arc::new(new_index)), temp_dir, new_snap_path, remap))
         })
         .await
         .map_err(|e| e.to_string())??;
@@ -959,13 +996,28 @@ impl<const N: usize, M: Metric<N>> Collection for CollectionImpl<N, M> {
             std::fs::rename(&new_snap_path, &snap_path).map_err(|e| e.to_string())?;
             std::fs::remove_dir_all(&temp_dir).ok();
 
-            // Rebuild id_map and reverse_id_map from the new index
+            // Rebuild id_map and reverse_id_map from the remap + old reverse map
             self.id_map.clear();
             self.reverse_id_map.clear();
+            let mut all_identity = true;
+            for (old_internal_id, new_internal_id) in &id_remap {
+                // Recover the user ID from the old reverse map; fall back to old internal ID
+                let user_id = old_reverse_map
+                    .get(old_internal_id)
+                    .copied()
+                    .unwrap_or(*old_internal_id);
+                self.id_map.insert(user_id, *new_internal_id);
+                self.reverse_id_map.insert(*new_internal_id, user_id);
+                if user_id != *new_internal_id {
+                    all_identity = false;
+                }
+            }
+            self.ids_are_identity.store(all_identity, Ordering::Release);
 
             println!(
-                "✨ Filtered Vacuum Complete in {:?}.",
-                start.elapsed()
+                "✨ Filtered Vacuum Complete in {:?}. Rebuilt id_map with {} entries.",
+                start.elapsed(),
+                id_remap.len(),
             );
         }
 

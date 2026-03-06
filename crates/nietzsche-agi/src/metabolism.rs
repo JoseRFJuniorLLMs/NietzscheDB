@@ -23,7 +23,7 @@
 //! - **Poincaré distance**: denominators clamped to ε when |x| → 1
 //! - **Hub penalty**: `-γ·ln(deg)` instead of `deg^(-γ)` (no underflow)
 //! - **Sampling**: log-sum-exp trick prevents overflow/underflow
-//! - **Spectral guardrail**: γ reduced when λ₂ < threshold (nearly disconnected)
+//! - **Spectral guardrail**: γ_eff = γ·σ((λ₂-λ_c)/τ) — smooth sigmoid, no hysteresis
 //!
 //! High H_path = diverse routes = healthy knowledge.
 //! Low H_path = redundant paths = echo chamber or triviality.
@@ -60,6 +60,11 @@
 use std::time::Duration;
 
 use nietzsche_hyp_ops::exp_map_zero;
+
+use crate::innovation::NavigabilityReport;
+
+#[cfg(test)]
+use crate::innovation::NavigabilityEvaluator;
 
 // ─────────────────────────────────────────────
 // State Vector
@@ -194,16 +199,38 @@ pub struct PathEntropyConfig {
     /// Default: 3
     pub memory_size: usize,
 
-    /// Log-space penalty for recently visited nodes (tabu).
+    /// Base log-space penalty for recently visited nodes (tabu).
     /// Equivalent to multiplying probability by exp(penalty).
+    /// When `adaptive_memory` is true, the actual penalty is:
+    ///   penalty = memory_penalty_base * (1 - H_local)
+    /// where H_local is the walk's local entropy.
     /// Default: -5.0 (≈ ×0.0067)
     pub memory_penalty: f64,
 
-    /// λ₂ threshold below which γ is halved (spectral guardrail).
+    /// Enable adaptive memory penalty scaling by local entropy.
+    ///
+    /// When true:
+    ///   effective_penalty = memory_penalty * (1 - H_local)
+    ///   - Low H_local (redundant path) → stronger penalty → force exploration
+    ///   - High H_local (exploratory path) → weaker penalty → allow revisits
+    ///
+    /// This prevents the fixed -5.0 from collapsing the probability
+    /// support in sparse graph regimes.
+    /// Default: true
+    pub adaptive_memory: bool,
+
+    /// λ₂ center for smooth spectral guardrail sigmoid (λ_c).
     /// When the graph is nearly disconnected, penalizing hubs
     /// would fragment the cognitive space further.
     /// Default: 0.02
     pub spectral_guardrail_threshold: f64,
+
+    /// Sigmoid steepness τ for the spectral guardrail.
+    /// γ_eff = γ · σ((λ₂ - λ_c) / τ) — eliminates hysteresis
+    /// from the old discrete threshold.
+    /// Smaller τ = sharper transition (closer to step function).
+    /// Default: 0.005
+    pub spectral_tau: f64,
 
     /// Minimum number of unique nodes visited for a valid entropy estimate.
     /// Default: 3
@@ -230,7 +257,9 @@ impl Default for PathEntropyConfig {
             gamma: 0.3,
             memory_size: 3,
             memory_penalty: -5.0,
+            adaptive_memory: true,
             spectral_guardrail_threshold: 0.02,
+            spectral_tau: 0.005,
             min_visited: 3,
             distance_epsilon: 1e-9,
             max_radius_sq: 0.999_999,
@@ -253,7 +282,7 @@ impl Default for PathEntropyConfig {
 /// 1. **Poincaré distance**: `(1-|x|²)` clamped to `distance_epsilon`
 /// 2. **Hub penalty**: `-γ·ln(deg)` instead of `deg^(-γ)` (no underflow)
 /// 3. **Sampling**: log-sum-exp trick for overflow/underflow resistance
-/// 4. **Spectral guardrail**: γ halved when λ₂ < threshold
+/// 4. **Spectral guardrail**: γ_eff = γ·σ((λ₂-λ_c)/τ) smooth sigmoid
 /// 5. **Tabu memory**: logarithmic penalty (not multiplicative 0.01)
 ///
 /// ## Divergence Metric
@@ -377,6 +406,11 @@ impl PathEntropyEstimator {
     /// ```
     ///
     /// All computation stays in log-space to prevent overflow/underflow.
+    ///
+    /// When `adaptive_memory` is enabled, the memory penalty is scaled by
+    /// `(1 - h_local)` where h_local is the walk's local entropy so far.
+    /// This prevents the fixed penalty from collapsing probability support
+    /// in sparse graph regimes.
     fn log_transition_weights(
         &self,
         neighbors: &[(usize, f64)],
@@ -385,6 +419,7 @@ impl PathEntropyEstimator {
         degrees: &[u64],
         tabu: &[usize],
         gamma_eff: f64,
+        h_local: f64,
     ) -> Vec<f64> {
         if neighbors.is_empty() {
             return vec![];
@@ -392,6 +427,14 @@ impl PathEntropyEstimator {
 
         let beta = self.config.beta;
         let alpha = self.config.alpha;
+
+        // Adaptive memory: penalty scales with (1 - H_local)
+        // Low H_local (redundant) → full penalty. High H_local (exploratory) → soft penalty.
+        let effective_memory_penalty = if self.config.adaptive_memory {
+            self.config.memory_penalty * (1.0 - h_local.clamp(0.0, 0.99))
+        } else {
+            self.config.memory_penalty
+        };
 
         neighbors
             .iter()
@@ -416,9 +459,9 @@ impl PathEntropyEstimator {
                 let deg = if nbr < degrees.len() { degrees[nbr] } else { 1 };
                 let log_antihub = -gamma_eff * (deg.max(1) as f64).ln();
 
-                // ── Factor 4: Tabu memory penalty ──
+                // ── Factor 4: Tabu memory penalty (adaptive or fixed) ──
                 let log_memory = if tabu.contains(&nbr) {
-                    self.config.memory_penalty
+                    effective_memory_penalty
                 } else {
                     0.0
                 };
@@ -501,7 +544,40 @@ impl PathEntropyEstimator {
     // Layer 4: Random walk with tabu memory
     // ─────────────────────────────────────────────
 
+    /// Compute local entropy H_local from visit counts so far.
+    ///
+    /// H_local = -Σ p_i · ln(p_i) / ln(n_unique)   ∈ [0, 1]
+    ///
+    /// This sliding entropy measure allows the adaptive memory penalty
+    /// to soften when the walk is already exploratory.
+    fn compute_h_local(visit_counts: &[u32], total_steps: u32) -> f64 {
+        if total_steps <= 1 {
+            return 0.0;
+        }
+        let n_unique = visit_counts.iter().filter(|&&c| c > 0).count();
+        if n_unique <= 1 {
+            return 0.0;
+        }
+        let total = total_steps as f64;
+        let ln_n = (n_unique as f64).ln();
+        if ln_n <= 0.0 {
+            return 0.0;
+        }
+        let entropy: f64 = visit_counts
+            .iter()
+            .filter(|&&c| c > 0)
+            .map(|&c| {
+                let p = c as f64 / total;
+                -p * p.ln()
+            })
+            .sum();
+        (entropy / ln_n).clamp(0.0, 1.0)
+    }
+
     /// Execute one random walk from `start_node` with tabu memory.
+    ///
+    /// When `adaptive_memory` is enabled, computes a sliding H_local
+    /// from the walk's visit counts and scales the memory penalty accordingly.
     fn random_walk(
         &mut self,
         start: usize,
@@ -510,6 +586,7 @@ impl PathEntropyEstimator {
         degrees: &[u64],
         walk_length: usize,
         gamma_eff: f64,
+        n_nodes: usize,
     ) -> Vec<usize> {
         let mut path = Vec::with_capacity(walk_length + 1);
         path.push(start);
@@ -518,6 +595,15 @@ impl PathEntropyEstimator {
         // Tabu ring buffer (recent nodes to penalize)
         let memory_size = self.config.memory_size;
         let mut tabu: Vec<usize> = Vec::with_capacity(memory_size + 1);
+
+        // Per-walk visit counts for H_local (only when adaptive_memory is on)
+        let adaptive = self.config.adaptive_memory;
+        let mut local_visits = if adaptive { vec![0u32; n_nodes] } else { vec![] };
+        let mut total_steps = 0u32;
+        if adaptive && start < n_nodes {
+            local_visits[start] = 1;
+            total_steps = 1;
+        }
 
         for _ in 0..walk_length {
             let neighbors = &adj[current];
@@ -531,8 +617,15 @@ impl PathEntropyEstimator {
                 None
             };
 
+            // Compute H_local from the walk so far
+            let h_local = if adaptive {
+                Self::compute_h_local(&local_visits, total_steps)
+            } else {
+                0.0
+            };
+
             let log_weights = self.log_transition_weights(
-                neighbors, cur_pos, positions, degrees, &tabu, gamma_eff,
+                neighbors, cur_pos, positions, degrees, &tabu, gamma_eff, h_local,
             );
 
             current = self.log_sum_exp_sample(&log_weights, neighbors);
@@ -543,6 +636,12 @@ impl PathEntropyEstimator {
                 if tabu.len() > memory_size {
                     tabu.remove(0);
                 }
+            }
+
+            // Update local visit counts
+            if adaptive && current < n_nodes {
+                local_visits[current] += 1;
+                total_steps += 1;
             }
 
             path.push(current);
@@ -572,10 +671,11 @@ impl PathEntropyEstimator {
         self.estimate_with_spectral(edges, n_nodes, positions, walk_length_override, None)
     }
 
-    /// Estimate with optional λ₂ for spectral guardrail.
+    /// Estimate with optional λ₂ for smooth spectral guardrail.
     ///
-    /// When `lambda2 < spectral_guardrail_threshold`, γ is halved to
-    /// prevent hub penalization from fragmenting a nearly-disconnected graph.
+    /// Uses a sigmoid γ_eff = γ · σ((λ₂ - λ_c) / τ) to avoid the
+    /// hysteresis oscillation that the old discrete threshold caused
+    /// when λ₂ fluctuated around λ_c.
     pub fn estimate_with_spectral(
         &mut self,
         edges: &[(usize, usize, f64)],
@@ -599,14 +699,24 @@ impl PathEntropyEstimator {
         let walk_length = walk_length_override.unwrap_or(self.config.walk_length);
         let n_walks = self.config.n_walks;
 
-        // ── Layer 6: Spectral guardrail ──
-        // If graph is nearly disconnected, reduce hub penalty to preserve bridges
+        // ── Layer 6: Smooth spectral guardrail (sigmoid, no hysteresis) ──
+        // γ_eff = γ · σ((λ₂ - λ_c) / τ)
+        // When λ₂ >> λ_c: σ ≈ 1 → full hub penalty
+        // When λ₂ << λ_c: σ ≈ 0 → no hub penalty (preserve bridges)
+        // When λ₂ ≈ λ_c: σ ≈ 0.5 → smooth transition, no oscillation
         let gamma_eff = if let Some(l2) = lambda2 {
-            if l2 < self.config.spectral_guardrail_threshold {
-                self.config.gamma * 0.5
+            let lambda_c = self.config.spectral_guardrail_threshold;
+            let tau = self.config.spectral_tau.max(1e-12);
+            let x = (l2 - lambda_c) / tau;
+            // Numerically safe sigmoid: clamp x to avoid exp overflow
+            let sigmoid = if x > 20.0 {
+                1.0
+            } else if x < -20.0 {
+                0.0
             } else {
-                self.config.gamma
-            }
+                1.0 / (1.0 + (-x).exp())
+            };
+            self.config.gamma * sigmoid
         } else {
             self.config.gamma
         };
@@ -632,7 +742,7 @@ impl PathEntropyEstimator {
                 continue;
             }
 
-            let path = self.random_walk(start, &adj, positions, &degrees, walk_length, gamma_eff);
+            let path = self.random_walk(start, &adj, positions, &degrees, walk_length, gamma_eff, n_nodes);
 
             // Count visits
             let mut visited = vec![false; n_nodes];
@@ -1219,8 +1329,8 @@ impl CuriosityEngine {
 
 /// Complete metabolic report for one physiological cycle.
 ///
-/// Includes entropy estimation, sleep computation, and curiosity actions.
-/// This is the "consciousness" snapshot of the system.
+/// Includes entropy estimation, sleep computation, curiosity actions,
+/// and the navigability innovation score I = λ₂^α · E^β · H^γ·(1-H).
 #[derive(Debug, Clone)]
 pub struct MetabolicReport {
     /// Current state vector S = [λ₂, E_g, H_path].
@@ -1234,6 +1344,10 @@ pub struct MetabolicReport {
 
     /// Curiosity engine actions (if activated).
     pub curiosity: CuriosityActions,
+
+    /// Navigability innovation score (Phase VI second-order metric).
+    /// Couples [λ₂, E(τ), H_path] into a single innovation measure.
+    pub navigability: Option<NavigabilityReport>,
 }
 
 impl std::fmt::Display for MetabolicReport {
@@ -1243,6 +1357,9 @@ impl std::fmt::Display for MetabolicReport {
         writeln!(f, "║ Entropy: {}", self.entropy)?;
         writeln!(f, "║ Sleep: {}", self.sleep)?;
         writeln!(f, "║ {}", self.curiosity)?;
+        if let Some(ref nav) = self.navigability {
+            writeln!(f, "║ Innovation: {}", nav)?;
+        }
         write!(f, "╚══════════════════════╝")
     }
 }
@@ -1495,6 +1612,7 @@ mod tests {
             &degrees,
             &tabu,
             est.config.gamma,
+            0.0, // h_local = 0 (fresh walk)
         );
 
         assert_eq!(log_w.len(), 2);
@@ -1524,6 +1642,7 @@ mod tests {
             &degrees,
             &tabu,
             est.config.gamma,
+            0.0, // h_local = 0 (fresh walk, full penalty)
         );
 
         // Node 2 (not tabu) should have higher weight than node 1 (tabu)
@@ -1882,6 +2001,7 @@ mod tests {
                 strength_used: 0.0,
                 stagnation_depth: 0,
             },
+            navigability: None,
         };
         let s = format!("{report}");
         assert!(s.contains("Metabolic Report"));
@@ -1920,12 +2040,17 @@ mod tests {
         );
         assert!(!actions.activated, "No stagnation yet");
 
-        // 4. Assemble full report
+        // 4. Compute navigability innovation score
+        let nav_eval = NavigabilityEvaluator::with_defaults();
+        let nav_report = nav_eval.evaluate(state.lambda2, state.energy, state.entropy.min(1.0));
+
+        // 5. Assemble full report
         let report = MetabolicReport {
             state,
             entropy: entropy_report,
             sleep: sleep_report,
             curiosity: actions,
+            navigability: Some(nav_report),
         };
         assert!(format!("{report}").contains("Metabolic Report"));
     }

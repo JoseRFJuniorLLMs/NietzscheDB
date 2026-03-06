@@ -17,6 +17,7 @@ use uuid::Uuid;
 use crate::config::AgencyConfig;
 use crate::event_bus::{AgencyEvent, AgencyEventBus, WakeUpReason};
 use crate::evolution::{EvolutionStrategy, RuleEvolution};
+use crate::forgetting::NezhmetdinovConfig;
 use crate::observer::HealthReport;
 
 /// Declarative action produced by the reactor.
@@ -143,6 +144,10 @@ pub struct AgencyReactor {
     ticks_since_lsystem_intent: u64,
     /// PPO engine for neural policy-driven evolution.
     ppo_engine: Option<nietzsche_rl::PpoEngine>,
+    /// Last known total node count from HealthReport (for forgetting bounds).
+    last_known_total_nodes: usize,
+    /// Nezhmetdinov configuration (hard bounds for deletion safety).
+    nezh_config: NezhmetdinovConfig,
 }
 
 impl AgencyReactor {
@@ -152,6 +157,8 @@ impl AgencyReactor {
             ticks_since_sleep_intent: u64::MAX / 2,    // allow immediate first trigger
             ticks_since_lsystem_intent: u64::MAX / 2,
             ppo_engine,
+            last_known_total_nodes: 0,
+            nezh_config: NezhmetdinovConfig::from_env(),
         }
     }
 
@@ -173,6 +180,7 @@ impl AgencyReactor {
         let mut redundancies: Vec<(Uuid, Vec<Uuid>)> = Vec::new();
         let mut ltd_events: Vec<(Uuid, Uuid, f32, u64)> = Vec::new(); // (from, to, delta, count)
         let mut neural_protections: Vec<(Uuid, f32, String)> = Vec::new();
+        let mut condemned_nodes: Vec<(Uuid, f32, String)> = Vec::new(); // (node_id, vitality, reason)
 
         loop {
             match self.rx.try_recv() {
@@ -214,11 +222,7 @@ impl AgencyReactor {
                     }
                     // ── Nezhmetdinov Forgetting Engine events ─────────────
                     AgencyEvent::ForgettingCondemned { node_id, vitality, reason, .. } => {
-                        intents.push(AgencyIntent::HardDelete {
-                            node_id,
-                            vitality,
-                            reason,
-                        });
+                        condemned_nodes.push((node_id, vitality, reason));
                     }
                     AgencyEvent::ForgettingCycleComplete { .. } => {
                         // Logged for telemetry; no intent needed.
@@ -346,8 +350,68 @@ impl AgencyReactor {
             });
         }
 
+        // ── ForgettingCondemned → bounded HardDelete intents ────────────────
+        // Safety: even condemned nodes must respect universe size and deletion
+        // rate limits. Without this, a burst of ForgettingCondemned events from
+        // the NezhmetdinovDaemon could bypass the ZaratustraCycle's bounds.
+        if !condemned_nodes.is_empty() {
+            let current_count = self.last_known_total_nodes;
+            let min_size = self.nezh_config.bounds.min_universe_size;
+            let max_rate = self.nezh_config.bounds.max_deletion_rate;
+
+            // Cap by max_deletion_rate
+            let max_by_rate = if current_count > 0 {
+                (current_count as f32 * max_rate) as usize
+            } else {
+                0
+            };
+
+            // Cap by min_universe_size
+            let max_by_universe = current_count.saturating_sub(min_size);
+
+            let max_deletions = max_by_rate.min(max_by_universe);
+
+            if current_count == 0 {
+                tracing::warn!(
+                    condemned = condemned_nodes.len(),
+                    "ForgettingCondemned: no known node count yet (no HealthReport received), \
+                     skipping all deletions until first health report"
+                );
+            } else if max_deletions == 0 {
+                tracing::warn!(
+                    current_count,
+                    min_size,
+                    condemned = condemned_nodes.len(),
+                    "ForgettingCondemned: skipping all deletions — universe at minimum size \
+                     or deletion rate exhausted"
+                );
+            } else {
+                let actual = condemned_nodes.len().min(max_deletions);
+                if actual < condemned_nodes.len() {
+                    tracing::warn!(
+                        condemned = condemned_nodes.len(),
+                        allowed = actual,
+                        current_count,
+                        min_size,
+                        max_rate,
+                        "ForgettingCondemned: capping deletions to respect safety bounds"
+                    );
+                }
+                for (node_id, vitality, reason) in condemned_nodes.into_iter().take(actual) {
+                    intents.push(AgencyIntent::HardDelete {
+                        node_id,
+                        vitality,
+                        reason,
+                    });
+                }
+            }
+        }
+
         // ── Health reports → persist + modulate Zaratustra + evolve rules ─
         for report in health_reports {
+            // Track latest node count for forgetting safety bounds
+            self.last_known_total_nodes = report.total_nodes;
+
             // Zaratustra modulation: adjust alpha/decay based on energy
             let (alpha, decay, reason) = compute_zaratustra_params(&report);
             intents.push(AgencyIntent::ModulateZaratustra {

@@ -13,8 +13,27 @@ pub struct NqlParser;
 
 // ── Public entry point ────────────────────────────────────
 
+/// Maximum allowed NQL query length (bytes).
+/// Guards against pathological inputs that could cause excessive memory use
+/// or slowdowns in the PEG parser.
+const MAX_NQL_LENGTH: usize = 8192;
+
 /// Parse an NQL query string into an AST [`Query`].
 pub fn parse(input: &str) -> Result<Query, QueryError> {
+    // ── Guard: input length ──
+    if input.len() > MAX_NQL_LENGTH {
+        return Err(QueryError::Parse(format!(
+            "NQL query too long ({} bytes, max {}). Split into smaller queries.",
+            input.len(), MAX_NQL_LENGTH,
+        )));
+    }
+
+    // ── Guard: identifiers starting with underscore ──
+    // NQL identifiers must start with an ASCII letter. A leading `_` is a
+    // common mistake (e.g. `_label` instead of `node_label`). Detect this
+    // early and produce a helpful error rather than a cryptic PEG failure.
+    detect_underscore_ident(input)?;
+
     let pairs = NqlParser::parse(Rule::query, input)
         .map_err(|e| QueryError::Parse(e.to_string()))?;
 
@@ -22,6 +41,63 @@ pub fn parse(input: &str) -> Result<Query, QueryError> {
         .ok_or_else(|| QueryError::Parse("empty input".into()))?;
 
     parse_query(query_pair)
+}
+
+/// Scan the raw NQL input for identifiers that start with `_` and return a
+/// helpful error. We look for patterns like ` _word` or `._ word` that would
+/// be interpreted as an identifier position in the grammar.
+fn detect_underscore_ident(input: &str) -> Result<(), QueryError> {
+    let bytes = input.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+
+    while i < len {
+        let b = bytes[i];
+        // Skip string literals (quoted content is not an identifier)
+        if b == b'"' {
+            i += 1;
+            while i < len && bytes[i] != b'"' {
+                i += 1;
+            }
+            i += 1; // skip closing quote
+            continue;
+        }
+        // Skip `$param` — parameters like `$_foo` are valid (they use
+        // ident_tail which allows underscore)
+        if b == b'$' {
+            i += 1;
+            while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                i += 1;
+            }
+            continue;
+        }
+        // Check for `_` in identifier position: preceded by whitespace, `(`,
+        // `.`, `:`, or start-of-input, followed by an ASCII alphanumeric or `_`.
+        if b == b'_' {
+            let prev_is_boundary = i == 0 || {
+                let p = bytes[i - 1];
+                p == b' ' || p == b'\t' || p == b'\n' || p == b'\r'
+                    || p == b'(' || p == b'.' || p == b':'
+                    || p == b','
+            };
+            if prev_is_boundary {
+                // Collect the would-be identifier for the error message
+                let start = i;
+                i += 1;
+                while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                    i += 1;
+                }
+                let bad_ident = &input[start..i];
+                return Err(QueryError::Parse(format!(
+                    "identifiers cannot start with '_': found '{}'. \
+                     Use 'node_label' instead of '_label' to store custom type info in content fields",
+                    bad_ident,
+                )));
+            }
+        }
+        i += 1;
+    }
+    Ok(())
 }
 
 // ── Top-level ─────────────────────────────────────────────
@@ -2569,6 +2645,61 @@ mod tests {
         match &pq.target {
             ReconstructTarget::Alias(a) => assert_eq!(a, "mynode"),
             _ => panic!("expected Alias target"),
+        }
+    }
+
+    // ── Guard tests ──────────────────────────────────────
+
+    #[test]
+    fn reject_underscore_identifier() {
+        let err = parse("MATCH (n) WHERE n._label = \"foo\" RETURN n");
+        assert!(err.is_err());
+        let msg = err.unwrap_err().to_string();
+        assert!(msg.contains("identifiers cannot start with '_'"), "got: {msg}");
+        assert!(msg.contains("_label"), "got: {msg}");
+    }
+
+    #[test]
+    fn reject_underscore_alias() {
+        let err = parse("MATCH (_n) WHERE _n.energy > 0.3 RETURN _n");
+        assert!(err.is_err());
+        let msg = err.unwrap_err().to_string();
+        assert!(msg.contains("identifiers cannot start with '_'"), "got: {msg}");
+    }
+
+    #[test]
+    fn allow_param_with_underscore() {
+        // Parameters like $node_id, $_foo should NOT trigger the underscore check
+        let q = parse("PSYCHOANALYZE $node_id");
+        assert!(q.is_ok(), "param with underscore should be allowed: {:?}", q.err());
+    }
+
+    #[test]
+    fn allow_underscore_inside_string() {
+        // Underscores inside string literals should not trigger the check
+        let q = parse(r#"MATCH (n) WHERE n.name = "_label" RETURN n"#);
+        assert!(q.is_ok(), "underscore in string should be allowed: {:?}", q.err());
+    }
+
+    #[test]
+    fn reject_input_too_long() {
+        let long_input = "M".repeat(8193);
+        let err = parse(&long_input);
+        assert!(err.is_err());
+        let msg = err.unwrap_err().to_string();
+        assert!(msg.contains("too long"), "got: {msg}");
+    }
+
+    #[test]
+    fn accept_max_length_input() {
+        // A query at exactly MAX_NQL_LENGTH should not be rejected for length
+        // (it will fail parsing for other reasons, but not for length)
+        let padded = format!("MATCH (n) RETURN n{}", " ".repeat(8192 - 18));
+        assert_eq!(padded.len(), 8192);
+        let result = parse(&padded);
+        // Should not be an "input too long" error
+        if let Err(e) = &result {
+            assert!(!e.to_string().contains("too long"), "should not reject at exact limit: {e}");
         }
     }
 }

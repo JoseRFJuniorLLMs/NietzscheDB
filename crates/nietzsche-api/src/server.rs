@@ -45,7 +45,7 @@ use nietzsche_mcts::{MctsAdvisor, MctsConfig};
 
 use nietzsche_cluster::{ClusterNode, ClusterRegistry, NodeHealth, NodeRole};
 use crate::cdc::{CdcBroadcaster, CdcEventType};
-use crate::rbac::{require_admin, require_writer};
+use crate::rbac::{require_admin, require_reader, require_writer};
 use crate::proto::nietzsche::{
     self,
     nietzsche_db_server::{NietzscheDb, NietzscheDbServer},
@@ -60,7 +60,12 @@ pub use nietzsche::nietzsche_db_server::NietzscheDbServer as TonicServer;
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn graph_err(e: GraphError) -> Status {
-    Status::internal(e.to_string())
+    match &e {
+        GraphError::NodeNotFound(_) | GraphError::EdgeNotFound(_) => Status::not_found(e.to_string()),
+        GraphError::InvalidEmbedding(_) | GraphError::DimensionMismatch { .. } => Status::invalid_argument(e.to_string()),
+        // TODO: map specific variants as new GraphError variants are added
+        _ => Status::internal(e.to_string()),
+    }
 }
 
 fn parse_uuid(s: &str, field: &str) -> Result<Uuid, Status> {
@@ -320,6 +325,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         _req: Request<nietzsche::Empty>,
     ) -> Result<Response<nietzsche::ListCollectionsResponse>, Status> {
+        require_reader(&_req)?;
         let collections = self.cm.list()
             .into_iter()
             .map(|i| nietzsche::CollectionInfoProto {
@@ -361,7 +367,7 @@ impl NietzscheDb for NietzscheServer {
             };
             PoincareVector::origin(col_dim)
         };
-        if r.energy != 0.0 { validate_energy(r.energy)?; }
+        validate_energy(r.energy)?;
         let content: serde_json::Value = if r.content.is_empty() {
             serde_json::Value::Null
         } else {
@@ -370,7 +376,7 @@ impl NietzscheDb for NietzscheServer {
         };
 
         let mut node = Node::new(id, embedding, content);
-        if r.energy > 0.0 { node.energy = r.energy; }
+        node.energy = r.energy;
         if r.expires_at > 0 { node.meta.expires_at = Some(r.expires_at); }
         debug!(node_id = %id, collection = %col(&r.collection), "inserting node");
 
@@ -397,6 +403,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::NodeIdRequest>,
     ) -> Result<Response<nietzsche::NodeResponse>, Status> {
+        require_reader(&req)?;
         let r  = req.into_inner();
         let id = parse_uuid(&r.id, "id")?;
 
@@ -568,7 +575,7 @@ impl NietzscheDb for NietzscheServer {
                     validate_embedding(&emb_proto)?;
                     PoincareVector::from_f64(emb_proto.coords)
                 } else {
-                    PoincareVector::from_f64(vec![0.0; 3072])
+                    PoincareVector::origin(db.vector_dim())
                 };
 
                 let mut node = Node::new(id, embedding, serde_json::Value::Object(content));
@@ -793,7 +800,7 @@ impl NietzscheDb for NietzscheServer {
                                 }
                             }
                             let nt = parse_node_type(node_type_str);
-                            let embedding = PoincareVector::new(vec![0.0_f32; 3072]);
+                            let embedding = PoincareVector::origin(db_w.vector_dim());
                             let mut node = Node::new(Uuid::new_v4(), embedding, content);
                             node.node_type = nt;
                             db_w.insert_node(node.clone()).map_err(graph_err)?;
@@ -829,8 +836,11 @@ impl NietzscheDb for NietzscheServer {
                                 Some(mut edge) => {
                                     // ON MATCH: update metadata
                                     if let serde_json::Value::Object(updates) = &on_match_set {
-                                        for (k, v) in updates {
-                                            edge.metadata.insert(k.clone(), v.clone());
+                                        if !updates.is_empty() {
+                                            for (k, v) in updates {
+                                                edge.metadata.insert(k.clone(), v.clone());
+                                            }
+                                            db_w.update_edge_metadata(edge.id, &on_match_set).map_err(graph_err)?;
                                         }
                                     }
                                     path_ids.push(format!("merge:edge:matched:{}", edge.id));
@@ -864,7 +874,7 @@ impl NietzscheDb for NietzscheServer {
                     let mut db_w = shared.write().await;
                     let nt_str = node_type.as_deref().unwrap_or("Semantic");
                     let nt = parse_node_type(nt_str);
-                    let embedding = PoincareVector::new(vec![0.0_f32; 3072]);
+                    let embedding = PoincareVector::origin(db_w.vector_dim());
 
                     // Extract TTL from properties → set expires_at
                     let mut props_clone = properties.clone();
@@ -1224,8 +1234,14 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::KnnRequest>,
     ) -> Result<Response<nietzsche::KnnResponse>, Status> {
+        require_reader(&req)?;
         let r     = req.into_inner();
         validate_k(r.k)?;
+        let query_proto = nietzsche::PoincareVector {
+            coords: r.query_coords.clone(),
+            dim:    r.query_coords.len() as u32,
+        };
+        validate_embedding(&query_proto)?;
         let query = PoincareVector::from_f64(r.query_coords);
         let k     = r.k as usize;
 
@@ -1252,6 +1268,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::TraversalRequest>,
     ) -> Result<Response<nietzsche::TraversalResponse>, Status> {
+        require_reader(&req)?;
         let r     = req.into_inner();
         let start = parse_uuid(&r.start_node_id, "start_node_id")?;
 
@@ -1276,6 +1293,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::TraversalRequest>,
     ) -> Result<Response<nietzsche::TraversalResponse>, Status> {
+        require_reader(&req)?;
         let r     = req.into_inner();
         let start = parse_uuid(&r.start_node_id, "start_node_id")?;
 
@@ -1411,7 +1429,7 @@ impl NietzscheDb for NietzscheServer {
 
         let engine = ZaratustraEngine::new(cfg);
         let shared = get_col!(self.cm, &r.collection);
-        let db = shared.read().await;
+        let mut db = shared.write().await;
 
         let mut last_report = None;
         for _ in 0..cycles {
@@ -1469,7 +1487,7 @@ impl NietzscheDb for NietzscheServer {
 
         let shared = get_col!(self.cm, &r.collection);
         // Write lock: exclusive access during energy injection.
-        let db = shared.read().await;
+        let mut db = shared.write().await;
 
         let report = db.defibrillate().map_err(graph_err)?;
 
@@ -1948,6 +1966,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::FullTextSearchRequest>,
     ) -> Result<Response<nietzsche::FullTextSearchResponse>, Status> {
+        require_reader(&req)?;
         let r = req.into_inner();
         if r.query.is_empty() {
             return Err(Status::invalid_argument("query must not be empty"));
@@ -1974,6 +1993,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::HybridSearchRequest>,
     ) -> Result<Response<nietzsche::KnnResponse>, Status> {
+        require_reader(&req)?;
         let r = req.into_inner();
         if r.text_query.is_empty() && r.query_coords.is_empty() {
             return Err(Status::invalid_argument("text_query or query_coords must be provided"));
@@ -2015,6 +2035,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::CdcRequest>,
     ) -> Result<Response<Self::SubscribeCDCStream>, Status> {
+        require_reader(&req)?;
         let r = req.into_inner();
         let from_lsn = r.from_lsn;
         let filter_col = if r.collection.is_empty() { None } else { Some(r.collection) };
@@ -2066,6 +2087,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         _req: Request<nietzsche::Empty>,
     ) -> Result<Response<nietzsche::StatsResponse>, Status> {
+        require_reader(&_req)?;
         // Aggregate node/edge counts across all collections
         let infos = self.cm.list();
         let (node_count, edge_count) = infos
@@ -3117,6 +3139,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::SqlRequest>,
     ) -> Result<Response<nietzsche::SqlResultSet>, Status> {
+        require_reader(&req)?;
         let r = req.into_inner();
         if r.sql.is_empty() {
             return Err(Status::invalid_argument("sql must not be empty"));
@@ -3316,6 +3339,7 @@ impl NietzscheDb for NietzscheServer {
         &self,
         req: Request<nietzsche::MctsRequest>,
     ) -> Result<Response<nietzsche::MctsResponse>, Status> {
+        require_writer(&req)?;
         let r = req.into_inner();
         let start_node = parse_uuid(&r.start_node_id, "start_node_id")?;
         

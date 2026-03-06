@@ -31,8 +31,8 @@ pub fn export_nodes_csv<W: Write>(
     for result in storage.iter_nodes_meta() {
         let meta = result?;
         let content_str = serde_json::to_string(&meta.content).unwrap_or_default();
-        // Escape CSV: wrap content in quotes, double any internal quotes
-        let escaped = content_str.replace('"', "\"\"");
+        // Escape CSV: wrap content in quotes, double any internal quotes, escape newlines
+        let escaped = content_str.replace('"', "\"\"").replace('\n', "\\n").replace('\r', "\\r");
         writeln!(
             writer,
             "{},{:?},{},{},{},{},\"{}\"",

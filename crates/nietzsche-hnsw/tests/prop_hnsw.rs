@@ -52,7 +52,7 @@ proptest! {
 
             // Verify storage
             let stored_bytes = store.get(id);
-            let stored_hv = HyperVector::<D>::from_bytes(stored_bytes);
+            let stored_hv = HyperVector::<D>::from_bytes(stored_bytes).expect("from_bytes failed in test");
             assert_eq!(stored_hv.coords, coords, "Vector storage mismatch at index {i}");
 
             let meta = HashMap::new();

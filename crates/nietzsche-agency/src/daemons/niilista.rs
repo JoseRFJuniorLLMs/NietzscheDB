@@ -86,6 +86,10 @@ impl AgencyDaemon for NiilistaGcDaemon {
         }
 
         // ── 2. Cluster near-duplicates ────────────────────────────
+        // TODO: O(N^2) pairwise comparison — currently bounded by max_scan
+        // (default 200, so ~20K comparisons). If max_scan is increased
+        // beyond ~2000, consider replacing with a spatial index (e.g.,
+        // VP-tree or HNSW approximate search) to reduce to O(N log N).
         let n = candidates.len();
         let mut uf = UnionFind::new(n);
 

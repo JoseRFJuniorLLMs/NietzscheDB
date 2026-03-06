@@ -27,23 +27,26 @@ impl EnergyCircuitBreaker {
         }
 
         // 2. Global energy density check (sum of energy across all nodes)
-        let mut total_energy = 0.0;
-        let mut node_count = 0;
-        
+        // TODO: O(N) scan — consider maintaining a running energy sum in
+        // GraphStorage or caching the result per tick to avoid repeated scans.
+        // For now, early-exit once the threshold is exceeded.
+        let mut total_energy = 0.0f32;
+        let mut node_count = 0usize;
+
         for result in storage.iter_nodes_meta() {
             if let Ok(meta) = result {
                 total_energy += meta.energy;
                 node_count += 1;
+                // Early exit: no need to keep scanning once we know it's tripped
+                if total_energy > self.energy_sum_threshold {
+                    tracing::warn!(
+                        total_energy,
+                        node_count,
+                        "Circuit breaker tripped: pathological energy accumulation (early exit)"
+                    );
+                    return Ok(false);
+                }
             }
-        }
-
-        if total_energy > self.energy_sum_threshold {
-            tracing::warn!(
-                total_energy, 
-                node_count, 
-                "Circuit breaker tripped: pathological energy accumulation"
-            );
-            return Ok(false);
         }
 
         Ok(true)
