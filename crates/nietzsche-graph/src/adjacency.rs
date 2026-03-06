@@ -43,26 +43,31 @@ impl AdjacencyIndex {
     // ── Mutations ──────────────────────────────────────
 
     /// Register an edge in both directions.
+    ///
+    /// Deduplicates by edge ID to prevent duplicate entries when an edge
+    /// is re-inserted (e.g. during migration or WAL replay).
     pub fn add_edge(&self, edge: &Edge) {
-        self.outgoing
-            .entry(edge.from)
-            .or_default()
-            .push(AdjEntry {
-                edge_id:     edge.id,
-                neighbor_id: edge.to,
-                weight:      edge.weight,
-                edge_type:   edge.edge_type.clone(),
-            });
+        let out_entry = AdjEntry {
+            edge_id:     edge.id,
+            neighbor_id: edge.to,
+            weight:      edge.weight,
+            edge_type:   edge.edge_type.clone(),
+        };
+        let mut entries = self.outgoing.entry(edge.from).or_default();
+        if !entries.iter().any(|e| e.edge_id == out_entry.edge_id) {
+            entries.push(out_entry);
+        }
 
-        self.incoming
-            .entry(edge.to)
-            .or_default()
-            .push(AdjEntry {
-                edge_id:     edge.id,
-                neighbor_id: edge.from,
-                weight:      edge.weight,
-                edge_type:   edge.edge_type.clone(),
-            });
+        let in_entry = AdjEntry {
+            edge_id:     edge.id,
+            neighbor_id: edge.from,
+            weight:      edge.weight,
+            edge_type:   edge.edge_type.clone(),
+        };
+        let mut entries = self.incoming.entry(edge.to).or_default();
+        if !entries.iter().any(|e| e.edge_id == in_entry.edge_id) {
+            entries.push(in_entry);
+        }
     }
 
     /// Remove all adjacency entries for an edge (called on prune/delete).

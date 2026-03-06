@@ -44,7 +44,7 @@ impl OperationMetrics {
 }
 #[cfg(not(windows))]
 use tikv_jemalloc_ctl::epoch;
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 #[derive(RustEmbed)]
 #[folder = "../../dashboard/dist"]
@@ -62,8 +62,9 @@ async fn validate_api_key(
     mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    // 1. Check Trusted Header (SaaS / Kong)
-    // Clone header value to avoid holding immutable borrow
+    // WARNING: This header is trusted as-is. In production, verify against a session store or JWT.
+    // Only trust the x-nietzsche-user-id header when auth is disabled (dev mode / behind a gateway).
+    // When auth is enabled (NDB_API_KEY set), skip this header to prevent auth bypass.
     let user_id_header = request
         .headers()
         .get("x-nietzsche-user-id")
@@ -71,11 +72,15 @@ async fn validate_api_key(
         .map(std::string::ToString::to_string);
 
     if let Some(uid) = user_id_header {
-        request.extensions_mut().insert(RequestContext {
-            user_id: uid,
-            is_admin: false,
-        });
-        return Ok(next.run(request).await);
+        if expected_hash.is_none() {
+            // Auth disabled — trust the header (dev mode or behind a trusted gateway)
+            request.extensions_mut().insert(RequestContext {
+                user_id: uid,
+                is_admin: false,
+            });
+            return Ok(next.run(request).await);
+        }
+        // Auth enabled — ignore untrusted header, fall through to API key validation
     }
 
     // Auth is skipped for static files (except if we want to enforce user context?)
@@ -168,7 +173,23 @@ pub async fn start_http_server(
             validate_api_key,
         ))
         .fallback(static_handler)
-        .layer(CorsLayer::permissive())
+        .layer(
+            CorsLayer::new()
+                .allow_origin(AllowOrigin::any()) // TODO: restrict to known origins in production
+                .allow_methods([
+                    axum::http::Method::GET,
+                    axum::http::Method::POST,
+                    axum::http::Method::PUT,
+                    axum::http::Method::DELETE,
+                    axum::http::Method::OPTIONS,
+                ])
+                .allow_headers([
+                    axum::http::header::CONTENT_TYPE,
+                    axum::http::header::AUTHORIZATION,
+                    axum::http::HeaderName::from_static("x-nietzsche-user-id"),
+                    axum::http::HeaderName::from_static("x-nietzsche-role"),
+                ]),
+        )
         .with_state((manager, start_time, embedding_state, ops_metrics));
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
@@ -850,8 +871,22 @@ async fn get_nietzsche_graph(
     Query(params): Query<GraphQueryParams>,
 ) -> impl IntoResponse {
     let collection = params.collection.unwrap_or_default();
-    let node_limit = params.node_limit.unwrap_or(500);
-    let edge_limit = params.edge_limit.unwrap_or(2000);
+    let node_limit = params.node_limit.unwrap_or(500).min(5000);
+    let edge_limit = params.edge_limit.unwrap_or(2000).min(10000);
+
+    // Reject mutation NQL keywords in collection name to prevent NQL injection.
+    // The NQL queries below are server-constructed, but the collection name is user-supplied.
+    let col_upper = collection.to_uppercase();
+    if col_upper.contains("CREATE") || col_upper.contains("DELETE")
+        || col_upper.contains("SET") || col_upper.contains("MERGE")
+        || col_upper.contains("DAEMON") || col_upper.contains("DROP")
+    {
+        return Json(serde_json::json!({
+            "nodes": [], "links": [], "reachable": false,
+            "error": "Invalid collection name: mutation keywords are not allowed"
+        }))
+        .into_response();
+    }
 
     let mut client = nietzsche_client();
 

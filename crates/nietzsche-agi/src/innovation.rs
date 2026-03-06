@@ -264,6 +264,201 @@ impl InnovationEvaluator {
     }
 }
 
+// ─────────────────────────────────────────────
+// NavigabilityScore — second-order innovation metric
+// ─────────────────────────────────────────────
+
+/// Configuration for the navigability innovation score.
+///
+/// The score I = λ₂^α · E(τ)^β · [H_path^γ · (1 - H_path)]
+/// creates a parabolic peak at H_path ≈ 0.5 (controlled innovation):
+/// - H → 0: dogma (redundant paths, no novelty)
+/// - H → 1: delirium (random noise, no structure)
+/// - H ≈ 0.5: innovation sweet spot
+#[derive(Debug, Clone)]
+pub struct NavigabilityConfig {
+    /// Exponent for spectral connectivity λ₂.
+    /// Higher α → connectivity is a harder requirement.
+    /// Default: 0.5
+    pub alpha: f64,
+
+    /// Exponent for trajectory energy E(τ).
+    /// Higher β → stability is more important.
+    /// Default: 0.3
+    pub beta: f64,
+
+    /// Exponent for path entropy H_path.
+    /// Higher γ → the system rewards navigability diversity more.
+    /// Default: 1.2
+    pub gamma: f64,
+}
+
+impl Default for NavigabilityConfig {
+    fn default() -> Self {
+        Self {
+            alpha: 0.5,
+            beta: 0.3,
+            gamma: 1.2,
+        }
+    }
+}
+
+/// Innovation grade derived from the navigability score.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum InnovationGrade {
+    /// I ≥ 0.10 — structurally sound with productive diversity.
+    /// The system is generating novel inferences without breaking coherence.
+    HighFidelity,
+
+    /// 0.05 ≤ I < 0.10 — promising territory.
+    /// WeakBridges are being explored; some may promote.
+    Promising,
+
+    /// 0.01 ≤ I < 0.05 — speculative territory.
+    /// Metaphoric drift is dominant; keep exploring but don't commit.
+    Speculative,
+
+    /// I < 0.01 — either dogmatic (H≈0) or delirious (H≈1).
+    /// The system needs intervention (curiosity engine or consolidation).
+    Rupture,
+}
+
+impl std::fmt::Display for InnovationGrade {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InnovationGrade::HighFidelity => write!(f, "HighFidelity"),
+            InnovationGrade::Promising => write!(f, "Promising"),
+            InnovationGrade::Speculative => write!(f, "Speculative"),
+            InnovationGrade::Rupture => write!(f, "Rupture"),
+        }
+    }
+}
+
+/// Report from navigability innovation evaluation.
+#[derive(Debug, Clone)]
+pub struct NavigabilityReport {
+    /// Raw score I = λ₂^α · E^β · H^γ · (1-H).
+    pub score: f64,
+
+    /// Grade classification derived from score thresholds.
+    pub grade: InnovationGrade,
+
+    /// The parabolic term H^γ · (1-H) ∈ [0, ~0.37] for γ=1.2.
+    /// Maximum at H ≈ γ/(γ+1) ≈ 0.545.
+    pub entropy_parabola: f64,
+
+    /// Input values for transparency.
+    pub lambda2: f64,
+    pub energy: f64,
+    pub h_path: f64,
+}
+
+impl std::fmt::Display for NavigabilityReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "I={:.6} [{}] (λ₂={:.3}, E={:.3}, H={:.3}, H·(1-H)={:.4})",
+            self.score, self.grade, self.lambda2, self.energy, self.h_path, self.entropy_parabola,
+        )
+    }
+}
+
+/// Evaluates the **navigability innovation score** I(τ) from the metabolic state.
+///
+/// This is the second-order metric that couples the three metabolic observables
+/// [λ₂, E(τ), H_path] into a single measure of "controlled innovation":
+///
+/// ```text
+/// I = λ₂^α · E(τ)^β · [H_path^γ · (1 - H_path)]
+/// ```
+///
+/// The term H^γ·(1-H) is a parabola with peak at H = γ/(γ+1).
+/// This mathematically defines the **Point of Controlled Innovation**:
+/// the system is neither dogmatic (H→0) nor delirious (H→1).
+///
+/// ## Integration
+///
+/// The navigability score feeds into the MetabolicSleepManager:
+/// - **HighFidelity** → Cruising sleep (×1.0)
+/// - **Promising** → Cruising sleep (×1.0)
+/// - **Speculative** → CuriosityEngine may activate
+/// - **Rupture** → CuriosityEngine forced activation (stagnation or delirium)
+pub struct NavigabilityEvaluator {
+    config: NavigabilityConfig,
+}
+
+impl NavigabilityEvaluator {
+    pub fn new(config: NavigabilityConfig) -> Self {
+        Self { config }
+    }
+
+    pub fn with_defaults() -> Self {
+        Self::new(NavigabilityConfig::default())
+    }
+
+    /// Compute the navigability innovation score.
+    ///
+    /// # Arguments
+    /// - `lambda2`: Fiedler eigenvalue λ₂ (spectral connectivity)
+    /// - `energy`: E(τ) trajectory energy ∈ [0, 1]
+    /// - `h_path`: H_path (navigability entropy, unnormalized)
+    ///
+    /// # Note on H_path normalization
+    /// H_path from PathEntropyEstimator is Shannon entropy (not necessarily in [0,1]).
+    /// We normalize it: h_norm = min(h_path / ln(n_unique), 1.0).
+    /// If n_unique is not available, pass h_path already normalized to [0,1].
+    pub fn evaluate(&self, lambda2: f64, energy: f64, h_path: f64) -> NavigabilityReport {
+        let l2 = lambda2.max(0.0);
+        let e = energy.clamp(0.0, 1.0);
+        let h = h_path.clamp(0.0, 1.0);
+
+        // Parabolic entropy term: H^γ · (1 - H)
+        let entropy_parabola = h.powf(self.config.gamma) * (1.0 - h);
+
+        // Full score: I = λ₂^α · E^β · H^γ·(1-H)
+        let score = l2.powf(self.config.alpha)
+            * e.powf(self.config.beta)
+            * entropy_parabola;
+
+        let grade = if score >= 0.10 {
+            InnovationGrade::HighFidelity
+        } else if score >= 0.05 {
+            InnovationGrade::Promising
+        } else if score >= 0.01 {
+            InnovationGrade::Speculative
+        } else {
+            InnovationGrade::Rupture
+        };
+
+        NavigabilityReport {
+            score,
+            grade,
+            entropy_parabola,
+            lambda2: l2,
+            energy: e,
+            h_path: h,
+        }
+    }
+
+    /// Quick classification without full report.
+    pub fn grade(&self, lambda2: f64, energy: f64, h_path: f64) -> InnovationGrade {
+        self.evaluate(lambda2, energy, h_path).grade
+    }
+
+    /// Returns the H_path value that maximizes the parabolic term.
+    ///
+    /// H_peak = γ / (γ + 1)
+    ///
+    /// For default γ=1.2: H_peak ≈ 0.545
+    pub fn optimal_h_path(&self) -> f64 {
+        self.config.gamma / (self.config.gamma + 1.0)
+    }
+
+    pub fn config(&self) -> &NavigabilityConfig {
+        &self.config
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -385,5 +580,111 @@ mod tests {
         assert!(!AcceptanceDecision::Accept.needs_sandbox());
         assert!(AcceptanceDecision::Sandbox.needs_sandbox());
         assert!(!AcceptanceDecision::Reject.needs_sandbox());
+    }
+
+    // ── NavigabilityEvaluator tests ──
+
+    #[test]
+    fn test_navigability_sweet_spot() {
+        let eval = NavigabilityEvaluator::with_defaults();
+        // Good connectivity, good energy, H ≈ 0.5 (sweet spot)
+        let report = eval.evaluate(0.5, 0.8, 0.5);
+        assert!(
+            report.score > 0.05,
+            "Sweet spot should have meaningful score: {}",
+            report.score
+        );
+        assert!(
+            report.grade == InnovationGrade::Promising || report.grade == InnovationGrade::HighFidelity,
+            "Sweet spot should be at least Promising: {}",
+            report.grade
+        );
+    }
+
+    #[test]
+    fn test_navigability_dogma() {
+        let eval = NavigabilityEvaluator::with_defaults();
+        // H = 0 → dogma → H^γ·(1-H) = 0
+        let report = eval.evaluate(0.5, 0.8, 0.0);
+        assert_eq!(report.score, 0.0, "H=0 should give zero score");
+        assert_eq!(report.grade, InnovationGrade::Rupture);
+    }
+
+    #[test]
+    fn test_navigability_delirium() {
+        let eval = NavigabilityEvaluator::with_defaults();
+        // H = 1 → delirium → H^γ·(1-H) = 1^γ·0 = 0
+        let report = eval.evaluate(0.5, 0.8, 1.0);
+        assert_eq!(report.score, 0.0, "H=1 should give zero score");
+        assert_eq!(report.grade, InnovationGrade::Rupture);
+    }
+
+    #[test]
+    fn test_navigability_parabola_peak() {
+        let eval = NavigabilityEvaluator::with_defaults();
+        // The peak of H^γ·(1-H) is at H = γ/(γ+1)
+        let h_peak = eval.optimal_h_path();
+        assert!((h_peak - 1.2 / 2.2).abs() < 1e-10);
+
+        // Score at peak should be higher than at H=0.1 or H=0.9
+        let at_peak = eval.evaluate(0.5, 0.8, h_peak);
+        let at_low = eval.evaluate(0.5, 0.8, 0.1);
+        let at_high = eval.evaluate(0.5, 0.8, 0.9);
+
+        assert!(
+            at_peak.score > at_low.score,
+            "Peak ({:.4}) should beat low ({:.4})",
+            at_peak.score, at_low.score
+        );
+        assert!(
+            at_peak.score > at_high.score,
+            "Peak ({:.4}) should beat high ({:.4})",
+            at_peak.score, at_high.score
+        );
+    }
+
+    #[test]
+    fn test_navigability_disconnected_graph() {
+        let eval = NavigabilityEvaluator::with_defaults();
+        // λ₂ = 0 → disconnected → score = 0
+        let report = eval.evaluate(0.0, 0.8, 0.5);
+        assert_eq!(report.score, 0.0, "Disconnected graph should give zero: {}", report.score);
+        assert_eq!(report.grade, InnovationGrade::Rupture);
+    }
+
+    #[test]
+    fn test_navigability_zero_energy() {
+        let eval = NavigabilityEvaluator::with_defaults();
+        // E = 0 → structurally broken → score = 0
+        let report = eval.evaluate(0.5, 0.0, 0.5);
+        assert_eq!(report.score, 0.0, "Zero energy should give zero: {}", report.score);
+    }
+
+    #[test]
+    fn test_navigability_grade_ordering() {
+        let eval = NavigabilityEvaluator::with_defaults();
+
+        // Strong system → high fidelity
+        let strong = eval.evaluate(2.0, 0.95, 0.55);
+        // Weak system → speculative or rupture
+        let weak = eval.evaluate(0.01, 0.3, 0.5);
+
+        assert!(
+            strong.score > weak.score,
+            "Strong ({:.4}) should beat weak ({:.4})",
+            strong.score, weak.score
+        );
+    }
+
+    #[test]
+    fn test_navigability_report_display() {
+        let eval = NavigabilityEvaluator::with_defaults();
+        let report = eval.evaluate(0.5, 0.8, 0.5);
+        let s = format!("{report}");
+        assert!(s.contains("I="));
+        assert!(
+            s.contains("HighFidelity") || s.contains("Promising")
+                || s.contains("Speculative") || s.contains("Rupture")
+        );
     }
 }

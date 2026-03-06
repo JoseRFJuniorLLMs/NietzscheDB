@@ -31,6 +31,10 @@ pub fn put_health_report(
 }
 
 /// Retrieve all stored HealthReports, sorted by tick number ascending.
+///
+/// TODO: Potential lock contention — `scan_meta_prefix` holds a RocksDB
+/// snapshot for the duration of the scan. With many stored reports this
+/// can block writers. Consider paginated retrieval or streaming iterator.
 pub fn list_health_reports(
     storage: &GraphStorage,
 ) -> Result<Vec<HealthReport>, AgencyError> {
@@ -47,6 +51,10 @@ pub fn list_health_reports(
 }
 
 /// Retrieve the most recent HealthReport, if any.
+///
+/// TODO: This loads ALL reports just to return the last one. Consider
+/// using a reverse iterator on `scan_meta_prefix` or storing a
+/// `agency:health:latest` key to avoid the O(N) scan.
 pub fn get_latest_health_report(
     storage: &GraphStorage,
 ) -> Result<Option<HealthReport>, AgencyError> {

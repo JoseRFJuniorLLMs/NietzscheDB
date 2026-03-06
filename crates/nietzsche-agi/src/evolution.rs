@@ -28,6 +28,8 @@ use crate::criticality::{CriticalityConfig, CriticalityDetector, CriticalityMetr
 use crate::dialectic::{DialecticConfig, DialecticDetector};
 use crate::discovery::{DiscoveryConfig, DiscoveryField};
 use crate::feedback_loop::{FeedbackConfig, FeedbackLoop};
+use crate::genome::{StructuralEvolutionUnit, StructuralEvolutionConfig, EvolutionStepReport};
+use crate::identity::{AxiomIdentity, IdentityConfig, DriftReport};
 use crate::homeostasis::{DampedHomeostasis, DampingConfig, DampingReport, HomeostasisGuard, NodeDynamics};
 use crate::inference_engine::{InferenceConfig, InferenceEngine};
 use crate::innovation::{InnovationConfig, InnovationEvaluator};
@@ -78,6 +80,9 @@ pub struct EvolutionConfig {
     // Phase VI+ sub-configurations
     pub damping: DampingConfig,
     pub criticality: CriticalityConfig,
+
+    // Phase VIII sub-configuration (Structural Evolution)
+    pub structural_evolution: StructuralEvolutionConfig,
 }
 
 impl Default for EvolutionConfig {
@@ -100,6 +105,7 @@ impl Default for EvolutionConfig {
             sandbox: SandboxConfig::default(),
             damping: DampingConfig::default(),
             criticality: CriticalityConfig::default(),
+            structural_evolution: StructuralEvolutionConfig::default(),
         }
     }
 }
@@ -140,6 +146,16 @@ pub struct MetabolicInput {
     /// Change in graph structural entropy since last cycle.
     /// Positive = more complex, negative = simpler.
     pub entropy_delta: f64,
+
+    /// Normalized path entropy H_path ∈ [0, 1] from metabolic cycle.
+    /// Used by structural evolution for TGC computation.
+    /// Default: 0.5
+    pub h_path: f64,
+
+    /// Current axiom node positions in the Poincaré ball.
+    /// Used for Axiom Drift detection (Phase VIII Identity Shield).
+    /// If `None`, drift check is skipped this cycle.
+    pub axiom_positions: Option<Vec<Vec<f64>>>,
 }
 
 // ─────────────────────────────────────────────
@@ -182,6 +198,14 @@ pub struct CycleReport {
     /// Current adaptive damping coefficient.
     pub adaptive_damping: f64,
 
+    /// Structural evolution step report (Phase VIII).
+    /// Contains genome mutation result, TGC delta, and rollback info.
+    pub structural_evolution: Option<EvolutionStepReport>,
+
+    /// Axiom drift report (Phase VIII Identity Shield).
+    /// `None` if no axiom positions provided or no identity guard configured.
+    pub axiom_drift: Option<DriftReport>,
+
     /// Total time elapsed for this cycle.
     pub elapsed: Duration,
 }
@@ -200,7 +224,7 @@ impl std::fmt::Display for CycleReport {
         write!(
             f,
             "Cycle#{} [{}] λ₂: {:.4}→{:.4} | band={:.3} | damp={:.3} | \
-             promoted={} rejected={} continuing={} | KE={:.6} | {:?}",
+             promoted={} rejected={} continuing={} | KE={:.6}",
             self.cycle_number,
             self.criticality.regime,
             self.lambda2_pre,
@@ -211,8 +235,14 @@ impl std::fmt::Display for CycleReport {
             self.rejections.len(),
             self.continuing,
             self.damping.mean_kinetic_energy,
-            self.elapsed,
-        )
+        )?;
+        if let Some(ref se) = self.structural_evolution {
+            write!(f, " | {se}")?;
+        }
+        if let Some(ref drift) = self.axiom_drift {
+            write!(f, " | {drift}")?;
+        }
+        write!(f, " | {:?}", self.elapsed)
     }
 }
 
@@ -267,6 +297,12 @@ pub struct EvolutionScheduler {
     pub adaptive_band: AdaptiveBand,
     pub node_dynamics: Vec<NodeDynamics>,
 
+    // Phase VIII sub-system (Structural Evolution)
+    pub structural_evolution_unit: StructuralEvolutionUnit,
+
+    // Phase VIII sub-system (Identity Shield)
+    pub identity_guard: Option<AxiomIdentity>,
+
     // Stats
     pub total_cycles: u64,
     pub total_syntheses: u64,
@@ -295,6 +331,7 @@ impl EvolutionScheduler {
         let damped_homeostasis = DampedHomeostasis::new(config.damping.clone());
         let criticality_detector = CriticalityDetector::new(config.criticality.clone());
         let adaptive_band = AdaptiveBand::with_defaults();
+        let structural_evolution_unit = StructuralEvolutionUnit::new(config.structural_evolution.clone());
 
         Self {
             config,
@@ -313,6 +350,8 @@ impl EvolutionScheduler {
             damped_homeostasis,
             criticality_detector,
             adaptive_band,
+            structural_evolution_unit,
+            identity_guard: None,
             node_dynamics: Vec::new(),
             total_cycles: 0,
             total_syntheses: 0,
@@ -327,6 +366,26 @@ impl EvolutionScheduler {
     /// Create a scheduler with default configuration.
     pub fn with_defaults() -> Self {
         Self::new(EvolutionConfig::default())
+    }
+
+    /// Initialize the Axiom Identity Shield from axiom node positions.
+    ///
+    /// Call this once at system birth with all axiom/Level-1 node positions.
+    /// The Ur-Cortex center C₀ and initial radius r̄₀ are computed and frozen.
+    ///
+    /// Returns `true` if the identity guard was successfully initialized.
+    pub fn initialize_identity(
+        &mut self,
+        axiom_positions: &[Vec<f64>],
+        config: IdentityConfig,
+    ) -> bool {
+        match AxiomIdentity::initialize(axiom_positions, config) {
+            Some(guard) => {
+                self.identity_guard = Some(guard);
+                true
+            }
+            None => false,
+        }
     }
 
     /// Check if enough time has passed for a new cycle.
@@ -433,7 +492,27 @@ impl EvolutionScheduler {
         self.adaptive_band.adjust(energy_delta, lambda2_post);
         self.last_global_energy = input.global_energy;
 
-        // ── Step 7: Record ──
+        // ── Step 7: Structural Evolution (Phase VIII) ──
+        let structural_step = {
+            let energy_variance = compute_variance(&input.node_energies);
+            self.structural_evolution_unit.step(
+                self.total_cycles,
+                lambda2_post,
+                input.global_energy.clamp(0.0, 1.0),
+                input.h_path.clamp(0.0, 1.0),
+                energy_variance,
+            )
+        };
+
+        // ── Step 8: Axiom Drift Check (Phase VIII Identity Shield) ──
+        let axiom_drift = match (&self.identity_guard, &input.axiom_positions) {
+            (Some(guard), Some(positions)) if !positions.is_empty() => {
+                Some(guard.measure_drift(positions))
+            }
+            _ => None,
+        };
+
+        // ── Step 9: Record ──
         let elapsed = start.elapsed();
 
         CycleReport {
@@ -447,6 +526,8 @@ impl EvolutionScheduler {
             continuing,
             band_target: self.adaptive_band.target,
             adaptive_damping,
+            structural_evolution: Some(structural_step),
+            axiom_drift,
             elapsed,
         }
     }
@@ -586,6 +667,8 @@ mod tests {
             global_energy: 0.0,
             energy_input: 0.0,
             entropy_delta: 0.0,
+            h_path: 0.5,
+            axiom_positions: None,
         };
 
         let report = sched.run_metabolic_cycle(&input);
@@ -610,6 +693,8 @@ mod tests {
             global_energy: 0.7,
             energy_input: 0.05,
             entropy_delta: 0.01,
+            h_path: 0.5,
+            axiom_positions: None,
         };
 
         let report = sched.run_metabolic_cycle(&input);
@@ -636,6 +721,8 @@ mod tests {
             global_energy: 0.5,
             energy_input: 0.0,
             entropy_delta: 0.0,
+            h_path: 0.5,
+            axiom_positions: None,
         };
 
         let report = sched.run_metabolic_cycle(&input);
@@ -659,6 +746,8 @@ mod tests {
             global_energy: 0.5,
             energy_input: 0.1,
             entropy_delta: 0.01,
+            h_path: 0.5,
+            axiom_positions: None,
         };
 
         let report = sched.run_metabolic_cycle(&input);
@@ -686,6 +775,8 @@ mod tests {
             global_energy: 0.8, // Higher than initial 0 → positive delta
             energy_input: 0.1,
             entropy_delta: 0.01,
+            h_path: 0.5,
+            axiom_positions: None,
         };
 
         let report = sched.run_metabolic_cycle(&input);

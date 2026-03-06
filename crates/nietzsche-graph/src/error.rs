@@ -19,6 +19,9 @@ pub enum GraphError {
 
     #[error("serialization error: {0}")]
     Serialization(String),
+
+    #[error("invalid argument: {0}")]
+    InvalidArgument(String),
 }
 
 impl From<bincode::Error> for GraphError {

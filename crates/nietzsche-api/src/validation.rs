@@ -50,6 +50,13 @@ pub fn validate_embedding(emb: &PoincareVector) -> Result<(), Status> {
         ));
     }
 
+    if emb.dim > 0 && emb.dim as usize != emb.coords.len() {
+        return Err(Status::invalid_argument(format!(
+            "embedding dim field ({}) does not match coords length ({})",
+            emb.dim, emb.coords.len()
+        )));
+    }
+
     if emb.coords.len() > MAX_EMBEDDING_DIM {
         return Err(Status::invalid_argument(format!(
             "embedding dimension {} exceeds maximum {}",
@@ -102,6 +109,10 @@ pub fn validate_energy(energy: f32) -> Result<(), Status> {
 pub fn validate_nql(nql: &str) -> Result<(), Status> {
     if nql.trim().is_empty() {
         return Err(Status::invalid_argument("NQL query must not be empty"));
+    }
+    // Check for null bytes that could cause issues
+    if nql.contains('\0') {
+        return Err(Status::invalid_argument("NQL query must not contain null bytes"));
     }
     if nql.len() > MAX_NQL_LEN {
         return Err(Status::invalid_argument(format!(

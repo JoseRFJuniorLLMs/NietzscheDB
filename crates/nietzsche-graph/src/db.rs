@@ -1071,7 +1071,19 @@ impl<V: VectorStore> NietzscheDB<V> {
 
             // Filter by node_type (Debug format matches proto strings)
             let type_str = format!("{:?}", meta.node_type);
-            if type_str != node_type {
+            // If the caller requests a custom type (e.g. "User"), and the stored type is
+            // Semantic, also check the content `node_label` field for a match.
+            let type_matches = if type_str == node_type {
+                true
+            } else if type_str == "Semantic" {
+                // Check if content has a node_label matching the requested type
+                meta.content.get("node_label")
+                    .and_then(|v| v.as_str())
+                    .map_or(false, |label| label == node_type)
+            } else {
+                false
+            };
+            if !type_matches {
                 continue;
             }
 
@@ -1139,7 +1151,7 @@ impl<V: VectorStore> NietzscheDB<V> {
             if let Some(edge) = self.storage.get_edge(&eid)? {
                 if edge.to == to_id {
                     let type_str = format!("{:?}", edge.edge_type);
-                    if type_str == edge_type {
+                    if type_str.eq_ignore_ascii_case(edge_type) {
                         return Ok(Some(edge));
                     }
                 }
@@ -1226,7 +1238,13 @@ impl<V: VectorStore> NietzscheDB<V> {
     /// Called after `insert_node` or `update_energy` by the API layer,
     /// which computes purity via `poincare_to_bloch(embedding, energy).purity`.
     pub fn set_quantum_purity(&self, node_id: Uuid, purity: f64) {
-        self.quantum_purity_cache.lock().insert(node_id, purity);
+        let mut cache = self.quantum_purity_cache.lock();
+        cache.insert(node_id, purity);
+        if cache.len() > 100_000 {
+            // Evict ~25% of entries to avoid frequent clearing
+            let to_remove: Vec<Uuid> = cache.keys().take(25_000).cloned().collect();
+            for k in to_remove { cache.remove(&k); }
+        }
     }
 
     /// Retrieve the cached quantum purity for a node.
@@ -1579,9 +1597,15 @@ impl<V: VectorStore> NietzscheDB<V> {
     pub fn force_sync_vector_store(&mut self) -> Result<usize, GraphError> {
         tracing::info!("Starting DeepRecovery: force-syncing vector store against RocksDB...");
         let mut count = 0;
-        
-        let nodes = self.storage.scan_nodes()?;
-        for node in nodes {
+
+        for node_result in self.storage.iter_nodes() {
+            let node = match node_result {
+                Ok(n) => n,
+                Err(e) => {
+                    tracing::warn!("skipping corrupt node during vector sync: {e}");
+                    continue;
+                }
+            };
             self.vector_store.upsert(node.id, &node.embedding)?;
             count += 1;
         }

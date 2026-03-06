@@ -404,23 +404,20 @@ impl<const N: usize> HyperVector<N> {
     }
     /// Casts bytes to `HyperVector`.
     ///
-    /// # Panics
-    ///
-    /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
+    /// Returns an error if the byte slice is too short or not properly aligned.
     #[allow(clippy::cast_ptr_alignment)]
-    pub fn from_bytes(bytes: &[u8]) -> &Self {
-        assert!(
-            bytes.len() >= Self::SIZE,
-            "from_bytes: buffer too short ({} < {})",
-            bytes.len(),
-            Self::SIZE
-        );
-        assert_eq!(
-            bytes.as_ptr().align_offset(std::mem::align_of::<Self>()),
-            0,
-            "HyperVector: Misaligned bytes! Use aligned storage."
-        );
-        unsafe { &*bytes.as_ptr().cast::<Self>() }
+    pub fn from_bytes(bytes: &[u8]) -> Result<&Self, String> {
+        if bytes.len() < Self::SIZE {
+            return Err(format!(
+                "HyperVector::from_bytes: buffer too short ({} < {})",
+                bytes.len(),
+                Self::SIZE
+            ));
+        }
+        if bytes.as_ptr().align_offset(std::mem::align_of::<Self>()) != 0 {
+            return Err("HyperVector::from_bytes: misaligned bytes".to_string());
+        }
+        Ok(unsafe { &*bytes.as_ptr().cast::<Self>() })
     }
 }
 
@@ -432,24 +429,21 @@ impl<const N: usize> HyperVectorF32<N> {
     }
     /// Casts bytes to `HyperVectorF32`.
     ///
-    /// # Panics
-    ///
-    /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
+    /// Returns an error if the byte slice is too short or not properly aligned.
     #[allow(clippy::cast_ptr_alignment)]
-    pub fn from_bytes(bytes: &[u8]) -> &Self {
-        assert!(
-            bytes.len() >= Self::SIZE,
-            "from_bytes: buffer too short ({} < {})",
-            bytes.len(),
-            Self::SIZE
-        );
-        assert_eq!(
-            bytes.as_ptr().align_offset(std::mem::align_of::<Self>()),
-            0,
-            "HyperVectorF32: Misaligned bytes! Use aligned storage."
-        );
-        // SAFETY: alignment and size are controlled by caller/storage element sizing.
-        unsafe { &*bytes.as_ptr().cast::<Self>() }
+    pub fn from_bytes(bytes: &[u8]) -> Result<&Self, String> {
+        if bytes.len() < Self::SIZE {
+            return Err(format!(
+                "HyperVectorF32::from_bytes: buffer too short ({} < {})",
+                bytes.len(),
+                Self::SIZE
+            ));
+        }
+        if bytes.as_ptr().align_offset(std::mem::align_of::<Self>()) != 0 {
+            return Err("HyperVectorF32::from_bytes: misaligned bytes".to_string());
+        }
+        // SAFETY: alignment and size are verified above.
+        Ok(unsafe { &*bytes.as_ptr().cast::<Self>() })
     }
 }
 
@@ -460,23 +454,20 @@ impl<const N: usize> QuantizedHyperVector<N> {
     }
     /// Casts bytes to `QuantizedHyperVector`.
     ///
-    /// # Panics
-    ///
-    /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
+    /// Returns an error if the byte slice is too short or not properly aligned.
     #[allow(clippy::cast_ptr_alignment)]
-    pub fn from_bytes(bytes: &[u8]) -> &Self {
-        assert!(
-            bytes.len() >= Self::SIZE,
-            "from_bytes: buffer too short ({} < {})",
-            bytes.len(),
-            Self::SIZE
-        );
-        assert_eq!(
-            bytes.as_ptr().align_offset(std::mem::align_of::<Self>()),
-            0,
-            "QuantizedHyperVector: Misaligned bytes!"
-        );
-        unsafe { &*bytes.as_ptr().cast::<Self>() }
+    pub fn from_bytes(bytes: &[u8]) -> Result<&Self, String> {
+        if bytes.len() < Self::SIZE {
+            return Err(format!(
+                "QuantizedHyperVector::from_bytes: buffer too short ({} < {})",
+                bytes.len(),
+                Self::SIZE
+            ));
+        }
+        if bytes.as_ptr().align_offset(std::mem::align_of::<Self>()) != 0 {
+            return Err("QuantizedHyperVector::from_bytes: misaligned bytes".to_string());
+        }
+        Ok(unsafe { &*bytes.as_ptr().cast::<Self>() })
     }
 }
 
@@ -487,23 +478,20 @@ impl<const N: usize> BinaryHyperVector<N> {
     }
     /// Casts bytes to `BinaryHyperVector`.
     ///
-    /// # Panics
-    ///
-    /// Panics if the byte slice is not aligned to `std::mem::align_of::<Self>()`.
+    /// Returns an error if the byte slice is too short or not properly aligned.
     #[allow(clippy::cast_ptr_alignment)]
-    pub fn from_bytes(bytes: &[u8]) -> &Self {
-        assert!(
-            bytes.len() >= Self::SIZE,
-            "from_bytes: buffer too short ({} < {})",
-            bytes.len(),
-            Self::SIZE
-        );
-        assert_eq!(
-            bytes.as_ptr().align_offset(std::mem::align_of::<Self>()),
-            0,
-            "BinaryHyperVector: Misaligned bytes!"
-        );
-        unsafe { &*bytes.as_ptr().cast::<Self>() }
+    pub fn from_bytes(bytes: &[u8]) -> Result<&Self, String> {
+        if bytes.len() < Self::SIZE {
+            return Err(format!(
+                "BinaryHyperVector::from_bytes: buffer too short ({} < {})",
+                bytes.len(),
+                Self::SIZE
+            ));
+        }
+        if bytes.as_ptr().align_offset(std::mem::align_of::<Self>()) != 0 {
+            return Err("BinaryHyperVector::from_bytes: misaligned bytes".to_string());
+        }
+        Ok(unsafe { &*bytes.as_ptr().cast::<Self>() })
     }
 }
 

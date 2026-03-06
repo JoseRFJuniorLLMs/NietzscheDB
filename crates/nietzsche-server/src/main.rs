@@ -49,6 +49,7 @@ use nietzsche_hnsw_gpu::GpuVectorStore;
 use nietzsche_tpu::TpuVectorStore;
 
 mod auth;
+mod bootstrap;
 mod cluster_service;
 mod config;
 mod dashboard;
@@ -81,6 +82,9 @@ async fn main() -> anyhow::Result<()> {
 
     // ── Open CollectionManager ────────────────────────────────────────────────
     let db_path = PathBuf::from(&config.data_dir);
+    let collections_path = db_path.join("collections");
+    info!("[BOOT] NIETZSCHE_DATA_DIR={}", db_path.display());
+    info!("[BOOT] collections_path={}", collections_path.display());
     std::fs::create_dir_all(&db_path)?;
 
     let cm = CollectionManager::open(&db_path)
@@ -107,6 +111,13 @@ async fn main() -> anyhow::Result<()> {
     }
     if !indexed_fields.is_empty() {
         info!(fields = ?config.indexed_fields, "metadata indexing enabled");
+    }
+
+    // ── Cortex Bootstrap (Phase VI.1) ───────────────────────────────────────
+    match bootstrap::run_bootstrap(&cm).await {
+        Ok(true)  => info!("[BOOT] cortex bootstrap complete: 5 nodes, 4 edges, 1 daemon"),
+        Ok(false) => info!("[BOOT] cortex already bootstrapped, skipping"),
+        Err(e)    => warn!("[BOOT] cortex bootstrap failed: {e}"),
     }
 
     // ── Neural Model Registry — Background Scanner ────────────────────────────

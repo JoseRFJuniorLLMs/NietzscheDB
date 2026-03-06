@@ -23,6 +23,7 @@
 use rand::Rng;
 use uuid::Uuid;
 
+use crate::error::GraphError;
 use crate::model::Edge;
 
 // ─────────────────────────────────────────────
@@ -264,7 +265,7 @@ pub fn collapse_edges(
 /// entangled with the context are forced to materialise; the rest fall back
 /// to classical probabilistic collapse.
 ///
-/// Returns a `Vec<bool>` aligned with `edges` (true = edge exists).
+/// Returns a `Result<Vec<bool>>` aligned with `edges` (true = edge exists).
 pub fn collapse_edges_with_entanglement(
     edges: &[Edge],
     context_states: &[BlochState],
@@ -272,14 +273,15 @@ pub fn collapse_edges_with_entanglement(
     entanglement_threshold: f64,
     context: Option<&str>,
     rng: &mut impl Rng,
-) -> Vec<bool> {
-    assert_eq!(
-        edges.len(),
-        target_states.len(),
-        "edges and target_states must have the same length"
-    );
+) -> Result<Vec<bool>, GraphError> {
+    if edges.len() != target_states.len() {
+        return Err(GraphError::InvalidArgument(format!(
+            "edges and target_states must have the same length: {} vs {}",
+            edges.len(), target_states.len()
+        )));
+    }
 
-    edges
+    Ok(edges
         .iter()
         .zip(target_states.iter())
         .map(|(edge, target)| {
@@ -292,7 +294,7 @@ pub fn collapse_edges_with_entanglement(
                 rng,
             )
         })
-        .collect()
+        .collect())
 }
 
 /// Apply decay to all probabilistic edges.
@@ -610,7 +612,7 @@ mod tests {
 
         let results = collapse_edges_with_entanglement(
             &edges, &context, &targets, 0.5, None, &mut rng,
-        );
+        ).unwrap();
 
         assert_eq!(results.len(), 3);
         assert!(results.iter().all(|&r| r), "all edges should be forced to collapse");
@@ -631,7 +633,7 @@ mod tests {
 
         let results = collapse_edges_with_entanglement(
             &edges, &context, &targets, 0.5, None, &mut rng,
-        );
+        ).unwrap();
 
         assert_eq!(results.len(), 2);
         assert!(results[0], "first edge should collapse (high entanglement)");
@@ -639,13 +641,15 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "edges and target_states must have the same length")]
-    fn batch_collapse_panics_on_mismatched_lengths() {
+    fn batch_collapse_returns_err_on_mismatched_lengths() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let edges: Vec<Edge> = (0..3).map(|_| test_edge(0.5)).collect();
         let context = vec![BlochState::new(0.5, 1.0, 1.0)];
         let targets = vec![BlochState::new(0.5, 1.0, 1.0)]; // only 1, but 3 edges
 
-        collapse_edges_with_entanglement(&edges, &context, &targets, 0.5, None, &mut rng);
+        let result = collapse_edges_with_entanglement(&edges, &context, &targets, 0.5, None, &mut rng);
+        assert!(result.is_err(), "mismatched lengths should return Err");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("3 vs 1"), "error should mention the lengths: {err_msg}");
     }
 }

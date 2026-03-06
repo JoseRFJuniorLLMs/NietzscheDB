@@ -1488,6 +1488,10 @@ fn resolve_diffuse_from(from: &DiffuseFrom, params: &Params) -> Result<Uuid, Que
 // Condition evaluation
 // ─────────────────────────────────────────────
 
+/// Maximum recursion depth for condition evaluation (AND/OR/NOT nesting).
+/// Prevents stack overflow on pathologically nested WHERE clauses.
+const MAX_CONDITION_EVAL_DEPTH: usize = 64;
+
 /// Evaluate all conditions (ANDed together at the top level of the vec).
 fn eval_conditions(
     conditions: &[Condition],
@@ -1509,7 +1513,7 @@ fn eval_conditions_with_edges(
     adjacency:     &AdjacencyIndex,
 ) -> Result<bool, QueryError> {
     for cond in conditions {
-        if !eval_condition_with_edges(cond, binding, edge_bindings, params, storage, adjacency)? {
+        if !eval_condition_with_edges_depth(cond, binding, edge_bindings, params, storage, adjacency, 0)? {
             return Ok(false);
         }
     }
@@ -1524,6 +1528,25 @@ fn eval_condition_with_edges(
     storage:       &GraphStorage,
     adjacency:     &AdjacencyIndex,
 ) -> Result<bool, QueryError> {
+    eval_condition_with_edges_depth(cond, binding, edge_bindings, params, storage, adjacency, 0)
+}
+
+fn eval_condition_with_edges_depth(
+    cond:          &Condition,
+    binding:       &[(&str, &Node)],
+    edge_bindings: &[(&str, &Edge)],
+    params:        &Params,
+    storage:       &GraphStorage,
+    adjacency:     &AdjacencyIndex,
+    depth:         usize,
+) -> Result<bool, QueryError> {
+    if depth > MAX_CONDITION_EVAL_DEPTH {
+        return Err(QueryError::Execution(format!(
+            "condition nesting too deep (>{MAX_CONDITION_EVAL_DEPTH}). \
+             Simplify the WHERE clause or break into multiple queries."
+        )));
+    }
+
     match cond {
         Condition::Compare { left, op, right } => {
             let l = eval_expr_with_edges(left, binding, edge_bindings, params, storage, adjacency)?;
@@ -1531,14 +1554,14 @@ fn eval_condition_with_edges(
             compare_values(&l, op, &r)
         }
         Condition::And(a, b) => {
-            Ok(eval_condition_with_edges(a, binding, edge_bindings, params, storage, adjacency)?
-               && eval_condition_with_edges(b, binding, edge_bindings, params, storage, adjacency)?)
+            Ok(eval_condition_with_edges_depth(a, binding, edge_bindings, params, storage, adjacency, depth + 1)?
+               && eval_condition_with_edges_depth(b, binding, edge_bindings, params, storage, adjacency, depth + 1)?)
         }
         Condition::Or(a, b) => {
-            Ok(eval_condition_with_edges(a, binding, edge_bindings, params, storage, adjacency)?
-               || eval_condition_with_edges(b, binding, edge_bindings, params, storage, adjacency)?)
+            Ok(eval_condition_with_edges_depth(a, binding, edge_bindings, params, storage, adjacency, depth + 1)?
+               || eval_condition_with_edges_depth(b, binding, edge_bindings, params, storage, adjacency, depth + 1)?)
         }
-        Condition::Not(c) => Ok(!eval_condition_with_edges(c, binding, edge_bindings, params, storage, adjacency)?),
+        Condition::Not(c) => Ok(!eval_condition_with_edges_depth(c, binding, edge_bindings, params, storage, adjacency, depth + 1)?),
 
         Condition::In { expr, values } => {
             let needle = eval_expr_with_edges(expr, binding, edge_bindings, params, storage, adjacency)?;
@@ -1617,7 +1640,8 @@ fn eval_condition_with_edges(
         // ── NQL 2.0: EXISTS { MATCH … WHERE … } ──────────
         Condition::Exists { pattern, conditions } => {
             // EXISTS evaluates a subquery pattern against current bindings
-            // It returns true if any nodes/edges match the inner pattern + conditions
+            // It returns true if any nodes/edges match the inner pattern + conditions.
+            // Depth is propagated to prevent unbounded recursion through nested EXISTS.
             match pattern {
                 Pattern::Node(np) => {
                     let nodes = storage.scan_nodes()
@@ -1634,7 +1658,15 @@ fn eval_condition_with_edges(
                         // Extend existing binding with the inner alias
                         let mut inner_binding: Vec<(&str, &Node)> = binding.to_vec();
                         inner_binding.push((np.alias.as_str(), node));
-                        if eval_conditions_with_edges(conditions, &inner_binding, edge_bindings, params, storage, adjacency)? {
+                        // Propagate depth + 1 to inner conditions
+                        let mut all_match = true;
+                        for c in conditions {
+                            if !eval_condition_with_edges_depth(c, &inner_binding, edge_bindings, params, storage, adjacency, depth + 1)? {
+                                all_match = false;
+                                break;
+                            }
+                        }
+                        if all_match {
                             return Ok(true);
                         }
                     }
@@ -1663,7 +1695,15 @@ fn eval_condition_with_edges(
                         let mut inner_binding: Vec<(&str, &Node)> = binding.to_vec();
                         inner_binding.push((pp.from.alias.as_str(), &from_node));
                         inner_binding.push((pp.to.alias.as_str(), &to_node));
-                        if eval_conditions_with_edges(conditions, &inner_binding, edge_bindings, params, storage, adjacency)? {
+                        // Propagate depth + 1 to inner conditions
+                        let mut all_match = true;
+                        for c in conditions {
+                            if !eval_condition_with_edges_depth(c, &inner_binding, edge_bindings, params, storage, adjacency, depth + 1)? {
+                                all_match = false;
+                                break;
+                            }
+                        }
+                        if all_match {
                             return Ok(true);
                         }
                     }
@@ -2303,8 +2343,13 @@ fn eval_math_func(
         MathFunc::Substring => {
             let s = resolve_string_arg(&args[0], binding, params, storage, adjacency)?;
             let start = resolve_scalar_arg(&args[1], binding, params, storage, adjacency)? as usize;
-            let len = resolve_scalar_arg(&args[2], binding, params, storage, adjacency)? as usize;
-            let result: String = s.chars().skip(start).take(len).collect();
+            // Third argument (length) is optional — if omitted, take the rest of the string
+            let result: String = if args.len() > 2 {
+                let len = resolve_scalar_arg(&args[2], binding, params, storage, adjacency)? as usize;
+                s.chars().skip(start).take(len).collect()
+            } else {
+                s.chars().skip(start).collect()
+            };
             Ok(Value::Str(result))
         }
         MathFunc::Replace => {

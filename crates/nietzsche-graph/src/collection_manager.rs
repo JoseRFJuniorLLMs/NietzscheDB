@@ -99,6 +99,8 @@ pub struct CollectionManager {
     collections: DashMap<String, (CollectionConfig, SharedDb)>,
     /// Serialises `create_collection` calls to eliminate the TOCTOU race
     /// between the `contains_key` check and the `insert`.
+    // TODO: Replace std::sync::Mutex with tokio::sync::Mutex to avoid blocking
+    // the async executor during collection creation (which involves disk I/O).
     create_lock: Mutex<()>,
 }
 
@@ -174,7 +176,10 @@ impl CollectionManager {
     /// Uses a creation mutex to eliminate the TOCTOU race between the
     /// `contains_key` check and the actual insert into the `DashMap`.
     pub fn create_collection(&self, cfg: CollectionConfig) -> Result<(), GraphError> {
-        let _guard = self.create_lock.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = self.create_lock.lock().unwrap_or_else(|e| {
+            tracing::warn!("create_lock was poisoned — previous creation may have failed");
+            e.into_inner()
+        });
         if self.collections.contains_key(&cfg.name) {
             return Ok(()); // Already exists — idempotent
         }

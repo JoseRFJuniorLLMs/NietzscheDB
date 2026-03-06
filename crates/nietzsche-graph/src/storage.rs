@@ -760,6 +760,9 @@ impl GraphStorage {
     // ── Inline CF handle accessors ─────────────────────────────────────────────
     // `cf_handle()` does a HashMap<&str, Arc<BoundColumnFamily>> lookup.
     // The #[inline] hint lets the compiler hoist repeated lookups within a fn.
+    //
+    // SAFETY: Column families are created during DB::open_cf(). If a CF is missing,
+    // the database was opened with an incompatible schema version and we cannot recover.
 
     #[inline] fn cf_nodes(&self)      -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_NODES).unwrap() }
     #[inline] fn cf_embeddings(&self) -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_EMBEDDINGS).unwrap() }
@@ -1133,6 +1136,8 @@ impl GraphStorage {
     ///
     /// A node is expired when `expires_at.is_some() && expires_at <= now`.
     /// O(N) full scan — intended for background reaper, not the hot path.
+    // TODO: PERF — This is O(N) scanning all nodes. Create a secondary index on
+    // expires_at (similar to the energy index) to reduce to O(log N + k).
     pub fn scan_expired_node_ids(&self, now_unix_secs: i64) -> Result<Vec<Uuid>, GraphError> {
         let mut expired = Vec::new();
         for result in self.iter_nodes_meta() {
@@ -1322,6 +1327,18 @@ impl GraphStorage {
     ///
     /// Uses an atomic read-increment-write of the sequence counter stored in CF_META.
     /// Key format: `[node_id(16B) | list_name_hash(8B) | seq_be(8B)]`.
+    ///
+    /// TODO: RACE CONDITION — The read-increment-write of the sequence counter is NOT
+    /// atomic across concurrent callers. Two concurrent `list_rpush` calls can read the
+    /// same `current_seq`, compute the same `new_seq`, and overwrite each other's entry.
+    /// Fix options:
+    ///   1. Use `TransactionDB::get_for_update()` to lock the seq key during the
+    ///      read-modify-write cycle (requires switching from `DB` to `TransactionDB`).
+    ///   2. Use RocksDB merge operator with an increment semantic on the seq counter.
+    ///   3. Add a `list_lock: Mutex<()>` field to `GraphStorage` and hold it across
+    ///      the read-increment-write (simplest but serializes all list writes).
+    /// Current risk: low in single-writer workloads (EVA-Mind), but would corrupt
+    /// list ordering under concurrent multi-writer scenarios.
     pub fn list_rpush(
         &self,
         node_id: &Uuid,
@@ -1589,10 +1606,18 @@ impl GraphStorage {
     /// Called once at startup after WAL replay.
     pub fn rebuild_adjacency(&self) -> Result<AdjacencyIndex, GraphError> {
         let index = AdjacencyIndex::new();
-        let edges = self.scan_edges()?;
-        let edge_count = edges.len();
-        for edge in &edges {
-            index.add_edge(edge);
+        let mut edge_count = 0usize;
+        let iter = self.iter_edges();
+        for edge_result in iter {
+            let edge = match edge_result {
+                Ok(e) => e,
+                Err(err) => {
+                    tracing::warn!("skipping corrupt edge during adjacency rebuild: {err}");
+                    continue;
+                }
+            };
+            index.add_edge(&edge);
+            edge_count += 1;
         }
         tracing::info!(
             edges_loaded = edge_count,

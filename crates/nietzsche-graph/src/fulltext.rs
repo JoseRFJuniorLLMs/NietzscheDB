@@ -45,6 +45,10 @@ impl<'a> FullTextIndex<'a> {
         let doc_count = self.get_doc_count()? + 1;
         self.storage.put_meta("fts:doc_count", &doc_count.to_le_bytes())?;
 
+        // Increment total document length for accurate BM25 avg_dl
+        let total_dl = self.get_total_doc_length()? + tokens.len() as u64;
+        self.storage.put_meta("fts:total_dl", &total_dl.to_le_bytes())?;
+
         // Update posting lists
         for (term, freq) in term_freq {
             let key = format!("fts:term:{}", term);
@@ -62,9 +66,14 @@ impl<'a> FullTextIndex<'a> {
 
     /// Remove a node from the full-text index.
     pub fn remove_node(&self, node_id: &Uuid) -> Result<(), GraphError> {
-        // We'd need to know which terms this node had — for simplicity,
-        // we mark the doc as deleted. The posting lists will be cleaned
-        // lazily during searches.
+        // Decrement total_dl by this node's doc length before removing
+        let node_dl = self.get_doc_length(node_id)? as u64;
+        if node_dl > 0 {
+            let total_dl = self.get_total_doc_length()?;
+            let new_total = total_dl.saturating_sub(node_dl);
+            self.storage.put_meta("fts:total_dl", &new_total.to_le_bytes())?;
+        }
+
         let dl_key = format!("fts:dl:{}", node_id);
         self.storage.delete_meta(&dl_key)?;
 
@@ -72,6 +81,15 @@ impl<'a> FullTextIndex<'a> {
         if doc_count > 0 {
             self.storage.put_meta("fts:doc_count", &(doc_count - 1).to_le_bytes())?;
         }
+
+        // TODO: Posting list cleanup — the node's entries remain in per-term posting
+        // lists (fts:term:*) as stale (node_id, freq) tuples. We'd need to either:
+        //   1. Store a reverse index (node_id → [terms]) to know which posting lists
+        //      to clean, or
+        //   2. Scan ALL posting lists (expensive), or
+        //   3. Accept lazy cleanup during search (current approach: stale entries are
+        //      filtered out in search() when get_doc_length returns 0).
+        // Option 1 doubles write amplification; option 3 is the current tradeoff.
 
         Ok(())
     }
@@ -168,12 +186,20 @@ impl<'a> FullTextIndex<'a> {
     }
 
     fn get_avg_doc_length(&self) -> Result<f64, GraphError> {
-        // Simple approximation: scan a few doc lengths
-        // For production, store total_dl alongside doc_count
         let doc_count = self.get_doc_count()?;
         if doc_count == 0 { return Ok(1.0); }
-        // Use a fixed estimate of 100 tokens per doc
-        Ok(100.0)
+        let total_dl = self.get_total_doc_length()?;
+        if total_dl == 0 { return Ok(100.0); } // fallback for legacy data
+        Ok(total_dl as f64 / doc_count as f64)
+    }
+
+    fn get_total_doc_length(&self) -> Result<u64, GraphError> {
+        match self.storage.get_meta("fts:total_dl")? {
+            Some(bytes) if bytes.len() >= 8 => {
+                Ok(u64::from_le_bytes(bytes[..8].try_into().unwrap()))
+            }
+            _ => Ok(0),
+        }
     }
 
     fn get_postings(&self, key: &str) -> Result<Vec<(Uuid, u32)>, GraphError> {
