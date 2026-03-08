@@ -649,6 +649,19 @@ async fn main() -> anyhow::Result<()> {
                                     );
                                 }
 
+                                // Persist cognitive dashboard + observation frame (before intents consume the report)
+                                {
+                                    let dashboard = nietzsche_agency::CognitiveDashboard::from_tick_report(&report, col_name);
+                                    if let Ok(json) = serde_json::to_vec(&dashboard) {
+                                        let _ = db.storage().put_meta(nietzsche_agency::CognitiveDashboard::meta_key(), &json);
+                                    }
+                                    // Observation frame for perspektive.js visualization
+                                    let obs_frame = nietzsche_agency::ObservationFrame::from_dashboard(&dashboard, &[]);
+                                    if let Ok(json) = serde_json::to_vec(&obs_frame) {
+                                        let _ = db.storage().put_meta(nietzsche_agency::ObservationFrame::meta_key(), &json);
+                                    }
+                                }
+
                                 // Execute intents produced by the reactor
                                 for intent in report.intents {
                                     match intent {
@@ -924,8 +937,17 @@ async fn main() -> anyhow::Result<()> {
                                                 }
                                             }
                                         }
+                                        nietzsche_agency::AgencyIntent::GravityPull { well_id: _, node_id, amount } => {
+                                            // Gravity pull: boost attracted node's energy
+                                            if let Ok(Some(mut meta)) = db.storage().get_node_meta(&node_id) {
+                                                let old = meta.energy;
+                                                meta.energy = (meta.energy + amount).min(1.0);
+                                                let _ = db.storage().put_node_meta_update_energy(&meta, old);
+                                            }
+                                        }
                                     }
                                 }
+
 
                                 if !report.desires.is_empty() {
                                     info!(

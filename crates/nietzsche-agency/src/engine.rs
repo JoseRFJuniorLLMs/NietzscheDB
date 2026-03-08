@@ -9,6 +9,8 @@ use crate::thermodynamics::{
     ThermodynamicReport, ThermodynamicState, ThermodynamicsConfig,
     run_thermodynamic_cycle,
 };
+use crate::gravity::{GravityConfig, GravityNode, GravityReport, GravityState, run_gravity_tick};
+use crate::dirty_set::{DirtySet, DirtySetConfig, ScanDecision};
 use crate::axiom_registry::AxiomRegistry;
 use crate::centroid_guardian::CentroidGuardian;
 use crate::hyperbolic_health::{HyperbolicHealth, HyperbolicHealthMonitor};
@@ -51,6 +53,8 @@ pub struct AgencyTickReport {
     pub hebbian_report: Option<HebbianReport>,
     /// Cognitive thermodynamics report (None if interval-gated or disabled).
     pub thermodynamic_report: Option<ThermodynamicReport>,
+    /// Semantic gravity field report (None if interval-gated or disabled).
+    pub gravity_report: Option<GravityReport>,
     pub duration_ms: u64,
 }
 
@@ -95,6 +99,11 @@ pub struct AgencyEngine {
     thermo_state: ThermodynamicState,
     /// Previous phase state for phase transition detection.
     last_phase: Option<crate::thermodynamics::PhaseState>,
+    /// Semantic Gravity — gravitational field between concepts (Phase XIV).
+    gravity_state: GravityState,
+    /// DirtySet — adaptive sampling for O(Δ) scans (Phase XV).
+    dirty_set: std::sync::Arc<DirtySet>,
+    dirty_config: DirtySetConfig,
 }
 
 impl AgencyEngine {
@@ -136,6 +145,13 @@ impl AgencyEngine {
             hebbian_state: HebbianState::new(),
             thermo_state: ThermodynamicState::new(),
             last_phase: None,
+            gravity_state: GravityState::new(),
+            dirty_set: std::sync::Arc::new(DirtySet::new()),
+            dirty_config: DirtySetConfig {
+                full_scan_ratio: config.dirty_full_scan_ratio,
+                stability_sample: config.dirty_stability_sample,
+                enabled: config.dirty_enabled,
+            },
             config,
         }
     }
@@ -475,6 +491,13 @@ impl AgencyEngine {
             None
         };
 
+        // 12b. Mark ECAN energy delta nodes as dirty for adaptive sampling
+        if let Some(ref att) = attention_report {
+            for (id, _) in &att.energy_deltas {
+                self.dirty_set.mark(*id);
+            }
+        }
+
         // 13. Hebbian LTP — structural plasticity (Phase XII.5)
         //     Uses ECAN winning bids to strengthen co-activated edges.
         let hebbian_report = if self.config.hebbian_enabled {
@@ -502,6 +525,12 @@ impl AgencyEngine {
 
                 let hebb_config = build_hebbian_config(&self.config);
                 let report = run_hebbian_tick(&mut self.hebbian_state, &proxy_bids, &hebb_config);
+
+                // Mark Hebbian endpoints dirty
+                for delta in &report.deltas {
+                    self.dirty_set.mark(delta.source);
+                    self.dirty_set.mark(delta.target);
+                }
 
                 // Emit HebbianPotentiation event if edges were strengthened
                 if report.potentiated > 0 {
@@ -594,8 +623,10 @@ impl AgencyEngine {
             }
             self.last_phase = Some(report.phase);
 
-            // Convert heat flows to energy adjustment intents
+            // Convert heat flows to energy adjustment intents + mark dirty
             for flow in &report.heat_flows {
+                self.dirty_set.mark(flow.from);
+                self.dirty_set.mark(flow.to);
                 intents.push(AgencyIntent::HeatFlow {
                     from_id: flow.from,
                     to_id: flow.to,
@@ -604,6 +635,66 @@ impl AgencyEngine {
             }
 
             Some(report)
+        } else {
+            None
+        };
+
+        // 15. Semantic Gravity — gravitational field between concepts (Phase XIV)
+        let gravity_report = if self.config.gravity_enabled {
+            // Collect gravity nodes: need id, energy, degree, embedding
+            // First pass: collect candidates from meta iterator (cheap)
+            let mut candidates: Vec<(Uuid, f32, usize)> = Vec::new();
+            let max_gravity_nodes = (self.config.gravity_max_pairs as f64).sqrt() as usize + 10;
+            let mut g_scanned = 0usize;
+
+            for result in storage.iter_nodes_meta() {
+                let meta = match result {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+                if meta.is_phantom || meta.energy < 1e-6 {
+                    continue;
+                }
+                let degree = adjacency.degree_out(&meta.id) + adjacency.degree_in(&meta.id);
+                candidates.push((meta.id, meta.energy, degree));
+                g_scanned += 1;
+                if g_scanned >= max_gravity_nodes {
+                    break;
+                }
+            }
+
+            // Second pass: fetch embeddings for candidates (read from CF_EMBEDDINGS)
+            let mut gravity_nodes = Vec::with_capacity(candidates.len());
+            for (id, energy, degree) in &candidates {
+                if let Ok(Some(emb)) = storage.get_embedding(id) {
+                    if !emb.coords.is_empty() {
+                        let embedding: Vec<f64> = emb.coords.iter().map(|&c| c as f64).collect();
+                        gravity_nodes.push(GravityNode {
+                            id: *id,
+                            energy: *energy,
+                            degree: *degree,
+                            embedding,
+                        });
+                    }
+                }
+            }
+
+            let gravity_config = build_gravity_config(&self.config);
+            let report = run_gravity_tick(&mut self.gravity_state, &gravity_nodes, &gravity_config);
+
+            // Convert gravity pulls to intents (if enabled) + mark dirty
+            if let Some(ref r) = report {
+                for pull in &r.pulls {
+                    self.dirty_set.mark(pull.node_id);
+                    intents.push(AgencyIntent::GravityPull {
+                        well_id: pull.well_id,
+                        node_id: pull.node_id,
+                        amount: pull.amount,
+                    });
+                }
+            }
+
+            report
         } else {
             None
         };
@@ -620,6 +711,7 @@ impl AgencyEngine {
             attention_report,
             hebbian_report,
             thermodynamic_report,
+            gravity_report,
             duration_ms: t0.elapsed().as_millis() as u64,
         })
     }
@@ -692,6 +784,14 @@ impl AgencyEngine {
 
     /// Ensure the Observer Identity meta-node exists in the graph.
     /// Call this once during initialization.
+    /// Get a shared reference to the DirtySet for external mutation tracking.
+    ///
+    /// The server should call `dirty_set.mark(id)` after executing intents
+    /// that modify node energy/metadata (HebbianLTP, HeatFlow, GravityPull, etc.).
+    pub fn dirty_set(&self) -> std::sync::Arc<DirtySet> {
+        std::sync::Arc::clone(&self.dirty_set)
+    }
+
     pub fn ensure_observer_identity(
         &self,
         storage: &GraphStorage,
@@ -773,6 +873,21 @@ fn build_thermo_config(cfg: &AgencyConfig) -> ThermodynamicsConfig {
         max_scan: cfg.ecan_max_scan.max(5_000),
         interval: cfg.thermo_interval,
         enable_heat_flow: cfg.thermo_enable_heat_flow,
+    }
+}
+
+/// Build a GravityConfig from AgencyConfig fields.
+fn build_gravity_config(cfg: &AgencyConfig) -> GravityConfig {
+    GravityConfig {
+        g_constant: cfg.gravity_g_constant,
+        well_mass_threshold: cfg.gravity_well_threshold,
+        max_pairs: cfg.gravity_max_pairs,
+        top_k: 20,
+        interval: cfg.gravity_interval,
+        apply_pulls: cfg.gravity_apply_pulls,
+        max_pull: 0.005,
+        min_distance: 0.01,
+        enabled: cfg.gravity_enabled,
     }
 }
 

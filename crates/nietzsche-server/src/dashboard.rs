@@ -222,6 +222,8 @@ pub async fn serve(
         .route("/api/agency/observer", get(agency_observer))
         .route("/api/agency/evolution", get(agency_evolution))
         .route("/api/agency/narrative", get(agency_narrative))
+        .route("/api/agency/dashboard", get(agency_dashboard))
+        .route("/api/agency/observation", get(agency_observation))
         .route("/api/agency/quantum/map", post(agency_quantum_map))
         .route("/api/agency/quantum/fidelity", post(agency_quantum_fidelity))
         // Schema management
@@ -1899,6 +1901,44 @@ async fn agency_narrative(
             Json(serde_json::json!({"narrative": summary})).into_response()
         }
         Ok(None) => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "no narrative yet — agency engine must tick first"}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// GET /api/agency/dashboard?collection=
+async fn agency_dashboard(
+    State((cm, _ops)): State<AppState>,
+    Query(cq): Query<CollectionQuery>,
+) -> impl IntoResponse {
+    let shared = resolve_col!(cm, cq.collection);
+    let db = shared.read().await;
+    match db.storage().get_meta(nietzsche_agency::CognitiveDashboard::meta_key()) {
+        Ok(Some(bytes)) => {
+            match serde_json::from_slice::<nietzsche_agency::CognitiveDashboard>(&bytes) {
+                Ok(dashboard) => Json(serde_json::json!(dashboard)).into_response(),
+                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("corrupt dashboard: {e}")}))).into_response(),
+            }
+        }
+        Ok(None) => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "no dashboard yet — agency engine must tick first"}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// GET /api/agency/observation?collection=
+async fn agency_observation(
+    State((cm, _ops)): State<AppState>,
+    Query(cq): Query<CollectionQuery>,
+) -> impl IntoResponse {
+    let shared = resolve_col!(cm, cq.collection);
+    let db = shared.read().await;
+    match db.storage().get_meta(nietzsche_agency::ObservationFrame::meta_key()) {
+        Ok(Some(bytes)) => {
+            match serde_json::from_slice::<nietzsche_agency::ObservationFrame>(&bytes) {
+                Ok(frame) => Json(serde_json::json!(frame)).into_response(),
+                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("corrupt frame: {e}")}))).into_response(),
+            }
+        }
+        Ok(None) => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "no observation yet — agency engine must tick first"}))).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
     }
 }

@@ -167,6 +167,28 @@ pub struct AgencyConfig {
     pub ecan_curiosity_threshold: f32,
     /// Maximum exploration ratio (caps explore budget).
     pub ecan_max_explore_ratio: f32,
+
+    // -- Semantic Gravity (Phase XIV) --
+    /// Whether gravity field computation is enabled (default: true).
+    pub gravity_enabled: bool,
+    /// Gravitational coupling constant (default: 1.0).
+    pub gravity_g_constant: f64,
+    /// Minimum mass to qualify as a gravity well (default: 0.5).
+    pub gravity_well_threshold: f64,
+    /// Maximum node pairs to evaluate (default: 5000).
+    pub gravity_max_pairs: usize,
+    /// Tick interval for gravity computation (default: 3).
+    pub gravity_interval: u64,
+    /// Whether gravity pulls actually redistribute energy (default: false).
+    pub gravity_apply_pulls: bool,
+
+    // -- DirtySet: Adaptive Sampling (Phase XV) --
+    /// Whether adaptive sampling is enabled (default: true).
+    pub dirty_enabled: bool,
+    /// If dirty fraction >= this ratio, do full scan (default: 0.3).
+    pub dirty_full_scan_ratio: f64,
+    /// Number of stability samples from clean nodes (default: 50).
+    pub dirty_stability_sample: usize,
 }
 
 impl Default for AgencyConfig {
@@ -232,6 +254,15 @@ impl Default for AgencyConfig {
             ecan_energy_gain: 0.1,
             ecan_curiosity_threshold: 0.1,
             ecan_max_explore_ratio: 0.6,
+            gravity_enabled: true,
+            gravity_g_constant: 1.0,
+            gravity_well_threshold: 0.5,
+            gravity_max_pairs: 5000,
+            gravity_interval: 3,
+            gravity_apply_pulls: false,
+            dirty_enabled: true,
+            dirty_full_scan_ratio: 0.3,
+            dirty_stability_sample: 50,
         }
     }
 }
@@ -321,6 +352,21 @@ impl AgencyConfig {
             ecan_energy_gain:       env_f32("AGENCY_ECAN_ENERGY_GAIN", 0.1),
             ecan_curiosity_threshold: env_f32("AGENCY_ECAN_CURIOSITY_THRESHOLD", 0.1),
             ecan_max_explore_ratio: env_f32("AGENCY_ECAN_MAX_EXPLORE_RATIO", 0.6),
+            gravity_enabled: std::env::var("AGENCY_GRAVITY_ENABLED")
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
+            gravity_g_constant:     env_f64("AGENCY_GRAVITY_G_CONSTANT", 1.0),
+            gravity_well_threshold: env_f64("AGENCY_GRAVITY_WELL_THRESHOLD", 0.5),
+            gravity_max_pairs:      env_usize("AGENCY_GRAVITY_MAX_PAIRS", 5000),
+            gravity_interval:       env_u64("AGENCY_GRAVITY_INTERVAL", 3),
+            gravity_apply_pulls: std::env::var("AGENCY_GRAVITY_APPLY_PULLS")
+                .map(|v| v == "1" || v.to_lowercase() == "true")
+                .unwrap_or(false),
+            dirty_enabled: std::env::var("AGENCY_DIRTY_ENABLED")
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
+            dirty_full_scan_ratio:  env_f64("AGENCY_DIRTY_FULL_SCAN_RATIO", 0.3),
+            dirty_stability_sample: env_usize("AGENCY_DIRTY_STABILITY_SAMPLE", 50),
         }
     }
 }

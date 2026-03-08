@@ -66,6 +66,18 @@ pub mod hebbian;
 // Phase XIII — Cognitive Thermodynamics
 pub mod thermodynamics;
 
+// Phase XIV — Semantic Gravity
+pub mod gravity;
+
+// Cognitive Dashboard (unified observability)
+pub mod cognitive_dashboard;
+
+// Phase XV — DirtySet (Temporal Adaptive Sampling)
+pub mod dirty_set;
+
+// Phase XV.1 — ObservationBridge (live metrics for visualization)
+pub mod observation;
+
 pub use centroid_guardian::{CentroidGuardian, CentroidUpdate, GuardianError};
 pub use config::AgencyConfig;
 pub use counterfactual::{CounterfactualEngine, CounterfactualOp, CounterfactualResult};
@@ -109,4 +121,26 @@ pub use thermodynamics::{
     PhaseState, HeatFlow, cognitive_temperature, shannon_entropy,
     helmholtz_free_energy, classify_phase, exploration_modifier,
     run_thermodynamic_cycle,
+};
+
+// Phase XIV — Semantic Gravity
+pub use gravity::{
+    GravityConfig, GravityNode, GravityForce, GravityPull, GravityReport,
+    GravityWell, GravityState, gravitational_force, compute_gravity_field,
+    run_gravity_tick,
+};
+
+// Cognitive Dashboard
+pub use cognitive_dashboard::{
+    CognitiveDashboard, HealthSnapshot, AttentionSnapshot, HebbianSnapshot,
+    ThermoSnapshot, MaturitySnapshot, GravitySnapshot, GravityAttraction,
+};
+
+// Phase XV — DirtySet
+pub use dirty_set::{DirtySet, DirtySetConfig, ScanDecision};
+
+// Phase XV.1 — ObservationBridge
+pub use observation::{
+    ObservationFrame, SystemGauges, NodeVisual, GravityLine,
+    NodeObservation, temperature_to_rgb,
 };

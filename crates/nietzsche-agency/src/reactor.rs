@@ -153,6 +153,17 @@ pub enum AgencyIntent {
         to_id: Uuid,
         amount: f32,
     },
+
+    // ── Phase XIV: Semantic Gravity ──────────────────────────────
+
+    /// Gravity pull: a gravity well attracts a nearby node's energy.
+    /// Produced when: Gravity engine detects strong attraction + apply_pulls enabled.
+    /// The server executes: `node.energy += amount` (well boosts attracted node).
+    GravityPull {
+        well_id: Uuid,
+        node_id: Uuid,
+        amount: f32,
+    },
 }
 
 /// Converts agency events into executable intents.
