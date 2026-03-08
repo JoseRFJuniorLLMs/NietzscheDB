@@ -109,6 +109,16 @@ pub struct ShatterReport {
     pub plans_emitted: usize,
     /// Details of each detected super-node.
     pub candidates: Vec<ShatterCandidate>,
+
+    // ── Live graph-wide metrics ──────────────────
+    /// Count of phantom (ghost) nodes in the graph.
+    pub ghost_nodes: usize,
+    /// Count of avatar nodes (content._is_avatar == true).
+    pub avatar_nodes: usize,
+    /// Largest degree (in + out) observed during scan.
+    pub largest_degree: usize,
+    /// Average degree across all scanned nodes.
+    pub avg_degree: f64,
 }
 
 // ─────────────────────────────────────────────
@@ -126,22 +136,39 @@ pub fn scan_super_nodes(
 ) -> ShatterReport {
     let mut candidates = Vec::new();
     let mut nodes_scanned = 0usize;
+    let mut ghost_nodes = 0usize;
+    let mut avatar_nodes = 0usize;
+    let mut largest_degree = 0usize;
+    let mut degree_sum = 0u64;
 
-    // Scan all nodes for high degree
+    // Scan all nodes for high degree + collect live metrics
     for result in storage.iter_nodes_meta() {
         let meta = match result {
             Ok(m) => m,
             Err(_) => continue,
         };
-        // Skip already-phantomized nodes (previously shattered ghosts)
+
+        // Count ghosts (phantomized super-nodes)
         if meta.is_phantom {
+            ghost_nodes += 1;
             continue;
         }
+
+        // Count avatars (nodes with _is_avatar in content)
+        if meta.content.get("_is_avatar").and_then(|v| v.as_bool()).unwrap_or(false) {
+            avatar_nodes += 1;
+        }
+
         nodes_scanned += 1;
 
         let d_in = adjacency.degree_in(&meta.id);
         let d_out = adjacency.degree_out(&meta.id);
         let total = d_in + d_out;
+
+        degree_sum += total as u64;
+        if total > largest_degree {
+            largest_degree = total;
+        }
 
         if total >= config.degree_threshold {
             candidates.push(ShatterCandidate {
@@ -154,12 +181,21 @@ pub fn scan_super_nodes(
     }
 
     let super_nodes_detected = candidates.len();
+    let avg_degree = if nodes_scanned > 0 {
+        degree_sum as f64 / nodes_scanned as f64
+    } else {
+        0.0
+    };
 
     ShatterReport {
         nodes_scanned,
         super_nodes_detected,
         plans_emitted: 0, // filled by caller after emitting intents
         candidates,
+        ghost_nodes,
+        avatar_nodes,
+        largest_degree,
+        avg_degree,
     }
 }
 
@@ -371,8 +407,14 @@ mod tests {
             super_nodes_detected: 0,
             plans_emitted: 0,
             candidates: vec![],
+            ghost_nodes: 5,
+            avatar_nodes: 12,
+            largest_degree: 200,
+            avg_degree: 4.5,
         };
         assert_eq!(report.super_nodes_detected, 0);
+        assert_eq!(report.ghost_nodes, 5);
+        assert_eq!(report.avatar_nodes, 12);
     }
 
     #[test]

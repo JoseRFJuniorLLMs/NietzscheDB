@@ -132,6 +132,14 @@ pub struct ShatterSnapshot {
     pub nodes_scanned: usize,
     /// Top super-node IDs with their degree.
     pub top_super_nodes: Vec<(String, usize)>,
+    /// Count of phantom (ghost) nodes — previously shattered originals.
+    pub ghost_nodes: usize,
+    /// Count of avatar nodes created by shatter events.
+    pub avatar_nodes: usize,
+    /// Largest degree (in + out) in the graph.
+    pub largest_degree: usize,
+    /// Average degree across all non-phantom nodes.
+    pub avg_degree: f64,
 }
 
 // ─────────────────────────────────────────────
@@ -221,6 +229,10 @@ impl CognitiveDashboard {
                 top_super_nodes: s.candidates.iter().take(10)
                     .map(|c| (c.node_id.to_string(), c.degree))
                     .collect(),
+                ghost_nodes: s.ghost_nodes,
+                avatar_nodes: s.avatar_nodes,
+                largest_degree: s.largest_degree,
+                avg_degree: s.avg_degree,
             }),
         }
     }

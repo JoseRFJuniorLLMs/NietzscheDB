@@ -1967,6 +1967,10 @@ async fn agency_shatter(
                         plans_emitted: 0,
                         nodes_scanned: 0,
                         top_super_nodes: vec![],
+                        ghost_nodes: 0,
+                        avatar_nodes: 0,
+                        largest_degree: 0,
+                        avg_degree: 0.0,
                     });
                     Json(serde_json::json!(shatter_info)).into_response()
                 }
@@ -1978,6 +1982,10 @@ async fn agency_shatter(
             "plans_emitted": 0,
             "nodes_scanned": 0,
             "top_super_nodes": [],
+            "ghost_nodes": 0,
+            "avatar_nodes": 0,
+            "largest_degree": 0,
+            "avg_degree": 0.0,
             "note": "no dashboard yet — agency engine must tick first"
         })).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
