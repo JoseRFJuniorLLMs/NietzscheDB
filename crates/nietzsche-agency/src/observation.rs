@@ -306,6 +306,11 @@ mod tests {
             gravity: None,
             shatter: None,
             healing: None,
+            learning: None,
+            compression: None,
+            sharding: None,
+            world_model: None,
+            flywheel: None,
         };
 
         let frame = ObservationFrame::from_dashboard(&dash, &[]);
@@ -355,6 +360,11 @@ mod tests {
             gravity: None,
             shatter: None,
             healing: None,
+            learning: None,
+            compression: None,
+            sharding: None,
+            world_model: None,
+            flywheel: None,
         };
 
         let nodes = vec![
@@ -395,6 +405,11 @@ mod tests {
             gravity: None,
             shatter: None,
             healing: None,
+            learning: None,
+            compression: None,
+            sharding: None,
+            world_model: None,
+            flywheel: None,
         };
 
         let frame = ObservationFrame::from_dashboard(&dash, &[]);
@@ -439,6 +454,11 @@ mod tests {
             }),
             shatter: None,
             healing: None,
+            learning: None,
+            compression: None,
+            sharding: None,
+            world_model: None,
+            flywheel: None,
         };
 
         let frame = ObservationFrame::from_dashboard(&dash, &[]);

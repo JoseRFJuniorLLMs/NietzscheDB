@@ -213,6 +213,72 @@ pub struct AgencyConfig {
     pub dirty_full_scan_ratio: f64,
     /// Number of stability samples from clean nodes (default: 50).
     pub dirty_stability_sample: usize,
+
+    // -- Graph Learning Engine (Phase XX) --
+    /// Whether the learning engine is enabled (default: true).
+    pub learning_enabled: bool,
+    /// Tick interval for learning analysis (default: 5).
+    pub learning_interval: u64,
+    /// Rolling window size for pattern detection (default: 50).
+    pub learning_window_size: usize,
+    /// Maximum entries tracked per category (default: 1000).
+    pub learning_max_tracked: usize,
+    /// Minimum access count to qualify as hotspot (default: 10).
+    pub learning_hotspot_threshold: u64,
+    /// Growth rate above which a sector is "booming" (default: 5.0).
+    pub learning_growth_rate_threshold: f64,
+
+    // -- Knowledge Compression (Phase XXI) --
+    /// Whether compression is enabled (default: true).
+    pub compression_enabled: bool,
+    /// Tick interval between compression scans (default: 20).
+    pub compression_interval: u64,
+    /// Maximum nodes to scan per compression tick (default: 2000).
+    pub compression_max_scan: usize,
+    /// Poincaré distance for near-duplicate detection (default: 0.005).
+    pub compression_duplicate_epsilon: f64,
+    /// Energy threshold for stale nodes (default: 0.05).
+    pub compression_stale_energy: f32,
+    /// Max degree for stale cluster candidates (default: 5).
+    pub compression_stale_max_degree: usize,
+    /// Minimum cluster size for compression (default: 3).
+    pub compression_min_cluster: usize,
+    /// Maximum merges proposed per tick (default: 50).
+    pub compression_max_merges: usize,
+
+    // -- Hyperbolic Sharding (Phase XXII) --
+    /// Whether sharding analysis is enabled (default: true).
+    pub sharding_enabled: bool,
+    /// Tick interval for sharding scans (default: 30).
+    pub sharding_interval: u64,
+    /// Maximum nodes to sample for shard analysis (default: 5000).
+    pub sharding_max_sample: usize,
+    /// Number of radial bands (default: 4).
+    pub sharding_radial_bands: usize,
+    /// Number of angular sectors per band (default: 8).
+    pub sharding_angular_sectors: usize,
+    /// Imbalance ratio for rebalance suggestion (default: 3.0).
+    pub sharding_imbalance_threshold: f64,
+
+    // -- World Model (Phase XXIII) --
+    /// Whether the world model is enabled (default: true).
+    pub world_model_enabled: bool,
+    /// Tick interval for world model snapshots (default: 10).
+    pub world_model_snapshot_interval: u64,
+    /// Rolling history length (default: 100).
+    pub world_model_history_length: usize,
+    /// Anomaly detection sensitivity in std devs (default: 3.0).
+    pub world_model_anomaly_sensitivity: f64,
+
+    // -- Cognitive Flywheel (Phase XXIV) --
+    /// Whether the flywheel is enabled (default: true).
+    pub flywheel_enabled: bool,
+    /// Tick interval for flywheel analysis (default: 10).
+    pub flywheel_interval: u64,
+    /// Momentum decay factor (default: 0.95).
+    pub flywheel_momentum_decay: f64,
+    /// Minimum momentum for "spinning" state (default: 0.3).
+    pub flywheel_min_momentum: f64,
 }
 
 impl Default for AgencyConfig {
@@ -297,6 +363,39 @@ impl Default for AgencyConfig {
             dirty_enabled: true,
             dirty_full_scan_ratio: 0.3,
             dirty_stability_sample: 50,
+            // Phase XX
+            learning_enabled: true,
+            learning_interval: 5,
+            learning_window_size: 50,
+            learning_max_tracked: 1000,
+            learning_hotspot_threshold: 10,
+            learning_growth_rate_threshold: 5.0,
+            // Phase XXI
+            compression_enabled: true,
+            compression_interval: 20,
+            compression_max_scan: 2000,
+            compression_duplicate_epsilon: 0.005,
+            compression_stale_energy: 0.05,
+            compression_stale_max_degree: 5,
+            compression_min_cluster: 3,
+            compression_max_merges: 50,
+            // Phase XXII
+            sharding_enabled: true,
+            sharding_interval: 30,
+            sharding_max_sample: 5000,
+            sharding_radial_bands: 4,
+            sharding_angular_sectors: 8,
+            sharding_imbalance_threshold: 3.0,
+            // Phase XXIII
+            world_model_enabled: true,
+            world_model_snapshot_interval: 10,
+            world_model_history_length: 100,
+            world_model_anomaly_sensitivity: 3.0,
+            // Phase XXIV
+            flywheel_enabled: true,
+            flywheel_interval: 10,
+            flywheel_momentum_decay: 0.95,
+            flywheel_min_momentum: 0.3,
         }
     }
 }
@@ -415,6 +514,49 @@ impl AgencyConfig {
                 .unwrap_or(true),
             dirty_full_scan_ratio:  env_f64("AGENCY_DIRTY_FULL_SCAN_RATIO", 0.3),
             dirty_stability_sample: env_usize("AGENCY_DIRTY_STABILITY_SAMPLE", 50),
+            // Phase XX
+            learning_enabled: std::env::var("AGENCY_LEARNING_ENABLED")
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
+            learning_interval:      env_u64("AGENCY_LEARNING_INTERVAL", 5),
+            learning_window_size:   env_usize("AGENCY_LEARNING_WINDOW_SIZE", 50),
+            learning_max_tracked:   env_usize("AGENCY_LEARNING_MAX_TRACKED", 1000),
+            learning_hotspot_threshold: env_u64("AGENCY_LEARNING_HOTSPOT_THRESHOLD", 10),
+            learning_growth_rate_threshold: env_f64("AGENCY_LEARNING_GROWTH_RATE", 5.0),
+            // Phase XXI
+            compression_enabled: std::env::var("AGENCY_COMPRESSION_ENABLED")
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
+            compression_interval:    env_u64("AGENCY_COMPRESSION_INTERVAL", 20),
+            compression_max_scan:    env_usize("AGENCY_COMPRESSION_MAX_SCAN", 2000),
+            compression_duplicate_epsilon: env_f64("AGENCY_COMPRESSION_EPSILON", 0.005),
+            compression_stale_energy: env_f32("AGENCY_COMPRESSION_STALE_ENERGY", 0.05),
+            compression_stale_max_degree: env_usize("AGENCY_COMPRESSION_STALE_DEGREE", 5),
+            compression_min_cluster: env_usize("AGENCY_COMPRESSION_MIN_CLUSTER", 3),
+            compression_max_merges:  env_usize("AGENCY_COMPRESSION_MAX_MERGES", 50),
+            // Phase XXII
+            sharding_enabled: std::env::var("AGENCY_SHARDING_ENABLED")
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
+            sharding_interval:      env_u64("AGENCY_SHARDING_INTERVAL", 30),
+            sharding_max_sample:    env_usize("AGENCY_SHARDING_MAX_SAMPLE", 5000),
+            sharding_radial_bands:  env_usize("AGENCY_SHARDING_RADIAL_BANDS", 4),
+            sharding_angular_sectors: env_usize("AGENCY_SHARDING_ANGULAR_SECTORS", 8),
+            sharding_imbalance_threshold: env_f64("AGENCY_SHARDING_IMBALANCE", 3.0),
+            // Phase XXIII
+            world_model_enabled: std::env::var("AGENCY_WORLD_MODEL_ENABLED")
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
+            world_model_snapshot_interval: env_u64("AGENCY_WORLD_MODEL_INTERVAL", 10),
+            world_model_history_length: env_usize("AGENCY_WORLD_MODEL_HISTORY", 100),
+            world_model_anomaly_sensitivity: env_f64("AGENCY_WORLD_MODEL_ANOMALY", 3.0),
+            // Phase XXIV
+            flywheel_enabled: std::env::var("AGENCY_FLYWHEEL_ENABLED")
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
+            flywheel_interval:       env_u64("AGENCY_FLYWHEEL_INTERVAL", 10),
+            flywheel_momentum_decay: env_f64("AGENCY_FLYWHEEL_MOMENTUM_DECAY", 0.95),
+            flywheel_min_momentum:   env_f64("AGENCY_FLYWHEEL_MIN_MOMENTUM", 0.3),
         }
     }
 }

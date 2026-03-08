@@ -45,6 +45,26 @@ pub struct CognitiveDashboard {
     // ── Self-Healing (Phase XIX) ──────────────────
     #[serde(default)]
     pub healing: Option<HealingSnapshot>,
+
+    // ── Learning Engine (Phase XX) ──────────────────
+    #[serde(default)]
+    pub learning: Option<LearningSnapshot>,
+
+    // ── Knowledge Compression (Phase XXI) ──────────
+    #[serde(default)]
+    pub compression: Option<CompressionSnapshot>,
+
+    // ── Hyperbolic Sharding (Phase XXII) ───────────
+    #[serde(default)]
+    pub sharding: Option<ShardingSnapshot>,
+
+    // ── World Model (Phase XXIII) ──────────────────
+    #[serde(default)]
+    pub world_model: Option<WorldModelSnapshot>,
+
+    // ── Cognitive Flywheel (Phase XXIV) ────────────
+    #[serde(default)]
+    pub flywheel: Option<FlywheelSnapshot>,
 }
 
 /// Health subsystem snapshot.
@@ -159,6 +179,60 @@ pub struct HealingSnapshot {
     pub phantom_ratio: f64,
 }
 
+/// Learning Engine snapshot (Phase XX).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LearningSnapshot {
+    pub total_observations: u64,
+    pub access_hotspots: usize,
+    pub mutation_hotspots: usize,
+    pub booming_sectors: usize,
+    pub tracked_entries: usize,
+}
+
+/// Knowledge Compression snapshot (Phase XXI).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompressionSnapshot {
+    pub nodes_scanned: usize,
+    pub duplicate_pairs: usize,
+    pub stale_clusters: usize,
+    pub redundant_paths: usize,
+    pub estimated_reduction: usize,
+}
+
+/// Hyperbolic Sharding snapshot (Phase XXII).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShardingSnapshot {
+    pub nodes_analyzed: usize,
+    pub total_shards: usize,
+    pub occupied_shards: usize,
+    pub empty_shards: usize,
+    pub imbalance_ratio: f64,
+    pub rebalance_recommended: bool,
+}
+
+/// World Model snapshot (Phase XXIII).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorldModelSnapshot {
+    pub observations: u64,
+    pub query_rate_mean: f64,
+    pub mutation_rate_mean: f64,
+    pub anomaly_count: usize,
+    pub is_quiet_period: bool,
+    pub is_busy_period: bool,
+}
+
+/// Cognitive Flywheel snapshot (Phase XXIV).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlywheelSnapshot {
+    pub momentum: f64,
+    pub cycles: u64,
+    pub healthy_streak: u64,
+    pub overall_status: String,
+    pub is_spinning: bool,
+    pub efficiency: f64,
+    pub recommendations_count: usize,
+}
+
 // ─────────────────────────────────────────────
 // Builder
 // ─────────────────────────────────────────────
@@ -261,6 +335,45 @@ impl CognitiveDashboard {
                 live_count: h.live_count,
                 phantom_ratio: h.phantom_ratio,
             }),
+            learning: report.learning_report.as_ref().map(|l| LearningSnapshot {
+                total_observations: l.total_observations,
+                access_hotspots: l.access_hotspots.len(),
+                mutation_hotspots: l.mutation_hotspots.len(),
+                booming_sectors: l.booming_sectors.len(),
+                tracked_entries: l.tracked_access + l.tracked_mutations,
+            }),
+            compression: report.compression_report.as_ref().map(|c| CompressionSnapshot {
+                nodes_scanned: c.nodes_scanned,
+                duplicate_pairs: c.duplicate_pairs,
+                stale_clusters: c.stale_clusters,
+                redundant_paths: c.redundant_paths,
+                estimated_reduction: c.estimated_reduction,
+            }),
+            sharding: report.sharding_report.as_ref().map(|s| ShardingSnapshot {
+                nodes_analyzed: s.nodes_analyzed,
+                total_shards: s.total_shards,
+                occupied_shards: s.occupied_shards,
+                empty_shards: s.empty_shards,
+                imbalance_ratio: s.imbalance_ratio,
+                rebalance_recommended: s.rebalance_recommended,
+            }),
+            world_model: report.world_snapshot.as_ref().map(|w| WorldModelSnapshot {
+                observations: w.observations,
+                query_rate_mean: w.query_rate_mean,
+                mutation_rate_mean: w.mutation_rate_mean,
+                anomaly_count: w.anomalies.len(),
+                is_quiet_period: w.is_quiet_period,
+                is_busy_period: w.is_busy_period,
+            }),
+            flywheel: report.flywheel_report.as_ref().map(|f| FlywheelSnapshot {
+                momentum: f.momentum,
+                cycles: f.cycles,
+                healthy_streak: f.healthy_streak,
+                overall_status: f.overall_status.clone(),
+                is_spinning: f.is_spinning,
+                efficiency: f.efficiency,
+                recommendations_count: f.recommendations.len(),
+            }),
         }
     }
 
@@ -334,6 +447,11 @@ mod tests {
             }),
             shatter: None,
             healing: None,
+            learning: None,
+            compression: None,
+            sharding: None,
+            world_model: None,
+            flywheel: None,
         };
 
         let json = serde_json::to_string(&dash).unwrap();
@@ -356,6 +474,11 @@ mod tests {
             gravity: None,
             shatter: None,
             healing: None,
+            learning: None,
+            compression: None,
+            sharding: None,
+            world_model: None,
+            flywheel: None,
         };
 
         let bytes = serde_json::to_vec(&dash).unwrap();

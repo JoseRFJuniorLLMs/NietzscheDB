@@ -13,6 +13,11 @@ use crate::gravity::{GravityConfig, GravityNode, GravityReport, GravityState, ru
 use crate::dirty_set::{DirtySet, DirtySetConfig, ScanDecision};
 use crate::shatter::{ShatterDaemon, build_shatter_plan, build_shatter_config, run_shatter_scan};
 use crate::self_healing::SelfHealingDaemon;
+use crate::learning::{LearningState, LearningReport, build_learning_config, run_learning_analysis};
+use crate::compression::{build_compression_config, scan_compression, CompressionReport};
+use crate::sharding::{build_sharding_config, scan_sharding, ShardingReport};
+use crate::world_model::{WorldModelState, WorldSnapshot, EnvironmentObservation, build_world_model_config};
+use crate::flywheel::{FlywheelState, FlywheelReport, FlywheelInput, build_flywheel_config, run_flywheel_cycle};
 use crate::axiom_registry::AxiomRegistry;
 use crate::centroid_guardian::CentroidGuardian;
 use crate::hyperbolic_health::{HyperbolicHealth, HyperbolicHealthMonitor};
@@ -60,6 +65,16 @@ pub struct AgencyTickReport {
     /// Shatter protocol report (None if interval-gated or disabled).
     pub shatter_report: Option<crate::shatter::ShatterReport>,
     pub healing_report: Option<crate::self_healing::HealingReport>,
+    /// Learning Engine report (Phase XX).
+    pub learning_report: Option<crate::learning::LearningReport>,
+    /// Knowledge Compression report (Phase XXI).
+    pub compression_report: Option<crate::compression::CompressionReport>,
+    /// Hyperbolic Sharding report (Phase XXII).
+    pub sharding_report: Option<crate::sharding::ShardingReport>,
+    /// World Model snapshot (Phase XXIII).
+    pub world_snapshot: Option<crate::world_model::WorldSnapshot>,
+    /// Cognitive Flywheel report (Phase XXIV).
+    pub flywheel_report: Option<crate::flywheel::FlywheelReport>,
     pub duration_ms: u64,
 }
 
@@ -111,6 +126,22 @@ pub struct AgencyEngine {
     dirty_config: DirtySetConfig,
     /// Shatter Protocol tick counter (Phase XVI).
     shatter_tick: u64,
+    /// Learning Engine state (Phase XX).
+    learning_state: LearningState,
+    /// Learning Engine tick counter.
+    learning_tick: u64,
+    /// Compression tick counter (Phase XXI).
+    compression_tick: u64,
+    /// Sharding tick counter (Phase XXII).
+    sharding_tick: u64,
+    /// World Model state (Phase XXIII).
+    world_model_state: WorldModelState,
+    /// World Model tick counter.
+    world_model_tick: u64,
+    /// Flywheel state (Phase XXIV).
+    flywheel_state: FlywheelState,
+    /// Flywheel tick counter.
+    flywheel_tick: u64,
 }
 
 impl AgencyEngine {
@@ -162,6 +193,14 @@ impl AgencyEngine {
                 enabled: config.dirty_enabled,
             },
             shatter_tick: 0,
+            learning_state: LearningState::new(),
+            learning_tick: 0,
+            compression_tick: 0,
+            sharding_tick: 0,
+            world_model_state: WorldModelState::new(config.world_model_history_length),
+            world_model_tick: 0,
+            flywheel_state: FlywheelState::new(),
+            flywheel_tick: 0,
             config,
         }
     }
@@ -736,6 +775,102 @@ impl AgencyEngine {
                 None // Populated by dashboard from event bus
             });
 
+        // 18. Learning Engine — detect operational patterns (Phase XX)
+        self.learning_tick += 1;
+        let learning_report: Option<LearningReport> = if self.config.learning_enabled
+            && self.learning_tick % self.config.learning_interval == 0
+        {
+            let learning_config = build_learning_config(&self.config);
+            // Decay counters periodically for rolling window approximation
+            if self.learning_tick % (self.config.learning_window_size as u64) == 0 {
+                self.learning_state.decay_counters(0.5);
+            }
+            Some(run_learning_analysis(&self.learning_state, &learning_config))
+        } else {
+            None
+        };
+
+        // 19. Knowledge Compression — detect merge candidates (Phase XXI)
+        self.compression_tick += 1;
+        let compression_report: Option<CompressionReport> = if self.config.compression_enabled
+            && self.compression_tick % self.config.compression_interval == 0
+        {
+            let compression_config = build_compression_config(&self.config);
+            Some(scan_compression(storage, adjacency, &compression_config))
+        } else {
+            None
+        };
+
+        // 20. Hyperbolic Sharding — partition analysis (Phase XXII)
+        self.sharding_tick += 1;
+        let sharding_report: Option<ShardingReport> = if self.config.sharding_enabled
+            && self.sharding_tick % self.config.sharding_interval == 0
+        {
+            let sharding_config = build_sharding_config(&self.config);
+            Some(scan_sharding(storage, &sharding_config))
+        } else {
+            None
+        };
+
+        // 21. World Model — environmental observation (Phase XXIII)
+        self.world_model_tick += 1;
+        let world_snapshot: Option<WorldSnapshot> = if self.config.world_model_enabled {
+            // Always observe (cheap)
+            self.world_model_state.observe(&EnvironmentObservation {
+                timestamp_ms: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64,
+                query_count: 0, // Populated by server layer
+                mutation_count: intents.len() as u64,
+                nodes_created: 0,
+                nodes_removed: 0,
+                total_nodes: 0,
+                tick_duration_ms: t0.elapsed().as_millis() as u64,
+                active_intents: intents.len() as u64,
+            });
+
+            // Snapshot periodically
+            if self.world_model_tick % self.config.world_model_snapshot_interval == 0 {
+                let wm_config = build_world_model_config(&self.config);
+                Some(self.world_model_state.snapshot(&wm_config))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // 22. Cognitive Flywheel — unified feedback loop (Phase XXIV)
+        self.flywheel_tick += 1;
+        let flywheel_report: Option<FlywheelReport> = if self.config.flywheel_enabled
+            && self.flywheel_tick % self.config.flywheel_interval == 0
+        {
+            let flywheel_config = build_flywheel_config(&self.config);
+            let input = FlywheelInput {
+                has_health: health_report.is_some(),
+                mean_energy: health_report.as_ref().map(|h| h.mean_energy).unwrap_or(0.0),
+                gap_count: health_report.as_ref().map(|h| h.gap_count).unwrap_or(0),
+                temperature: thermodynamic_report.as_ref().map(|t| t.temperature),
+                phase: thermodynamic_report.as_ref().map(|t| format!("{}", t.phase)),
+                attention_flow: attention_report.as_ref().map(|a| a.total_flow),
+                hebbian_potentiated: hebbian_report.as_ref().map(|h| h.potentiated),
+                gravity_mean_force: gravity_report.as_ref().map(|g| g.mean_force),
+                healing_issues: healing_report.as_ref().map(|h: &crate::self_healing::HealingReport| {
+                    h.boundary_drift_count + h.orphan_count + h.dead_edge_count + h.exhausted_count
+                }),
+                learning_hotspots: learning_report.as_ref().map(|l| l.access_hotspots.len()),
+                compression_reduction: compression_report.as_ref().map(|c| c.estimated_reduction),
+                sharding_imbalance: sharding_report.as_ref().map(|s| s.imbalance_ratio),
+                world_anomalies: world_snapshot.as_ref().map(|w| w.anomalies.len()),
+                tick_duration_ms: t0.elapsed().as_millis() as u64,
+                intent_count: intents.len(),
+            };
+            Some(run_flywheel_cycle(&mut self.flywheel_state, &input, &flywheel_config, self.flywheel_tick))
+        } else {
+            None
+        };
+
         Ok(AgencyTickReport {
             daemon_reports,
             health_report,
@@ -751,6 +886,11 @@ impl AgencyEngine {
             gravity_report,
             shatter_report,
             healing_report,
+            learning_report,
+            compression_report,
+            sharding_report,
+            world_snapshot,
+            flywheel_report,
             duration_ms: t0.elapsed().as_millis() as u64,
         })
     }

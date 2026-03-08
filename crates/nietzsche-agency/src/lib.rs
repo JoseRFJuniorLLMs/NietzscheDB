@@ -84,6 +84,21 @@ pub mod shatter;
 // Phase XIX — Self-Healing Graph (autonomous maintenance)
 pub mod self_healing;
 
+// Phase XX — Graph Learning Engine (pattern detection)
+pub mod learning;
+
+// Phase XXI — Knowledge Compression (semantic merge)
+pub mod compression;
+
+// Phase XXII — Hyperbolic Sharding (partition analysis)
+pub mod sharding;
+
+// Phase XXIII — World Model Graph (environmental awareness)
+pub mod world_model;
+
+// Phase XXIV — Cognitive Flywheel (unified feedback loop)
+pub mod flywheel;
+
 pub use centroid_guardian::{CentroidGuardian, CentroidUpdate, GuardianError};
 pub use config::AgencyConfig;
 pub use counterfactual::{CounterfactualEngine, CounterfactualOp, CounterfactualResult};
@@ -140,6 +155,8 @@ pub use gravity::{
 pub use cognitive_dashboard::{
     CognitiveDashboard, HealthSnapshot, AttentionSnapshot, HebbianSnapshot,
     ThermoSnapshot, MaturitySnapshot, GravitySnapshot, GravityAttraction,
+    LearningSnapshot, CompressionSnapshot, ShardingSnapshot,
+    WorldModelSnapshot, FlywheelSnapshot,
 };
 
 // Phase XV — DirtySet
@@ -162,4 +179,34 @@ pub use shatter::{
 pub use self_healing::{
     HealingConfig, HealingReport, SelfHealingDaemon,
     build_healing_config, scan_healing,
+};
+
+// Phase XX — Graph Learning Engine
+pub use learning::{
+    LearningConfig, LearningState, LearningReport, TickObservation,
+    Hotspot, DecayEntry, build_learning_config, run_learning_analysis,
+};
+
+// Phase XXI — Knowledge Compression
+pub use compression::{
+    CompressionConfig, CompressionReport, MergeProposal, MergeReason,
+    build_compression_config, scan_compression,
+};
+
+// Phase XXII — Hyperbolic Sharding
+pub use sharding::{
+    ShardingConfig, ShardingReport, ShardId, ShardStats,
+    build_sharding_config, scan_sharding,
+};
+
+// Phase XXIII — World Model Graph
+pub use world_model::{
+    WorldModelConfig, WorldModelState, WorldSnapshot, EnvironmentObservation,
+    Anomaly, build_world_model_config,
+};
+
+// Phase XXIV — Cognitive Flywheel
+pub use flywheel::{
+    FlywheelConfig, FlywheelState, FlywheelReport, FlywheelInput,
+    SubsystemStatus, SubsystemEntry, build_flywheel_config, run_flywheel_cycle,
 };
