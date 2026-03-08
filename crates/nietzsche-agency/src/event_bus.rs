@@ -79,6 +79,11 @@ pub enum AgencyEvent {
         degree: usize,
     },
 
+    /// SelfHealingDaemon detected graph pathologies requiring repair.
+    HealingRequired {
+        report: Box<crate::self_healing::HealingReport>,
+    },
+
     /// CentroidGuardian detected civilizational drift exceeding threshold.
     ///
     /// When emitted, `MaturityEvaluator` should freeze all promotions until

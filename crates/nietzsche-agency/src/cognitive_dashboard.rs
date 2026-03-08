@@ -41,6 +41,10 @@ pub struct CognitiveDashboard {
 
     // ── Shatter Protocol (Phase XVI) ──────────────
     pub shatter: Option<ShatterSnapshot>,
+
+    // ── Self-Healing (Phase XIX) ──────────────────
+    #[serde(default)]
+    pub healing: Option<HealingSnapshot>,
 }
 
 /// Health subsystem snapshot.
@@ -142,6 +146,19 @@ pub struct ShatterSnapshot {
     pub avg_degree: f64,
 }
 
+/// Self-Healing subsystem snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HealingSnapshot {
+    pub nodes_scanned: usize,
+    pub boundary_drift_count: usize,
+    pub orphan_count: usize,
+    pub dead_edge_count: usize,
+    pub exhausted_count: usize,
+    pub ghost_count: usize,
+    pub live_count: usize,
+    pub phantom_ratio: f64,
+}
+
 // ─────────────────────────────────────────────
 // Builder
 // ─────────────────────────────────────────────
@@ -234,6 +251,16 @@ impl CognitiveDashboard {
                 largest_degree: s.largest_degree,
                 avg_degree: s.avg_degree,
             }),
+            healing: report.healing_report.as_ref().map(|h| HealingSnapshot {
+                nodes_scanned: h.nodes_scanned,
+                boundary_drift_count: h.boundary_drift_count,
+                orphan_count: h.orphan_count,
+                dead_edge_count: h.dead_edge_count,
+                exhausted_count: h.exhausted_count,
+                ghost_count: h.ghost_count,
+                live_count: h.live_count,
+                phantom_ratio: h.phantom_ratio,
+            }),
         }
     }
 
@@ -306,6 +333,7 @@ mod tests {
                 gravity_wells: 12,
             }),
             shatter: None,
+            healing: None,
         };
 
         let json = serde_json::to_string(&dash).unwrap();
@@ -327,6 +355,7 @@ mod tests {
             maturity: MaturitySnapshot { promotions: 0, demotions: 0 },
             gravity: None,
             shatter: None,
+            healing: None,
         };
 
         let bytes = serde_json::to_vec(&dash).unwrap();

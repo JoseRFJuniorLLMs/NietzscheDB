@@ -12,6 +12,7 @@ use crate::thermodynamics::{
 use crate::gravity::{GravityConfig, GravityNode, GravityReport, GravityState, run_gravity_tick};
 use crate::dirty_set::{DirtySet, DirtySetConfig, ScanDecision};
 use crate::shatter::{ShatterDaemon, build_shatter_plan, build_shatter_config, run_shatter_scan};
+use crate::self_healing::SelfHealingDaemon;
 use crate::axiom_registry::AxiomRegistry;
 use crate::centroid_guardian::CentroidGuardian;
 use crate::hyperbolic_health::{HyperbolicHealth, HyperbolicHealthMonitor};
@@ -58,6 +59,7 @@ pub struct AgencyTickReport {
     pub gravity_report: Option<GravityReport>,
     /// Shatter protocol report (None if interval-gated or disabled).
     pub shatter_report: Option<crate::shatter::ShatterReport>,
+    pub healing_report: Option<crate::self_healing::HealingReport>,
     pub duration_ms: u64,
 }
 
@@ -133,6 +135,7 @@ impl AgencyEngine {
                 Box::new(NeuralThresholdDaemon::new(&config.gnn_model_name)),
                 Box::new(NezhmetdinovDaemon::new()),
                 Box::new(ShatterDaemon),
+                Box::new(SelfHealingDaemon),
             ],
             observer,
             reactor,
@@ -725,6 +728,14 @@ impl AgencyEngine {
             }
         };
 
+        // 17. Self-Healing — extract healing report from daemon reports (Phase XIX)
+        let healing_report = daemon_reports.iter()
+            .find(|r| r.daemon_name == "self_healing")
+            .and_then(|_| {
+                // The actual report is emitted via event bus; extract from latest event
+                None // Populated by dashboard from event bus
+            });
+
         Ok(AgencyTickReport {
             daemon_reports,
             health_report,
@@ -739,6 +750,7 @@ impl AgencyEngine {
             thermodynamic_report,
             gravity_report,
             shatter_report,
+            healing_report,
             duration_ms: t0.elapsed().as_millis() as u64,
         })
     }

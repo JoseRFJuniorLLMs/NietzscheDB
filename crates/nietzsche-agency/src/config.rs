@@ -192,6 +192,20 @@ pub struct AgencyConfig {
     /// Tick interval for shatter scans (default: 5).
     pub shatter_interval: u64,
 
+    // -- Self-Healing Graph (Phase XIX) --
+    /// Whether self-healing is enabled (default: true).
+    pub healing_enabled: bool,
+    /// Tick interval between healing scans (default: 10).
+    pub healing_interval: u64,
+    /// Maximum nodes to scan per healing tick (default: 5000).
+    pub healing_max_scan: usize,
+    /// Embedding norm threshold for boundary drift (default: 0.995).
+    pub healing_norm_threshold: f64,
+    /// Minimum orphan age in seconds before cleanup (default: 3600).
+    pub healing_orphan_min_age: i64,
+    /// Phantom ratio above which ghost cleanup triggers (default: 0.15).
+    pub healing_ghost_ratio: f64,
+
     // -- DirtySet: Adaptive Sampling (Phase XV) --
     /// Whether adaptive sampling is enabled (default: true).
     pub dirty_enabled: bool,
@@ -274,6 +288,12 @@ impl Default for AgencyConfig {
             shatter_threshold: 500,
             shatter_max_avatars: 8,
             shatter_interval: 5,
+            healing_enabled: true,
+            healing_interval: 10,
+            healing_max_scan: 5000,
+            healing_norm_threshold: 0.995,
+            healing_orphan_min_age: 3600,
+            healing_ghost_ratio: 0.15,
             dirty_enabled: true,
             dirty_full_scan_ratio: 0.3,
             dirty_stability_sample: 50,
@@ -376,6 +396,14 @@ impl AgencyConfig {
             gravity_apply_pulls: std::env::var("AGENCY_GRAVITY_APPLY_PULLS")
                 .map(|v| v == "1" || v.to_lowercase() == "true")
                 .unwrap_or(false),
+            healing_enabled: std::env::var("AGENCY_HEALING_ENABLED")
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
+            healing_interval:       env_u64("AGENCY_HEALING_INTERVAL", 10),
+            healing_max_scan:       env_usize("AGENCY_HEALING_MAX_SCAN", 5000),
+            healing_norm_threshold: env_f64("AGENCY_HEALING_NORM_THRESHOLD", 0.995),
+            healing_orphan_min_age: env_u64("AGENCY_HEALING_ORPHAN_AGE", 3600) as i64,
+            healing_ghost_ratio:    env_f64("AGENCY_HEALING_GHOST_RATIO", 0.15),
             shatter_enabled: std::env::var("AGENCY_SHATTER_ENABLED")
                 .map(|v| v != "0" && v.to_lowercase() != "false")
                 .unwrap_or(true),

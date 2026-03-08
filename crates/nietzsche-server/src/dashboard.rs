@@ -227,6 +227,7 @@ pub async fn serve(
         .route("/api/agency/dashboard", get(agency_dashboard))
         .route("/api/agency/observation", get(agency_observation))
         .route("/api/agency/shatter", get(agency_shatter))
+        .route("/api/agency/healing", get(agency_healing))
         .route("/api/agency/quantum/map", post(agency_quantum_map))
         .route("/api/agency/quantum/fidelity", post(agency_quantum_fidelity))
         // Schema management
@@ -2054,6 +2055,44 @@ async fn agency_shatter(
             "avatar_nodes": 0,
             "largest_degree": 0,
             "avg_degree": 0.0,
+            "note": "no dashboard yet — agency engine must tick first"
+        })).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// ── Self-Healing (Phase XIX) ──────────────────────────────────────────────────
+
+// GET /api/agency/healing?collection= — self-healing graph status
+async fn agency_healing(
+    State((cm, _ops)): State<AppState>,
+    Query(cq): Query<CollectionQuery>,
+) -> impl IntoResponse {
+    let shared = resolve_col!(cm, cq.collection);
+    let db = shared.read().await;
+    match db.storage().get_meta(nietzsche_agency::CognitiveDashboard::meta_key()) {
+        Ok(Some(bytes)) => {
+            match serde_json::from_slice::<nietzsche_agency::cognitive_dashboard::CognitiveDashboard>(&bytes) {
+                Ok(dashboard) => {
+                    match dashboard.healing {
+                        Some(h) => Json(serde_json::json!(h)).into_response(),
+                        None => Json(serde_json::json!({
+                            "nodes_scanned": 0,
+                            "boundary_drift_count": 0,
+                            "orphan_count": 0,
+                            "dead_edge_count": 0,
+                            "exhausted_count": 0,
+                            "ghost_count": 0,
+                            "live_count": 0,
+                            "phantom_ratio": 0.0,
+                            "note": "no healing scan yet"
+                        })).into_response(),
+                    }
+                }
+                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("corrupt dashboard: {e}")}))).into_response(),
+            }
+        }
+        Ok(None) => Json(serde_json::json!({
             "note": "no dashboard yet — agency engine must tick first"
         })).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),

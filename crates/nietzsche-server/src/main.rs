@@ -945,6 +945,52 @@ async fn main() -> anyhow::Result<()> {
                                                 let _ = db.storage().put_node_meta_update_energy(&meta, old);
                                             }
                                         }
+                                        // ── Phase XIX: Self-Healing intents ──────────
+                                        nietzsche_agency::AgencyIntent::ReProjectNode { node_id } => {
+                                            // Re-project embedding back into Poincaré ball
+                                            if let Ok(Some(node)) = db.get_node(node_id) {
+                                                let mut coords = node.embedding.coords.clone();
+                                                let norm: f64 = coords.iter().map(|c| (*c as f64).powi(2)).sum::<f64>().sqrt();
+                                                if norm > 0.99 {
+                                                    let target = 0.98;
+                                                    let scale = (target / norm) as f32;
+                                                    for c in &mut coords {
+                                                        *c *= scale;
+                                                    }
+                                                    let new_emb = nietzsche_graph::PoincareVector::new(coords);
+                                                    drop(db);
+                                                    {
+                                                        let mut db_w = shared.write().await;
+                                                        if let Err(e) = db_w.update_embedding(node_id, new_emb) {
+                                                            warn!(node = %node_id, error = %e, "healing: re-project failed");
+                                                        } else {
+                                                            info!(node = %node_id, old_norm = %norm, "healing: re-projected embedding");
+                                                        }
+                                                    }
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        nietzsche_agency::AgencyIntent::HardDeleteEdge { edge_id } => {
+                                            drop(db);
+                                            {
+                                                let mut db_w = shared.write().await;
+                                                if let Err(e) = db_w.delete_edge(edge_id) {
+                                                    warn!(edge = %edge_id, error = %e, "healing: dead edge delete failed");
+                                                }
+                                            }
+                                            break;
+                                        }
+                                        nietzsche_agency::AgencyIntent::Phantomize { node_id } => {
+                                            drop(db);
+                                            {
+                                                let mut db_w = shared.write().await;
+                                                if let Err(e) = db_w.phantomize_node(node_id) {
+                                                    warn!(node = %node_id, error = %e, "healing: phantomize failed");
+                                                }
+                                            }
+                                            break;
+                                        }
                                         nietzsche_agency::AgencyIntent::ShatterNode { node_id, avatars } => {
                                             // Shatter Protocol: split super-node into context avatars
                                             // Read data under read lock first

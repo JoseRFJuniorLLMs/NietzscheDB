@@ -177,6 +177,25 @@ pub enum AgencyIntent {
         /// Avatar plans with context tags and edge assignments.
         avatars: Vec<crate::shatter::AvatarPlan>,
     },
+
+    // ── Phase XIX: Self-Healing Graph ─────────────────────────────
+
+    /// Re-project a node's embedding back into the Poincaré ball.
+    /// Produced when: SelfHealingDaemon detects ‖embedding‖ > norm_threshold.
+    ReProjectNode {
+        node_id: Uuid,
+    },
+
+    /// Hard-delete a dead edge (pointing to phantom/missing node).
+    HardDeleteEdge {
+        edge_id: Uuid,
+    },
+
+    /// Phantomize a node (set is_phantom = true, zero energy).
+    /// Used for orphans and exhausted nodes.
+    Phantomize {
+        node_id: Uuid,
+    },
 }
 
 /// Converts agency events into executable intents.
@@ -292,6 +311,40 @@ impl AgencyReactor {
                     AgencyEvent::SuperNodeDetected { node_id, degree } => {
                         // Super-node detected; shatter intents produced by engine step 16.
                         tracing::info!(%node_id, degree, "reactor: super-node detected for shattering");
+                    }
+                    AgencyEvent::HealingRequired { ref report } => {
+                        let total = report.boundary_drift_count
+                            + report.orphan_count
+                            + report.dead_edge_count
+                            + report.exhausted_count
+                            + report.ghost_delete_ids.len();
+                        tracing::info!(
+                            drift = report.boundary_drift_count,
+                            orphans = report.orphan_count,
+                            dead_edges = report.dead_edge_count,
+                            exhausted = report.exhausted_count,
+                            ghosts = report.ghost_delete_ids.len(),
+                            "reactor: healing required ({total} issues)"
+                        );
+                        for &id in &report.drift_node_ids {
+                            intents.push(AgencyIntent::ReProjectNode { node_id: id });
+                        }
+                        for &id in &report.dead_edge_ids {
+                            intents.push(AgencyIntent::HardDeleteEdge { edge_id: id });
+                        }
+                        for &id in &report.orphan_node_ids {
+                            intents.push(AgencyIntent::Phantomize { node_id: id });
+                        }
+                        for &id in &report.exhausted_node_ids {
+                            intents.push(AgencyIntent::Phantomize { node_id: id });
+                        }
+                        for &id in &report.ghost_delete_ids {
+                            intents.push(AgencyIntent::HardDelete {
+                                node_id: id,
+                                vitality: 0.0,
+                                reason: "ghost_cleanup".into(),
+                            });
+                        }
                     }
                 },
                 Err(broadcast::error::TryRecvError::Empty) => break,

@@ -81,6 +81,9 @@ pub mod observation;
 // Phase XVI — Shatter Protocol (super-node splitting)
 pub mod shatter;
 
+// Phase XIX — Self-Healing Graph (autonomous maintenance)
+pub mod self_healing;
+
 pub use centroid_guardian::{CentroidGuardian, CentroidUpdate, GuardianError};
 pub use config::AgencyConfig;
 pub use counterfactual::{CounterfactualEngine, CounterfactualOp, CounterfactualResult};
@@ -153,4 +156,10 @@ pub use shatter::{
     ShatterConfig, ShatterCandidate, ShatterPlan, ShatterReport,
     AvatarPlan, ShatterDaemon, build_shatter_config, run_shatter_scan,
     scan_super_nodes, build_shatter_plan,
+};
+
+// Phase XIX — Self-Healing Graph
+pub use self_healing::{
+    HealingConfig, HealingReport, SelfHealingDaemon,
+    build_healing_config, scan_healing,
 };
