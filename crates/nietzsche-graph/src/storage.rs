@@ -1652,28 +1652,58 @@ impl GraphStorage {
     // ── AdjacencyIndex reconstruction ──────────────────
 
     /// Reconstruct the in-memory `AdjacencyIndex` from all edges in RocksDB.
+    ///
     /// Called once at startup after WAL replay.
+    /// Uses rayon to parallelize DashMap insertion across CPU cores.
     pub fn rebuild_adjacency(&self) -> Result<AdjacencyIndex, GraphError> {
+        use rayon::prelude::*;
+
         let index = AdjacencyIndex::new();
-        let mut edge_count = 0usize;
-        let iter = self.iter_edges();
-        for edge_result in iter {
-            let edge = match edge_result {
-                Ok(e) => e,
+
+        // Collect edges from RocksDB iterator (I/O-bound, sequential)
+        let edges: Vec<Edge> = self.iter_edges()
+            .filter_map(|r| match r {
+                Ok(e) => Some(e),
                 Err(err) => {
                     tracing::warn!("skipping corrupt edge during adjacency rebuild: {err}");
-                    continue;
+                    None
                 }
-            };
-            index.add_edge(&edge);
-            edge_count += 1;
-        }
+            })
+            .collect();
+
+        let edge_count = edges.len();
+
+        // Insert into DashMap in parallel (CPU-bound, lock-free shards)
+        edges.par_iter().for_each(|edge| {
+            index.add_edge(edge);
+        });
+
         tracing::info!(
             edges_loaded = edge_count,
             adjacency_nodes = index.node_count(),
             "rebuild_adjacency: cortical index reconstructed from RocksDB"
         );
         Ok(index)
+    }
+
+    /// Flush all column family memtables to SST files.
+    ///
+    /// Ensures data reaches persistent storage and reduces WAL dependency.
+    /// Called after WAL replay to guarantee all replayed data is in SSTables.
+    pub fn flush_all(&self) -> Result<(), GraphError> {
+        let cf_names = [
+            CF_NODES, CF_EMBEDDINGS, CF_EDGES, CF_ADJ_OUT, CF_ADJ_IN,
+            CF_META, CF_SENSORY, CF_ENERGY_IDX, CF_META_IDX, CF_LISTS,
+            CF_SQL_SCHEMA, CF_SQL_DATA, CF_COOLDOWNS, CF_DSI_ID,
+            CF_DSI_SEMANTIC, CF_EGO,
+        ];
+        for cf_name in &cf_names {
+            if let Some(cf) = self.db.cf_handle(cf_name) {
+                self.db.flush_cf(cf)
+                    .map_err(|e| GraphError::Storage(format!("flush {cf_name}: {e}")))?;
+            }
+        }
+        Ok(())
     }
 
     /// One-time migration: scan all edges, re-serialize any that were stored

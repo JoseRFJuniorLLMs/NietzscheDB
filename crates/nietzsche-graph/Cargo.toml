@@ -22,6 +22,7 @@ tracing          = { workspace = true }
 tokio            = { workspace = true }
 ordered-float    = { workspace = true }
 rand             = { workspace = true }
+rayon            = { workspace = true }
 crc32fast        = "1.4"
 aes              = { workspace = true }
 aes-gcm          = { workspace = true }

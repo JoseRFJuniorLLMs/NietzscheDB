@@ -242,6 +242,26 @@ impl GraphWal {
         Ok(Self::replay(dir)?.len())
     }
 
+    /// Truncate the WAL file to zero after a successful replay.
+    ///
+    /// **Safe** because all replayed entries have already been applied
+    /// to RocksDB storage.  Next boot will see an empty WAL and skip
+    /// the replay entirely, making startup near-instant.
+    pub fn truncate_after_replay(dir: &Path) -> Result<(), GraphError> {
+        let path = dir.join("graph.wal");
+        if path.exists() {
+            let file = OpenOptions::new()
+                .write(true)
+                .open(&path)
+                .map_err(|e| GraphError::Storage(format!("WAL truncate: {e}")))?;
+            file.set_len(0)
+                .map_err(|e| GraphError::Storage(format!("WAL truncate: {e}")))?;
+            file.sync_all()
+                .map_err(|e| GraphError::Storage(format!("WAL truncate sync: {e}")))?;
+        }
+        Ok(())
+    }
+
     // ── Internal ───────────────────────────────────────
 
     /// Read all records, find last valid offset, truncate file there.

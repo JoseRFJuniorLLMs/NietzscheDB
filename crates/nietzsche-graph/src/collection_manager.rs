@@ -127,28 +127,40 @@ impl CollectionManager {
             create_lock: Mutex::new(()),
         });
 
-        // Load existing collections from disk
+        // Load existing collections from disk — in parallel via rayon
         if let Ok(entries) = std::fs::read_dir(&collections_dir) {
-            for entry in entries.flatten() {
-                let col_dir = entry.path();
-                if !col_dir.is_dir() {
-                    continue;
-                }
-                let cfg_path = col_dir.join("collection.json");
-                if !cfg_path.exists() {
-                    continue;
-                }
+            use rayon::prelude::*;
 
-                let json = std::fs::read_to_string(&cfg_path).map_err(|e| {
-                    GraphError::Storage(format!("read {}: {e}", cfg_path.display()))
-                })?;
-                let cfg: CollectionConfig = serde_json::from_str(&json).map_err(|e| {
-                    GraphError::Storage(format!("parse {}: {e}", cfg_path.display()))
-                })?;
+            // Phase 1: Discover collection directories + parse configs (fast, sequential)
+            let col_entries: Vec<(PathBuf, CollectionConfig)> = entries
+                .flatten()
+                .filter(|e| e.path().is_dir())
+                .filter_map(|entry| {
+                    let col_dir = entry.path();
+                    let cfg_path = col_dir.join("collection.json");
+                    if !cfg_path.exists() { return None; }
+                    let json = std::fs::read_to_string(&cfg_path).ok()?;
+                    let cfg: CollectionConfig = serde_json::from_str(&json).ok()?;
+                    Some((col_dir, cfg))
+                })
+                .collect();
 
-                let db = Self::open_db(&col_dir, &cfg)?;
-                cm.collections
-                    .insert(cfg.name.clone(), (cfg, Arc::new(RwLock::new(db))));
+            let n_cols = col_entries.len();
+            tracing::info!(collections = n_cols, "opening collections in parallel");
+
+            // Phase 2: Open all collections in parallel (heavy: RocksDB + WAL replay + adjacency)
+            let opened: Vec<Result<(String, (CollectionConfig, SharedDb)), GraphError>> = col_entries
+                .into_par_iter()
+                .map(|(col_dir, cfg)| {
+                    let db = Self::open_db(&col_dir, &cfg)?;
+                    Ok((cfg.name.clone(), (cfg, Arc::new(RwLock::new(db)))))
+                })
+                .collect();
+
+            // Phase 3: Insert into DashMap (fast, sequential)
+            for result in opened {
+                let (name, val) = result?;
+                cm.collections.insert(name, val);
             }
         }
 

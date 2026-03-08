@@ -249,7 +249,8 @@ impl<V: VectorStore> NietzscheDB<V> {
         // operation. This ensures crash consistency.
         let mut vector_store = vector_store;
         let replay_entries = GraphWal::replay(data_dir)?;
-        if !replay_entries.is_empty() {
+        let had_replay = !replay_entries.is_empty();
+        if had_replay {
             let replayed = Self::replay_wal_entries(&storage, &mut vector_store, &replay_entries);
             if replayed > 0 {
                 tracing::info!(
@@ -257,6 +258,19 @@ impl<V: VectorStore> NietzscheDB<V> {
                     replayed = replayed,
                     "WAL crash recovery: replayed committed operations"
                 );
+                // Flush RocksDB memtables so replayed data reaches SSTables
+                if let Err(e) = storage.flush_all() {
+                    tracing::warn!(error = %e, "post-replay RocksDB flush failed (non-fatal)");
+                }
+            }
+        }
+
+        // Truncate WAL after successful replay — next boot skips replay entirely
+        if had_replay {
+            if let Err(e) = GraphWal::truncate_after_replay(data_dir) {
+                tracing::warn!(error = %e, "WAL truncation failed (non-fatal)");
+            } else {
+                tracing::info!("WAL truncated after successful replay — next boot will be instant");
             }
         }
 
