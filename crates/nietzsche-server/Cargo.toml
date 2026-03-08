@@ -35,6 +35,7 @@ nietzsche-algo        = { workspace = true }
 nietzsche-cluster     = { workspace = true }
 nietzsche-wiederkehr  = { workspace = true }
 nietzsche-agency      = { workspace = true }
+nietzsche-agi         = { workspace = true }
 nietzsche-hyp-ops     = { workspace = true }
 nietzsche-lsystem     = { workspace = true }
 nietzsche-dream       = { workspace = true }

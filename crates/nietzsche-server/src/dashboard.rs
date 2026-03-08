@@ -239,6 +239,7 @@ pub async fn serve(
         .route("/api/reasoning/causal-neighbors", post(reasoning_causal_neighbors))
         .route("/api/reasoning/causal-chain", post(reasoning_causal_chain))
         .route("/api/reasoning/klein-path", post(reasoning_klein_path))
+        .route("/api/reasoning/query", post(reasoning_query))
         // Navigate (Geodesic Semantic Routing — Phase XVI)
         .route("/api/ego/:id", get(ego_cache))
         .route("/api/navigate", post(navigate))
@@ -1591,6 +1592,72 @@ async fn reasoning_klein_path(
             "cost": 0.0,
             "hops": 0,
         })).into_response()
+    }
+}
+
+// ── Reasoning Engine (Phase XVIII — Graph Cognitive Kernel) ──────────────────
+
+// POST /api/reasoning/query — unified cognitive reasoning pipeline
+#[derive(Deserialize)]
+struct ReasoningQueryRequest {
+    /// "node_to_node", "ego", or "embedding"
+    mode: String,
+    /// Source node ID (required for all modes)
+    source: String,
+    /// Target node ID (required for node_to_node)
+    target: Option<String>,
+    /// Target embedding coords (required for embedding mode)
+    target_coords: Option<Vec<f32>>,
+    /// Collection name
+    collection: Option<String>,
+    /// Override max hops (default: 20)
+    max_hops: Option<usize>,
+    /// Override energy filter (default: 0.0)
+    energy_min: Option<f32>,
+}
+
+async fn reasoning_query(
+    State((cm, _ops)): State<AppState>,
+    Json(req): Json<ReasoningQueryRequest>,
+) -> impl IntoResponse {
+    let source_id = match req.source.parse::<Uuid>() {
+        Ok(u) => u,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "invalid source UUID"}))).into_response(),
+    };
+
+    let shared = resolve_col!(cm, req.collection);
+    let db = shared.read().await;
+
+    let mut config = nietzsche_agi::ReasoningConfig::default();
+    if let Some(mh) = req.max_hops { config.max_hops = mh; }
+    if let Some(em) = req.energy_min { config.energy_min = em; }
+
+    let engine = nietzsche_agi::ReasoningEngine::new(config);
+
+    let query = match req.mode.as_str() {
+        "node_to_node" => {
+            let target_id = match req.target.as_deref().and_then(|s| s.parse::<Uuid>().ok()) {
+                Some(t) => t,
+                None => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "target UUID required for node_to_node mode"}))).into_response(),
+            };
+            nietzsche_agi::ReasoningQuery::NodeToNode { source: source_id, target: target_id }
+        }
+        "ego" => {
+            nietzsche_agi::ReasoningQuery::EgoReasoning { node_id: source_id }
+        }
+        "embedding" => {
+            let coords = match req.target_coords {
+                Some(c) => c,
+                None => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "target_coords required for embedding mode"}))).into_response(),
+            };
+            nietzsche_agi::ReasoningQuery::EmbeddingQuery { start_node: source_id, target_coords: coords }
+        }
+        _ => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "mode must be node_to_node, ego, or embedding"}))).into_response(),
+    };
+
+    match engine.reason(db.storage(), db.adjacency(), query) {
+        Ok(result) => Json(serde_json::json!(result)).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
     }
 }
 

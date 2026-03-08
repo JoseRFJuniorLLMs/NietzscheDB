@@ -107,6 +107,7 @@ pub mod criticality;
 pub mod metabolism;
 pub mod genome;
 pub mod identity;
+pub mod reasoning;
 pub mod error;
 
 // ── Public re-exports ──
@@ -158,4 +159,11 @@ pub use genome::{
 pub use identity::{
     AxiomIdentity, IdentityConfig,
     DriftReport, AxiomDriftExceeded,
+};
+
+// ── Phase XVIII re-exports (Reasoning Engine) ──
+pub use reasoning::{
+    ReasoningEngine, ReasoningConfig, ReasoningQuery,
+    ReasoningResult, ReasoningPath, PathAnnotation,
+    EgoSummary, KeyNeighbor,
 };
