@@ -2,13 +2,22 @@ import { Outlet, NavLink } from "react-router-dom"
 import {
     LayoutDashboard, Database, Search, Settings, Network,
     Terminal, GitBranch, Brain, Moon, Archive, Activity,
-    Wand2, Lightbulb, FileJson, AudioLines,
+    Wand2, Lightbulb, FileJson, AudioLines, Clock, Sun, MoonIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { GlobalAIAssistant } from "@/components/GlobalAIAssistant"
+import { KeyboardShortcuts } from "@/components/KeyboardShortcuts"
+import { ThemeToggle } from "@/components/ThemeToggle"
+import { MobileSidebar } from "@/components/MobileSidebar"
+import { OnboardingTour } from "@/components/OnboardingTour"
+import { Breadcrumbs } from "@/components/Breadcrumbs"
 
 export function DashboardLayout() {
     return (
         <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
+            {/* Mobile hamburger */}
+            <MobileSidebar />
+
             {/* Sidebar */}
             <aside className="w-64 border-r bg-card flex flex-col hidden md:flex">
                 <div className="p-6">
@@ -26,6 +35,7 @@ export function DashboardLayout() {
                     <NavItem to="/nodes" icon={Network} label="Cluster Nodes" />
                     <NavItem to="/explorer" icon={Search} label="Data Explorer" />
                     <NavItem to="/graph" icon={Network} label="Graph Explorer" badge="New" />
+                    <NavItem to="/activity" icon={Clock} label="Activity Feed" badge="New" />
                     <NavItem to="/settings" icon={Settings} label="Settings" />
 
                     {/* Separator */}
@@ -54,9 +64,12 @@ export function DashboardLayout() {
                 </nav>
 
                 <div className="p-4 border-t border-border/50">
-                    <div className="text-xs text-muted-foreground">
-                        <p>Version 2.1.0</p>
-                        <p className="opacity-50">38 crates · Hyperbolic Engine</p>
+                    <div className="flex items-center justify-between">
+                        <div className="text-xs text-muted-foreground">
+                            <p>Version 2.1.0</p>
+                            <p className="opacity-50">38 crates · Hyperbolic Engine</p>
+                        </div>
+                        <ThemeToggle />
                     </div>
                 </div>
             </aside>
@@ -64,9 +77,15 @@ export function DashboardLayout() {
             {/* Main Content */}
             <main className="flex-1 overflow-auto bg-background/50">
                 <div className="container mx-auto p-6 md:p-8 max-w-7xl">
+                    <Breadcrumbs />
                     <Outlet />
                 </div>
             </main>
+
+            {/* Global Components */}
+            <GlobalAIAssistant />
+            <KeyboardShortcuts />
+            <OnboardingTour />
         </div>
     )
 }

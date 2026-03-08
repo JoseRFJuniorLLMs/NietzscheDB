@@ -12,6 +12,8 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getMetrics, getClusterRing } from "@/lib/api"
+import { AuditLog, type AuditEntry } from "@/components/AuditLog"
+import { api } from "@/lib/api"
 
 /* ── Parse Prometheus text format ─────────────────────────── */
 interface ParsedMetric {
@@ -82,6 +84,16 @@ export default function MonitoringPage() {
         queryKey: ["cluster-ring"],
         queryFn: getClusterRing,
         refetchInterval: 15000,
+    })
+
+    const { data: auditEntries, refetch: refetchAudit } = useQuery({
+        queryKey: ["audit-log"],
+        queryFn: () => api.get("/audit-log").then(r => {
+            const data = r.data
+            if (Array.isArray(data)) return data as AuditEntry[]
+            return [] as AuditEntry[]
+        }),
+        refetchInterval: 30000,
     })
 
     const parsedMetrics = useMemo(() => {
@@ -247,6 +259,14 @@ export default function MonitoringPage() {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Audit Log */}
+            {auditEntries && auditEntries.length > 0 && (
+                <AuditLog
+                    entries={auditEntries}
+                    onRefresh={() => refetchAudit()}
+                />
+            )}
 
             {/* Raw Prometheus Metrics */}
             <Card>

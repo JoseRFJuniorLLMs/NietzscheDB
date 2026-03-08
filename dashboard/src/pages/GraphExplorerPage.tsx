@@ -10,6 +10,10 @@ import {
 } from "lucide-react"
 import { PerspektiveView } from "@/components/PerspektiveView"
 import type { StreamingMode } from "@/components/PerspektiveView"
+import { EventTimeline } from "@/components/EventTimeline"
+import type { TimelineEvent } from "@/components/EventTimeline"
+import { CDCEventPanel } from "@/components/CDCEventPanel"
+import { NodeInspector } from "@/components/NodeInspector"
 import { BarChart, Bar, ResponsiveContainer } from "recharts"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -109,6 +113,12 @@ export function GraphExplorerPage() {
     const [dreamRunning, setDreamRunning]       = useState(false)
     const [narrativeArcs, setNarrativeArcs]     = useState<NarrativeArc[]>([])
     const [narrativeLoading, setNarrativeLoading] = useState(false)
+
+    // Timeline & CDC state
+    const [timelineEvents, setTimelineEvents]   = useState<TimelineEvent[]>([])
+    const [showTimeline, setShowTimeline]       = useState(true)
+    const [showCDCPanel, setShowCDCPanel]       = useState(false)
+    const [inspectedNodeId, setInspectedNodeId] = useState<string | null>(null)
 
     // Collections list for dynamic selector
     const { data: collectionsData } = useQuery({
@@ -277,15 +287,22 @@ export function GraphExplorerPage() {
                         </button>
                     </div>
 
-                    <div className="flex items-center gap-2 mt-2 font-mono text-[10px] text-muted-foreground pointer-events-none">
-                        <span className="flex items-center gap-1">
+                    <div className="flex items-center gap-2 mt-2 font-mono text-[10px] text-muted-foreground">
+                        <span className="flex items-center gap-1 pointer-events-none">
                             <span className="w-1.5 h-1.5 rounded-full bg-[#00ff66] animate-pulse" />
                             {streamingMode === "ws" ? "WS STREAMING" : "SSE STREAMING"}
                         </span>
-                        <span>|</span>
-                        <span>NODES: <span className="text-white font-bold">{graphData?.nodes.length ?? 0}</span></span>
-                        <span>|</span>
-                        <span>EDGES: <span className="text-white font-bold">{graphData?.edges.length ?? 0}</span></span>
+                        <span className="pointer-events-none">|</span>
+                        <span className="pointer-events-none">NODES: <span className="text-white font-bold">{graphData?.nodes.length ?? 0}</span></span>
+                        <span className="pointer-events-none">|</span>
+                        <span className="pointer-events-none">EDGES: <span className="text-white font-bold">{graphData?.edges.length ?? 0}</span></span>
+                        <span className="pointer-events-none">|</span>
+                        <button onClick={() => setShowTimeline(t => !t)} className={`px-1.5 py-0.5 rounded text-[9px] font-bold border transition-colors ${showTimeline ? "border-[#00f0ff] text-[#00f0ff] bg-[#00f0ff]/10" : "border-border/30 text-muted-foreground hover:text-white"}`}>
+                            TIMELINE
+                        </button>
+                        <button onClick={() => setShowCDCPanel(c => !c)} className={`px-1.5 py-0.5 rounded text-[9px] font-bold border transition-colors ${showCDCPanel ? "border-[#00ff66] text-[#00ff66] bg-[#00ff66]/10" : "border-border/30 text-muted-foreground hover:text-white"}`}>
+                            CDC
+                        </button>
                     </div>
                 </div>
             </div>
@@ -838,14 +855,50 @@ export function GraphExplorerPage() {
                 </div>
             </div>
 
+            {/* ── Event Timeline Bar (bottom) ──────────────────────────────── */}
+            {showTimeline && (
+                <div className="border-t border-border/30 bg-black/80 backdrop-blur-sm">
+                    <EventTimeline
+                        events={timelineEvents}
+                        onEventClick={(evt) => {
+                            // Future: highlight node in graph
+                            console.log("Timeline event clicked:", evt)
+                        }}
+                    />
+                </div>
+            )}
+
+            {/* ── CDC Event Stream Panel (right side overlay) ─────────────── */}
+            {showCDCPanel && (
+                <div className="absolute top-16 right-6 z-30 w-72">
+                    <CDCEventPanel
+                        events={timelineEvents.filter(e =>
+                            ["InsertNode", "UpdateNode", "DeleteNode", "InsertEdge", "DeleteEdge", "SleepCycle", "Zaratustra"].includes(e.type)
+                        ).map(e => ({
+                            id: e.id,
+                            timestamp: e.timestamp,
+                            event_type: e.type as any,
+                            node_id: e.nodeId ?? null,
+                        }))}
+                    />
+                </div>
+            )}
+
             {/* ── Features Legend (bottom-right, above engine controls) ──────── */}
             <div className="absolute bottom-20 right-6 z-20 pointer-events-none">
                 <div className="text-[8px] font-mono text-muted-foreground/40 space-y-0.5 text-right">
-                    <div>[F] Fit View | [M] Cycle Manifolds</div>
+                    <div>[F] Fit View | [M] Cycle Manifolds | [T] Timeline | [C] CDC</div>
                     <div>Scroll = Mobius Zoom (Poincare)</div>
                     <div>Drag Nodes | Box Select | Right-Click Menu</div>
                 </div>
             </div>
+
+            {/* ── Node Inspector Drawer ──────────────────────────────────── */}
+            <NodeInspector
+                nodeId={inspectedNodeId}
+                onClose={() => setInspectedNodeId(null)}
+                collection={collection}
+            />
         </div>
     )
 }

@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useSearchParams } from "react-router-dom"
-import { Code, Play, AlertCircle } from "lucide-react"
+import { Code, Play, AlertCircle, Scan } from "lucide-react"
+import { EmbeddingProjector } from "@/components/EmbeddingProjector"
 
 export function DataExplorerPage() {
     const [searchParams, setSearchParams] = useSearchParams()
@@ -61,6 +62,7 @@ export function DataExplorerPage() {
                     <TabsList>
                         <TabsTrigger value="raw">Raw Data Table</TabsTrigger>
                         <TabsTrigger value="playground">Search Playground</TabsTrigger>
+                        <TabsTrigger value="embeddings">Embedding Projector</TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="raw" className="flex-1 overflow-hidden">
@@ -69,6 +71,20 @@ export function DataExplorerPage() {
 
                     <TabsContent value="playground" className="flex-1">
                         <SearchPlayground collection={selectedCollection} />
+                    </TabsContent>
+
+                    <TabsContent value="embeddings" className="flex-1">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2 text-sm">
+                                    <Scan className="h-4 w-4" /> 2D Embedding Projection
+                                </CardTitle>
+                                <CardDescription>Visualize vector embeddings in 2D space. Points are positioned using server-side projection.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <EmbeddingProjectionView collection={selectedCollection} />
+                            </CardContent>
+                        </Card>
                     </TabsContent>
                 </Tabs>
             ) : (
@@ -214,4 +230,35 @@ function SearchPlayground({ collection }: { collection: string }) {
             </Card>
         </div>
     )
+}
+
+function EmbeddingProjectionView({ collection }: { collection: string }) {
+    const { data: projectionData, isLoading } = useQuery({
+        queryKey: ['embeddings-projection', collection],
+        queryFn: () => api.get(`/collections/${collection}/peek?limit=200`).then(r => {
+            const items = r.data
+            if (!items || items.length === 0) return []
+            // Map peek data to points for the projector
+            return items.map(([id, vec, meta]: any) => ({
+                id,
+                x: vec?.[0] ?? 0,
+                y: vec?.[1] ?? 0,
+                label: meta?.text?.slice(0, 30) || meta?.source || id,
+                metadata: meta
+            }))
+        }),
+        enabled: !!collection
+    })
+
+    if (isLoading) return <Skeleton className="h-[400px] w-full" />
+
+    if (!projectionData || projectionData.length === 0) {
+        return (
+            <div className="flex h-[300px] items-center justify-center text-muted-foreground text-sm">
+                No embeddings to project
+            </div>
+        )
+    }
+
+    return <EmbeddingProjector points={projectionData} />
 }
