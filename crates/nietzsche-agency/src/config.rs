@@ -124,6 +124,30 @@ pub struct AgencyConfig {
     /// Controls when fidelity between Bloch states forces edge materialisation.
     pub quantum: QuantumConfig,
 
+    // -- Hebbian LTP (Phase XII.5) --
+    /// Whether Hebbian LTP is enabled (default: true).
+    pub hebbian_enabled: bool,
+    /// Weight increase per unit of LTP trace (default: 0.02).
+    pub hebbian_ltp_rate: f32,
+    /// Trace decay factor per tick (default: 0.9).
+    pub hebbian_trace_decay: f32,
+    /// Maximum edge weight from potentiation (default: 5.0).
+    pub hebbian_max_weight: f32,
+
+    // -- Cognitive Thermodynamics (Phase XIII) --
+    /// Tick interval for thermodynamic analysis (0 = disabled, default: 5).
+    pub thermo_interval: u64,
+    /// Cold phase boundary (T < t_cold = solid, default: 0.15).
+    pub thermo_t_cold: f64,
+    /// Hot phase boundary (T > t_hot = gas, default: 0.85).
+    pub thermo_t_hot: f64,
+    /// Thermal conductivity for heat flow (default: 0.05).
+    pub thermo_conductivity: f64,
+    /// Maximum heat flow per edge per tick (default: 0.02).
+    pub thermo_max_heat_flow: f32,
+    /// Whether heat flow (energy redistribution) is enabled (default: true).
+    pub thermo_enable_heat_flow: bool,
+
     // -- ECAN: Economic Attention Network (Phase XII) --
     /// Tick interval for ECAN cycles (1 = every tick, 0 = disabled).
     pub ecan_interval: u64,
@@ -189,6 +213,16 @@ impl Default for AgencyConfig {
             mcts_model_name: "mcts_v1".to_string(),
             ppo_model_name: "ppo_growth_v1".to_string(),
             quantum: QuantumConfig::default(),
+            hebbian_enabled: true,
+            hebbian_ltp_rate: 0.02,
+            hebbian_trace_decay: 0.9,
+            hebbian_max_weight: 5.0,
+            thermo_interval: 5,
+            thermo_t_cold: 0.15,
+            thermo_t_hot: 0.85,
+            thermo_conductivity: 0.05,
+            thermo_max_heat_flow: 0.02,
+            thermo_enable_heat_flow: true,
             ecan_interval: 1,
             ecan_max_scan: 10_000,
             ecan_budget_scale: 1.0,
@@ -264,6 +298,20 @@ impl AgencyConfig {
             mcts_model_name: std::env::var("AGENCY_MCTS_MODEL").unwrap_or_else(|_| "mcts_v1".into()),
             ppo_model_name: std::env::var("AGENCY_PPO_MODEL").unwrap_or_else(|_| "ppo_growth_v1".into()),
             quantum: QuantumConfig::from_env(),
+            hebbian_enabled: std::env::var("AGENCY_HEBBIAN_ENABLED")
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
+            hebbian_ltp_rate:       env_f32("AGENCY_HEBBIAN_LTP_RATE", 0.02),
+            hebbian_trace_decay:    env_f32("AGENCY_HEBBIAN_TRACE_DECAY", 0.9),
+            hebbian_max_weight:     env_f32("AGENCY_HEBBIAN_MAX_WEIGHT", 5.0),
+            thermo_interval:        env_u64("AGENCY_THERMO_INTERVAL", 5),
+            thermo_t_cold:          env_f64("AGENCY_THERMO_T_COLD", 0.15),
+            thermo_t_hot:           env_f64("AGENCY_THERMO_T_HOT", 0.85),
+            thermo_conductivity:    env_f64("AGENCY_THERMO_CONDUCTIVITY", 0.05),
+            thermo_max_heat_flow:   env_f32("AGENCY_THERMO_MAX_HEAT_FLOW", 0.02),
+            thermo_enable_heat_flow: std::env::var("AGENCY_THERMO_HEAT_FLOW")
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
             ecan_interval:          env_u64("AGENCY_ECAN_INTERVAL", 1),
             ecan_max_scan:          env_usize("AGENCY_ECAN_MAX_SCAN", 10_000),
             ecan_budget_scale:      env_f32("AGENCY_ECAN_BUDGET_SCALE", 1.0),

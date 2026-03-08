@@ -197,9 +197,17 @@ pub fn resolve_auctions(
 
 /// Compute energy deltas from attention flow.
 ///
-/// - Receivers gain: `received × attention_energy_gain`
-/// - All participants decay: `energy × (1 - energy_decay)` loss
-/// - Net delta = gain - decay loss
+/// For each participating node:
+///
+/// 1. **Attention gain**: `received × attention_energy_gain`
+/// 2. **Energy decay**: `current_energy × (1 - energy_decay)` — thermodynamic dissipation
+/// 3. **Net delta** = gain − decay
+///
+/// Decay ensures nodes that stop receiving attention gradually cool down.
+/// This creates the thermodynamic foundation: energy is not conserved at
+/// the node level but flows and dissipates, driving self-organization.
+///
+/// `energy(t+1) = energy(t) × decay + received × gain_rate`
 pub fn compute_energy_deltas(
     states: &[AttentionState],
     config: &AttentionConfig,
@@ -208,10 +216,13 @@ pub fn compute_energy_deltas(
 
     for state in states {
         let gain = state.received * config.attention_energy_gain;
-        // We don't apply decay here — that's the base energy system's job.
-        // ECAN only adds the attention boost.
-        if gain.abs() > 1e-6 {
-            deltas.push((state.node_id, gain));
+        // Decay: energy lost per tick = current_energy × (1 - decay_rate)
+        // semantic_mass ∝ energy, so we use it as proxy for current energy level
+        let decay_loss = state.semantic_mass * (1.0 - config.energy_decay);
+        let net = gain - decay_loss;
+
+        if net.abs() > 1e-6 {
+            deltas.push((state.node_id, net));
         }
     }
 
@@ -322,9 +333,14 @@ mod tests {
         let config = AttentionConfig::default();
         let deltas = compute_energy_deltas(&states, &config);
 
-        // Node 1 received attention → positive delta
-        assert!(deltas.iter().any(|(id, d)| *id == Uuid::from_u128(1) && *d > 0.0));
-        // Node 2 received nothing → no delta (gain ≈ 0)
-        assert!(!deltas.iter().any(|(id, _)| *id == Uuid::from_u128(2)));
+        // Node 1 received attention → net gain (0.8*0.1 - 1.0*0.03 = 0.05)
+        let d1 = deltas.iter().find(|(id, _)| *id == Uuid::from_u128(1));
+        assert!(d1.is_some(), "node 1 should have a delta");
+        assert!(d1.unwrap().1 > 0.0, "node 1 should gain energy");
+
+        // Node 2 received nothing → negative delta from decay (0 - 0.5*0.03 = -0.015)
+        let d2 = deltas.iter().find(|(id, _)| *id == Uuid::from_u128(2));
+        assert!(d2.is_some(), "node 2 should have a decay delta");
+        assert!(d2.unwrap().1 < 0.0, "node 2 should lose energy from decay");
     }
 }

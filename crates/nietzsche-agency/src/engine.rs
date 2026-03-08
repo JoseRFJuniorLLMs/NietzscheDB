@@ -4,6 +4,11 @@ use nietzsche_hyp_ops::poincare_distance;
 use crate::attention_cycle::{EcanConfig, EcanCycle};
 use crate::attention_economy::{AttentionConfig, AttentionReport};
 use crate::curiosity_engine::CuriosityConfig;
+use crate::hebbian::{HebbianConfig, HebbianReport, HebbianState, run_hebbian_tick};
+use crate::thermodynamics::{
+    ThermodynamicReport, ThermodynamicState, ThermodynamicsConfig,
+    run_thermodynamic_cycle,
+};
 use crate::axiom_registry::AxiomRegistry;
 use crate::centroid_guardian::CentroidGuardian;
 use crate::hyperbolic_health::{HyperbolicHealth, HyperbolicHealthMonitor};
@@ -42,6 +47,10 @@ pub struct AgencyTickReport {
     pub hyperbolic_health: Option<HyperbolicHealth>,
     /// ECAN attention report (None if interval-gated or disabled).
     pub attention_report: Option<AttentionReport>,
+    /// Hebbian LTP report (None if disabled or no winning bids).
+    pub hebbian_report: Option<HebbianReport>,
+    /// Cognitive thermodynamics report (None if interval-gated or disabled).
+    pub thermodynamic_report: Option<ThermodynamicReport>,
     pub duration_ms: u64,
 }
 
@@ -80,6 +89,12 @@ pub struct AgencyEngine {
     hyp_health_monitor: HyperbolicHealthMonitor,
     /// ECAN — Economic Attention Network (Phase XII).
     ecan_cycle: EcanCycle,
+    /// Hebbian LTP — structural plasticity (Phase XII.5).
+    hebbian_state: HebbianState,
+    /// Cognitive Thermodynamics — temperature, entropy, free energy (Phase XIII).
+    thermo_state: ThermodynamicState,
+    /// Previous phase state for phase transition detection.
+    last_phase: Option<crate::thermodynamics::PhaseState>,
 }
 
 impl AgencyEngine {
@@ -118,6 +133,9 @@ impl AgencyEngine {
             axiom_registry: AxiomRegistry::new(),
             hyp_health_monitor: HyperbolicHealthMonitor::new(),
             ecan_cycle: EcanCycle::new(),
+            hebbian_state: HebbianState::new(),
+            thermo_state: ThermodynamicState::new(),
+            last_phase: None,
             config,
         }
     }
@@ -457,6 +475,139 @@ impl AgencyEngine {
             None
         };
 
+        // 13. Hebbian LTP — structural plasticity (Phase XII.5)
+        //     Uses ECAN winning bids to strengthen co-activated edges.
+        let hebbian_report = if self.config.hebbian_enabled {
+            if let Some(ref att_report) = attention_report {
+                // Extract winning bids: top_receivers tells us who received,
+                // but we need the actual winning bids. We reconstruct from
+                // energy_deltas (receivers with positive delta were bid winners).
+                // For a cleaner integration, we use the report's energy_deltas
+                // as a proxy for co-activation strength.
+                let proxy_bids: Vec<crate::attention_economy::AttentionBid> = att_report
+                    .energy_deltas
+                    .iter()
+                    .filter(|(_, d)| *d > 0.0)
+                    .flat_map(|(target, d)| {
+                        // Create a synthetic bid representing the attention received
+                        att_report.top_receivers.iter().take(5).map(move |(src, _)| {
+                            crate::attention_economy::AttentionBid {
+                                source: *src,
+                                target: *target,
+                                value: *d,
+                            }
+                        })
+                    })
+                    .collect();
+
+                let hebb_config = build_hebbian_config(&self.config);
+                let report = run_hebbian_tick(&mut self.hebbian_state, &proxy_bids, &hebb_config);
+
+                // Emit HebbianPotentiation event if edges were strengthened
+                if report.potentiated > 0 {
+                    self.bus.publish(crate::event_bus::AgencyEvent::HebbianPotentiation {
+                        edges_potentiated: report.potentiated,
+                        total_delta: report.total_delta,
+                        active_traces: report.active_traces,
+                    });
+                    // Convert hebbian deltas to intents
+                    for delta in &report.deltas {
+                        intents.push(AgencyIntent::HebbianLTP {
+                            from_id: delta.source,
+                            to_id: delta.target,
+                            weight_delta: delta.weight_delta,
+                            trace: delta.trace,
+                        });
+                    }
+                }
+
+                Some(report)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // 14. Cognitive Thermodynamics — temperature, entropy, free energy (Phase XIII)
+        let thermodynamic_report = if self.config.thermo_interval > 0 {
+            let thermo_tick = self.thermo_state.ema_temperature(); // use for gating
+            let _ = thermo_tick; // silence unused warning
+
+            // Collect energy samples from participating nodes
+            let mut energies = Vec::new();
+            let mut edge_energies = Vec::new();
+            let mut scanned = 0usize;
+            let max_scan = self.config.ecan_max_scan.max(5_000);
+
+            for result in storage.iter_nodes_meta() {
+                let meta = match result {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+                if meta.is_phantom {
+                    continue;
+                }
+                energies.push(meta.energy);
+
+                // Sample edge energy pairs for heat flow computation
+                if self.config.thermo_enable_heat_flow {
+                    let neighbours = adjacency.neighbors_out(&meta.id);
+                    for nid in neighbours.iter().take(3) { // sample ≤3 edges per node
+                        if let Ok(Some(n_meta)) = storage.get_node_meta(nid) {
+                            edge_energies.push((meta.id, *nid, meta.energy, n_meta.energy));
+                        }
+                    }
+                }
+
+                scanned += 1;
+                if scanned >= max_scan {
+                    break;
+                }
+            }
+
+            let thermo_config = build_thermo_config(&self.config);
+            let report = run_thermodynamic_cycle(
+                &mut self.thermo_state,
+                &energies,
+                &edge_energies,
+                &thermo_config,
+            );
+
+            // Detect phase transitions and emit events
+            if let Some(prev_phase) = self.last_phase {
+                if prev_phase != report.phase {
+                    self.bus.publish(crate::event_bus::AgencyEvent::PhaseTransition {
+                        from_phase: format!("{}", prev_phase),
+                        to_phase: format!("{}", report.phase),
+                        temperature: report.temperature,
+                        entropy: report.entropy,
+                        free_energy: report.free_energy,
+                    });
+                    tracing::info!(
+                        from = %prev_phase,
+                        to = %report.phase,
+                        T = format!("{:.4}", report.temperature),
+                        "cognitive phase transition detected"
+                    );
+                }
+            }
+            self.last_phase = Some(report.phase);
+
+            // Convert heat flows to energy adjustment intents
+            for flow in &report.heat_flows {
+                intents.push(AgencyIntent::HeatFlow {
+                    from_id: flow.from,
+                    to_id: flow.to,
+                    amount: flow.amount,
+                });
+            }
+
+            Some(report)
+        } else {
+            None
+        };
+
         Ok(AgencyTickReport {
             daemon_reports,
             health_report,
@@ -467,6 +618,8 @@ impl AgencyEngine {
             demotions,
             hyperbolic_health,
             attention_report,
+            hebbian_report,
+            thermodynamic_report,
             duration_ms: t0.elapsed().as_millis() as u64,
         })
     }
@@ -596,6 +749,31 @@ fn find_seed_near_sector(
     }
 
     best.map(|(id, _)| id)
+}
+
+/// Build a HebbianConfig from AgencyConfig fields.
+fn build_hebbian_config(cfg: &AgencyConfig) -> HebbianConfig {
+    HebbianConfig {
+        ltp_rate: cfg.hebbian_ltp_rate,
+        trace_decay: cfg.hebbian_trace_decay,
+        trace_threshold: 0.1,
+        max_weight: cfg.hebbian_max_weight,
+        max_total_weight: 50.0,
+        enabled: cfg.hebbian_enabled,
+    }
+}
+
+/// Build a ThermodynamicsConfig from AgencyConfig fields.
+fn build_thermo_config(cfg: &AgencyConfig) -> ThermodynamicsConfig {
+    ThermodynamicsConfig {
+        t_cold: cfg.thermo_t_cold,
+        t_hot: cfg.thermo_t_hot,
+        thermal_conductivity: cfg.thermo_conductivity,
+        max_heat_flow: cfg.thermo_max_heat_flow,
+        max_scan: cfg.ecan_max_scan.max(5_000),
+        interval: cfg.thermo_interval,
+        enable_heat_flow: cfg.thermo_enable_heat_flow,
+    }
 }
 
 /// Build an EcanConfig from AgencyConfig fields.

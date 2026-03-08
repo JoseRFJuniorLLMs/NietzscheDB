@@ -60,6 +60,12 @@ pub mod attention_economy;
 pub mod curiosity_engine;
 pub mod attention_cycle;
 
+// Phase XII.5 — Hebbian LTP (structural plasticity)
+pub mod hebbian;
+
+// Phase XIII — Cognitive Thermodynamics
+pub mod thermodynamics;
+
 pub use centroid_guardian::{CentroidGuardian, CentroidUpdate, GuardianError};
 pub use config::AgencyConfig;
 pub use counterfactual::{CounterfactualEngine, CounterfactualOp, CounterfactualResult};
@@ -93,3 +99,14 @@ pub use maturity::{MaturityConfig, MaturityScore, NodeClass, NodeMaturityInput, 
 pub use attention_economy::{AttentionState, AttentionBid, AttentionConfig, AttentionReport};
 pub use curiosity_engine::{CuriosityState, CuriosityConfig};
 pub use attention_cycle::{EcanConfig, EcanCycle, run_ecan_cycle};
+
+// Phase XII.5 — Hebbian LTP
+pub use hebbian::{HebbianConfig, HebbianDelta, HebbianReport, HebbianState, run_hebbian_tick};
+
+// Phase XIII — Cognitive Thermodynamics
+pub use thermodynamics::{
+    ThermodynamicsConfig, ThermodynamicReport, ThermodynamicState,
+    PhaseState, HeatFlow, cognitive_temperature, shannon_entropy,
+    helmholtz_free_energy, classify_phase, exploration_modifier,
+    run_thermodynamic_cycle,
+};

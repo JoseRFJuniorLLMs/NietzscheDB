@@ -130,6 +130,29 @@ pub enum AgencyIntent {
         cycle: u64,
         structural_hash: String,
     },
+
+    // ── Phase XII.5: Hebbian LTP ─────────────────────────────────
+
+    /// Strengthen an edge via Hebbian Long-Term Potentiation.
+    /// Produced when: ECAN attention flow co-activates connected nodes.
+    /// The server executes: `edge.weight = (edge.weight + weight_delta).min(max_weight)`
+    HebbianLTP {
+        from_id: Uuid,
+        to_id: Uuid,
+        weight_delta: f32,
+        trace: f32,
+    },
+
+    // ── Phase XIII: Cognitive Thermodynamics ──────────────────────
+
+    /// Transfer energy from a hot node to a cold node (Fourier heat flow).
+    /// Produced when: Thermodynamic analysis detects energy gradient.
+    /// The server executes: `from.energy -= amount; to.energy += amount`
+    HeatFlow {
+        from_id: Uuid,
+        to_id: Uuid,
+        amount: f32,
+    },
 }
 
 /// Converts agency events into executable intents.
@@ -234,6 +257,13 @@ impl AgencyReactor {
                     AgencyEvent::HyperbolicHealthAlert { diagnosis, mean_r, .. } => {
                         // Log geometric health alert; sleep may be triggered if crowding.
                         tracing::warn!(diagnosis, mean_r, "reactor: hyperbolic health alert");
+                    }
+                    // ── Phase XII.5 + Phase XIII events (handled by engine, not reactor) ──
+                    AgencyEvent::PhaseTransition { .. } => {
+                        // Phase transitions are logged by the engine; reactor monitors only.
+                    }
+                    AgencyEvent::HebbianPotentiation { .. } => {
+                        // Hebbian events are informational; intents produced by engine.
                     }
                 },
                 Err(broadcast::error::TryRecvError::Empty) => break,

@@ -154,6 +154,38 @@ pub enum AgencyEvent {
         /// Vitality variance (cognitive diversity metric).
         vitality_variance: f32,
     },
+
+    // ── Phase XIII: Cognitive Thermodynamics ─────────────────────
+
+    /// Thermodynamic phase transition detected.
+    ///
+    /// Emitted when the system crosses a phase boundary (solid↔liquid↔gas).
+    /// The reactor may respond by adjusting exploration ratio, triggering
+    /// sleep cycles (to cool down), or L-System growth (to heat up).
+    PhaseTransition {
+        /// Previous phase state.
+        from_phase: String,
+        /// New phase state.
+        to_phase: String,
+        /// Current cognitive temperature.
+        temperature: f64,
+        /// Current Shannon entropy.
+        entropy: f64,
+        /// Helmholtz free energy.
+        free_energy: f64,
+    },
+
+    /// Hebbian LTP strengthened edges based on attention co-activation.
+    ///
+    /// Emitted after each Hebbian tick that produces potentiation deltas.
+    HebbianPotentiation {
+        /// Number of edges potentiated.
+        edges_potentiated: usize,
+        /// Total weight delta applied.
+        total_delta: f32,
+        /// Active traces still being tracked.
+        active_traces: usize,
+    },
 }
 
 /// Internal pub/sub bus for inter-daemon communication.

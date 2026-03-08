@@ -894,6 +894,36 @@ async fn main() -> anyhow::Result<()> {
                                                 "agency: RecordDeletion — audit ledger entry"
                                             );
                                         }
+                                        nietzsche_agency::AgencyIntent::HebbianLTP { from_id, to_id, weight_delta, trace } => {
+                                            // Strengthen edge via Hebbian LTP (co-activation)
+                                            let edge_id = db.adjacency().entries_out(&from_id)
+                                                .into_iter()
+                                                .find(|e| e.neighbor_id == to_id)
+                                                .map(|e| e.edge_id);
+
+                                            if let Some(eid) = edge_id {
+                                                if let Ok(Some(mut edge)) = db.storage().get_edge(&eid) {
+                                                    edge.weight = (edge.weight + weight_delta).min(5.0);
+                                                    if let Err(e) = db.storage().put_edge(&edge) {
+                                                        warn!(from = %from_id, to = %to_id, error = %e, "agency: HebbianLTP update failed");
+                                                    }
+                                                }
+                                            }
+                                            let _ = (trace,); // logged at trace level
+                                        }
+                                        nietzsche_agency::AgencyIntent::HeatFlow { from_id, to_id, amount } => {
+                                            // Fourier heat flow: transfer energy from hot → cold
+                                            if let Ok(Some(mut from_meta)) = db.storage().get_node_meta(&from_id) {
+                                                if let Ok(Some(mut to_meta)) = db.storage().get_node_meta(&to_id) {
+                                                    let old_from = from_meta.energy;
+                                                    let old_to = to_meta.energy;
+                                                    from_meta.energy = (from_meta.energy - amount).max(0.0);
+                                                    to_meta.energy = (to_meta.energy + amount).min(1.0);
+                                                    let _ = db.storage().put_node_meta_update_energy(&from_meta, old_from);
+                                                    let _ = db.storage().put_node_meta_update_energy(&to_meta, old_to);
+                                                }
+                                            }
+                                        }
                                     }
                                 }
 
