@@ -169,7 +169,7 @@ NietzscheDB is built as a **Rust nightly workspace** with 41 crates in two layer
 │  Search:     nietzsche-filtered-knn  nietzsche-named-vectors  nietzsche-pq   │
 │  Index:      nietzsche-secondary-idx                                         │
 │  Observe:    nietzsche-metrics                                               │
-│  Storage:    nietzsche-table    nietzsche-media      nietzsche-kafka          │
+│  Storage:    nietzsche-swartz   nietzsche-media      nietzsche-kafka          │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │                     NietzscheDB Layer (9 crates — fork base)                │
 │                                                                              │
@@ -829,14 +829,15 @@ Change data capture sink for streaming mutations:
 - SetContent merges JSON fields into existing node content
 - 9 unit tests
 
-#### `nietzsche-table` — Relational Table Store (SQLite)
-Bridging graph and relational paradigms:
-- `TableSchema` with `ColumnDef { name, col_type, nullable, default }`
-- Column types: Text, Integer, Float, Bool, Uuid, Json, **NodeRef** (FK to graph nodes)
-- `TableStore` wrapping rusqlite::Connection with create/drop/insert/query/delete/list/schema
-- Schema metadata persisted in `_nietzsche_table_meta` internal table
-- File-backed or in-memory operation modes
-- 15 unit tests
+#### `nietzsche-swartz` — Embedded SQL Engine (GlueSQL on RocksDB)
+Full embedded relational SQL engine sharing the same RocksDB instance:
+- `SwartzEngine` wrapping GlueSQL on the graph's RocksDB column families
+- Full SQL: SELECT, INSERT, UPDATE, DELETE, JOIN, WHERE, GROUP BY, ORDER BY
+- CREATE TABLE / DROP TABLE / ALTER TABLE support
+- gRPC endpoints: `SqlQuery`, `SqlExec`, `ListSqlTables`, `DescribeSqlTable`
+- Atomic backups included (same RocksDB checkpoint)
+- Zero external dependencies (no separate SQLite process)
+- Named in honor of Aaron Swartz
 
 #### `nietzsche-media` — Media/Blob Store (OpenDAL)
 Backend-agnostic media storage for files associated with graph nodes:
@@ -1664,7 +1665,7 @@ NietzscheDB/
 │   ├── nietzsche-pq/         ← Product Quantization (magnitude-preserving)
 │   ├── nietzsche-secondary-idx/ ← secondary indexes by arbitrary field
 │   ├── nietzsche-kafka/      ← Kafka Connect sink (CDC streaming)
-│   ├── nietzsche-table/      ← relational table store (SQLite)
+│   ├── nietzsche-swartz/     ← embedded SQL engine (GlueSQL on RocksDB)
 │   ├── nietzsche-media/      ← media/blob store (OpenDAL: S3, GCS, local)
 │   ├── nietzsche-api/        ← unified gRPC API (71+ RPCs)
 │   ├── nietzsche-sdk/        ← Rust client SDK

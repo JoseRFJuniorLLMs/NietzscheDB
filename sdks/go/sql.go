@@ -33,6 +33,12 @@ type SqlExecResult struct {
 	Message      string // optional message
 }
 
+// SqlTableDescription contains column definitions for a SQL table.
+type SqlTableDescription struct {
+	TableName string      // table name
+	Columns   []SqlColumn // column definitions
+}
+
 // ── Swartz SQL Layer methods ─────────────────────────────────────────────────
 
 // SqlQuery executes a SQL query (SELECT) and returns rows.
@@ -108,4 +114,53 @@ func (c *NietzscheClient) SqlExec(ctx context.Context, sql, collection string) (
 		Success:      resp.Success,
 		Message:      resp.Message,
 	}, nil
+}
+
+// ListSqlTables returns the names of all SQL tables in a collection.
+//
+// Example:
+//
+//	tables, err := client.ListSqlTables(ctx, "session_data")
+//	for _, t := range tables {
+//	    fmt.Println(t)
+//	}
+func (c *NietzscheClient) ListSqlTables(ctx context.Context, collection string) ([]string, error) {
+	resp, err := c.stub.ListSqlTables(ctx, &pb.SqlListTablesRequest{
+		Collection: collection,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("nietzsche ListSqlTables: %w", err)
+	}
+
+	return resp.Tables, nil
+}
+
+// DescribeSqlTable returns column definitions for a SQL table.
+//
+// Example:
+//
+//	desc, err := client.DescribeSqlTable(ctx, "moods", "session_data")
+//	for _, col := range desc.Columns {
+//	    fmt.Printf("%s (%s)\n", col.Name, col.Type)
+//	}
+func (c *NietzscheClient) DescribeSqlTable(ctx context.Context, tableName, collection string) (*SqlTableDescription, error) {
+	resp, err := c.stub.DescribeSqlTable(ctx, &pb.SqlDescribeTableRequest{
+		TableName:  tableName,
+		Collection: collection,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("nietzsche DescribeSqlTable: %w", err)
+	}
+
+	desc := &SqlTableDescription{
+		TableName: resp.TableName,
+	}
+	desc.Columns = make([]SqlColumn, len(resp.Columns))
+	for i, col := range resp.Columns {
+		desc.Columns[i] = SqlColumn{
+			Name: col.Name,
+			Type: col.Type,
+		}
+	}
+	return desc, nil
 }

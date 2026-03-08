@@ -56,7 +56,7 @@ NietzscheDB maps the hyperbolic Poincaré ball coordinates to the Bloch sphere, 
 │  Search:     nietzsche-filtered-knn  nietzsche-named-vectors  nietzsche-pq   │
 │  Index:      nietzsche-secondary-idx                                         │
 │  Observe:    nietzsche-metrics                                               │
-│  Storage:    nietzsche-table    nietzsche-media      nietzsche-kafka          │
+│  Storage:    nietzsche-swartz   nietzsche-media      nietzsche-kafka          │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │                     NietzscheDB Layer (9 crates — fork base)                │
 │                                                                              │

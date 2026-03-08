@@ -3218,7 +3218,7 @@ impl NietzscheDb for NietzscheServer {
 
         let col_name = col(&r.collection).to_string();
         let shared = get_col!(self.cm, &col_name);
-        let db = shared.read().await;
+        let db = shared.write().await;
 
         let mut engine = nietzsche_swartz::SwartzEngine::new(db.storage_arc());
 
@@ -3253,6 +3253,83 @@ impl NietzscheDb for NietzscheServer {
             affected_rows: affected,
             success: true,
             message: String::new(),
+        }))
+    }
+
+    /// List all SQL tables in a collection.
+    #[instrument(skip(self, req))]
+    async fn list_sql_tables(
+        &self,
+        req: Request<nietzsche::SqlListTablesRequest>,
+    ) -> Result<Response<nietzsche::SqlListTablesResponse>, Status> {
+        require_reader(&req)?;
+        let r = req.into_inner();
+
+        let col_name = col(&r.collection).to_string();
+        let shared = get_col!(self.cm, &col_name);
+        let db = shared.read().await;
+
+        let engine = nietzsche_swartz::SwartzEngine::new(db.storage_arc());
+
+        let tables = engine
+            .list_tables()
+            .await
+            .map_err(|e| Status::internal(format!("Swartz list_tables error: {e}")))?;
+
+        debug!(
+            collection = %col_name,
+            table_count = tables.len(),
+            "[Swartz] ListSqlTables"
+        );
+
+        Ok(Response::new(nietzsche::SqlListTablesResponse { tables }))
+    }
+
+    /// Describe a SQL table — returns column names and types.
+    #[instrument(skip(self, req))]
+    async fn describe_sql_table(
+        &self,
+        req: Request<nietzsche::SqlDescribeTableRequest>,
+    ) -> Result<Response<nietzsche::SqlDescribeTableResponse>, Status> {
+        require_reader(&req)?;
+        let r = req.into_inner();
+        if r.table_name.is_empty() {
+            return Err(Status::invalid_argument("table_name must not be empty"));
+        }
+
+        let col_name = col(&r.collection).to_string();
+        let shared = get_col!(self.cm, &col_name);
+        let db = shared.read().await;
+
+        let engine = nietzsche_swartz::SwartzEngine::new(db.storage_arc());
+
+        let cols = engine
+            .describe_table(&r.table_name)
+            .await
+            .map_err(|e| match &e {
+                nietzsche_swartz::SwartzError::TableNotFound(_) => {
+                    Status::not_found(e.to_string())
+                }
+                _ => Status::internal(format!("Swartz describe_table error: {e}")),
+            })?;
+
+        let columns: Vec<nietzsche::SqlColumn> = cols
+            .into_iter()
+            .map(|(name, data_type)| nietzsche::SqlColumn {
+                name,
+                r#type: data_type,
+            })
+            .collect();
+
+        debug!(
+            table = %r.table_name, collection = %col_name,
+            column_count = columns.len(),
+            "[Swartz] DescribeSqlTable"
+        );
+
+        Ok(Response::new(nietzsche::SqlDescribeTableResponse {
+            table_name: r.table_name,
+            columns,
         }))
     }
 

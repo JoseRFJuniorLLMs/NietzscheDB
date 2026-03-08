@@ -45,6 +45,7 @@ const (
 	NietzscheDB_Reconstruct_FullMethodName          = "/nietzsche.NietzscheDB/Reconstruct"
 	NietzscheDB_DegradeSensory_FullMethodName       = "/nietzsche.NietzscheDB/DegradeSensory"
 	NietzscheDB_InvokeZaratustra_FullMethodName     = "/nietzsche.NietzscheDB/InvokeZaratustra"
+	NietzscheDB_Defibrillate_FullMethodName         = "/nietzsche.NietzscheDB/Defibrillate"
 	NietzscheDB_BatchInsertNodes_FullMethodName     = "/nietzsche.NietzscheDB/BatchInsertNodes"
 	NietzscheDB_BatchInsertEdges_FullMethodName     = "/nietzsche.NietzscheDB/BatchInsertEdges"
 	NietzscheDB_RunPageRank_FullMethodName          = "/nietzsche.NietzscheDB/RunPageRank"
@@ -88,6 +89,8 @@ const (
 	NietzscheDB_ReapExpired_FullMethodName          = "/nietzsche.NietzscheDB/ReapExpired"
 	NietzscheDB_SqlQuery_FullMethodName             = "/nietzsche.NietzscheDB/SqlQuery"
 	NietzscheDB_SqlExec_FullMethodName              = "/nietzsche.NietzscheDB/SqlExec"
+	NietzscheDB_ListSqlTables_FullMethodName        = "/nietzsche.NietzscheDB/ListSqlTables"
+	NietzscheDB_DescribeSqlTable_FullMethodName     = "/nietzsche.NietzscheDB/DescribeSqlTable"
 	NietzscheDB_LoadModel_FullMethodName            = "/nietzsche.NietzscheDB/LoadModel"
 	NietzscheDB_ListModels_FullMethodName           = "/nietzsche.NietzscheDB/ListModels"
 	NietzscheDB_UnloadModel_FullMethodName          = "/nietzsche.NietzscheDB/UnloadModel"
@@ -142,6 +145,8 @@ type NietzscheDBClient interface {
 	DegradeSensory(ctx context.Context, in *NodeIdRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	// ── Zaratustra — autonomous evolution engine (Phase Z) ───────────────
 	InvokeZaratustra(ctx context.Context, in *ZaratustraRequest, opts ...grpc.CallOption) (*ZaratustraResponse, error)
+	// ── Defibrillator — one-time thermodynamic ignition ─────────────────
+	Defibrillate(ctx context.Context, in *DefibrillateRequest, opts ...grpc.CallOption) (*DefibrillateResponse, error)
 	// ── Batch CRUD ────────────────────────────────────────────────────────
 	BatchInsertNodes(ctx context.Context, in *BatchInsertNodesRequest, opts ...grpc.CallOption) (*BatchInsertNodesResponse, error)
 	BatchInsertEdges(ctx context.Context, in *BatchInsertEdgesRequest, opts ...grpc.CallOption) (*BatchInsertEdgesResponse, error)
@@ -198,6 +203,8 @@ type NietzscheDBClient interface {
 	// ── Swartz SQL Layer (Phase S — embedded relational engine) ───
 	SqlQuery(ctx context.Context, in *SqlRequest, opts ...grpc.CallOption) (*SqlResultSet, error)
 	SqlExec(ctx context.Context, in *SqlRequest, opts ...grpc.CallOption) (*SqlExecResult, error)
+	ListSqlTables(ctx context.Context, in *SqlListTablesRequest, opts ...grpc.CallOption) (*SqlListTablesResponse, error)
+	DescribeSqlTable(ctx context.Context, in *SqlDescribeTableRequest, opts ...grpc.CallOption) (*SqlDescribeTableResponse, error)
 	// ── Neural Foundation (Phase 1 — Ag.5/Ag.8/Ag.9) ───────────────────────
 	LoadModel(ctx context.Context, in *LoadModelRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	ListModels(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListModelsResponse, error)
@@ -474,6 +481,16 @@ func (c *nietzscheDBClient) InvokeZaratustra(ctx context.Context, in *Zaratustra
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ZaratustraResponse)
 	err := c.cc.Invoke(ctx, NietzscheDB_InvokeZaratustra_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) Defibrillate(ctx context.Context, in *DefibrillateRequest, opts ...grpc.CallOption) (*DefibrillateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DefibrillateResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_Defibrillate_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -919,6 +936,26 @@ func (c *nietzscheDBClient) SqlExec(ctx context.Context, in *SqlRequest, opts ..
 	return out, nil
 }
 
+func (c *nietzscheDBClient) ListSqlTables(ctx context.Context, in *SqlListTablesRequest, opts ...grpc.CallOption) (*SqlListTablesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SqlListTablesResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_ListSqlTables_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nietzscheDBClient) DescribeSqlTable(ctx context.Context, in *SqlDescribeTableRequest, opts ...grpc.CallOption) (*SqlDescribeTableResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SqlDescribeTableResponse)
+	err := c.cc.Invoke(ctx, NietzscheDB_DescribeSqlTable_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nietzscheDBClient) LoadModel(ctx context.Context, in *LoadModelRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StatusResponse)
@@ -1052,6 +1089,8 @@ type NietzscheDBServer interface {
 	DegradeSensory(context.Context, *NodeIdRequest) (*StatusResponse, error)
 	// ── Zaratustra — autonomous evolution engine (Phase Z) ───────────────
 	InvokeZaratustra(context.Context, *ZaratustraRequest) (*ZaratustraResponse, error)
+	// ── Defibrillator — one-time thermodynamic ignition ─────────────────
+	Defibrillate(context.Context, *DefibrillateRequest) (*DefibrillateResponse, error)
 	// ── Batch CRUD ────────────────────────────────────────────────────────
 	BatchInsertNodes(context.Context, *BatchInsertNodesRequest) (*BatchInsertNodesResponse, error)
 	BatchInsertEdges(context.Context, *BatchInsertEdgesRequest) (*BatchInsertEdgesResponse, error)
@@ -1108,6 +1147,8 @@ type NietzscheDBServer interface {
 	// ── Swartz SQL Layer (Phase S — embedded relational engine) ───
 	SqlQuery(context.Context, *SqlRequest) (*SqlResultSet, error)
 	SqlExec(context.Context, *SqlRequest) (*SqlExecResult, error)
+	ListSqlTables(context.Context, *SqlListTablesRequest) (*SqlListTablesResponse, error)
+	DescribeSqlTable(context.Context, *SqlDescribeTableRequest) (*SqlDescribeTableResponse, error)
 	// ── Neural Foundation (Phase 1 — Ag.5/Ag.8/Ag.9) ───────────────────────
 	LoadModel(context.Context, *LoadModelRequest) (*StatusResponse, error)
 	ListModels(context.Context, *Empty) (*ListModelsResponse, error)
@@ -1207,6 +1248,9 @@ func (UnimplementedNietzscheDBServer) DegradeSensory(context.Context, *NodeIdReq
 }
 func (UnimplementedNietzscheDBServer) InvokeZaratustra(context.Context, *ZaratustraRequest) (*ZaratustraResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InvokeZaratustra not implemented")
+}
+func (UnimplementedNietzscheDBServer) Defibrillate(context.Context, *DefibrillateRequest) (*DefibrillateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Defibrillate not implemented")
 }
 func (UnimplementedNietzscheDBServer) BatchInsertNodes(context.Context, *BatchInsertNodesRequest) (*BatchInsertNodesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method BatchInsertNodes not implemented")
@@ -1336,6 +1380,12 @@ func (UnimplementedNietzscheDBServer) SqlQuery(context.Context, *SqlRequest) (*S
 }
 func (UnimplementedNietzscheDBServer) SqlExec(context.Context, *SqlRequest) (*SqlExecResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method SqlExec not implemented")
+}
+func (UnimplementedNietzscheDBServer) ListSqlTables(context.Context, *SqlListTablesRequest) (*SqlListTablesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListSqlTables not implemented")
+}
+func (UnimplementedNietzscheDBServer) DescribeSqlTable(context.Context, *SqlDescribeTableRequest) (*SqlDescribeTableResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DescribeSqlTable not implemented")
 }
 func (UnimplementedNietzscheDBServer) LoadModel(context.Context, *LoadModelRequest) (*StatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method LoadModel not implemented")
@@ -1849,6 +1899,24 @@ func _NietzscheDB_InvokeZaratustra_Handler(srv interface{}, ctx context.Context,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NietzscheDBServer).InvokeZaratustra(ctx, req.(*ZaratustraRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_Defibrillate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DefibrillateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).Defibrillate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_Defibrillate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).Defibrillate(ctx, req.(*DefibrillateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2620,6 +2688,42 @@ func _NietzscheDB_SqlExec_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NietzscheDB_ListSqlTables_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SqlListTablesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).ListSqlTables(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_ListSqlTables_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).ListSqlTables(ctx, req.(*SqlListTablesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NietzscheDB_DescribeSqlTable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SqlDescribeTableRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NietzscheDBServer).DescribeSqlTable(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NietzscheDB_DescribeSqlTable_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NietzscheDBServer).DescribeSqlTable(ctx, req.(*SqlDescribeTableRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NietzscheDB_LoadModel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(LoadModelRequest)
 	if err := dec(in); err != nil {
@@ -2894,6 +2998,10 @@ var NietzscheDB_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _NietzscheDB_InvokeZaratustra_Handler,
 		},
 		{
+			MethodName: "Defibrillate",
+			Handler:    _NietzscheDB_Defibrillate_Handler,
+		},
+		{
 			MethodName: "BatchInsertNodes",
 			Handler:    _NietzscheDB_BatchInsertNodes_Handler,
 		},
@@ -3060,6 +3168,14 @@ var NietzscheDB_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SqlExec",
 			Handler:    _NietzscheDB_SqlExec_Handler,
+		},
+		{
+			MethodName: "ListSqlTables",
+			Handler:    _NietzscheDB_ListSqlTables_Handler,
+		},
+		{
+			MethodName: "DescribeSqlTable",
+			Handler:    _NietzscheDB_DescribeSqlTable_Handler,
 		},
 		{
 			MethodName: "LoadModel",

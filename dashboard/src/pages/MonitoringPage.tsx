@@ -234,9 +234,9 @@ export default function MonitoringPage() {
                         />
                         <HardwareRow
                             icon={<HardDrive className="h-4 w-4" />}
-                            name="SQLite Table Layer"
-                            desc="Relational queries via SQLite (nietzsche-table)"
-                            crate="nietzsche-table"
+                            name="Swartz SQL Engine"
+                            desc="Embedded SQL via GlueSQL on RocksDB (nietzsche-swartz)"
+                            crate="nietzsche-swartz"
                         />
                         <HardwareRow
                             icon={<HardDrive className="h-4 w-4" />}

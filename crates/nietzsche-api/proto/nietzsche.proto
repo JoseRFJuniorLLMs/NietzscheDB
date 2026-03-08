@@ -141,8 +141,10 @@ service NietzscheDB {
   rpc ReapExpired  (ReapExpiredRequest)   returns (ReapExpiredResponse);
 
   // ── Swartz SQL Layer (Phase S — embedded relational engine) ───
-  rpc SqlQuery     (SqlRequest)          returns (SqlResultSet);
-  rpc SqlExec      (SqlRequest)          returns (SqlExecResult);
+  rpc SqlQuery          (SqlRequest)               returns (SqlResultSet);
+  rpc SqlExec           (SqlRequest)               returns (SqlExecResult);
+  rpc ListSqlTables     (SqlListTablesRequest)     returns (SqlListTablesResponse);
+  rpc DescribeSqlTable  (SqlDescribeTableRequest)  returns (SqlDescribeTableResponse);
 
   // ── Neural Foundation (Phase 1 — Ag.5/Ag.8/Ag.9) ───────────────────────
   rpc LoadModel    (LoadModelRequest)    returns (StatusResponse);
@@ -1115,7 +1117,25 @@ message SqlExecResult {
   bool   success       = 2;  // true if statement succeeded
   string message       = 3;  // optional message
 }
- 
+
+message SqlListTablesRequest {
+  string collection = 1;  // collection scope
+}
+
+message SqlListTablesResponse {
+  repeated string tables = 1;  // list of SQL table names
+}
+
+message SqlDescribeTableRequest {
+  string table_name = 1;  // table to describe
+  string collection = 2;  // collection scope
+}
+
+message SqlDescribeTableResponse {
+  string              table_name = 1;  // table name
+  repeated SqlColumn  columns    = 2;  // column definitions (name + type)
+}
+
 // === Quantum Fidelity (Bloch Sphere) ===
 
 message QuantumNode {

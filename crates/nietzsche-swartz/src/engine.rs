@@ -114,6 +114,57 @@ impl SwartzEngine {
             .map_err(SwartzError::Storage)?;
         Ok(items.into_iter().map(|(name, _)| name).collect())
     }
+
+    /// Describe a SQL table: returns column names and types.
+    ///
+    /// Reads the GlueSQL Schema from the RocksDB `sql_schema` CF and extracts
+    /// column definitions. Returns a vec of (column_name, data_type) pairs.
+    ///
+    /// # Errors
+    /// Returns `SwartzError::TableNotFound` if the table doesn't exist.
+    pub async fn describe_table(
+        &self,
+        table_name: &str,
+    ) -> Result<Vec<(String, String)>, SwartzError> {
+        let bytes = self
+            .glue
+            .storage
+            .storage
+            .get_sql_schema(table_name)
+            .map_err(SwartzError::Storage)?
+            .ok_or_else(|| SwartzError::TableNotFound(table_name.to_string()))?;
+
+        // Parse TableMeta { schema_json, next_row_id }
+        let meta: serde_json::Value = serde_json::from_slice(&bytes)?;
+
+        let schema_str = meta
+            .get("schema_json")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| SwartzError::Serialization("missing schema_json".into()))?;
+
+        // Parse GlueSQL Schema JSON → extract column_defs
+        let schema: serde_json::Value = serde_json::from_str(schema_str)?;
+
+        let mut columns = Vec::new();
+        if let Some(col_defs) = schema.get("column_defs").and_then(|v| v.as_array()) {
+            for col_def in col_defs {
+                let name = col_def
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?")
+                    .to_string();
+                // data_type can be a string ("Int") or object ({"Float": null})
+                let data_type = match col_def.get("data_type") {
+                    Some(serde_json::Value::String(s)) => s.clone(),
+                    Some(v) => v.to_string(),
+                    None => "UNKNOWN".to_string(),
+                };
+                columns.push((name, data_type));
+            }
+        }
+
+        Ok(columns)
+    }
 }
 
 /// Convert a GlueSQL Value to a serde_json Value.

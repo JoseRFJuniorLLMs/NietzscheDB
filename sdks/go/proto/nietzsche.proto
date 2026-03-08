@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package nietzsche;
- 
+
 option go_package = "nietzsche-sdk/pb";
 
 // ── NietzscheDB unified gRPC API ──────────────────────────────────────────
@@ -143,8 +143,10 @@ service NietzscheDB {
   rpc ReapExpired  (ReapExpiredRequest)   returns (ReapExpiredResponse);
 
   // ── Swartz SQL Layer (Phase S — embedded relational engine) ───
-  rpc SqlQuery     (SqlRequest)          returns (SqlResultSet);
-  rpc SqlExec      (SqlRequest)          returns (SqlExecResult);
+  rpc SqlQuery          (SqlRequest)               returns (SqlResultSet);
+  rpc SqlExec           (SqlRequest)               returns (SqlExecResult);
+  rpc ListSqlTables     (SqlListTablesRequest)     returns (SqlListTablesResponse);
+  rpc DescribeSqlTable  (SqlDescribeTableRequest)  returns (SqlDescribeTableResponse);
 
   // ── Neural Foundation (Phase 1 — Ag.5/Ag.8/Ag.9) ───────────────────────
   rpc LoadModel    (LoadModelRequest)    returns (StatusResponse);
@@ -339,6 +341,11 @@ message NodeResponse {
   int64          expires_at      = 10; // TTL: Unix seconds; 0 = never expires
   // Populated only on write RPCs (InsertNode). Absent on reads.
   BackpressureSignal backpressure = 11;
+  // Quantum purity ∈ [0.0, 1.0] derived from the Arousal→Purity mapping.
+  // 1.0 = pure quantum state (high energy, laser-like focus)
+  // 0.0 = maximally mixed state (low energy, free association)
+  // Computed via poincare_to_bloch(embedding, energy).purity on insert/energy update.
+  double         quantum_purity  = 12;
 }
 
 // ── Edge messages ──────────────────────────────────────────────────────────
@@ -670,18 +677,23 @@ message ZaratustraResponse {
 }
 
 // ── Defibrillator messages (one-time thermodynamic ignition) ───────────────
+//
+// Injects topology-aware energy into every node:
+//   Connected: energy = 1.0 + ln(1 + degree)
+//   Singletons: energy = 0.5
+// Run ONCE to bootstrap a dead collection where L-System drained all energy.
 
 message DefibrillateRequest {
-  string collection = 1;
+  string collection = 1;   // empty → "default"
 }
 
 message DefibrillateResponse {
-  uint64 total_nodes     = 1;
-  uint64 revived_count   = 2;
-  uint64 singleton_count = 3;
-  float  max_energy      = 4;
-  float  mean_energy     = 5;
-  uint64 duration_ms     = 6;
+  uint64 total_nodes     = 1;  // total nodes processed
+  uint64 revived_count   = 2;  // connected nodes given topology-aware energy
+  uint64 singleton_count = 3;  // isolated nodes given minimum energy (0.5)
+  float  max_energy      = 4;  // highest energy after injection (mega-hub)
+  float  mean_energy     = 5;  // mean energy across all nodes
+  uint64 duration_ms     = 6;  // wall-clock time of the operation
 }
 
 // ── Graph Algorithm messages ──────────────────────────────────────────────
@@ -1106,6 +1118,24 @@ message SqlExecResult {
   uint64 affected_rows = 1;  // number of rows affected
   bool   success       = 2;  // true if statement succeeded
   string message       = 3;  // optional message
+}
+
+message SqlListTablesRequest {
+  string collection = 1;  // collection scope
+}
+
+message SqlListTablesResponse {
+  repeated string tables = 1;  // list of SQL table names
+}
+
+message SqlDescribeTableRequest {
+  string table_name = 1;  // table to describe
+  string collection = 2;  // collection scope
+}
+
+message SqlDescribeTableResponse {
+  string              table_name = 1;  // table name
+  repeated SqlColumn  columns    = 2;  // column definitions (name + type)
 }
 
 // === Quantum Fidelity (Bloch Sphere) ===

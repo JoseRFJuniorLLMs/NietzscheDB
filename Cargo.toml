@@ -56,7 +56,6 @@ nietzsche-mcp          = { path = "crates/nietzsche-mcp" }
 nietzsche-metrics      = { path = "crates/nietzsche-metrics" }
 nietzsche-named-vectors = { path = "crates/nietzsche-named-vectors" }
 nietzsche-pq           = { path = "crates/nietzsche-pq" }
-nietzsche-table        = { path = "crates/nietzsche-table" }
 nietzsche-kafka        = { path = "crates/nietzsche-kafka" }
 nietzsche-secondary-idx = { path = "crates/nietzsche-secondary-idx" }
 nietzsche-filtered-knn = { path = "crates/nietzsche-filtered-knn" }
@@ -69,7 +68,6 @@ nietzsche-rl           = { path = "crates/nietzsche-rl" }
 nietzsche-vqvae        = { path = "crates/nietzsche-vqvae" }
 nietzsche-dsi          = { path = "crates/nietzsche-dsi" }
 nietzsche-agi          = { path = "crates/nietzsche-agi" }
-rusqlite = { version = "0.31", features = ["bundled"] }
 memmap2 = "0.9"
 parking_lot = "0.12"
 ratatui = "0.24"
