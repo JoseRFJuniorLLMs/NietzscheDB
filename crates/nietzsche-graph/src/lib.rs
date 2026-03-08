@@ -37,6 +37,8 @@ pub mod adjacency;
 pub mod backup;
 pub mod collection_manager;
 pub mod encryption;
+pub mod concept_path;
+pub mod hyperbolic_export;
 pub mod db;
 pub mod embedded_vector_store;
 pub mod error;
@@ -60,8 +62,12 @@ pub use model::{CausalType, Edge, EdgeType, Node, NodeMeta, NodeType, PoincareVe
 pub use storage::{GraphStorage, NodeIterator, NodeMetaIterator, EdgeIterator};
 pub use transaction::{Transaction, TxError, TxOp, TxReport};
 pub use traversal::{
-    bfs, diffusion_walk, dijkstra, shortest_path, BfsConfig, DiffusionConfig, DijkstraConfig,
+    bfs, diffusion_walk, dijkstra, shortest_path,
+    greedy_route, greedy_route_to_embedding,
+    BfsConfig, DiffusionConfig, DijkstraConfig, GreedyRouteConfig, RouteResult,
 };
+pub use concept_path::{concept_path, concept_path_from_embedding, explain_path, ConceptPath, PathHop};
+pub use hyperbolic_export::{export_hyperbolic_space, HyperbolicExport, ExportConfig, ExportNode, ExportEdge, RadialBin, AngularSector};
 pub use wal::{GraphWal, GraphWalEntry};
 pub use backup::{BackupManager, BackupInfo};
 pub use encryption::EncryptionConfig;

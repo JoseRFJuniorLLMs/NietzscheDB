@@ -17,6 +17,7 @@
 
 pub mod engine;
 pub mod error;
+pub mod generator;
 pub mod model;
 pub mod store;
 pub mod world_model;
@@ -26,3 +27,4 @@ pub use error::DreamError;
 pub use model::{DreamEvent, DreamEventType, DreamNodeDelta, DreamSession, DreamStatus};
 pub use store::{put_dream, get_dream, delete_dream, list_dreams, list_pending_dreams};
 pub use world_model::WorldModel;
+pub use generator::DreamGeneratorNet;

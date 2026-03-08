@@ -395,6 +395,409 @@ pub fn diffusion_walk(
 }
 
 // ─────────────────────────────────────────────
+// Hyperbolic Greedy Router
+// ─────────────────────────────────────────────
+
+/// Configuration for hyperbolic greedy routing.
+#[derive(Debug, Clone)]
+pub struct GreedyRouteConfig {
+    /// Skip nodes whose `energy` is below this threshold.
+    pub energy_min: f32,
+    /// Maximum hops before giving up (prevents infinite loops).
+    pub max_hops: usize,
+    /// If true, fall back to A* when greedy gets stuck in a local minimum.
+    pub astar_fallback: bool,
+    /// Maximum nodes to explore during A* fallback (bounds memory/time).
+    pub astar_max_nodes: usize,
+}
+
+impl Default for GreedyRouteConfig {
+    fn default() -> Self {
+        Self {
+            energy_min: 0.0,
+            max_hops: 200,
+            astar_fallback: true,
+            astar_max_nodes: 5_000,
+        }
+    }
+}
+
+/// Result of a greedy routing attempt.
+#[derive(Debug, Clone)]
+pub struct RouteResult {
+    /// Ordered list of node IDs from start to closest-to-target.
+    pub path: Vec<Uuid>,
+    /// Whether the route reached the target node exactly.
+    pub reached_target: bool,
+    /// Whether A* fallback was used (greedy hit a local minimum).
+    pub used_fallback: bool,
+    /// Poincaré distance from the last node in the path to the target.
+    pub final_distance: f64,
+    /// Number of hops taken.
+    pub hops: usize,
+    /// Total hyperbolic distance traversed along the path.
+    pub path_distance: f64,
+}
+
+/// Greedy hyperbolic routing from `start` toward `target`.
+///
+/// At each step, moves to the outgoing neighbour that minimises the
+/// Poincaré distance to `target`. Terminates when:
+///
+/// - The target is reached (success).
+/// - No neighbour is closer than the current node (local minimum).
+/// - `max_hops` is exceeded.
+///
+/// When a local minimum is hit and `astar_fallback` is enabled, the
+/// router switches to A* with `h(n) = poincare_distance(n, target)` to
+/// find the optimal path from the stuck node to the target.
+///
+/// ## Complexity
+///
+/// - Greedy phase: `O(hops × avg_degree)` — typically `O(log N)` hops
+///   in well-formed hyperbolic graphs.
+/// - A* fallback: `O(N log N)` worst case, bounded by `astar_max_nodes`.
+///
+/// ## BUG A optimized
+///
+/// Energy filter uses `get_node_meta()` (~100 bytes). Embeddings are loaded
+/// via `get_embedding()` only for neighbours that pass the energy gate.
+pub fn greedy_route(
+    storage: &GraphStorage,
+    adjacency: &AdjacencyIndex,
+    start: Uuid,
+    target: Uuid,
+    config: &GreedyRouteConfig,
+) -> Result<RouteResult, GraphError> {
+    // Trivial case: start == target
+    if start == target {
+        return Ok(RouteResult {
+            path: vec![start],
+            reached_target: true,
+            used_fallback: false,
+            final_distance: 0.0,
+            hops: 0,
+            path_distance: 0.0,
+        });
+    }
+
+    // Load target embedding once (shared across all distance comparisons)
+    let target_emb = storage.get_embedding(&target)?
+        .ok_or_else(|| GraphError::Storage(format!("target node {target} has no embedding")))?;
+
+    let mut path = vec![start];
+    let mut visited = acquire_visited();
+    visited.insert(start);
+    let mut current = start;
+    let mut path_distance = 0.0;
+
+    // Load current node's distance to target
+    let current_emb = storage.get_embedding(&current)?
+        .ok_or_else(|| GraphError::Storage(format!("start node {current} has no embedding")))?;
+    let mut current_dist = current_emb.distance(&target_emb);
+
+    for _hop in 0..config.max_hops {
+        if current == target {
+            release_visited(visited);
+            return Ok(RouteResult {
+                path,
+                reached_target: true,
+                used_fallback: false,
+                final_distance: 0.0,
+                hops: _hop,
+                path_distance,
+            });
+        }
+
+        // Find the unvisited neighbour closest to target
+        let mut best_id: Option<Uuid> = None;
+        let mut best_dist = current_dist;
+        let mut best_edge_cost = 0.0;
+
+        let current_emb = storage.get_embedding(&current)?
+            .ok_or_else(|| GraphError::Storage(format!("node {current} has no embedding")))?;
+
+        for neighbor_id in adjacency.neighbors_out(&current) {
+            if visited.contains(&neighbor_id) {
+                continue;
+            }
+
+            // Energy gate — NodeMeta only (~100 bytes)
+            match storage.get_node_meta(&neighbor_id)? {
+                Some(m) if m.energy >= config.energy_min => {}
+                _ => continue,
+            }
+
+            let neighbor_emb = match storage.get_embedding(&neighbor_id)? {
+                Some(e) => e,
+                None => continue,
+            };
+
+            let d = neighbor_emb.distance(&target_emb);
+            if d < best_dist {
+                best_dist = d;
+                best_edge_cost = current_emb.distance(&neighbor_emb);
+                best_id = Some(neighbor_id);
+            }
+        }
+
+        match best_id {
+            Some(next) => {
+                visited.insert(next);
+                path.push(next);
+                path_distance += best_edge_cost;
+                current = next;
+                current_dist = best_dist;
+            }
+            None => {
+                // Local minimum — no neighbour is closer
+                break;
+            }
+        }
+    }
+
+    // Did we reach the target via greedy?
+    if current == target {
+        let hops = path.len() - 1;
+        release_visited(visited);
+        return Ok(RouteResult {
+            path,
+            reached_target: true,
+            used_fallback: false,
+            final_distance: 0.0,
+            hops,
+            path_distance,
+        });
+    }
+
+    // ── A* fallback from the stuck node ────────────────────
+    if config.astar_fallback {
+        if let Some(astar_path) = astar_hyperbolic(
+            storage,
+            adjacency,
+            current,
+            target,
+            &target_emb,
+            config.energy_min,
+            config.astar_max_nodes,
+        )? {
+            // Splice: greedy prefix + A* suffix (skip current which is already in path)
+            let greedy_hops = path.len() - 1;
+            for &node in astar_path.iter().skip(1) {
+                path.push(node);
+            }
+
+            // Compute total path distance
+            let mut total = 0.0;
+            for w in path.windows(2) {
+                if let (Some(a), Some(b)) = (
+                    storage.get_embedding(&w[0])?,
+                    storage.get_embedding(&w[1])?,
+                ) {
+                    total += a.distance(&b);
+                }
+            }
+
+            release_visited(visited);
+            return Ok(RouteResult {
+                hops: path.len() - 1,
+                reached_target: *path.last().unwrap() == target,
+                used_fallback: true,
+                final_distance: if *path.last().unwrap() == target { 0.0 } else { current_dist },
+                path,
+                path_distance: total,
+            });
+        }
+    }
+
+    // No fallback or A* also failed
+    let final_dist = current_dist;
+    let hops = path.len() - 1;
+    release_visited(visited);
+    Ok(RouteResult {
+        path,
+        reached_target: false,
+        used_fallback: false,
+        final_distance: final_dist,
+        hops,
+        path_distance,
+    })
+}
+
+/// Navigate toward a **target embedding** (not a specific node).
+///
+/// Same as [`greedy_route`] but the target is specified as coordinates in
+/// the Poincaré ball rather than a node ID. Terminates when no neighbour
+/// reduces the distance (local minimum). No A* fallback since there is
+/// no specific destination node.
+///
+/// Useful for semantic navigation: "find the closest reachable node to
+/// this embedding".
+pub fn greedy_route_to_embedding(
+    storage: &GraphStorage,
+    adjacency: &AdjacencyIndex,
+    start: Uuid,
+    target_coords: &[f32],
+    config: &GreedyRouteConfig,
+) -> Result<RouteResult, GraphError> {
+    use crate::model::PoincareVector;
+
+    let target_emb = PoincareVector::new(target_coords.to_vec());
+
+    let mut path = vec![start];
+    let mut visited = acquire_visited();
+    visited.insert(start);
+    let mut current = start;
+    let mut path_distance = 0.0;
+
+    let current_emb = storage.get_embedding(&current)?
+        .ok_or_else(|| GraphError::Storage(format!("start node {current} has no embedding")))?;
+    let mut current_dist = current_emb.distance(&target_emb);
+
+    for _hop in 0..config.max_hops {
+        let mut best_id: Option<Uuid> = None;
+        let mut best_dist = current_dist;
+        let mut best_edge_cost = 0.0;
+
+        let cur_emb = storage.get_embedding(&current)?
+            .ok_or_else(|| GraphError::Storage(format!("node {current} has no embedding")))?;
+
+        for neighbor_id in adjacency.neighbors_out(&current) {
+            if visited.contains(&neighbor_id) {
+                continue;
+            }
+
+            match storage.get_node_meta(&neighbor_id)? {
+                Some(m) if m.energy >= config.energy_min => {}
+                _ => continue,
+            }
+
+            let neighbor_emb = match storage.get_embedding(&neighbor_id)? {
+                Some(e) => e,
+                None => continue,
+            };
+
+            let d = neighbor_emb.distance(&target_emb);
+            if d < best_dist {
+                best_dist = d;
+                best_edge_cost = cur_emb.distance(&neighbor_emb);
+                best_id = Some(neighbor_id);
+            }
+        }
+
+        match best_id {
+            Some(next) => {
+                visited.insert(next);
+                path.push(next);
+                path_distance += best_edge_cost;
+                current = next;
+                current_dist = best_dist;
+            }
+            None => break,
+        }
+    }
+
+    let hops = path.len() - 1;
+    release_visited(visited);
+    Ok(RouteResult {
+        path,
+        reached_target: false, // embedding target — never "reached"
+        used_fallback: false,
+        final_distance: current_dist,
+        hops,
+        path_distance,
+    })
+}
+
+/// A* search with Poincaré distance heuristic.
+///
+/// Internal helper for the greedy router fallback. Uses
+/// `h(n) = poincare_distance(n, target)` as the admissible heuristic
+/// (always underestimates because graph paths are at least as long as
+/// the geodesic distance).
+fn astar_hyperbolic(
+    storage: &GraphStorage,
+    adjacency: &AdjacencyIndex,
+    start: Uuid,
+    target: Uuid,
+    target_emb: &crate::model::PoincareVector,
+    energy_min: f32,
+    max_nodes: usize,
+) -> Result<Option<Vec<Uuid>>, GraphError> {
+    // min-heap: (f = g + h, g, node_id)
+    let mut heap: BinaryHeap<(Reverse<OrderedFloat<f64>>, OrderedFloat<f64>, Uuid)> = BinaryHeap::new();
+    let mut g_score: HashMap<Uuid, f64> = HashMap::new();
+    let mut prev: HashMap<Uuid, Uuid> = HashMap::new();
+
+    let start_emb = match storage.get_embedding(&start)? {
+        Some(e) => e,
+        None => return Ok(None),
+    };
+    let h_start = start_emb.distance(target_emb);
+
+    g_score.insert(start, 0.0);
+    heap.push((Reverse(OrderedFloat(h_start)), OrderedFloat(0.0), start));
+
+    let mut expanded = 0usize;
+
+    while let Some((_, OrderedFloat(g), node_id)) = heap.pop() {
+        if node_id == target {
+            // Reconstruct path
+            let mut path = vec![target];
+            let mut cur = target;
+            while let Some(&p) = prev.get(&cur) {
+                path.push(p);
+                cur = p;
+            }
+            path.reverse();
+            return Ok(Some(path));
+        }
+
+        expanded += 1;
+        if expanded > max_nodes {
+            break;
+        }
+
+        // Stale entry
+        if g > *g_score.get(&node_id).unwrap_or(&f64::INFINITY) {
+            continue;
+        }
+
+        let node_emb = match storage.get_embedding(&node_id)? {
+            Some(e) => e,
+            None => continue,
+        };
+
+        for neighbor_id in adjacency.neighbors_out(&node_id) {
+            // Energy gate
+            match storage.get_node_meta(&neighbor_id)? {
+                Some(m) if m.energy >= energy_min => {}
+                _ => continue,
+            }
+
+            let neighbor_emb = match storage.get_embedding(&neighbor_id)? {
+                Some(e) => e,
+                None => continue,
+            };
+
+            let edge_cost = node_emb.distance(&neighbor_emb);
+            let tentative_g = g + edge_cost;
+
+            let best = g_score.entry(neighbor_id).or_insert(f64::INFINITY);
+            if tentative_g < *best {
+                *best = tentative_g;
+                prev.insert(neighbor_id, node_id);
+                let h = neighbor_emb.distance(target_emb);
+                let f = tentative_g + h;
+                heap.push((Reverse(OrderedFloat(f)), OrderedFloat(tentative_g), neighbor_id));
+            }
+        }
+    }
+
+    Ok(None) // target not found within budget
+}
+
+// ─────────────────────────────────────────────
 // Tests
 // ─────────────────────────────────────────────
 
@@ -664,6 +1067,214 @@ mod tests {
         let p2 = diffusion_walk(&storage, &adjacency, nodes[0].id, &cfg).unwrap();
 
         assert_eq!(p1, p2);
+    }
+
+    // ── Greedy Router ──────────────────────────────────
+
+    #[test]
+    fn greedy_route_trivial_start_equals_target() {
+        let dir = tmp();
+        let (storage, adjacency, nodes) = linear_chain(&dir);
+
+        let result = greedy_route(
+            &storage, &adjacency, nodes[0].id, nodes[0].id,
+            &GreedyRouteConfig::default(),
+        ).unwrap();
+
+        assert!(result.reached_target);
+        assert_eq!(result.path, vec![nodes[0].id]);
+        assert_eq!(result.hops, 0);
+        assert_eq!(result.final_distance, 0.0);
+    }
+
+    #[test]
+    fn greedy_route_linear_chain_reaches_end() {
+        let dir = tmp();
+        let (storage, adjacency, nodes) = linear_chain(&dir);
+
+        let result = greedy_route(
+            &storage, &adjacency, nodes[0].id, nodes[3].id,
+            &GreedyRouteConfig::default(),
+        ).unwrap();
+
+        assert!(result.reached_target);
+        assert_eq!(result.path.len(), 4);
+        assert_eq!(result.path[0], nodes[0].id);
+        assert_eq!(*result.path.last().unwrap(), nodes[3].id);
+        assert!(result.path_distance > 0.0);
+    }
+
+    #[test]
+    fn greedy_route_unreachable_reverse_direction() {
+        let dir = tmp();
+        let (storage, adjacency, nodes) = linear_chain(&dir);
+
+        // d → a is impossible in a directed a→b→c→d chain
+        let result = greedy_route(
+            &storage, &adjacency, nodes[3].id, nodes[0].id,
+            &GreedyRouteConfig { astar_fallback: false, ..Default::default() },
+        ).unwrap();
+
+        assert!(!result.reached_target);
+        assert_eq!(result.path, vec![nodes[3].id]); // stuck at start
+    }
+
+    #[test]
+    fn greedy_route_skips_low_energy() {
+        let dir = tmp();
+        let mut storage = open_storage(&dir);
+        let adjacency = AdjacencyIndex::new();
+
+        let a = node_at(0.1);
+        let mut b = node_at(0.2); b.energy = 0.0; // dead node
+        let c = node_at(0.3);
+
+        for n in [&a, &b, &c] { storage.put_node(n).unwrap(); }
+
+        let ab = Edge::association(a.id, b.id, 0.9);
+        let bc = Edge::association(b.id, c.id, 0.9);
+        for e in [&ab, &bc] {
+            storage.put_edge(e).unwrap();
+            adjacency.add_edge(e);
+        }
+
+        let result = greedy_route(
+            &storage, &adjacency, a.id, c.id,
+            &GreedyRouteConfig { energy_min: 0.1, astar_fallback: false, ..Default::default() },
+        ).unwrap();
+
+        // b is blocked by energy gate → c unreachable
+        assert!(!result.reached_target);
+    }
+
+    #[test]
+    fn greedy_route_with_shortcut() {
+        // Build: a → b → c → d, plus a direct shortcut a → d
+        // Greedy should take the shortcut since d is closest to d
+        let dir = tmp();
+        let mut storage = open_storage(&dir);
+        let adjacency = AdjacencyIndex::new();
+
+        let nodes: Vec<Node> = [0.1, 0.3, 0.5, 0.7]
+            .iter()
+            .map(|&x| node_at(x))
+            .collect();
+
+        for n in &nodes { storage.put_node(n).unwrap(); }
+
+        // Chain edges
+        for i in 0..3 {
+            let e = Edge::association(nodes[i].id, nodes[i+1].id, 0.9);
+            storage.put_edge(&e).unwrap();
+            adjacency.add_edge(&e);
+        }
+
+        // Shortcut: a → d
+        let shortcut = Edge::association(nodes[0].id, nodes[3].id, 0.9);
+        storage.put_edge(&shortcut).unwrap();
+        adjacency.add_edge(&shortcut);
+
+        let result = greedy_route(
+            &storage, &adjacency, nodes[0].id, nodes[3].id,
+            &GreedyRouteConfig::default(),
+        ).unwrap();
+
+        assert!(result.reached_target);
+        // Should take the shortcut: [a, d]
+        assert_eq!(result.path.len(), 2);
+        assert_eq!(result.hops, 1);
+    }
+
+    #[test]
+    fn greedy_route_astar_fallback_finds_path() {
+        // Build a graph where greedy gets stuck but A* succeeds:
+        // a → b (b is closer to d than a)
+        // b → c (c is FARTHER from d — greedy stops here)
+        // c → d (but c is the only path to d)
+        //
+        // Layout on x-axis: a=0.1, b=0.4, d=0.6, c=0.8
+        // Greedy from a: goes to b (closer to d). From b, c is farther from d.
+        // Greedy stops at b. A* should find b→c→d.
+        let dir = tmp();
+        let mut storage = open_storage(&dir);
+        let adjacency = AdjacencyIndex::new();
+
+        let a = node_at(0.1);
+        let b = node_at(0.4);
+        let c = node_at(0.8); // farther from d than b
+        let d = node_at(0.6); // target
+
+        for n in [&a, &b, &c, &d] { storage.put_node(n).unwrap(); }
+
+        let edges = [
+            Edge::association(a.id, b.id, 0.9),
+            Edge::association(b.id, c.id, 0.9), // c is farther from d
+            Edge::association(c.id, d.id, 0.9),
+        ];
+        for e in &edges {
+            storage.put_edge(e).unwrap();
+            adjacency.add_edge(e);
+        }
+
+        let result = greedy_route(
+            &storage, &adjacency, a.id, d.id,
+            &GreedyRouteConfig::default(),
+        ).unwrap();
+
+        assert!(result.reached_target, "A* fallback should find the path");
+        assert!(result.used_fallback, "should have used A* fallback");
+        assert_eq!(*result.path.last().unwrap(), d.id);
+    }
+
+    #[test]
+    fn greedy_route_to_embedding_navigates_closer() {
+        let dir = tmp();
+        let (storage, adjacency, nodes) = linear_chain(&dir);
+
+        // Target embedding is at x=0.45 — between node c (0.3) and d (0.4)
+        let target_coords = vec![0.45_f32, 0.0];
+
+        let result = greedy_route_to_embedding(
+            &storage, &adjacency, nodes[0].id, &target_coords,
+            &GreedyRouteConfig::default(),
+        ).unwrap();
+
+        // Should navigate toward the target, ending at d (0.4) which is closest
+        assert!(result.path.len() > 1, "should move toward target");
+        assert!(result.final_distance < 1.0, "should get close to target");
+        // Last node should be d (x=0.4) — closest to 0.45
+        assert_eq!(*result.path.last().unwrap(), nodes[3].id);
+    }
+
+    #[test]
+    fn greedy_route_respects_max_hops() {
+        let dir = tmp();
+        let (storage, adjacency, nodes) = linear_chain(&dir);
+
+        let result = greedy_route(
+            &storage, &adjacency, nodes[0].id, nodes[3].id,
+            &GreedyRouteConfig { max_hops: 1, astar_fallback: false, ..Default::default() },
+        ).unwrap();
+
+        // Should only take 1 hop: a → b
+        assert!(result.path.len() <= 2);
+    }
+
+    #[test]
+    fn greedy_route_reports_metrics() {
+        let dir = tmp();
+        let (storage, adjacency, nodes) = linear_chain(&dir);
+
+        let result = greedy_route(
+            &storage, &adjacency, nodes[0].id, nodes[3].id,
+            &GreedyRouteConfig::default(),
+        ).unwrap();
+
+        assert!(result.reached_target);
+        assert_eq!(result.hops, result.path.len() - 1);
+        assert!(result.path_distance > 0.0);
+        assert_eq!(result.final_distance, 0.0);
+        assert!(!result.used_fallback);
     }
 
     #[test]

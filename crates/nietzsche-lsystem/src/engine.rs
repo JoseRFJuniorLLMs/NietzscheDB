@@ -29,7 +29,7 @@ use nietzsche_graph::{
 };
 
 use crate::hausdorff::{batch_local_hausdorff, global_hausdorff, local_hausdorff, LOCAL_K};
-use crate::mobius::{spawn_child, spawn_sibling};
+use crate::mobius::{spawn_child_diversified, spawn_sibling};
 use crate::rules::{check_condition, ProductionRule, RuleAction};
 
 // ─────────────────────────────────────────────
@@ -88,6 +88,18 @@ pub struct LSystemEngine {
     ///
     /// Set to `0.0` to disable. Default: [`DEFAULT_CIRCUIT_BREAKER_SIGMA`] (2.0).
     pub circuit_breaker_sigma: f32,
+    /// Angular jitter (radians) for diversified child spawning.
+    ///
+    /// Controls the cone half-angle around the radial direction when placing
+    /// children via Möbius addition. Prevents geodesic convergence (semantic
+    /// black holes) where children of nearby parents collapse into the same
+    /// angular region.
+    ///
+    /// - `0.0` = pure radial (legacy behaviour)
+    /// - `0.3` = recommended for production (~17° spread)
+    ///
+    /// Default: `0.3`.
+    pub angular_jitter: f64,
 }
 
 impl LSystemEngine {
@@ -99,6 +111,7 @@ impl LSystemEngine {
             hausdorff_lo: DEFAULT_HAUSDORFF_LO,
             hausdorff_hi: DEFAULT_HAUSDORFF_HI,
             circuit_breaker_sigma: DEFAULT_CIRCUIT_BREAKER_SIGMA,
+            angular_jitter: 0.3,
         }
     }
 
@@ -226,7 +239,7 @@ impl LSystemEngine {
                         }
                     }
 
-                    if let Some(action) = make_pending(node, rule, &mut rng) {
+                    if let Some(action) = make_pending(node, rule, self.angular_jitter, &mut rng) {
                         pending.push(action);
                     }
                     break;
@@ -333,12 +346,13 @@ enum PendingAction {
 fn make_pending(
     node: &Node,
     rule: &ProductionRule,
+    angular_jitter: f64,
     rng:  &mut impl Rng,
 ) -> Option<PendingAction> {
     match &rule.action {
         RuleAction::SpawnChild { depth_offset, weight, content } => {
             let parent_f64 = node.embedding.coords_f64();
-            let coords = spawn_child(&parent_f64, *depth_offset, rng);
+            let coords = spawn_child_diversified(&parent_f64, *depth_offset, angular_jitter, rng);
             Some(PendingAction::SpawnChild {
                 parent_id:         node.id,
                 parent_generation: node.lsystem_generation,
@@ -459,7 +473,7 @@ mod tests {
     fn tmp() -> TempDir { TempDir::new().unwrap() }
 
     fn open_db(dir: &TempDir) -> NietzscheDB<MockVectorStore> {
-        NietzscheDB::open(dir.path(), MockVectorStore::default()).unwrap()
+        NietzscheDB::open(dir.path(), MockVectorStore::default(), 2).unwrap()
     }
 
     fn seed_node(x: f64, energy: f32) -> Node {

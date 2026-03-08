@@ -10,6 +10,7 @@ cuda = ["dep:cudarc"]
 
 [dependencies]
 nietzsche-graph   = { path = "../nietzsche-graph" }
+nietzsche-hyp-ops = { path = "../nietzsche-hyp-ops" }
 nietzsche-pregel  = { path = "../nietzsche-pregel" }
 nietzsche-lsystem = { path = "../nietzsche-lsystem" }
 nietzsche-neural  = { path = "../nietzsche-neural" }
@@ -23,6 +24,8 @@ thiserror         = { workspace = true }
 tracing           = { workspace = true }
 tokio             = { workspace = true, features = ["sync"] }
 rand              = { workspace = true }
+bincode           = { workspace = true }
+dashmap           = { workspace = true }
 
 [[bin]]
 name = "simulate_forgetting"

@@ -32,6 +32,8 @@ pub mod types;
 pub mod storage;
 pub mod encoder;
 pub mod translate;
+pub mod neural_encoders;
 
 pub use types::*;
 pub use translate::{translate_modality, TranslationResult};
+pub use neural_encoders::{ImageNeuralEncoder, AudioNeuralEncoder};

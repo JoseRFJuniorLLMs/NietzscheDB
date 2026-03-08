@@ -1,8 +1,10 @@
 pub mod tree;
 pub mod advisor;
+pub mod value_network;
 
 pub use tree::{MctsTree, MctsNode, MctsConfig};
 pub use advisor::{MctsAdvisor, AdvisorIntent};
+pub use value_network::ValueNetworkInference;
 
 use thiserror::Error;
 

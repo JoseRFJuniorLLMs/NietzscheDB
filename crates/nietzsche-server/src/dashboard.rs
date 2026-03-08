@@ -47,6 +47,7 @@ use nietzsche_graph::{
     CollectionManager,
     Edge, EdgeType, Node, NodeMeta, NodeType, PoincareVector,
     SchemaValidator, SchemaConstraint, FieldType,
+    export_hyperbolic_space, ExportConfig as HypExportConfig,
 };
 use nietzsche_query::{parse as nql_parse, execute as nql_execute, Params, QueryResult};
 use nietzsche_sleep::{SleepConfig, SleepCycle};
@@ -234,6 +235,7 @@ pub async fn serve(
         .route("/api/reasoning/causal-chain", post(reasoning_causal_chain))
         .route("/api/reasoning/klein-path", post(reasoning_klein_path))
         // Cluster
+        .route("/api/debug/hyperbolic-space", get(debug_hyperbolic_space))
         .route("/api/cluster/status", get(cluster_status))
         .route("/api/cluster/ring", get(cluster_ring))
         .layer(Extension(cluster))
@@ -1073,6 +1075,49 @@ async fn export_edges(
             buf,
         ).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// ── Hyperbolic debug endpoints ───────────────────────────────────────────────
+
+/// Query params for GET /api/debug/hyperbolic-space
+#[derive(Deserialize)]
+struct HyperbolicSpaceParams {
+    collection: Option<String>,
+    max_nodes: Option<usize>,
+    energy_min: Option<f32>,
+    include_edges: Option<bool>,
+    radial_bins: Option<usize>,
+    angular_bins: Option<usize>,
+    sector_threshold: Option<f64>,
+    min_sector_nodes: Option<usize>,
+}
+
+// GET /api/debug/hyperbolic-space?collection=&max_nodes=&energy_min=&angular_bins=&sector_threshold=&min_sector_nodes=
+async fn debug_hyperbolic_space(
+    State((cm, _ops)): State<AppState>,
+    Query(p): Query<HyperbolicSpaceParams>,
+) -> impl IntoResponse {
+    let shared = resolve_col!(cm, p.collection);
+    let db = shared.read().await;
+
+    let config = HypExportConfig {
+        max_nodes: p.max_nodes.unwrap_or(0),
+        energy_min: p.energy_min.unwrap_or(0.0),
+        include_edges: p.include_edges.unwrap_or(true),
+        radial_bins: p.radial_bins.unwrap_or(50),
+        max_label_len: 60,
+        angular_bins: p.angular_bins.unwrap_or(360),
+        sector_threshold: p.sector_threshold.unwrap_or(1.5),
+        min_sector_nodes: p.min_sector_nodes.unwrap_or(5),
+    };
+
+    match export_hyperbolic_space(db.storage(), db.adjacency(), &config) {
+        Ok(export) => Json(serde_json::json!(export)).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ).into_response(),
     }
 }
 

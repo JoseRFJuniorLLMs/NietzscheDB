@@ -1741,7 +1741,7 @@ mod tests {
     fn tmp() -> TempDir { TempDir::new().unwrap() }
 
     fn open_db(dir: &TempDir) -> NietzscheDB<MockVectorStore> {
-        NietzscheDB::open(dir.path(), MockVectorStore::default()).unwrap()
+        NietzscheDB::open(dir.path(), MockVectorStore::default(), 2).unwrap()
     }
 
     fn make_node(dims: &[f64]) -> Node {

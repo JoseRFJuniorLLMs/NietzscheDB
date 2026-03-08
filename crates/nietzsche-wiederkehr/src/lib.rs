@@ -25,6 +25,7 @@ pub mod evaluator;
 pub mod model;
 pub mod priority;
 pub mod store;
+pub mod anomaly;
 
 pub use config::DaemonEngineConfig;
 pub use engine::{DaemonEngine, DaemonIntent, DaemonTickResult};
@@ -33,3 +34,4 @@ pub use evaluator::{evaluate_condition, parse_interval_str};
 pub use model::DaemonDef;
 pub use priority::{WillToPowerConfig, PriorityEntry, prioritize_daemons, calculate_priority};
 pub use store::{put_daemon, get_daemon, delete_daemon, list_daemons};
+pub use anomaly::{AnomalyDetectorNet, AnomalyResult};

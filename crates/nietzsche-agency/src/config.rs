@@ -79,10 +79,70 @@ pub struct AgencyConfig {
     pub mcts_model_name: String,
     pub ppo_model_name: String,
 
+    // -- CentroidGuardian (Phase IX) --
+    /// Temporal damping factor α ∈ (0, 1].
+    /// Controls how quickly the centroid follows the new Fréchet mean.
+    /// 0.05 = slow/stable (production), 1.0 = no damping.
+    pub centroid_alpha: f64,
+    /// Maximum allowed Poincaré distance between C_t and C_{t-1}.
+    /// If drift exceeds this, maturity promotions are frozen.
+    pub centroid_drift_threshold: f64,
+    /// Maximum nodes to scan for centroid computation per tick.
+    /// Caps the I/O cost of loading embeddings (~12-24 KB each).
+    pub centroid_max_scan: usize,
+    /// Dimensionality of embeddings for the CentroidGuardian.
+    /// Must match the collection's vector dimension (e.g. 3072 for Gemini).
+    pub centroid_dim: usize,
+
+    // -- Maturity / AxiomRegistry (Phase IX) --
+    /// Maturity score above which Active → Mature promotion occurs.
+    pub maturity_promote_threshold: f64,
+    /// Maturity score below which Mature → Active demotion occurs (hysteresis).
+    pub maturity_demote_threshold: f64,
+    /// Maximum nodes to evaluate for maturity per tick (caps cost).
+    pub maturity_max_eval: usize,
+    /// Minimum Poincaré distance between axiom embeddings to avoid deduplication.
+    /// If a new axiom candidate is closer than ε to an existing axiom, skip registration.
+    pub axiom_dedup_epsilon: f64,
+    /// Epoch interval for era snapshots (0 = disabled).
+    pub axiom_era_snapshot_interval: u64,
+
+    // -- HyperbolicHealthMonitor (Phase X) --
+    /// Tick interval for health checks (0 = disabled).
+    pub hyp_health_interval: u64,
+    /// Maximum embeddings to sample per health check.
+    pub hyp_health_max_sample: usize,
+    /// mean_r threshold for boundary crowding alert.
+    pub hyp_health_crowding_r: f64,
+    /// Number of radial bins for the density histogram.
+    pub hyp_health_bins: usize,
+    /// Maximum history snapshots to retain.
+    pub hyp_health_history_len: usize,
+
     // -- Quantum Entanglement --
     /// Configurable thresholds for quantum entanglement-based edge collapse.
     /// Controls when fidelity between Bloch states forces edge materialisation.
     pub quantum: QuantumConfig,
+
+    // -- ECAN: Economic Attention Network (Phase XII) --
+    /// Tick interval for ECAN cycles (1 = every tick, 0 = disabled).
+    pub ecan_interval: u64,
+    /// Maximum nodes to scan per ECAN cycle.
+    pub ecan_max_scan: usize,
+    /// Budget multiplier for attention allocation.
+    pub ecan_budget_scale: f32,
+    /// Fraction of budget a node demands per cycle.
+    pub ecan_demand_fraction: f32,
+    /// Minimum energy to participate in attention economy.
+    pub ecan_energy_floor: f32,
+    /// Max bids per source node.
+    pub ecan_max_bids: usize,
+    /// Energy boost per unit of attention received.
+    pub ecan_energy_gain: f32,
+    /// Curiosity threshold for exploration bids.
+    pub ecan_curiosity_threshold: f32,
+    /// Maximum exploration ratio (caps explore budget).
+    pub ecan_max_explore_ratio: f32,
 }
 
 impl Default for AgencyConfig {
@@ -109,12 +169,35 @@ impl Default for AgencyConfig {
             evolution_cooldown_ticks: 5,
             circuit_breaker_max_actions: 20,
             circuit_breaker_energy_sum_threshold: 50.0,
+            centroid_alpha: 0.05,
+            centroid_drift_threshold: 0.15,
+            centroid_max_scan: 10_000,
+            centroid_dim: 3072,
+            maturity_promote_threshold: 0.6,
+            maturity_demote_threshold: 0.3,
+            maturity_max_eval: 5_000,
+            axiom_dedup_epsilon: 0.05,
+            axiom_era_snapshot_interval: 10,
+            hyp_health_interval: 100,
+            hyp_health_max_sample: 2_000,
+            hyp_health_crowding_r: 0.96,
+            hyp_health_bins: 50,
+            hyp_health_history_len: 20,
             ltd_rate: None,
             ltd_correction_threshold: None,
             gnn_model_name: "gnn_v1".to_string(),
             mcts_model_name: "mcts_v1".to_string(),
             ppo_model_name: "ppo_growth_v1".to_string(),
             quantum: QuantumConfig::default(),
+            ecan_interval: 1,
+            ecan_max_scan: 10_000,
+            ecan_budget_scale: 1.0,
+            ecan_demand_fraction: 0.5,
+            ecan_energy_floor: 0.05,
+            ecan_max_bids: 5,
+            ecan_energy_gain: 0.1,
+            ecan_curiosity_threshold: 0.1,
+            ecan_max_explore_ratio: 0.6,
         }
     }
 }
@@ -157,6 +240,20 @@ impl AgencyConfig {
             evolution_cooldown_ticks:       env_u64("AGENCY_EVOLUTION_COOLDOWN", 5),
             circuit_breaker_max_actions:    env_usize("AGENCY_CIRCUIT_BREAKER_MAX", 20),
             circuit_breaker_energy_sum_threshold: env_f32("AGENCY_CIRCUIT_BREAKER_ENERGY", 50.0),
+            centroid_alpha:          env_f64("AGENCY_CENTROID_ALPHA", 0.05),
+            centroid_drift_threshold: env_f64("AGENCY_CENTROID_DRIFT_THRESHOLD", 0.15),
+            centroid_max_scan:       env_usize("AGENCY_CENTROID_MAX_SCAN", 10_000),
+            centroid_dim:            env_usize("AGENCY_CENTROID_DIM", 3072),
+            maturity_promote_threshold: env_f64("AGENCY_MATURITY_PROMOTE", 0.6),
+            maturity_demote_threshold:  env_f64("AGENCY_MATURITY_DEMOTE", 0.3),
+            maturity_max_eval:          env_usize("AGENCY_MATURITY_MAX_EVAL", 5_000),
+            axiom_dedup_epsilon:        env_f64("AGENCY_AXIOM_DEDUP_EPSILON", 0.05),
+            axiom_era_snapshot_interval: env_u64("AGENCY_AXIOM_ERA_INTERVAL", 10),
+            hyp_health_interval:    env_u64("AGENCY_HYP_HEALTH_INTERVAL", 100),
+            hyp_health_max_sample:  env_usize("AGENCY_HYP_HEALTH_MAX_SAMPLE", 2_000),
+            hyp_health_crowding_r:  env_f64("AGENCY_HYP_HEALTH_CROWDING_R", 0.96),
+            hyp_health_bins:        env_usize("AGENCY_HYP_HEALTH_BINS", 50),
+            hyp_health_history_len: env_usize("AGENCY_HYP_HEALTH_HISTORY", 20),
             ltd_rate: std::env::var("AGENCY_LTD_RATE")
                 .ok()
                 .and_then(|v| v.parse::<f64>().ok()),
@@ -167,6 +264,15 @@ impl AgencyConfig {
             mcts_model_name: std::env::var("AGENCY_MCTS_MODEL").unwrap_or_else(|_| "mcts_v1".into()),
             ppo_model_name: std::env::var("AGENCY_PPO_MODEL").unwrap_or_else(|_| "ppo_growth_v1".into()),
             quantum: QuantumConfig::from_env(),
+            ecan_interval:          env_u64("AGENCY_ECAN_INTERVAL", 1),
+            ecan_max_scan:          env_usize("AGENCY_ECAN_MAX_SCAN", 10_000),
+            ecan_budget_scale:      env_f32("AGENCY_ECAN_BUDGET_SCALE", 1.0),
+            ecan_demand_fraction:   env_f32("AGENCY_ECAN_DEMAND_FRACTION", 0.5),
+            ecan_energy_floor:      env_f32("AGENCY_ECAN_ENERGY_FLOOR", 0.05),
+            ecan_max_bids:          env_usize("AGENCY_ECAN_MAX_BIDS", 5),
+            ecan_energy_gain:       env_f32("AGENCY_ECAN_ENERGY_GAIN", 0.1),
+            ecan_curiosity_threshold: env_f32("AGENCY_ECAN_CURIOSITY_THRESHOLD", 0.1),
+            ecan_max_explore_ratio: env_f32("AGENCY_ECAN_MAX_EXPLORE_RATIO", 0.6),
         }
     }
 }

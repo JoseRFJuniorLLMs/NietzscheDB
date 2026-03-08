@@ -1,8 +1,10 @@
 pub mod sampler;
 pub mod engine;
+pub mod edge_predictor;
 
 pub use sampler::{NeighborSampler, SampledSubgraph};
 pub use engine::{GnnEngine, GnnPrediction};
+pub use edge_predictor::EdgePredictorNet;
 
 use thiserror::Error;
 

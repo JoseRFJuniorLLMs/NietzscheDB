@@ -73,6 +73,19 @@ pub enum AgencyEvent {
         nodes_depth_capped: usize,
     },
 
+    /// CentroidGuardian detected civilizational drift exceeding threshold.
+    ///
+    /// When emitted, `MaturityEvaluator` should freeze all promotions until
+    /// `nietzsche-sleep` reconsolidates and calls `CentroidGuardian::unfreeze()`.
+    CentroidDrift {
+        /// Poincaré distance the centroid moved.
+        drift: f64,
+        /// Configured drift threshold (epsilon).
+        threshold: f64,
+        /// Centroid epoch at time of detection.
+        epoch: u64,
+    },
+
     /// Observer triggered a daemon wake-up due to critical thresholds.
     DaemonWakeUp { reason: WakeUpReason },
 
@@ -111,6 +124,20 @@ pub enum AgencyEvent {
         energy: f32,
         /// Reason string.
         reason: String,
+    },
+
+    /// HyperbolicHealthMonitor detected a geometric anomaly.
+    HyperbolicHealthAlert {
+        /// Diagnosis classification (Normal, HealthyStratification, BoundaryCrowding, SemanticAttractor).
+        diagnosis: String,
+        /// Mean Euclidean norm of sampled embeddings.
+        mean_r: f64,
+        /// Radial Density Entropy.
+        rde: f64,
+        /// Number of radial density peaks (ring count).
+        radial_peak_count: usize,
+        /// Pearson(lsystem_generation, ‖x‖).
+        generation_correlation: f64,
     },
 
     /// NezhmetdinovDaemon completed a full evaluation cycle.

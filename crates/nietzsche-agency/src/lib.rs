@@ -33,6 +33,10 @@
 //!                               (sleep, lsystem, gap signals)
 //! ```
 
+pub mod axiom_registry;
+pub mod centroid_guardian;
+pub mod hyperbolic_health;
+pub mod maturity;
 pub mod code_as_data;
 pub mod circuit_breaker;
 pub mod config;
@@ -51,6 +55,12 @@ pub mod quantum;
 pub mod reactor;
 pub mod store;
 
+// Phase XII — ECAN (Economic Attention Network) + Curiosity Engine
+pub mod attention_economy;
+pub mod curiosity_engine;
+pub mod attention_cycle;
+
+pub use centroid_guardian::{CentroidGuardian, CentroidUpdate, GuardianError};
 pub use config::AgencyConfig;
 pub use counterfactual::{CounterfactualEngine, CounterfactualOp, CounterfactualResult};
 pub use daemons::{AgencyDaemon, DaemonReport, NiilistaGcDaemon, LTDDaemon, NezhmetdinovDaemon};
@@ -71,3 +81,15 @@ pub use reactor::{AgencyIntent, AgencyReactor};
 pub use code_as_data::{ActionNode, ActionScanReport, create_action_node, scan_activatable_actions, record_firing, tick_cooldowns};
 pub use dialectic::{DialecticConfig, DialecticReport, Contradiction, Synthesis, run_dialectic_cycle};
 pub use store::{put_health_report, list_health_reports, get_latest_health_report, prune_health_reports};
+
+// Phase X — Hyperbolic Health Monitor
+pub use hyperbolic_health::{HyperbolicHealth, HyperbolicHealthMonitor, HyperbolicDiagnosis};
+
+// Phase IX — Self Geométrico
+pub use axiom_registry::{AxiomRegistry, AxiomRecord, EraSnapshot};
+pub use maturity::{MaturityConfig, MaturityScore, NodeClass, NodeMaturityInput, evaluate_maturity, evaluate_batch};
+
+// Phase XII — ECAN
+pub use attention_economy::{AttentionState, AttentionBid, AttentionConfig, AttentionReport};
+pub use curiosity_engine::{CuriosityState, CuriosityConfig};
+pub use attention_cycle::{EcanConfig, EcanCycle, run_ecan_cycle};

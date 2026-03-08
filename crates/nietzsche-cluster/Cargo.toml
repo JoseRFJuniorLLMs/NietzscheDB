@@ -16,6 +16,7 @@ description = "Distributed foundation for NietzscheDB: cluster registry, node di
 #   ClusterRouter  — deterministic shard selection for a given collection key
 
 [dependencies]
+nietzsche-neural = { path = "../nietzsche-neural" }
 serde     = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -25,3 +26,5 @@ tokio     = { workspace = true }
 rand      = { workspace = true }
 dashmap   = { workspace = true }
 siphasher = { workspace = true }
+ort       = { version = "2.0.0-rc.11", features = ["ndarray"] }
+ndarray   = { workspace = true }

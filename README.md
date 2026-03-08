@@ -156,7 +156,8 @@ NietzscheDB is built as a **Rust nightly workspace** with 41 crates in two layer
 │  Analytics:  nietzsche-algo     nietzsche-sensory                            │
 │  Visionary:  nietzsche-dream    nietzsche-narrative  nietzsche-agency        │
 │  Neural:     nietzsche-rl       nietzsche-neural    nietzsche-gnn            │
-│  Wiederkehr: nietzsche-wiederkehr                                            │
+│  Neural ML:  nietzsche-vqvae   nietzsche-embed     nietzsche-mcts           │
+│  Wiederkehr: nietzsche-wiederkehr (+ anomaly detector)                       │
 │  Infra:      nietzsche-api      nietzsche-server    nietzsche-cluster        │
 │  SDKs:       nietzsche-sdk      nietzsche-mcp                                │
 │  Accel:      nietzsche-hnsw-gpu nietzsche-tpu       nietzsche-cugraph        │
@@ -560,6 +561,8 @@ Cross-collection archetype sharing via gossip protocol:
 #### `nietzsche-agency` — Autonomous Agency Engine
 Graph-level autonomous intelligence with counterfactual reasoning and active forgetting:
 - **AgencyEngine** tick loop: runs 8 built-in daemons (Entropy, Gap, Coherence, Ltd, Nezhmetdinov + more) + MetaObserver
+- **Geometric Self (Phase IX)**: `CentroidGuardian` (maintains the civilization centroid via Fréchet mean with temporal damping and drift veto to prevent cognitive shocks), `MaturityEvaluator` (promotes stable embeddings to Axioms using hyperbolic centrality: $C_i = 1 / (1 + d_D(x_i, C_t))$ and analytical angular variance $\text{Var}(\angle) \approx \text{trace}(\Sigma_{\text{tangent}})$ to penalize redundant clusters), and the **Two-Tier AxiomRegistry** (DashMap L1 + RocksDB L2) for fast $O(1)$ hot-path queries, temporal `EraSnapshot`s, and deep historical persistence.
+- **Hyperbolic Health Monitor (Phase X)**: Pre-emptive structural collapse detector for $K<0$ geometries (> 100k nodes). Computes **Radial Density Entropy (RDE)** $H = -\sum p_i \ln(p_i)$ to identify pathological mass migration to the boundary (*Boundary Crowding*). Tracks $mean\_r$, $std\_r$, $angular\_var$ (*Angular Variance Collapse* to prevent directional crushing), and $centroid\_velocity$. Detects **Semantic Attractors** ("Black Holes" via abnormal radial bin density $p_i > 3\mu$) and healthy structural L-System stratifications.
 - **EntropyDaemon**: detects Hausdorff variance spikes across angular regions
 - **GapDaemon**: identifies knowledge gaps in depth x angle sectors
 - **CoherenceDaemon**: measures multi-scale diffusion overlap (Chebyshev heat kernel)
@@ -631,6 +634,60 @@ GNN inference for topology-aware node evaluation:
 - Dual loss: MSE (embeddings) + BCE (node importance classification)
 - Integrates with `NeuralThresholdDaemon`: GNN score > 0.7 triggers node protection
 - Training: `scripts/models/train_gnn.py`
+
+#### `nietzsche-gnn` — Edge Predictor (Link Prediction)
+Neural link prediction for graph topology optimization:
+- `EdgePredictorNet::predict()`: two 128D node embeddings → edge probability [0, 1]
+- `predict_batch()`: efficient batch inference for multiple candidate pairs
+- Used by L-System to decide where to create new connections (replaces random edge creation)
+- Training: `scripts/models/train_edge_predictor.py` (binary classification, negative sampling)
+- Architecture: 256D input (node_a ⊕ node_b) → 128 → 64 → sigmoid
+
+#### `nietzsche-sensory` — Neural Image & Audio Encoders
+CNN-based sensory encoders that replace passthrough with learned features:
+- **ImageNeuralEncoder**: 64×64 RGB → CNN (3→32→64→128) → FC → 128D → Poincaré ball
+  - Contrastive learning (NT-Xent / SimCLR-style)
+  - Training: `scripts/models/train_image_encoder.py`
+- **AudioNeuralEncoder**: mel spectrogram [1, 64, 32] → CNN → 128D → Poincaré ball
+  - Reconstruction-based self-supervised training
+  - Training: `scripts/models/train_audio_encoder.py`
+
+#### `nietzsche-dream` — Dream Generator Network
+Neural dream synthesis — generates new node embeddings by diffusing from seed:
+- `DreamGeneratorNet::dream(seed, creativity)`: seed 128D + noise 64D → generated 128D
+- Bounded output (Tanh) for safe Poincaré projection
+- MMD (Maximum Mean Discrepancy) regularization keeps dreams on the data manifold
+- Poincaré penalty ensures generated points stay inside the ball
+- Training: `scripts/models/train_dream_generator.py`
+
+#### `nietzsche-cluster` — Cluster Quality Scorer
+Neural cluster health evaluation and action recommendation:
+- `ClusterScorerNet::score()`: centroid 128D + variance 128D + 5 stats → [keep, split, merge]
+- Heuristic-supervised: large/incoherent clusters → split, tiny/dense → merge
+- Training: `scripts/models/train_cluster_scorer.py`
+
+#### `nietzsche-mcts` — Value Network
+Neural state evaluator for MCTS tree search (replaces random rollouts):
+- `ValueNetworkInference::evaluate()`: 64D Krylov state → value score [0, 1]
+- `evaluate_batch()`: efficient batch evaluation during tree expansion
+- Features: causal connectedness, mean energy, Hausdorff delta, temporal coherence
+- Training: `scripts/models/train_value_network.py`
+
+#### `nietzsche-dsi` — DSI Decoder (Neural Retrieval)
+Differentiable Search Index — O(1) neural document retrieval:
+- `DsiDecoderNet::decode()`: 128D query → 4-level hierarchical VQ codes
+- Each level selects from 1024 codebook entries (argmax over logits)
+- Confidence scores per level for retrieval quality estimation
+- Training: `scripts/models/train_dsi_decoder.py`
+
+#### `nietzsche-wiederkehr` — Anomaly Detector
+Autoencoder-based anomaly detection for graph health monitoring:
+- `AnomalyDetectorNet::detect()`: 64D health state → `AnomalyResult`
+- Combined score: learned anomaly head + reconstruction error
+- Two-phase training: (1) reconstruction, (2) anomaly classification with injected anomalies
+- 4 anomaly types: spike, collapse, drift, oscillation
+- Training: `scripts/models/train_anomaly_detector.py`
+- Used by Wiederkehr daemons to flag degenerative graph regions
 
 #### `nietzsche-sleep` — Reconsolidation Sleep Cycle
 EVA sleeps. During sleep:
@@ -1153,6 +1210,14 @@ NRL-1  PPO Engine (ONNX inference)          ✅ COMPLETE  (4 strategies, GrowthS
 NRL-2  Neural Model Registry                ✅ COMPLETE  (load/get ONNX sessions, thread-safe)
 NRL-3  GNN Engine (node importance)         ✅ COMPLETE  (predict, dual loss, zero-data distillation)
 NRL-4  Training scripts (Python)            ✅ COMPLETE  (train_ppo.py, train_gnn.py, train_value_network.py)
+NRL-5  Edge Predictor (link prediction)     ✅ COMPLETE  (256D→sigmoid, batch predict, L-System integration)
+NRL-6  Image Neural Encoder (CNN)           ✅ COMPLETE  (64x64 RGB→128D, contrastive, Poincaré projection)
+NRL-7  Audio Neural Encoder (Conv)          ✅ COMPLETE  (mel-spec→128D, reconstruction, Poincaré projection)
+NRL-8  Dream Generator Network              ✅ COMPLETE  (seed+noise→128D, MMD+Poincaré penalty, Tanh bound)
+NRL-9  Cluster Quality Scorer               ✅ COMPLETE  (centroid+var+stats→keep/split/merge, heuristic labels)
+NRL-10 MCTS Value Network training          ✅ COMPLETE  (64D state→value [0,1], MSE, graph health features)
+NRL-11 DSI Decoder (neural retrieval)       ✅ COMPLETE  (128D query→4-level VQ codes, O(1) lookup)
+NRL-12 Anomaly Detector (autoencoder)       ✅ COMPLETE  (2-phase: reconstruction + anomaly classification)
 
 ── Nezhmetdinov Forgetting Engine (2026-02-24) ──────────
 NZH-1  Vitality sigmoid function           ✅ COMPLETE  (V(n) = σ(w₁e+w₂H-w₃ξ+w₄π+w₅κ-w₆τ), batch, 8 tests)

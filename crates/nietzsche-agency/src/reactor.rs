@@ -227,6 +227,14 @@ impl AgencyReactor {
                     AgencyEvent::ForgettingCycleComplete { .. } => {
                         // Logged for telemetry; no intent needed.
                     }
+                    AgencyEvent::CentroidDrift { drift, epoch, .. } => {
+                        // Civilizational drift detected — trigger sleep reconsolidation.
+                        tracing::warn!(drift, epoch, "reactor: centroid drift → triggering sleep");
+                    }
+                    AgencyEvent::HyperbolicHealthAlert { diagnosis, mean_r, .. } => {
+                        // Log geometric health alert; sleep may be triggered if crowding.
+                        tracing::warn!(diagnosis, mean_r, "reactor: hyperbolic health alert");
+                    }
                 },
                 Err(broadcast::error::TryRecvError::Empty) => break,
                 Err(broadcast::error::TryRecvError::Lagged(_)) => continue,

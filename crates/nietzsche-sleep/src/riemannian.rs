@@ -119,9 +119,26 @@ pub fn riemannian_grad(x: &[f64], eucl_grad: &[f64]) -> Vec<f64> {
 
 /// Sample a random tangent vector at `x` with magnitude `noise`.
 ///
-/// Used during the "dream" phase to perturb node embeddings.
+/// Uses **isotropic Gaussian** sampling (Box-Muller) instead of uniform
+/// hypercube sampling. The uniform approach `rng.gen() * 2 - 1` causes
+/// anisotropic bias: diagonal directions are oversampled because the
+/// hypercube corners concentrate probability there. In high dimensions
+/// (D=3072), this distorts the Hausdorff dimension of the fractal.
+///
+/// Gaussian → normalize → scale preserves rotational invariance on the
+/// tangent space, which is critical for Riemannian perturbation fidelity.
 pub fn random_tangent(dim: usize, noise: f64, rng: &mut impl Rng) -> Vec<f64> {
-    let raw: Vec<f64> = (0..dim).map(|_| rng.gen::<f64>() * 2.0 - 1.0).collect();
+    // Sample isotropic Gaussian via Box-Muller (no rand_distr dependency)
+    let raw: Vec<f64> = (0..dim)
+        .map(|_| {
+            // Box-Muller transform: 2 uniforms → 1 Gaussian
+            let u1: f64 = rng.gen::<f64>().max(1e-300); // avoid log(0)
+            let u2: f64 = rng.gen::<f64>();
+            (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()
+        })
+        .collect();
+
+    // Normalize to unit sphere and scale to desired magnitude
     let norm: f64 = raw.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-12);
     raw.into_iter().map(|v| v / norm * noise).collect()
 }
