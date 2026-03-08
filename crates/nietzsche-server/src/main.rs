@@ -1099,7 +1099,7 @@ async fn main() -> anyhow::Result<()> {
                                                         .unwrap_or_default()
                                                         .as_secs() as i64,
                                                     expires_at: None,
-                                                    metadata: serde_json::Value::Null,
+                                                    metadata: std::collections::HashMap::new(),
                                                     valence: 0.0,
                                                     arousal: 0.0,
                                                     is_phantom: false,
