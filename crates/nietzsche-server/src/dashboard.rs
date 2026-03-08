@@ -48,6 +48,8 @@ use nietzsche_graph::{
     Edge, EdgeType, Node, NodeMeta, NodeType, PoincareVector,
     SchemaValidator, SchemaConstraint, FieldType,
     export_hyperbolic_space, ExportConfig as HypExportConfig,
+    concept_path::{concept_path, concept_path_from_embedding, explain_path},
+    traversal::GreedyRouteConfig,
 };
 use nietzsche_query::{parse as nql_parse, execute as nql_execute, Params, QueryResult};
 use nietzsche_sleep::{SleepConfig, SleepCycle};
@@ -236,6 +238,9 @@ pub async fn serve(
         .route("/api/reasoning/causal-neighbors", post(reasoning_causal_neighbors))
         .route("/api/reasoning/causal-chain", post(reasoning_causal_chain))
         .route("/api/reasoning/klein-path", post(reasoning_klein_path))
+        // Navigate (Geodesic Semantic Routing — Phase XVI)
+        .route("/api/navigate", post(navigate))
+        .route("/api/navigate/query", post(navigate_query))
         // Cluster
         .route("/api/debug/hyperbolic-space", get(debug_hyperbolic_space))
         .route("/api/cluster/status", get(cluster_status))
@@ -1939,6 +1944,126 @@ async fn agency_observation(
             }
         }
         Ok(None) => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "no observation yet — agency engine must tick first"}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// ── Navigate (Phase XVI — Geodesic Semantic Routing) ────────────────────────
+
+// POST /api/navigate — find geodesic path between two nodes
+#[derive(Deserialize)]
+struct NavigateRequest {
+    from: String,
+    to: String,
+    collection: Option<String>,
+    max_hops: Option<usize>,
+    energy_min: Option<f32>,
+    astar_fallback: Option<bool>,
+}
+
+async fn navigate(
+    State((cm, _ops)): State<AppState>,
+    Json(req): Json<NavigateRequest>,
+) -> impl IntoResponse {
+    let from_id = match req.from.parse::<Uuid>() {
+        Ok(u) => u,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "invalid 'from' uuid"}))).into_response(),
+    };
+    let to_id = match req.to.parse::<Uuid>() {
+        Ok(u) => u,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "invalid 'to' uuid"}))).into_response(),
+    };
+
+    let shared = resolve_col!(cm, req.collection);
+    let db = shared.read().await;
+
+    let config = GreedyRouteConfig {
+        energy_min: req.energy_min.unwrap_or(0.0),
+        max_hops: req.max_hops.unwrap_or(200),
+        astar_fallback: req.astar_fallback.unwrap_or(true),
+        astar_max_nodes: 5_000,
+    };
+
+    match concept_path(db.storage(), db.adjacency(), from_id, to_id, &config) {
+        Ok(path) => {
+            let explanation = explain_path(&path);
+            Json(serde_json::json!({
+                "reached_target": path.reached_target,
+                "used_fallback": path.used_fallback,
+                "hop_count": path.hop_count,
+                "total_distance": path.total_distance,
+                "residual_distance": path.residual_distance,
+                "explanation": explanation,
+                "hops": path.hops.iter().map(|h| serde_json::json!({
+                    "node_id": h.node_id.to_string(),
+                    "node_type": format!("{:?}", h.node_type),
+                    "energy": h.energy,
+                    "depth": h.depth,
+                    "generation": h.generation,
+                    "summary": h.summary,
+                    "distance_from_prev": h.distance_from_prev,
+                    "distance_to_target": h.distance_to_target,
+                })).collect::<Vec<_>>(),
+            })).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// POST /api/navigate/query — find geodesic path from a node toward a target embedding
+#[derive(Deserialize)]
+struct NavigateQueryRequest {
+    from: String,
+    target_embedding: Vec<f32>,
+    collection: Option<String>,
+    max_hops: Option<usize>,
+    energy_min: Option<f32>,
+}
+
+async fn navigate_query(
+    State((cm, _ops)): State<AppState>,
+    Json(req): Json<NavigateQueryRequest>,
+) -> impl IntoResponse {
+    let from_id = match req.from.parse::<Uuid>() {
+        Ok(u) => u,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "invalid 'from' uuid"}))).into_response(),
+    };
+
+    if req.target_embedding.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "target_embedding is empty"}))).into_response();
+    }
+
+    let shared = resolve_col!(cm, req.collection);
+    let db = shared.read().await;
+
+    let config = GreedyRouteConfig {
+        energy_min: req.energy_min.unwrap_or(0.0),
+        max_hops: req.max_hops.unwrap_or(200),
+        astar_fallback: false, // no specific target node for A*
+        astar_max_nodes: 5_000,
+    };
+
+    match concept_path_from_embedding(db.storage(), db.adjacency(), from_id, &req.target_embedding, &config) {
+        Ok(path) => {
+            let explanation = explain_path(&path);
+            Json(serde_json::json!({
+                "reached_target": path.reached_target,
+                "hop_count": path.hop_count,
+                "total_distance": path.total_distance,
+                "residual_distance": path.residual_distance,
+                "explanation": explanation,
+                "hops": path.hops.iter().map(|h| serde_json::json!({
+                    "node_id": h.node_id.to_string(),
+                    "node_type": format!("{:?}", h.node_type),
+                    "energy": h.energy,
+                    "depth": h.depth,
+                    "generation": h.generation,
+                    "summary": h.summary,
+                    "distance_from_prev": h.distance_from_prev,
+                    "distance_to_target": h.distance_to_target,
+                })).collect::<Vec<_>>(),
+            })).into_response()
+        }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
     }
 }
