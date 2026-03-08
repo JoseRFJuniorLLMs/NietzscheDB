@@ -18,6 +18,10 @@ use crate::compression::{build_compression_config, scan_compression, Compression
 use crate::sharding::{build_sharding_config, scan_sharding, ShardingReport};
 use crate::world_model::{WorldModelState, WorldSnapshot, EnvironmentObservation, build_world_model_config};
 use crate::flywheel::{FlywheelState, FlywheelReport, FlywheelInput, build_flywheel_config, run_flywheel_cycle};
+use crate::hyperbolic_training::{TrainingResult, build_training_config, train_hyperbolic_embeddings};
+use crate::temporal_decay::{TemporalDecayReport, build_decay_config, scan_temporal_decay};
+use crate::graph_growth::{GraphGrowthReport, build_growth_config, run_graph_growth_scan};
+use crate::cognitive_layer::{CognitiveLayerReport, build_cognitive_config, run_cognitive_scan};
 use crate::axiom_registry::AxiomRegistry;
 use crate::centroid_guardian::CentroidGuardian;
 use crate::hyperbolic_health::{HyperbolicHealth, HyperbolicHealthMonitor};
@@ -32,6 +36,7 @@ use crate::maturity::{MaturityConfig, NodeClass, NodeMaturityInput, evaluate_mat
 use crate::observer::{HealthReport, MetaObserver};
 use crate::reactor::{AgencyIntent, AgencyReactor};
 
+use tracing::info;
 use std::collections::{hash_map::DefaultHasher, HashSet};
 use std::hash::{Hash, Hasher};
 use uuid::Uuid;
@@ -75,6 +80,14 @@ pub struct AgencyTickReport {
     pub world_snapshot: Option<crate::world_model::WorldSnapshot>,
     /// Cognitive Flywheel report (Phase XXIV).
     pub flywheel_report: Option<crate::flywheel::FlywheelReport>,
+    /// Hyperbolic contrastive training report (Phase XVIII).
+    pub training_report: Option<TrainingResult>,
+    /// Temporal edge decay report (Phase B1).
+    pub decay_report: Option<TemporalDecayReport>,
+    /// Autonomous graph growth report (Phase C).
+    pub growth_report: Option<GraphGrowthReport>,
+    /// Cognitive layer report (Phase E).
+    pub cognitive_report: Option<CognitiveLayerReport>,
     pub duration_ms: u64,
 }
 
@@ -142,6 +155,14 @@ pub struct AgencyEngine {
     flywheel_state: FlywheelState,
     /// Flywheel tick counter.
     flywheel_tick: u64,
+    /// Hyperbolic training tick counter (Phase XVIII).
+    hyp_training_tick: u64,
+    /// Temporal decay tick counter (Phase B1).
+    temporal_decay_tick: u64,
+    /// Graph growth tick counter (Phase C).
+    growth_tick: u64,
+    /// Cognitive layer tick counter (Phase E).
+    cognitive_tick: u64,
 }
 
 impl AgencyEngine {
@@ -201,6 +222,10 @@ impl AgencyEngine {
             world_model_tick: 0,
             flywheel_state: FlywheelState::new(),
             flywheel_tick: 0,
+            hyp_training_tick: 0,
+            temporal_decay_tick: 0,
+            growth_tick: 0,
+            cognitive_tick: 0,
             config,
         }
     }
@@ -841,6 +866,161 @@ impl AgencyEngine {
             None
         };
 
+        // 23. Hyperbolic Contrastive Training — embedding refinement (Phase XVIII)
+        self.hyp_training_tick += 1;
+        let training_report: Option<TrainingResult> = if self.config.hyp_training_enabled
+            && self.config.hyp_training_interval > 0
+            && self.hyp_training_tick % self.config.hyp_training_interval == 0
+        {
+            let train_config = build_training_config(&self.config);
+            let result = train_hyperbolic_embeddings(storage, adjacency, &train_config);
+
+            if !result.updated_embeddings.is_empty() {
+                info!(
+                    final_loss = result.final_loss,
+                    epochs = result.epochs_run,
+                    modified = result.modified_nodes.len(),
+                    updates = result.updates_applied,
+                    "Phase XVIII: Hyperbolic contrastive training complete"
+                );
+
+                // Mark modified nodes in dirty set
+                for node_id in &result.modified_nodes {
+                    self.dirty_set.mark(*node_id);
+                }
+
+                // Emit batch embedding update intent
+                intents.push(AgencyIntent::UpdateEmbeddingBatch {
+                    updates: result.updated_embeddings.clone(),
+                    final_loss: result.final_loss,
+                    epochs_run: result.epochs_run,
+                });
+            }
+
+            Some(result)
+        } else {
+            None
+        };
+
+        // 24. Temporal Edge Decay — exponential weight decay (Phase B1)
+        self.temporal_decay_tick += 1;
+        let decay_report: Option<TemporalDecayReport> = if self.config.temporal_decay_enabled
+            && self.config.temporal_decay_interval > 0
+            && self.temporal_decay_tick % self.config.temporal_decay_interval == 0
+        {
+            let decay_config = build_decay_config(&self.config);
+            let report = scan_temporal_decay(storage, adjacency, &decay_config);
+
+            if report.edges_decayed > 0 {
+                info!(
+                    scanned = report.edges_scanned,
+                    decayed = report.edges_decayed,
+                    below_threshold = report.edges_below_threshold,
+                    avg_factor = format!("{:.6}", report.avg_decay_factor),
+                    "Phase B1: Temporal edge decay scan complete"
+                );
+
+                // Emit weight update intents for significantly decayed edges
+                for &(edge_id, from_id, to_id, old_weight, new_weight) in &report.updates {
+                    intents.push(AgencyIntent::ApplyTemporalDecay {
+                        edge_id,
+                        from_id,
+                        to_id,
+                        old_weight,
+                        new_weight,
+                    });
+                    self.dirty_set.mark(from_id);
+                    self.dirty_set.mark(to_id);
+                }
+
+                // Prune edges below threshold (if enabled)
+                if self.config.temporal_decay_enable_pruning {
+                    for &(edge_id, _, _, _, new_weight) in &report.updates {
+                        if new_weight < self.config.temporal_decay_prune_threshold {
+                            intents.push(AgencyIntent::PruneDecayedEdge {
+                                edge_id,
+                                effective_weight: new_weight,
+                            });
+                        }
+                    }
+                }
+            }
+
+            Some(report)
+        } else {
+            None
+        };
+
+        // 25. Autonomous Graph Growth — discover new edges (Phase C)
+        self.growth_tick += 1;
+        let growth_report: Option<GraphGrowthReport> = if self.config.growth_enabled
+            && self.config.growth_interval > 0
+            && self.growth_tick % self.config.growth_interval == 0
+        {
+            let growth_config = build_growth_config(&self.config);
+            let report = run_graph_growth_scan(storage, adjacency, &growth_config);
+
+            if report.edges_proposed > 0 {
+                info!(
+                    sampled = report.nodes_sampled,
+                    pairs = report.pairs_evaluated,
+                    proposed = report.edges_proposed,
+                    avg_dist = format!("{:.4}", report.avg_proposed_distance),
+                    "Phase C: Autonomous graph growth scan complete"
+                );
+
+                for candidate in &report.candidates {
+                    intents.push(AgencyIntent::ProposeEdge {
+                        from_id: candidate.from_id,
+                        to_id: candidate.to_id,
+                        distance: candidate.distance,
+                        weight: candidate.weight,
+                    });
+                    self.dirty_set.mark(candidate.from_id);
+                    self.dirty_set.mark(candidate.to_id);
+                }
+            }
+
+            Some(report)
+        } else {
+            None
+        };
+
+        // 26. Cognitive Layer — discover concept clusters (Phase E)
+        self.cognitive_tick += 1;
+        let cognitive_report: Option<CognitiveLayerReport> = if self.config.cognitive_enabled
+            && self.config.cognitive_interval > 0
+            && self.cognitive_tick % self.config.cognitive_interval == 0
+        {
+            let cog_config = build_cognitive_config(&self.config);
+            let report = run_cognitive_scan(storage, adjacency, &cog_config);
+
+            if report.concepts_proposed > 0 {
+                info!(
+                    sampled = report.nodes_sampled,
+                    clusters = report.clusters_found,
+                    concepts = report.concepts_proposed,
+                    "Phase E: Cognitive layer scan complete"
+                );
+
+                for proposal in &report.proposals {
+                    intents.push(AgencyIntent::ProposeConcept {
+                        centroid: proposal.centroid.clone(),
+                        member_ids: proposal.member_ids.clone(),
+                        label: proposal.label.clone(),
+                        avg_distance: proposal.avg_distance,
+                    });
+                    for &member_id in &proposal.member_ids {
+                        self.dirty_set.mark(member_id);
+                    }
+                }
+            }
+
+            Some(report)
+        } else {
+            None
+        };
+
         // 22. Cognitive Flywheel — unified feedback loop (Phase XXIV)
         self.flywheel_tick += 1;
         let flywheel_report: Option<FlywheelReport> = if self.config.flywheel_enabled
@@ -891,6 +1071,10 @@ impl AgencyEngine {
             sharding_report,
             world_snapshot,
             flywheel_report,
+            training_report,
+            decay_report,
+            growth_report,
+            cognitive_report,
             duration_ms: t0.elapsed().as_millis() as u64,
         })
     }

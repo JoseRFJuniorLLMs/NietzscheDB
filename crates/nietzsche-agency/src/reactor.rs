@@ -196,6 +196,67 @@ pub enum AgencyIntent {
     Phantomize {
         node_id: Uuid,
     },
+
+    // ── Phase XVIII: Hyperbolic Contrastive Training ────────────
+
+    /// Batch update embeddings after hyperbolic contrastive training.
+    /// Produced when: HyperbolicTraining phase completes with modified nodes.
+    /// The server executes: `storage.put_embedding(id, PoincareVector::from_f64(&coords))`
+    UpdateEmbeddingBatch {
+        /// Updated coordinates: (node_id, new_f64_coords).
+        updates: Vec<(Uuid, Vec<f64>)>,
+        /// Final contrastive loss achieved.
+        final_loss: f64,
+        /// Number of epochs run.
+        epochs_run: usize,
+    },
+
+    // ── Phase B1: Temporal Edge Decay ─────────────────────────
+
+    /// Apply temporal decay to an edge's weight.
+    /// Produced when: scan_temporal_decay detects significant weight change.
+    /// The server executes: `edge.weight = new_weight`
+    ApplyTemporalDecay {
+        edge_id: Uuid,
+        from_id: Uuid,
+        to_id: Uuid,
+        old_weight: f32,
+        new_weight: f32,
+    },
+
+    /// Prune an edge whose decayed weight fell below threshold.
+    /// Only emitted when `temporal_decay_enable_pruning = true`.
+    PruneDecayedEdge {
+        edge_id: Uuid,
+        effective_weight: f32,
+    },
+
+    // ── Phase C: Autonomous Graph Growth ──────────────────────
+
+    /// Propose a new edge between two existing nodes based on embedding proximity.
+    /// The server creates: `Edge { from, to, edge_type: "auto_growth", weight }`
+    ProposeEdge {
+        from_id: Uuid,
+        to_id: Uuid,
+        distance: f64,
+        weight: f32,
+    },
+
+    // ── Phase E: Cognitive Layer ──────────────────────────────
+
+    /// Propose a concept node as the centroid of a semantic cluster.
+    /// The server creates a new Concept node at the centroid embedding,
+    /// then creates edges from each member to the concept node.
+    ProposeConcept {
+        /// Centroid embedding (f64 coords).
+        centroid: Vec<f64>,
+        /// Member node IDs that form this cluster.
+        member_ids: Vec<Uuid>,
+        /// Suggested label for the concept (derived from common content).
+        label: String,
+        /// Average Poincaré distance within the cluster.
+        avg_distance: f64,
+    },
 }
 
 /// Converts agency events into executable intents.

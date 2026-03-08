@@ -270,6 +270,28 @@ pub struct AgencyConfig {
     /// Anomaly detection sensitivity in std devs (default: 3.0).
     pub world_model_anomaly_sensitivity: f64,
 
+    // -- Hyperbolic Contrastive Training (Phase XVIII) --
+    /// Whether hyperbolic training is enabled (default: true).
+    pub hyp_training_enabled: bool,
+    /// Tick interval for training runs (default: 50).
+    pub hyp_training_interval: u64,
+    /// Learning rate for Riemannian SGD (default: 0.01).
+    pub hyp_training_lr: f64,
+    /// Number of negative samples per positive edge (default: 10).
+    pub hyp_training_num_negatives: usize,
+    /// Margin for negative samples (default: 0.1).
+    pub hyp_training_margin: f64,
+    /// Max norm for ball projection (default: 0.95).
+    pub hyp_training_max_norm: f64,
+    /// Training epochs per tick (default: 5).
+    pub hyp_training_epochs: usize,
+    /// Convergence threshold (default: 1e-4).
+    pub hyp_training_convergence: f64,
+    /// Burn-in epochs with reduced LR (default: 2).
+    pub hyp_training_burn_in: usize,
+    /// Max edges sampled per epoch (default: 5000).
+    pub hyp_training_max_edges: usize,
+
     // -- Cognitive Flywheel (Phase XXIV) --
     /// Whether the flywheel is enabled (default: true).
     pub flywheel_enabled: bool,
@@ -279,6 +301,50 @@ pub struct AgencyConfig {
     pub flywheel_momentum_decay: f64,
     /// Minimum momentum for "spinning" state (default: 0.3).
     pub flywheel_min_momentum: f64,
+
+    // -- Temporal Edge Decay (Phase B1) --
+    /// Whether temporal decay is enabled (default: true).
+    pub temporal_decay_enabled: bool,
+    /// Tick interval for decay scans (default: 10).
+    pub temporal_decay_interval: u64,
+    /// Base decay rate λ (default: 1e-7, ~80 day half-life).
+    pub temporal_decay_lambda: f64,
+    /// Minimum effective weight before edge is marked for pruning (default: 0.01).
+    pub temporal_decay_prune_threshold: f32,
+    /// Maximum edges to scan per tick (default: 5000).
+    pub temporal_decay_max_scan: usize,
+    /// Whether to actually emit prune intents (default: false — report only).
+    pub temporal_decay_enable_pruning: bool,
+
+    // -- Autonomous Graph Growth (Phase C) --
+    /// Whether autonomous graph growth is enabled (default: true).
+    pub growth_enabled: bool,
+    /// Tick interval for growth scans (default: 20).
+    pub growth_interval: u64,
+    /// Maximum candidates to evaluate per tick (default: 100).
+    pub growth_max_candidates: usize,
+    /// Minimum embedding similarity to propose edge (default: 0.7 in Poincaré distance < threshold).
+    pub growth_distance_threshold: f64,
+    /// Maximum new edges to propose per tick (default: 50).
+    pub growth_max_new_edges: usize,
+    /// Minimum energy for a node to be a growth source (default: 0.1).
+    pub growth_min_energy: f32,
+    /// Maximum degree for a node to receive new edges (default: 100).
+    pub growth_max_target_degree: usize,
+
+    // -- Cognitive Layer (Phase E) --
+    /// Whether the cognitive layer is enabled (default: true).
+    pub cognitive_enabled: bool,
+    /// Tick interval for cognitive scans (default: 30).
+    pub cognitive_interval: u64,
+    /// Maximum nodes to sample for clustering (default: 2000).
+    pub cognitive_max_sample: usize,
+    /// Poincaré distance threshold for cluster membership (default: 0.3).
+    pub cognitive_cluster_radius: f64,
+    /// Minimum cluster size to propose concept node (default: 5).
+    pub cognitive_min_cluster: usize,
+    /// Maximum concept nodes to propose per tick (default: 10).
+    pub cognitive_max_concepts: usize,
 }
 
 impl Default for AgencyConfig {
@@ -391,11 +457,44 @@ impl Default for AgencyConfig {
             world_model_snapshot_interval: 10,
             world_model_history_length: 100,
             world_model_anomaly_sensitivity: 3.0,
+            // Phase XVIII
+            hyp_training_enabled: true,
+            hyp_training_interval: 50,
+            hyp_training_lr: 0.01,
+            hyp_training_num_negatives: 10,
+            hyp_training_margin: 0.1,
+            hyp_training_max_norm: 0.95,
+            hyp_training_epochs: 5,
+            hyp_training_convergence: 1e-4,
+            hyp_training_burn_in: 2,
+            hyp_training_max_edges: 5_000,
             // Phase XXIV
             flywheel_enabled: true,
             flywheel_interval: 10,
             flywheel_momentum_decay: 0.95,
             flywheel_min_momentum: 0.3,
+            // Phase B1 — Temporal Edge Decay
+            temporal_decay_enabled: true,
+            temporal_decay_interval: 10,
+            temporal_decay_lambda: 1e-7,
+            temporal_decay_prune_threshold: 0.01,
+            temporal_decay_max_scan: 5_000,
+            temporal_decay_enable_pruning: false,
+            // Phase C — Autonomous Graph Growth
+            growth_enabled: true,
+            growth_interval: 20,
+            growth_max_candidates: 100,
+            growth_distance_threshold: 1.5,
+            growth_max_new_edges: 50,
+            growth_min_energy: 0.1,
+            growth_max_target_degree: 100,
+            // Phase E — Cognitive Layer
+            cognitive_enabled: true,
+            cognitive_interval: 30,
+            cognitive_max_sample: 2_000,
+            cognitive_cluster_radius: 0.3,
+            cognitive_min_cluster: 5,
+            cognitive_max_concepts: 10,
         }
     }
 }
@@ -550,6 +649,19 @@ impl AgencyConfig {
             world_model_snapshot_interval: env_u64("AGENCY_WORLD_MODEL_INTERVAL", 10),
             world_model_history_length: env_usize("AGENCY_WORLD_MODEL_HISTORY", 100),
             world_model_anomaly_sensitivity: env_f64("AGENCY_WORLD_MODEL_ANOMALY", 3.0),
+            // Phase XVIII
+            hyp_training_enabled: std::env::var("AGENCY_HYP_TRAINING_ENABLED")
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
+            hyp_training_interval:       env_u64("AGENCY_HYP_TRAINING_INTERVAL", 50),
+            hyp_training_lr:             env_f64("AGENCY_HYP_TRAINING_LR", 0.01),
+            hyp_training_num_negatives:  env_usize("AGENCY_HYP_TRAINING_NUM_NEG", 10),
+            hyp_training_margin:         env_f64("AGENCY_HYP_TRAINING_MARGIN", 0.1),
+            hyp_training_max_norm:       env_f64("AGENCY_HYP_TRAINING_MAX_NORM", 0.95),
+            hyp_training_epochs:         env_usize("AGENCY_HYP_TRAINING_EPOCHS", 5),
+            hyp_training_convergence:    env_f64("AGENCY_HYP_TRAINING_CONVERGENCE", 1e-4),
+            hyp_training_burn_in:        env_usize("AGENCY_HYP_TRAINING_BURN_IN", 2),
+            hyp_training_max_edges:      env_usize("AGENCY_HYP_TRAINING_MAX_EDGES", 5_000),
             // Phase XXIV
             flywheel_enabled: std::env::var("AGENCY_FLYWHEEL_ENABLED")
                 .map(|v| v != "0" && v.to_lowercase() != "false")
@@ -557,6 +669,36 @@ impl AgencyConfig {
             flywheel_interval:       env_u64("AGENCY_FLYWHEEL_INTERVAL", 10),
             flywheel_momentum_decay: env_f64("AGENCY_FLYWHEEL_MOMENTUM_DECAY", 0.95),
             flywheel_min_momentum:   env_f64("AGENCY_FLYWHEEL_MIN_MOMENTUM", 0.3),
+            // Phase B1 — Temporal Edge Decay
+            temporal_decay_enabled: std::env::var("AGENCY_TEMPORAL_DECAY_ENABLED")
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
+            temporal_decay_interval:       env_u64("AGENCY_TEMPORAL_DECAY_INTERVAL", 10),
+            temporal_decay_lambda:         env_f64("AGENCY_TEMPORAL_DECAY_LAMBDA", 1e-7),
+            temporal_decay_prune_threshold: env_f32("AGENCY_TEMPORAL_DECAY_PRUNE", 0.01),
+            temporal_decay_max_scan:       env_usize("AGENCY_TEMPORAL_DECAY_MAX_SCAN", 5_000),
+            temporal_decay_enable_pruning: std::env::var("AGENCY_TEMPORAL_DECAY_PRUNING")
+                .map(|v| v == "1" || v.to_lowercase() == "true")
+                .unwrap_or(false),
+            // Phase C — Autonomous Graph Growth
+            growth_enabled: std::env::var("AGENCY_GROWTH_ENABLED")
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
+            growth_interval:          env_u64("AGENCY_GROWTH_INTERVAL", 20),
+            growth_max_candidates:    env_usize("AGENCY_GROWTH_MAX_CANDIDATES", 100),
+            growth_distance_threshold: env_f64("AGENCY_GROWTH_DISTANCE_THRESHOLD", 1.5),
+            growth_max_new_edges:     env_usize("AGENCY_GROWTH_MAX_NEW_EDGES", 50),
+            growth_min_energy:        env_f32("AGENCY_GROWTH_MIN_ENERGY", 0.1),
+            growth_max_target_degree: env_usize("AGENCY_GROWTH_MAX_TARGET_DEGREE", 100),
+            // Phase E — Cognitive Layer
+            cognitive_enabled: std::env::var("AGENCY_COGNITIVE_ENABLED")
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
+            cognitive_interval:       env_u64("AGENCY_COGNITIVE_INTERVAL", 30),
+            cognitive_max_sample:     env_usize("AGENCY_COGNITIVE_MAX_SAMPLE", 2_000),
+            cognitive_cluster_radius: env_f64("AGENCY_COGNITIVE_CLUSTER_RADIUS", 0.3),
+            cognitive_min_cluster:    env_usize("AGENCY_COGNITIVE_MIN_CLUSTER", 5),
+            cognitive_max_concepts:   env_usize("AGENCY_COGNITIVE_MAX_CONCEPTS", 10),
         }
     }
 }

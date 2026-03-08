@@ -991,6 +991,149 @@ async fn main() -> anyhow::Result<()> {
                                             }
                                             break;
                                         }
+                                        // ── Phase XVIII: Hyperbolic Contrastive Training ──────
+                                        nietzsche_agency::AgencyIntent::UpdateEmbeddingBatch { updates, final_loss, epochs_run } => {
+                                            if !updates.is_empty() {
+                                                info!(
+                                                    collection = %col_name,
+                                                    updates    = updates.len(),
+                                                    final_loss = final_loss,
+                                                    epochs     = epochs_run,
+                                                    "agency: Phase XVIII — embedding batch update"
+                                                );
+                                                drop(db);
+                                                {
+                                                    let mut db_w = shared.write().await;
+                                                    let mut ok = 0usize;
+                                                    let mut fail = 0usize;
+                                                    for (node_id, coords_f64) in &updates {
+                                                        let coords_f32: Vec<f32> = coords_f64.iter().map(|&c| c as f32).collect();
+                                                        let emb = nietzsche_graph::PoincareVector::new(coords_f32);
+                                                        match db_w.update_embedding(*node_id, emb) {
+                                                            Ok(_) => ok += 1,
+                                                            Err(e) => {
+                                                                fail += 1;
+                                                                if fail <= 3 {
+                                                                    warn!(node = %node_id, error = %e, "Phase XVIII: embedding update failed");
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    info!(ok = ok, fail = fail, "Phase XVIII: embedding batch applied");
+                                                }
+                                                break; // db was dropped, exit intent loop
+                                            }
+                                        }
+                                        // ── Phase B1: Temporal Edge Decay ─────
+                                        nietzsche_agency::AgencyIntent::ApplyTemporalDecay {
+                                            edge_id, from_id: _, to_id: _, old_weight: _, new_weight
+                                        } => {
+                                            drop(db);
+                                            {
+                                                let db_w = shared.write().await;
+                                                if let Ok(Some(mut edge)) = db_w.storage().get_edge(&edge_id) {
+                                                    edge.weight = new_weight;
+                                                    if let Err(e) = db_w.storage().put_edge(&edge) {
+                                                        warn!(edge = %edge_id, error = %e, "temporal decay: update failed");
+                                                    }
+                                                }
+                                            }
+                                            db = shared.read().await;
+                                        }
+                                        nietzsche_agency::AgencyIntent::PruneDecayedEdge { edge_id, effective_weight: _ } => {
+                                            drop(db);
+                                            {
+                                                let mut db_w = shared.write().await;
+                                                if let Err(e) = db_w.delete_edge(edge_id) {
+                                                    warn!(edge = %edge_id, error = %e, "temporal decay: prune failed");
+                                                } else {
+                                                    info!(edge = %edge_id, "temporal decay: pruned decayed edge");
+                                                }
+                                            }
+                                            db = shared.read().await;
+                                        }
+                                        // ── Phase C: Autonomous Graph Growth ──
+                                        nietzsche_agency::AgencyIntent::ProposeEdge {
+                                            from_id, to_id, distance: _, weight
+                                        } => {
+                                            drop(db);
+                                            {
+                                                let mut db_w = shared.write().await;
+                                                let edge = nietzsche_graph::Edge::new(
+                                                    from_id, to_id,
+                                                    nietzsche_graph::EdgeType::Association,
+                                                    weight,
+                                                );
+                                                if let Err(e) = db_w.insert_edge(edge) {
+                                                    warn!(%from_id, %to_id, error = %e, "graph growth: edge insert failed");
+                                                }
+                                            }
+                                            db = shared.read().await;
+                                        }
+                                        // ── Phase E: Cognitive Layer ──────────
+                                        nietzsche_agency::AgencyIntent::ProposeConcept {
+                                            centroid, member_ids, label, avg_distance: _
+                                        } => {
+                                            drop(db);
+                                            {
+                                                let mut db_w = shared.write().await;
+                                                // Create concept node
+                                                let concept_id = uuid::Uuid::new_v4();
+                                                let mut content = serde_json::Map::new();
+                                                content.insert("_concept".into(), serde_json::json!(true));
+                                                content.insert("label".into(), serde_json::json!(label));
+                                                content.insert("member_count".into(), serde_json::json!(member_ids.len()));
+                                                let concept_emb = nietzsche_graph::PoincareVector::new(
+                                                    centroid.iter().map(|&c| c as f32).collect()
+                                                );
+                                                let concept_meta = nietzsche_graph::NodeMeta {
+                                                    id: concept_id,
+                                                    depth: concept_emb.coords.iter().map(|c| c * c).sum::<f32>().sqrt(),
+                                                    content: serde_json::Value::Object(content),
+                                                    node_type: nietzsche_graph::NodeType::Concept,
+                                                    energy: 0.5,
+                                                    lsystem_generation: 0,
+                                                    hausdorff_local: 0.0,
+                                                    created_at: std::time::SystemTime::now()
+                                                        .duration_since(std::time::UNIX_EPOCH)
+                                                        .unwrap_or_default()
+                                                        .as_secs() as i64,
+                                                    expires_at: None,
+                                                    metadata: serde_json::Value::Null,
+                                                    valence: 0.0,
+                                                    arousal: 0.0,
+                                                    is_phantom: false,
+                                                };
+                                                let concept_node = nietzsche_graph::Node {
+                                                    meta: concept_meta,
+                                                    embedding: concept_emb,
+                                                };
+                                                if let Err(e) = db_w.insert_node(concept_node) {
+                                                    warn!(%concept_id, error = %e, "cognitive layer: concept insert failed");
+                                                } else {
+                                                    // Create edges from members to concept
+                                                    let mut linked = 0usize;
+                                                    for member_id in &member_ids {
+                                                        let edge = nietzsche_graph::Edge::new(
+                                                            *member_id, concept_id,
+                                                            nietzsche_graph::EdgeType::Hierarchical,
+                                                            1.0,
+                                                        );
+                                                        if db_w.insert_edge(edge).is_ok() {
+                                                            linked += 1;
+                                                        }
+                                                    }
+                                                    info!(
+                                                        %concept_id,
+                                                        %label,
+                                                        members = member_ids.len(),
+                                                        linked,
+                                                        "Cognitive Layer: concept node created"
+                                                    );
+                                                }
+                                            }
+                                            db = shared.read().await;
+                                        }
                                         nietzsche_agency::AgencyIntent::ShatterNode { node_id, avatars } => {
                                             // Shatter Protocol: split super-node into context avatars
                                             // Read data under read lock first

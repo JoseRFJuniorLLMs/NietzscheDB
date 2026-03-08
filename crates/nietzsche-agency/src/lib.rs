@@ -99,6 +99,18 @@ pub mod world_model;
 // Phase XXIV — Cognitive Flywheel (unified feedback loop)
 pub mod flywheel;
 
+// Phase XVIII — Hyperbolic Contrastive Training (embedding refinement)
+pub mod hyperbolic_training;
+
+// Phase B1 — Temporal Edge Decay (exponential weight decay)
+pub mod temporal_decay;
+
+// Phase C — Autonomous Graph Growth (text→embed→link pipeline)
+pub mod graph_growth;
+
+// Phase E — Cognitive Layer (cluster→centroid→concept)
+pub mod cognitive_layer;
+
 pub use centroid_guardian::{CentroidGuardian, CentroidUpdate, GuardianError};
 pub use config::AgencyConfig;
 pub use counterfactual::{CounterfactualEngine, CounterfactualOp, CounterfactualResult};
@@ -209,4 +221,31 @@ pub use world_model::{
 pub use flywheel::{
     FlywheelConfig, FlywheelState, FlywheelReport, FlywheelInput,
     SubsystemStatus, SubsystemEntry, build_flywheel_config, run_flywheel_cycle,
+};
+
+// Phase XVIII — Hyperbolic Contrastive Training
+pub use hyperbolic_training::{
+    HyperbolicTrainingConfig, TrainingResult,
+    build_training_config, train_hyperbolic_embeddings,
+    poincare_distance as training_poincare_distance,
+    contrastive_loss, sigmoid as training_sigmoid,
+    grad_poincare_wrt_u, riemannian_rescale, project_to_ball,
+};
+
+// Phase B1 — Temporal Edge Decay
+pub use temporal_decay::{
+    TemporalDecayConfig, TemporalDecayReport,
+    build_decay_config, decay_weight, scan_temporal_decay,
+};
+
+// Phase C — Autonomous Graph Growth
+pub use graph_growth::{
+    GraphGrowthConfig, GraphGrowthReport, GrowthCandidate,
+    build_growth_config, run_graph_growth_scan,
+};
+
+// Phase E — Cognitive Layer
+pub use cognitive_layer::{
+    CognitiveLayerConfig, CognitiveLayerReport, ConceptProposal,
+    build_cognitive_config, run_cognitive_scan,
 };

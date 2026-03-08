@@ -55,6 +55,7 @@ pub mod klein;
 pub mod riemann;
 pub mod minkowski;
 pub mod manifold;
+pub mod curvature;
 
 use error::HypError;
 

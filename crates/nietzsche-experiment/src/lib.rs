@@ -24,5 +24,6 @@
 //! Wilcoxon-Mann-Whitney U statistic, O(N log N) via rank-sum.
 
 pub mod auc;
+pub mod hyperbolic_loss;
 pub mod sampling;
 pub mod telemetry;
