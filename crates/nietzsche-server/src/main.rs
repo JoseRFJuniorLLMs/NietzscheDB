@@ -945,6 +945,124 @@ async fn main() -> anyhow::Result<()> {
                                                 let _ = db.storage().put_node_meta_update_energy(&meta, old);
                                             }
                                         }
+                                        nietzsche_agency::AgencyIntent::ShatterNode { node_id, avatars } => {
+                                            // Shatter Protocol: split super-node into context avatars
+                                            // Read data under read lock first
+                                            let original_node = db.get_node(node_id).ok().flatten();
+                                            let original_embedding = db.storage().get_embedding(&node_id).ok().flatten();
+
+                                            // Collect neighbor embeddings for gyromidpoint computation
+                                            let mut avatar_data: Vec<(usize, nietzsche_graph::PoincareVector)> = Vec::new();
+                                            if let Some(ref original) = original_node {
+                                                let base_emb = original_embedding.clone().unwrap_or_else(|| {
+                                                    nietzsche_graph::PoincareVector::new(vec![0.0; 128])
+                                                });
+                                                for (idx, avatar_plan) in avatars.iter().enumerate() {
+                                                    let mut neighbor_embs: Vec<Vec<f64>> = Vec::new();
+                                                    for nid in avatar_plan.neighbor_ids.iter().take(20) {
+                                                        if let Ok(Some(emb)) = db.storage().get_embedding(nid) {
+                                                            if !emb.coords.is_empty() {
+                                                                neighbor_embs.push(emb.coords.iter().map(|&c| c as f64).collect());
+                                                            }
+                                                        }
+                                                    }
+                                                    let avatar_emb = if neighbor_embs.len() >= 2 {
+                                                        let refs: Vec<&[f64]> = neighbor_embs.iter().map(|v| v.as_slice()).collect();
+                                                        nietzsche_hyp_ops::gyromidpoint(&refs)
+                                                            .map(|mid| nietzsche_graph::PoincareVector::new(mid.iter().map(|&c| c as f32).collect()))
+                                                            .unwrap_or_else(|_| base_emb.clone())
+                                                    } else {
+                                                        let mut coords = base_emb.coords.clone();
+                                                        let dim = coords.len().max(1);
+                                                        if let Some(c) = coords.get_mut(idx % dim) {
+                                                            *c = (*c + 0.01 * (idx as f32 + 1.0)).min(0.98);
+                                                        }
+                                                        nietzsche_graph::PoincareVector::new(coords)
+                                                    };
+                                                    avatar_data.push((idx, avatar_emb));
+                                                }
+                                            }
+
+                                            if original_node.is_some() && !avatars.is_empty() {
+                                                let original = original_node.unwrap();
+                                                drop(db);
+                                                {
+                                                    let mut db_w = shared.write().await;
+                                                    for ((idx, avatar_emb), avatar_plan) in avatar_data.into_iter().zip(avatars.iter()) {
+                                                        let mut avatar_content = original.meta.content.clone();
+                                                        if let serde_json::Value::Object(ref mut map) = avatar_content {
+                                                            map.insert("_parent_ghost_id".into(), serde_json::json!(node_id.to_string()));
+                                                            map.insert("_context_tag".into(), serde_json::json!(avatar_plan.context_tag));
+                                                            map.insert("_is_avatar".into(), serde_json::json!(true));
+                                                        }
+
+                                                        let avatar_meta = nietzsche_graph::NodeMeta {
+                                                            id: avatar_plan.avatar_id,
+                                                            depth: avatar_emb.coords.iter().map(|c| c * c).sum::<f32>().sqrt(),
+                                                            content: avatar_content,
+                                                            node_type: original.meta.node_type.clone(),
+                                                            energy: original.meta.energy,
+                                                            lsystem_generation: original.meta.lsystem_generation,
+                                                            hausdorff_local: original.meta.hausdorff_local,
+                                                            created_at: std::time::SystemTime::now()
+                                                                .duration_since(std::time::UNIX_EPOCH)
+                                                                .unwrap_or_default()
+                                                                .as_secs() as i64,
+                                                            expires_at: original.meta.expires_at,
+                                                            metadata: original.meta.metadata.clone(),
+                                                            valence: original.meta.valence,
+                                                            arousal: original.meta.arousal,
+                                                            is_phantom: false,
+                                                        };
+
+                                                        let avatar_node = nietzsche_graph::Node {
+                                                            meta: avatar_meta,
+                                                            embedding: avatar_emb,
+                                                        };
+
+                                                        if let Err(e) = db_w.insert_node(avatar_node) {
+                                                            warn!(avatar = %avatar_plan.avatar_id, error = %e, "shatter: failed to insert avatar");
+                                                            continue;
+                                                        }
+
+                                                        // Create Hierarchical edge: ghost → avatar
+                                                        let hier_edge = nietzsche_graph::Edge::hierarchical(node_id, avatar_plan.avatar_id);
+                                                        let _ = db_w.insert_edge(hier_edge);
+
+                                                        // Reassign edges from original to this avatar
+                                                        for &edge_id in &avatar_plan.edge_ids {
+                                                            if let Ok(Some(old_edge)) = db_w.get_edge(edge_id) {
+                                                                let new_edge = if old_edge.from == node_id {
+                                                                    nietzsche_graph::Edge::new(
+                                                                        avatar_plan.avatar_id, old_edge.to,
+                                                                        old_edge.edge_type.clone(), old_edge.weight,
+                                                                    )
+                                                                } else {
+                                                                    nietzsche_graph::Edge::new(
+                                                                        old_edge.from, avatar_plan.avatar_id,
+                                                                        old_edge.edge_type.clone(), old_edge.weight,
+                                                                    )
+                                                                };
+                                                                let _ = db_w.insert_edge(new_edge);
+                                                                let _ = db_w.delete_edge(edge_id);
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Phantomize the original super-node
+                                                    if let Err(e) = db_w.phantomize_node(node_id) {
+                                                        warn!(node = %node_id, error = %e, "shatter: failed to phantomize");
+                                                    }
+                                                }
+
+                                                info!(
+                                                    node = %node_id,
+                                                    avatars = avatars.len(),
+                                                    "Shatter Protocol: super-node split into avatars"
+                                                );
+                                                break; // db was dropped, exit intent loop
+                                            }
+                                        }
                                     }
                                 }
 

@@ -226,6 +226,7 @@ pub async fn serve(
         .route("/api/agency/narrative", get(agency_narrative))
         .route("/api/agency/dashboard", get(agency_dashboard))
         .route("/api/agency/observation", get(agency_observation))
+        .route("/api/agency/shatter", get(agency_shatter))
         .route("/api/agency/quantum/map", post(agency_quantum_map))
         .route("/api/agency/quantum/fidelity", post(agency_quantum_fidelity))
         // Schema management
@@ -1944,6 +1945,41 @@ async fn agency_observation(
             }
         }
         Ok(None) => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "no observation yet — agency engine must tick first"}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// GET /api/agency/shatter?collection= — shatter protocol status from dashboard
+async fn agency_shatter(
+    State((cm, _ops)): State<AppState>,
+    Query(cq): Query<CollectionQuery>,
+) -> impl IntoResponse {
+    let shared = resolve_col!(cm, cq.collection);
+    let db = shared.read().await;
+    // Read the latest dashboard and extract shatter snapshot
+    match db.storage().get_meta(nietzsche_agency::CognitiveDashboard::meta_key()) {
+        Ok(Some(bytes)) => {
+            match serde_json::from_slice::<nietzsche_agency::cognitive_dashboard::CognitiveDashboard>(&bytes) {
+                Ok(dashboard) => {
+                    // Also compute live degree stats for the top super-nodes
+                    let shatter_info = dashboard.shatter.unwrap_or(nietzsche_agency::cognitive_dashboard::ShatterSnapshot {
+                        super_nodes_detected: 0,
+                        plans_emitted: 0,
+                        nodes_scanned: 0,
+                        top_super_nodes: vec![],
+                    });
+                    Json(serde_json::json!(shatter_info)).into_response()
+                }
+                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("corrupt dashboard: {e}")}))).into_response(),
+            }
+        }
+        Ok(None) => Json(serde_json::json!({
+            "super_nodes_detected": 0,
+            "plans_emitted": 0,
+            "nodes_scanned": 0,
+            "top_super_nodes": [],
+            "note": "no dashboard yet — agency engine must tick first"
+        })).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
     }
 }

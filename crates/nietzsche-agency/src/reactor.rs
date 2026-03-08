@@ -164,6 +164,19 @@ pub enum AgencyIntent {
         node_id: Uuid,
         amount: f32,
     },
+
+    // ── Phase XVI: Shatter Protocol ────────────────────────────────
+
+    /// Shatter a super-node into context avatars.
+    /// Produced when: ShatterDaemon detects degree > threshold.
+    /// The server executes: create avatar nodes, redistribute edges,
+    /// phantomize the original.
+    ShatterNode {
+        /// The super-node to be shattered (will be phantomized).
+        node_id: Uuid,
+        /// Avatar plans with context tags and edge assignments.
+        avatars: Vec<crate::shatter::AvatarPlan>,
+    },
 }
 
 /// Converts agency events into executable intents.
@@ -275,6 +288,10 @@ impl AgencyReactor {
                     }
                     AgencyEvent::HebbianPotentiation { .. } => {
                         // Hebbian events are informational; intents produced by engine.
+                    }
+                    AgencyEvent::SuperNodeDetected { node_id, degree } => {
+                        // Super-node detected; shatter intents produced by engine step 16.
+                        tracing::info!(%node_id, degree, "reactor: super-node detected for shattering");
                     }
                 },
                 Err(broadcast::error::TryRecvError::Empty) => break,

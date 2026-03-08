@@ -78,6 +78,9 @@ pub mod dirty_set;
 // Phase XV.1 — ObservationBridge (live metrics for visualization)
 pub mod observation;
 
+// Phase XVI — Shatter Protocol (super-node splitting)
+pub mod shatter;
+
 pub use centroid_guardian::{CentroidGuardian, CentroidUpdate, GuardianError};
 pub use config::AgencyConfig;
 pub use counterfactual::{CounterfactualEngine, CounterfactualOp, CounterfactualResult};
@@ -143,4 +146,11 @@ pub use dirty_set::{DirtySet, DirtySetConfig, ScanDecision};
 pub use observation::{
     ObservationFrame, SystemGauges, NodeVisual, GravityLine,
     NodeObservation, temperature_to_rgb,
+};
+
+// Phase XVI — Shatter Protocol
+pub use shatter::{
+    ShatterConfig, ShatterCandidate, ShatterPlan, ShatterReport,
+    AvatarPlan, ShatterDaemon, build_shatter_config, run_shatter_scan,
+    scan_super_nodes, build_shatter_plan,
 };

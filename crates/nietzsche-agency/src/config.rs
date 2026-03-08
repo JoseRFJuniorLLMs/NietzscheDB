@@ -182,6 +182,16 @@ pub struct AgencyConfig {
     /// Whether gravity pulls actually redistribute energy (default: false).
     pub gravity_apply_pulls: bool,
 
+    // -- Shatter Protocol (Phase XVI) --
+    /// Whether the shatter protocol is enabled (default: true).
+    pub shatter_enabled: bool,
+    /// Degree threshold (in + out) to trigger shattering (default: 500).
+    pub shatter_threshold: usize,
+    /// Maximum avatar shards per super-node (default: 8).
+    pub shatter_max_avatars: usize,
+    /// Tick interval for shatter scans (default: 5).
+    pub shatter_interval: u64,
+
     // -- DirtySet: Adaptive Sampling (Phase XV) --
     /// Whether adaptive sampling is enabled (default: true).
     pub dirty_enabled: bool,
@@ -260,6 +270,10 @@ impl Default for AgencyConfig {
             gravity_max_pairs: 5000,
             gravity_interval: 3,
             gravity_apply_pulls: false,
+            shatter_enabled: true,
+            shatter_threshold: 500,
+            shatter_max_avatars: 8,
+            shatter_interval: 5,
             dirty_enabled: true,
             dirty_full_scan_ratio: 0.3,
             dirty_stability_sample: 50,
@@ -362,6 +376,12 @@ impl AgencyConfig {
             gravity_apply_pulls: std::env::var("AGENCY_GRAVITY_APPLY_PULLS")
                 .map(|v| v == "1" || v.to_lowercase() == "true")
                 .unwrap_or(false),
+            shatter_enabled: std::env::var("AGENCY_SHATTER_ENABLED")
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
+            shatter_threshold:  env_usize("AGENCY_SHATTER_THRESHOLD", 500),
+            shatter_max_avatars: env_usize("AGENCY_SHATTER_MAX_AVATARS", 8),
+            shatter_interval:   env_u64("AGENCY_SHATTER_INTERVAL", 5),
             dirty_enabled: std::env::var("AGENCY_DIRTY_ENABLED")
                 .map(|v| v != "0" && v.to_lowercase() != "false")
                 .unwrap_or(true),

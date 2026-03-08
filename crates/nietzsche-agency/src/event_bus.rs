@@ -73,6 +73,12 @@ pub enum AgencyEvent {
         nodes_depth_capped: usize,
     },
 
+    /// ShatterDaemon detected a super-node exceeding degree threshold.
+    SuperNodeDetected {
+        node_id: Uuid,
+        degree: usize,
+    },
+
     /// CentroidGuardian detected civilizational drift exceeding threshold.
     ///
     /// When emitted, `MaturityEvaluator` should freeze all promotions until

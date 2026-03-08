@@ -38,6 +38,9 @@ pub struct CognitiveDashboard {
 
     // ── Semantic Gravity (Phase XIV) ────────────
     pub gravity: Option<GravitySnapshot>,
+
+    // ── Shatter Protocol (Phase XVI) ──────────────
+    pub shatter: Option<ShatterSnapshot>,
 }
 
 /// Health subsystem snapshot.
@@ -116,6 +119,19 @@ pub struct GravityAttraction {
     pub source_mass: f64,
     pub target_mass: f64,
     pub distance: f64,
+}
+
+/// Shatter protocol snapshot (Phase XVI).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShatterSnapshot {
+    /// Number of super-nodes detected above degree threshold.
+    pub super_nodes_detected: usize,
+    /// Shatter plans emitted as intents.
+    pub plans_emitted: usize,
+    /// Total nodes scanned for degree.
+    pub nodes_scanned: usize,
+    /// Top super-node IDs with their degree.
+    pub top_super_nodes: Vec<(String, usize)>,
 }
 
 // ─────────────────────────────────────────────
@@ -198,6 +214,14 @@ impl CognitiveDashboard {
                 mean_force: g.mean_force,
                 gravity_wells: g.wells.len(),
             }),
+            shatter: report.shatter_report.as_ref().map(|s| ShatterSnapshot {
+                super_nodes_detected: s.super_nodes_detected,
+                plans_emitted: s.plans_emitted,
+                nodes_scanned: s.nodes_scanned,
+                top_super_nodes: s.candidates.iter().take(10)
+                    .map(|c| (c.node_id.to_string(), c.degree))
+                    .collect(),
+            }),
         }
     }
 
@@ -269,6 +293,7 @@ mod tests {
                 mean_force: 0.3,
                 gravity_wells: 12,
             }),
+            shatter: None,
         };
 
         let json = serde_json::to_string(&dash).unwrap();
@@ -289,6 +314,7 @@ mod tests {
             thermodynamics: None,
             maturity: MaturitySnapshot { promotions: 0, demotions: 0 },
             gravity: None,
+            shatter: None,
         };
 
         let bytes = serde_json::to_vec(&dash).unwrap();

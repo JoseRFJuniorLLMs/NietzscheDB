@@ -11,6 +11,7 @@ use crate::thermodynamics::{
 };
 use crate::gravity::{GravityConfig, GravityNode, GravityReport, GravityState, run_gravity_tick};
 use crate::dirty_set::{DirtySet, DirtySetConfig, ScanDecision};
+use crate::shatter::{ShatterDaemon, build_shatter_plan, build_shatter_config, run_shatter_scan};
 use crate::axiom_registry::AxiomRegistry;
 use crate::centroid_guardian::CentroidGuardian;
 use crate::hyperbolic_health::{HyperbolicHealth, HyperbolicHealthMonitor};
@@ -55,6 +56,8 @@ pub struct AgencyTickReport {
     pub thermodynamic_report: Option<ThermodynamicReport>,
     /// Semantic gravity field report (None if interval-gated or disabled).
     pub gravity_report: Option<GravityReport>,
+    /// Shatter protocol report (None if interval-gated or disabled).
+    pub shatter_report: Option<crate::shatter::ShatterReport>,
     pub duration_ms: u64,
 }
 
@@ -104,6 +107,8 @@ pub struct AgencyEngine {
     /// DirtySet — adaptive sampling for O(Δ) scans (Phase XV).
     dirty_set: std::sync::Arc<DirtySet>,
     dirty_config: DirtySetConfig,
+    /// Shatter Protocol tick counter (Phase XVI).
+    shatter_tick: u64,
 }
 
 impl AgencyEngine {
@@ -127,6 +132,7 @@ impl AgencyEngine {
                 Box::new(EvolutionDaemon),
                 Box::new(NeuralThresholdDaemon::new(&config.gnn_model_name)),
                 Box::new(NezhmetdinovDaemon::new()),
+                Box::new(ShatterDaemon),
             ],
             observer,
             reactor,
@@ -152,6 +158,7 @@ impl AgencyEngine {
                 stability_sample: config.dirty_stability_sample,
                 enabled: config.dirty_enabled,
             },
+            shatter_tick: 0,
             config,
         }
     }
@@ -699,6 +706,25 @@ impl AgencyEngine {
             None
         };
 
+        // 16. Shatter Protocol — split super-nodes into context avatars (Phase XVI)
+        self.shatter_tick += 1;
+        let shatter_report = {
+            let shatter_config = build_shatter_config(&self.config);
+            match run_shatter_scan(storage, adjacency, &shatter_config, self.shatter_tick) {
+                Some((report, plans)) => {
+                    // Convert each plan into a ShatterNode intent
+                    for plan in plans {
+                        intents.push(AgencyIntent::ShatterNode {
+                            node_id: plan.candidate.node_id,
+                            avatars: plan.avatars,
+                        });
+                    }
+                    Some(report)
+                }
+                None => None,
+            }
+        };
+
         Ok(AgencyTickReport {
             daemon_reports,
             health_report,
@@ -712,6 +738,7 @@ impl AgencyEngine {
             hebbian_report,
             thermodynamic_report,
             gravity_report,
+            shatter_report,
             duration_ms: t0.elapsed().as_millis() as u64,
         })
     }

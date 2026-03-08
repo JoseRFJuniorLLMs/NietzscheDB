@@ -304,6 +304,7 @@ mod tests {
             thermodynamics: None,
             maturity: MaturitySnapshot { promotions: 0, demotions: 0 },
             gravity: None,
+            shatter: None,
         };
 
         let frame = ObservationFrame::from_dashboard(&dash, &[]);
@@ -351,6 +352,7 @@ mod tests {
             }),
             maturity: MaturitySnapshot { promotions: 3, demotions: 1 },
             gravity: None,
+            shatter: None,
         };
 
         let nodes = vec![
@@ -389,6 +391,7 @@ mod tests {
             }),
             maturity: MaturitySnapshot { promotions: 0, demotions: 0 },
             gravity: None,
+            shatter: None,
         };
 
         let frame = ObservationFrame::from_dashboard(&dash, &[]);
@@ -431,6 +434,7 @@ mod tests {
                 mean_force: 1.25,
                 gravity_wells: 2,
             }),
+            shatter: None,
         };
 
         let frame = ObservationFrame::from_dashboard(&dash, &[]);
