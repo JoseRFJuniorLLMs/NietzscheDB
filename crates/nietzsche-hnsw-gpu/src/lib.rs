@@ -54,6 +54,29 @@ use {
     ndarray::Array2,
 };
 
+// Raw FFI for non-consuming CAGRA search.
+//
+// cuVS 24.6 Rust wrapper: `Index::search(self, ...)` takes ownership,
+// destroying the GPU index after every search. The underlying C function
+// `cuvsCagraSearch` just borrows the index pointer — it's safe to call
+// repeatedly. We use `transmute_copy` to extract the opaque pointer from
+// the Index wrapper without triggering its Drop impl.
+#[cfg(feature = "cuda")]
+mod cagra_ffi {
+    // Re-declare the single C function we need. The exact opaque types
+    // don't matter as long as the sizes match (all are pointer-sized).
+    extern "C" {
+        pub fn cuvsCagraSearch(
+            res: usize,
+            params: usize,
+            index: usize,
+            queries: *mut std::ffi::c_void,
+            neighbors: *mut std::ffi::c_void,
+            distances: *mut std::ffi::c_void,
+        ) -> u32;
+    }
+}
+
 // ── Tuning constants ──────────────────────────────────────────────────────────
 
 /// Minimum active vectors before GPU index is used (below → CPU linear scan).
@@ -218,6 +241,11 @@ impl GpuState {
     }
 
     /// GPU CAGRA search — returns `(row_idx, distance)` pairs.
+    ///
+    /// Note: cuVS 24.6 `Index::search` takes ownership of `self` (design
+    /// issue in the Rust bindings — the underlying C API doesn't require it).
+    /// We call the C FFI directly via `cuvsCagraSearch` to avoid consuming
+    /// the index on every search.
     #[cfg(feature = "cuda")]
     fn gpu_search(&self, query: &[f32], k: usize, dim: usize) -> Result<Vec<(usize, f32)>, String> {
         let index = self
@@ -249,15 +277,27 @@ impl GpuState {
         let search_params = SearchParams::new()
             .map_err(|e| format!("SearchParams::new(): {e:?}"))?;
 
-        index
-            .search(
-                &self.resources,
-                &search_params,
-                &queries_dev,
-                &neighbors_dev,
-                &distances_dev,
-            )
-            .map_err(|e| format!("CAGRA::search(): {e:?}"))?;
+        // SAFETY: Call the C FFI directly to avoid Index::search consuming
+        // the index. The C API `cuvsCagraSearch` borrows the index pointer —
+        // the Rust wrapper's `self` parameter is a design oversight in 24.6.
+        //
+        // We use transmute_copy to extract the opaque pointer from the
+        // Index wrapper without moving it (which would trigger Drop/destroy).
+        // Resources.0 and SearchParams.0 are pub, so we access them directly.
+        unsafe {
+            let index_raw: usize = std::mem::transmute_copy(index);
+            let ret = cagra_ffi::cuvsCagraSearch(
+                self.resources.0,
+                search_params.0,
+                index_raw,
+                queries_dev.as_ptr() as *mut std::ffi::c_void,
+                neighbors_dev.as_ptr() as *mut std::ffi::c_void,
+                distances_dev.as_ptr() as *mut std::ffi::c_void,
+            );
+            if ret != 0 {
+                return Err(format!("cuvsCagraSearch returned error code {ret}"));
+            }
+        }
 
         distances_dev
             .to_host(&self.resources, &mut distances_host)
