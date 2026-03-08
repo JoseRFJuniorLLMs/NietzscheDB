@@ -89,6 +89,11 @@ NietzscheDB doesn't just store data; it projects it across four distinct manifol
 │   · Hegelian Dialectic Engine (automated synthesis)     │
 │   · Code-as-Data: NQL queries as activatable nodes      │
 │   · Schrödinger Edges (probabilistic context collapse)  │
+│   · Self-Healing Graph (autonomous structural repair)   │
+│   · Graph Learning Engine (pattern detection & hotspots)│
+│   · Knowledge Compression (semantic deduplication)      │
+│   · Hyperbolic Sharding (Poincaré-aware partitioning)   │
+│   · Cognitive Flywheel (unified autonomous feedback)    │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -560,9 +565,20 @@ Cross-collection archetype sharing via gossip protocol:
 
 #### `nietzsche-agency` — Autonomous Agency Engine
 Graph-level autonomous intelligence with counterfactual reasoning and active forgetting:
-- **AgencyEngine** tick loop: runs 8 built-in daemons (Entropy, Gap, Coherence, Ltd, Nezhmetdinov + more) + MetaObserver
+- **AgencyEngine** tick loop: runs 10 built-in daemons (Entropy, Gap, Coherence, Ltd, Nezhmetdinov, Shatter, SelfHealing + more) + MetaObserver + 22-step tick protocol
 - **Geometric Self (Phase IX)**: `CentroidGuardian` (maintains the civilization centroid via Fréchet mean with temporal damping and drift veto to prevent cognitive shocks), `MaturityEvaluator` (promotes stable embeddings to Axioms using hyperbolic centrality: $C_i = 1 / (1 + d_D(x_i, C_t))$ and analytical angular variance $\text{Var}(\angle) \approx \text{trace}(\Sigma_{\text{tangent}})$ to penalize redundant clusters), and the **Two-Tier AxiomRegistry** (DashMap L1 + RocksDB L2) for fast $O(1)$ hot-path queries, temporal `EraSnapshot`s, and deep historical persistence.
 - **Hyperbolic Health Monitor (Phase X)**: Pre-emptive structural collapse detector for $K<0$ geometries (> 100k nodes). Computes **Radial Density Entropy (RDE)** $H = -\sum p_i \ln(p_i)$ to identify pathological mass migration to the boundary (*Boundary Crowding*). Tracks $mean\_r$, $std\_r$, $angular\_var$ (*Angular Variance Collapse* to prevent directional crushing), and $centroid\_velocity$. Detects **Semantic Attractors** ("Black Holes" via abnormal radial bin density $p_i > 3\mu$) and healthy structural L-System stratifications.
+- **Attention Economy & Hebbian LTP (Phase XII)**: The ECAN system (`attention_economy.rs`) introduces a free-market bid/ask model for focus allocation. Paired with `hebbian.rs`, 'nodes that fire together, wire together', structurally reinforcing active associative pathways via Long-Term Potentiation (LTP).
+- **Cognitive Thermodynamics (Phase XIII)**: Computes Temperature ($T = \sigma_E / \mu_E$), Shannon Entropy, and Helmholtz Free Energy ($F = E - TS$) to classify the graph into Phase States (Solid, Liquid, Gas, Critical). Implements Fourier's Law for heat flow diffusion $q_{ij} = \kappa \cdot (E_i - E_j)$.
+- **Semantic Gravity (Phase XIV)**: Implements gravitational attraction between nodes. Semantic Mass is defined via ECAN energy and degree: $M = E \times \ln(\text{degree} + 1)$. Force follows the inverse-square law on the Riemann/Poincare manifold: $F_{ij} = G \frac{M_i M_j}{d^2}$. Top attractions identify *Gravity Wells*, generating *Pull Intents* that physically cluster massive concepts over time.
+- **Observability & Navigation (Phase XV)**: Includes `CognitiveDashboard` for unified JSON snapshots of all agency subsystems (Health, ECAN, Hebbian, Thermo, Maturity, Gravity, Shatter, Healing, Learning, Compression, Sharding, World Model, Flywheel). `ObservationBridge` maps cognitive temperature and energy into an `ObservationFrame` mapping HSV/RGB spectra for direct WebGL 60fps rendering in *Perspektive.js*. Reduces processing overhead via the `DirtySet` (Temporal Adaptive Sampling), shifting node update complexity from $O(N)$ to bounded $O(\Delta)$ via lock-free mutation sets.
+- **Shatter Protocol (Phase XVI)**: Super-node splitting daemon. Detects nodes exceeding degree thresholds, builds shatter plans that split a super-node into K avatars (child nodes inheriting subsets of edges), and converts the original into a phantom (ghost) node. Prevents hub monopoly and preserves hyperbolic geometry via centroid-respecting splits.
+- **Self-Healing Graph (Phase XIX)**: Autonomous structural maintenance — detects boundary drift (nodes escaping the Poincaré ball), orphan nodes (zero connectivity), dead edges (pointing to non-existent nodes), exhausted nodes (energy ≈ 0), and ghost node ratio. Emits repair intents that the reactor executes to restore graph health.
+- **Graph Learning Engine (Phase XX)**: Tracks operational patterns across agency ticks — access hotspots, mutation hotspots, sector growth rates. Uses rolling window statistics with exponential decay counters and automatic eviction of low-frequency entries to keep memory bounded. Identifies booming sectors (growth rate > threshold) for proactive resource allocation.
+- **Knowledge Compression (Phase XXI)**: Semantic deduplication and merge engine. 4-phase scan: (1) collect candidate nodes, (2) near-duplicate detection via Poincaré distance $d(a,b) < \varepsilon$, (3) stale cluster identification (low-energy + low-degree groups), (4) redundant path pruning (parallel edges to same target). Produces `MergeProposal`s with confidence scores for reactor execution.
+- **Hyperbolic Sharding (Phase XXII)**: Partition-aware locality analysis respecting Poincaré geometry. Divides the ball into radial bands × angular sectors, assigns nodes by norm (depth) and atan2 (direction), computes per-shard statistics and imbalance ratio. Recommends rebalancing when shard population variance exceeds threshold.
+- **World Model Graph (Phase XXIII)**: Meta-representation of external state — tracks query rates, mutation rates, error rates via rolling statistics. Anomaly detection via z-score (value deviating > sensitivity × σ from mean). Detects quiet periods (rate < 0.3× mean) and busy periods (rate > 2× mean) for adaptive resource scheduling.
+- **Cognitive Flywheel (Phase XXIV)**: Unified feedback loop connecting all subsystems. Assesses per-subsystem health (Healthy/Active/Degraded/Inactive), computes momentum via EMA (exponential moving average with configurable decay factor), tracks healthy streaks, and generates automated recommendations. The flywheel spins when momentum exceeds minimum threshold, creating a self-reinforcing cycle of autonomous intelligence.
 - **EntropyDaemon**: detects Hausdorff variance spikes across angular regions
 - **GapDaemon**: identifies knowledge gaps in depth x angle sectors
 - **CoherenceDaemon**: measures multi-scale diffusion overlap (Chebyshev heat kernel)
@@ -576,7 +592,7 @@ Graph-level autonomous intelligence with counterfactual reasoning and active for
 - **Simulate Forgetting** binary: 5000-node x 500-cycle standalone simulation with CSV telemetry
 - **Motor de Desejo** (`desire.rs`): Transforms knowledge gaps into structured missions. `DesireSignal` with sector, depth_range, priority, and suggested_query. Priority = 0.4×depth_weight + 0.6×density_weight. Desires above `desire_dream_threshold=0.6` auto-trigger `TriggerDream` intents, creating a closed Desire→Dream→Generation loop
 - **Quantum Fidelity** (`quantum.rs`): Bloch sphere state representation for epistemic confidence. Three thresholds: default (0.85), strict (0.90, safety-critical), relaxed (0.65, exploratory). `BlochState::fidelity()` for quantum state similarity, `trace_distance()` for confidence bounds
-- 155 unit tests (event_bus, engine, observer, daemons, shadow, simulator, dialectic, code_as_data, forgetting: 72 tests across all 15 submodules)
+- 180+ unit tests (event_bus, engine, observer, daemons, shadow, simulator, dialectic, code_as_data, forgetting: 72 tests across all 15 submodules, learning, compression, sharding, world_model, flywheel)
 
 #### `nietzsche-agency` — TGC: Topological Generative Capacity
 

@@ -274,3 +274,192 @@ Fase 5: critério claro    → delta_dim < 5%, delta_estrutura 1-20%
 ```
 
 Agora você pode implementar cada fase **sabendo exatamente quando ela passou**. Quer começar a Fase 1?
+
+---
+
+## Fases de Agency Autónoma (Phases IX–XXIV)
+
+Estas fases transformam o NietzscheDB de um banco reativo num **sistema cognitivo autónomo**.
+
+### Phase IX — Geometric Self (Self Geométrico)
+- `CentroidGuardian`: mantém centroide da civilização via Fréchet mean
+- `MaturityEvaluator`: promove embeddings estáveis a Axiomas
+- `AxiomRegistry`: DashMap L1 + RocksDB L2 para queries O(1)
+
+### Phase X — Hyperbolic Health Monitor
+- Radial Density Entropy (RDE): H = -Σ pᵢ ln(pᵢ)
+- Detecção de Boundary Crowding e Angular Variance Collapse
+- Semantic Attractors ("Black Holes" via bin density > 3μ)
+
+### Phase XII — ECAN + Hebbian LTP
+- Attention Economy: bid/ask free-market para alocação de foco
+- Hebbian LTP: "nodes that fire together, wire together"
+
+### Phase XIII — Cognitive Thermodynamics
+- Temperature T = σ_E / μ_E
+- Phase States: Solid, Liquid, Gas, Critical
+- Fourier's Law: q_ij = κ·(Eᵢ - Eⱼ)
+
+### Phase XIV — Semantic Gravity
+- Semantic Mass: M = E × ln(degree + 1)
+- Gravitational force: F_ij = G·Mᵢ·Mⱼ / d²
+
+### Phase XV — Observability (DirtySet + Dashboard)
+- CognitiveDashboard: unified JSON snapshot de todos os subsistemas
+- DirtySet: O(N) → O(Δ) via temporal adaptive sampling
+- ObservationBridge: temperatura cognitiva → HSV/RGB para WebGL
+
+### Phase XVI — Shatter Protocol
+```
+✓ PASSA se:
+  → super-nodes (grau > threshold) são detectados e particionados
+  → avatars herdam subconjuntos de edges corretamente
+  → phantom ratio não ultrapassa 20% do grafo
+  → grau máximo pós-shatter < threshold
+
+✗ FALHA se:
+  → edges são perdidas durante o split
+  → avatars ficam desconectados do grafo
+  → phantom ratio > 30% (grafo fantasma)
+```
+
+### Phase XVII — Ego-Cache
+```
+✓ PASSA se:
+  → cache hit rate > 80% para nós de alta frequência
+  → latência de acesso cached < 1μs
+  → eviction policy mantém working set correto
+
+✗ FALHA se:
+  → cache hit rate < 50% (cache inútil)
+  → memory footprint > 10% do grafo total
+```
+
+### Phase XVIII — Reasoning Engine
+```
+✓ PASSA se:
+  → chains multi-hop (3+ hops) resolvem em < 50ms
+  → regras dedutivas produzem inferências corretas
+  → ciclos no grafo não causam loops infinitos
+
+✗ FALHA se:
+  → reasoning produz contradições não detectadas
+  → latência > 500ms para chains simples (2 hops)
+```
+
+### Phase XIX — Self-Healing Graph
+```
+✓ PASSA se:
+  → boundary drift detectado e corrigido (nodes retraídos para ||x|| < 1)
+  → orphan nodes reconectados ou removidos
+  → dead edges (apontando para nodes inexistentes) limpas
+  → phantom ratio monitorado e alertas emitidos > 20%
+  → exhausted nodes (energy ≈ 0) identificados
+
+✗ FALHA se:
+  → healing introduz novos problemas (edges inválidas)
+  → false positives > 10% (nodes saudáveis marcados como doentes)
+  → healing não detecta problemas conhecidos
+```
+
+### Phase XX — Graph Learning Engine
+```
+✓ PASSA se:
+  → access hotspots identificam top-10 nodes mais acedidos
+  → mutation hotspots rastreiam nodes com mais modificações
+  → sector growth rates detectam regiões em expansão
+  → rolling window mantém memória bounded (eviction funciona)
+  → decay exponencial previne obsolescência de dados antigos
+
+✗ FALHA se:
+  → hotspots são estáticos (não refletem padrões recentes)
+  → memória cresce linearmente com o tempo (eviction falhou)
+  → growth rates não detectam mudanças abruptas
+```
+
+### Phase XXI — Knowledge Compression
+```
+✓ PASSA se:
+  → near-duplicates (d < ε) detectados com precision > 90%
+  → stale clusters (energy < threshold, degree < limit) agrupados
+  → redundant paths (edges paralelas) identificadas
+  → MergeProposals têm confidence scores calibrados
+  → archetype selection preserva o node mais representativo
+
+✗ FALHA se:
+  → merges destróem informação semântica única
+  → false positive rate > 5% (nodes distintos marcados como duplicatas)
+  → compression não reduz o grafo em pelo menos 5%
+```
+
+### Phase XXII — Hyperbolic Sharding
+```
+✓ PASSA se:
+  → partição respeita geometria Poincaré (radial bands + angular sectors)
+  → imbalance ratio < 2.0 (shards razoavelmente equilibrados)
+  → rebalance recommendation emitida quando imbalance > threshold
+  → nodes assignados ao shard correto baseado em norm e atan2
+
+✗ FALHA se:
+  → sharding ignora profundidade hiperbólica (trata como Euclidiano)
+  → imbalance ratio > 5.0 (shards completamente desbalanceados)
+  → empty shards > 50% (particionamento excessivo)
+```
+
+### Phase XXIII — World Model Graph
+```
+✓ PASSA se:
+  → rolling statistics (query_rate, mutation_rate) convergem em < 100 observações
+  → anomalias detectadas quando z-score > sensitivity
+  → quiet periods identificados (rate < 0.3× mean)
+  → busy periods identificados (rate > 2× mean)
+  → trend() indica direção correta da tendência
+
+✗ FALHA se:
+  → anomaly detection tem false positive rate > 15%
+  → rolling window não decai (memória cresce infinitamente)
+  → quiet/busy detection falha em padrões óbvios
+```
+
+### Phase XXIV — Cognitive Flywheel
+```
+✓ PASSA se:
+  → momentum EMA converge e reflete saúde real do sistema
+  → per-subsystem assessment (Healthy/Active/Degraded/Inactive) correto
+  → recommendations geradas para subsistemas Degraded
+  → flywheel "spins" (momentum > min_threshold) quando sistema saudável
+  → healthy_streak incrementa corretamente
+
+✗ FALHA se:
+  → momentum não converge (oscila indefinidamente)
+  → subsystem status não reflete estado real
+  → recommendations são genéricas/inúteis
+  → flywheel nunca spins mesmo com sistema saudável
+```
+
+---
+
+## Resumo expandido
+
+```
+Fase 1:   critério claro → 90% triplas hierárquicas corretas
+Fase 2:   critério claro → recall hierárquico ≥ 75%
+Fase 3:   critério claro → overlap entre escalas < 30%
+Fase 4:   critério claro → Hausdorff 1.2-1.8, std < 0.15
+Fase 5:   critério claro → delta_dim < 5%, delta_estrutura 1-20%
+Phase IX:  implementado  → CentroidGuardian + MaturityEvaluator + AxiomRegistry
+Phase X:   implementado  → HyperbolicHealthMonitor (RDE + attractors)
+Phase XII: implementado  → ECAN + Hebbian LTP
+Phase XIII: implementado → Cognitive Thermodynamics (T, S, F)
+Phase XIV: implementado  → Semantic Gravity (M, F_ij)
+Phase XV:  implementado  → CognitiveDashboard + DirtySet + ObservationBridge
+Phase XVI: implementado  → Shatter Protocol (super-node splitting)
+Phase XVII: implementado → Ego-Cache (identity hot-tier)
+Phase XVIII: implementado→ Reasoning Engine (multi-hop inference)
+Phase XIX: implementado  → Self-Healing Graph (autonomous repair)
+Phase XX:  implementado  → Graph Learning Engine (hotspots + growth)
+Phase XXI: implementado  → Knowledge Compression (semantic merge)
+Phase XXII: implementado → Hyperbolic Sharding (Poincaré partitions)
+Phase XXIII: implementado→ World Model Graph (environmental awareness)
+Phase XXIV: implementado → Cognitive Flywheel (unified feedback loop)
+```

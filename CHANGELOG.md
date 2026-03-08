@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-03-08
+
+### Added — Agency Phases XVII–XXIV (Autonomous Intelligence Pipeline)
+Eight new agency subsystems transforming NietzscheDB into a fully autonomous cognitive engine.
+
+*   **Ego-Cache (Phase XVII)** (`nietzsche-agi`): Hot-tier identity cache that keeps the most-accessed nodes in memory for O(1) retrieval, reducing RocksDB reads during identity-heavy operations.
+*   **Reasoning Engine (Phase XVIII)** (`nietzsche-agi`): Inference pipeline that chains graph traversal with rule evaluation, enabling multi-hop deductive reasoning over the knowledge graph.
+*   **Self-Healing Graph (Phase XIX)** (`self_healing.rs`): Autonomous structural maintenance daemon. Detects boundary drift, orphan nodes, dead edges, exhausted nodes, and ghost node ratio. Emits repair intents for reactor execution.
+*   **Graph Learning Engine (Phase XX)** (`learning.rs`): Tracks access/mutation hotspots and sector growth rates via rolling window statistics with exponential decay. Automatic eviction keeps memory bounded.
+*   **Knowledge Compression (Phase XXI)** (`compression.rs`): Semantic deduplication — 4-phase scan: near-duplicate detection (Poincaré d < ε), stale cluster identification, redundant path pruning. Produces `MergeProposal`s with confidence scores.
+*   **Hyperbolic Sharding (Phase XXII)** (`sharding.rs`): Partition analysis respecting Poincaré geometry — radial bands × angular sectors, per-shard statistics, imbalance ratio, rebalance recommendations.
+*   **World Model Graph (Phase XXIII)** (`world_model.rs`): Environmental awareness via rolling statistics. Anomaly detection (z-score), quiet/busy period detection for adaptive scheduling.
+*   **Cognitive Flywheel (Phase XXIV)** (`flywheel.rs`): Unified feedback loop — per-subsystem health assessment (Healthy/Active/Degraded/Inactive), momentum via EMA, automated recommendations.
+
+### Changed
+*   **AgencyEngine tick protocol**: Expanded from 17 to 22 steps (steps 18–22 = Phases XX–XXIV).
+*   **CognitiveDashboard**: 5 new snapshot types (Learning, Compression, Sharding, WorldModel, Flywheel).
+*   **AgencyConfig**: 28 new configuration fields with env var support (`AGENCY_LEARNING_*`, `AGENCY_COMPRESSION_*`, `AGENCY_SHARDING_*`, `AGENCY_WORLD_MODEL_*`, `AGENCY_FLYWHEEL_*`).
+*   **Daemon count**: 8 → 10 (added `ShatterDaemon`, `SelfHealingDaemon`).
+*   **Unit test count**: 155 → 180+ tests.
+
 ## [3.0.0] - 2026-02-22
 
 ### Added — Multi-Manifold Architecture
