@@ -1,10 +1,12 @@
 import { useState, useMemo, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { api, listCollections, invokeZaratustra, dreamFrom, applyDream, rejectDream, narrateArcs, listDaemons } from "@/lib/api"
+import type { ZaratustraResult, DreamSession, NarrativeArc } from "@/lib/api"
 import {
     ChevronRight, RefreshCw, AlertCircle,
     Network, GitBranch, Download, Palette,
     BarChart3, Cpu, Route, Users, Zap,
+    Sparkles, Brain, BookOpen,
 } from "lucide-react"
 import { PerspektiveView } from "@/components/PerspektiveView"
 import type { StreamingMode } from "@/components/PerspektiveView"
@@ -89,15 +91,38 @@ const THEME_OPTIONS = [
 // ── GraphExplorerPage ─────────────────────────────────────────────────────────
 
 export function GraphExplorerPage() {
-    const collection = DEFAULT_COLLECTION
+    const [collection, setCollection]           = useState(DEFAULT_COLLECTION)
     const [limit, setLimit]                     = useState(2000)
     const [panelOpen, setPanelOpen]             = useState(true)
-    const [panelTab, setPanelTab]               = useState<"ANALYTICS" | "ALGORITHMS" | "LAYOUT" | "EXPORT">("ANALYTICS")
+    const [panelTab, setPanelTab]               = useState<"ANALYTICS" | "ALGORITHMS" | "LAYOUT" | "EXPORT" | "AGI">("ANALYTICS")
     const [streamingMode, setStreamingMode]     = useState<StreamingMode>("sse")
     const [selectedLayout, setSelectedLayout]   = useState("default")
     const [selectedTheme, setSelectedTheme]     = useState("cyberpunk")
     const [algoResults, setAlgoResults]         = useState<AlgoResult[]>([])
     const [runningAlgo, setRunningAlgo]         = useState<string | null>(null)
+
+    // AGI features state
+    const [zaratustraResult, setZaratustraResult] = useState<ZaratustraResult | null>(null)
+    const [zaratustraRunning, setZaratustraRunning] = useState(false)
+    const [dreamSession, setDreamSession]       = useState<DreamSession | null>(null)
+    const [dreamSeedId, setDreamSeedId]         = useState("")
+    const [dreamRunning, setDreamRunning]       = useState(false)
+    const [narrativeArcs, setNarrativeArcs]     = useState<NarrativeArc[]>([])
+    const [narrativeLoading, setNarrativeLoading] = useState(false)
+
+    // Collections list for dynamic selector
+    const { data: collectionsData } = useQuery({
+        queryKey: ["collections"],
+        queryFn: () => listCollections(),
+        staleTime: 60_000,
+    })
+
+    // Live daemons
+    const { data: daemonsData } = useQuery({
+        queryKey: ["daemons", collection],
+        queryFn: () => listDaemons(collection),
+        refetchInterval: 5_000,
+    })
 
     // ── Graph data fetch (for analytics sidebar) ──────────────────────────────
     const { data: graphData, isLoading, error, refetch } = useQuery<GraphResponse>({
@@ -283,11 +308,11 @@ export function GraphExplorerPage() {
                     <div className="absolute top-24 left-6 bottom-24 w-80 flex flex-col z-20 bg-black/70 border border-border/20 rounded-lg backdrop-blur-xl overflow-hidden shadow-2xl">
                         {/* Tab switcher */}
                         <div className="flex border-b border-border/20 px-1 shrink-0 bg-white/5 overflow-x-auto">
-                            {(["ANALYTICS", "ALGORITHMS", "LAYOUT", "EXPORT"] as const).map(tab => (
+                            {(["ANALYTICS", "ALGORITHMS", "LAYOUT", "EXPORT", "AGI"] as const).map(tab => (
                                 <button
                                     key={tab}
                                     onClick={() => setPanelTab(tab)}
-                                    className={`px-2.5 py-2 text-[9px] font-bold tracking-widest transition-colors whitespace-nowrap ${panelTab === tab ? "border-b border-[#00f0ff] text-[#00f0ff]" : "text-muted-foreground hover:text-foreground"}`}
+                                    className={`px-2.5 py-2 text-[9px] font-bold tracking-widest transition-colors whitespace-nowrap ${panelTab === tab ? (tab === "AGI" ? "border-b border-[#ffd700] text-[#ffd700]" : "border-b border-[#00f0ff] text-[#00f0ff]") : "text-muted-foreground hover:text-foreground"}`}
                                 >
                                     {tab}
                                 </button>
@@ -364,6 +389,17 @@ export function GraphExplorerPage() {
                                     {/* Config */}
                                     <div className="pt-4 border-t border-border/20">
                                         <div className="text-[9px] font-mono text-muted-foreground mb-2 uppercase">Configuracao de Carga</div>
+                                        <div className="flex gap-2 mb-2">
+                                            <select
+                                                value={collection}
+                                                onChange={e => setCollection(e.target.value)}
+                                                className="flex-1 bg-black/40 border border-border/20 rounded px-2 py-1 text-[10px] font-mono text-[#00f0ff] focus:outline-none focus:border-[#00f0ff]"
+                                            >
+                                                {collectionsData?.collections?.map(c => (
+                                                    <option key={c.name} value={c.name}>{c.name} ({c.vector_count})</option>
+                                                )) ?? <option value={collection}>{collection}</option>}
+                                            </select>
+                                        </div>
                                         <div className="flex gap-2">
                                             <select
                                                 value={limit}
@@ -591,6 +627,138 @@ export function GraphExplorerPage() {
                                     </PanelSection>
                                 </>
                             )}
+
+                            {/* ═══ AGI TAB (Zaratustra, Dream, Narrative) ═══ */}
+                            {panelTab === "AGI" && (
+                                <>
+                                    {/* Zaratustra */}
+                                    <PanelSection label="zaratustra" hint="Will-to-Power + Eternal Recurrence + Ubermensch">
+                                        <button
+                                            onClick={async () => {
+                                                setZaratustraRunning(true)
+                                                try {
+                                                    const result = await invokeZaratustra(collection)
+                                                    setZaratustraResult(result)
+                                                } catch { /* ignore */ }
+                                                finally { setZaratustraRunning(false) }
+                                            }}
+                                            disabled={zaratustraRunning}
+                                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md bg-[#ffd700]/5 border border-[#ffd700]/20 hover:bg-[#ffd700]/10 transition-all text-left mt-2"
+                                        >
+                                            <Sparkles className={`h-4 w-4 text-[#ffd700] ${zaratustraRunning ? "animate-spin" : ""}`} />
+                                            <div>
+                                                <div className="text-[10px] font-mono font-bold text-foreground">INVOKE ZARATUSTRA</div>
+                                                <div className="text-[8px] text-muted-foreground/70">3-phase evolution cycle</div>
+                                            </div>
+                                            {zaratustraRunning && <span className="text-[8px] text-[#ffd700] animate-pulse ml-auto">RUNNING</span>}
+                                        </button>
+                                        {zaratustraResult && (
+                                            <div className="mt-2 bg-black/40 rounded-md p-3 border border-[#ffd700]/20 space-y-1">
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div className="text-[9px] font-mono"><span className="text-muted-foreground">Updated:</span> <span className="text-[#ffd700]">{zaratustraResult.nodes_updated}</span></div>
+                                                    <div className="text-[9px] font-mono"><span className="text-muted-foreground">Delta:</span> <span className="text-[#ff00ff]">{zaratustraResult.energy_delta?.toFixed(4)}</span></div>
+                                                    <div className="text-[9px] font-mono"><span className="text-muted-foreground">Echoes:</span> <span className="text-[#8b5cf6]">{zaratustraResult.echoes_created}</span></div>
+                                                    <div className="text-[9px] font-mono"><span className="text-muted-foreground">Elite:</span> <span className="text-[#ffd700]">{zaratustraResult.elite_count}</span></div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </PanelSection>
+
+                                    {/* Dream Engine */}
+                                    <PanelSection label="dream engine" hint="Speculative graph evolution">
+                                        <div className="flex gap-2 mt-2">
+                                            <input
+                                                value={dreamSeedId}
+                                                onChange={e => setDreamSeedId(e.target.value)}
+                                                placeholder="Seed Node ID..."
+                                                className="flex-1 bg-black/40 border border-border/20 rounded px-2 py-1.5 text-[10px] font-mono text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#ffd700]"
+                                            />
+                                            <button
+                                                onClick={async () => {
+                                                    if (!dreamSeedId) return
+                                                    setDreamRunning(true)
+                                                    try {
+                                                        const result = await dreamFrom(dreamSeedId, 3, 0.1, collection)
+                                                        setDreamSession(result)
+                                                    } catch { /* ignore */ }
+                                                    finally { setDreamRunning(false) }
+                                                }}
+                                                disabled={dreamRunning || !dreamSeedId}
+                                                className="px-3 py-1.5 bg-[#ffd700]/10 border border-[#ffd700]/30 rounded text-[9px] font-mono font-bold text-[#ffd700] hover:bg-[#ffd700]/20 transition-all disabled:opacity-30"
+                                            >
+                                                {dreamRunning ? "..." : "DREAM"}
+                                            </button>
+                                        </div>
+                                        {dreamSession && (
+                                            <div className="mt-2 bg-black/40 rounded-md p-3 border border-[#ffd700]/20">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <span className="text-[9px] font-mono text-[#ffd700] font-bold">SESSION {dreamSession.id?.substring(0, 8)}</span>
+                                                    <span className={`text-[8px] font-mono font-bold ${dreamSession.status === "pending" ? "text-[#ffd700]" : dreamSession.status === "applied" ? "text-[#00ff66]" : "text-[#ff4444]"}`}>
+                                                        {dreamSession.status?.toUpperCase()}
+                                                    </span>
+                                                </div>
+                                                <div className="text-[9px] font-mono text-muted-foreground">
+                                                    +{dreamSession.nodes?.length ?? 0} nodes | +{dreamSession.edges?.length ?? 0} edges
+                                                </div>
+                                                {dreamSession.status === "pending" && (
+                                                    <div className="flex gap-2 mt-2">
+                                                        <button
+                                                            onClick={async () => { try { await applyDream(dreamSession.id, collection); setDreamSession(s => s ? { ...s, status: "applied" } : null) } catch {} }}
+                                                            className="flex-1 px-2 py-1 bg-[#00ff66]/10 border border-[#00ff66]/30 rounded text-[9px] font-mono font-bold text-[#00ff66]"
+                                                        >APPLY</button>
+                                                        <button
+                                                            onClick={async () => { try { await rejectDream(dreamSession.id, collection); setDreamSession(s => s ? { ...s, status: "rejected" } : null) } catch {} }}
+                                                            className="flex-1 px-2 py-1 bg-[#ff4444]/10 border border-[#ff4444]/30 rounded text-[9px] font-mono font-bold text-[#ff4444]"
+                                                        >REJECT</button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </PanelSection>
+
+                                    {/* Narrative */}
+                                    <PanelSection label="narrative arcs" hint="Story arcs from graph evolution">
+                                        <button
+                                            onClick={async () => {
+                                                setNarrativeLoading(true)
+                                                try {
+                                                    const result = await narrateArcs(24, collection)
+                                                    setNarrativeArcs(result.arcs ?? [])
+                                                } catch { /* ignore */ }
+                                                finally { setNarrativeLoading(false) }
+                                            }}
+                                            disabled={narrativeLoading}
+                                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md bg-white/5 border border-border/10 hover:bg-white/10 hover:border-[#8b5cf6]/30 transition-all text-left mt-2"
+                                        >
+                                            <BookOpen className={`h-3.5 w-3.5 text-[#8b5cf6] ${narrativeLoading ? "animate-pulse" : ""}`} />
+                                            <div>
+                                                <div className="text-[10px] font-mono font-bold text-foreground">NARRATE (24h)</div>
+                                                <div className="text-[8px] text-muted-foreground/70">Detect narrative arcs</div>
+                                            </div>
+                                        </button>
+                                        {narrativeArcs.length > 0 && (
+                                            <div className="mt-2 space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar">
+                                                {narrativeArcs.map(arc => {
+                                                    const arcColors: Record<string, string> = { emergence: "#00ff66", conflict: "#ff4444", decay: "#666", recurrence: "#8b5cf6", synthesis: "#00f0ff" }
+                                                    return (
+                                                        <div key={arc.id} className="flex items-center gap-2 px-2 py-1.5 bg-black/30 rounded text-[9px] font-mono">
+                                                            <div className="w-2 h-2 rounded-full shrink-0" style={{ background: arcColors[arc.type] ?? "#fff" }} />
+                                                            <span className="text-muted-foreground flex-1 truncate">{arc.description}</span>
+                                                            <span style={{ color: arcColors[arc.type] }}>{(arc.intensity * 100).toFixed(0)}%</span>
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                        )}
+                                    </PanelSection>
+
+                                    <div className="text-[8px] text-muted-foreground/50 font-mono mt-4 px-1">
+                                        Zaratustra runs 3 phases: Will-to-Power (energy propagation),
+                                        Eternal Recurrence (temporal echo ring), Ubermensch (elite selection).
+                                        Dream generates speculative evolution. Narrative detects story arcs.
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
                 )}
@@ -625,6 +793,47 @@ export function GraphExplorerPage() {
                         enableBoxSelect={true}
                         enableContextMenu={true}
                         enableMobiusZoom={true}
+                        dreamSession={dreamSession ? {
+                            dreamId: dreamSession.id,
+                            ghostNodes: (dreamSession.nodes ?? []).map((n: any) => ({
+                                id: n.id ?? `dream-${Math.random().toString(36).slice(2)}`,
+                                x: n.x ?? 0, y: n.y ?? 0, z: n.z ?? 0.01,
+                                label: n.label ?? n.content?.title ?? 'dream node',
+                                color: '#ffd700',
+                            })),
+                            ghostEdges: (dreamSession.edges ?? []).map((e: any) => ({
+                                source: e.source ?? e.from,
+                                target: e.target ?? e.to,
+                            })),
+                        } : null}
+                        onDreamAction={async (action, dreamId) => {
+                            try {
+                                if (action === 'apply') {
+                                    await applyDream(dreamId, collection);
+                                    setDreamSession(s => s ? { ...s, status: 'applied' } : null);
+                                } else {
+                                    await rejectDream(dreamId, collection);
+                                    setDreamSession(s => s ? { ...s, status: 'rejected' } : null);
+                                }
+                            } catch {}
+                        }}
+                        zaratustraResult={zaratustraResult ? {
+                            phase: 'ubermensch',
+                            nodesUpdated: zaratustraResult.nodes_updated ?? 0,
+                            energyDelta: zaratustraResult.energy_delta ?? 0,
+                            eliteNodeIds: zaratustraResult.elite_ids ?? [],
+                            echoNodeIds: zaratustraResult.echo_ids ?? [],
+                        } : null}
+                        narrativeArcs={narrativeArcs}
+                        activeDaemons={daemonsData?.data?.map((d: any) => ({
+                            id: d.id ?? d.daemon_id,
+                            x: d.x ?? d.position?.x ?? 0,
+                            y: d.y ?? d.position?.y ?? 0,
+                            type: d.daemon_type === 'entropy_decay' ? 'entropy' as const
+                                : d.daemon_type === 'evolution' ? 'evolution' as const
+                                : 'patrol' as const,
+                            energy: d.energy ?? d.health ?? 1.0,
+                        }))}
                     />
                 </div>
             </div>

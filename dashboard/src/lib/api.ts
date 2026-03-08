@@ -192,3 +192,102 @@ export const causalChain = (nodeId: string, maxDepth = 10, direction = "past", c
 export const kleinPath = (startId: string, goalId: string, collection?: string) =>
     api.post("/reasoning/klein-path", { start_node_id: startId, goal_node_id: goalId, collection: collection || DEFAULT_COLLECTION })
         .then((r) => r.data as KleinPathResult)
+
+/* ── Zaratustra ─────────────────────────────────────────── */
+export interface ZaratustraResult {
+    nodes_updated: number; energy_delta: number; echoes_created: number
+    elite_count: number; elite_ids: string[]; echo_ids: string[]
+    energy_threshold: number
+}
+
+export const invokeZaratustra = (collection?: string) =>
+    api.post("/query", { nql: "INVOKE ZARATUSTRA", collection: collection || DEFAULT_COLLECTION })
+        .then((r) => r.data as ZaratustraResult)
+
+/* ── Dream Engine ───────────────────────────────────────── */
+export interface DreamSession {
+    id: string; seed_node_id: string; depth: number; noise: number
+    status: "pending" | "applied" | "rejected"
+    nodes: { id: string; x: number; y: number; z: number; energy: number; node_type: string; event_type?: string }[]
+    edges: { source: string; target: string; weight: number }[]
+}
+
+export const dreamFrom = (nodeId: string, depth = 3, noise = 0.1, collection?: string) =>
+    api.post("/query", { nql: `DREAM FROM "${nodeId}" DEPTH ${depth} NOISE ${noise}`, collection: collection || DEFAULT_COLLECTION })
+        .then((r) => r.data as DreamSession)
+
+export const applyDream = (dreamId: string, collection?: string) =>
+    api.post("/query", { nql: `APPLY DREAM "${dreamId}"`, collection: collection || DEFAULT_COLLECTION })
+        .then((r) => r.data)
+
+export const rejectDream = (dreamId: string, collection?: string) =>
+    api.post("/query", { nql: `REJECT DREAM "${dreamId}"`, collection: collection || DEFAULT_COLLECTION })
+        .then((r) => r.data)
+
+/* ── Narrative Engine ───────────────────────────────────── */
+export interface NarrativeArc {
+    id: string; type: "emergence" | "conflict" | "decay" | "recurrence" | "synthesis"
+    start_time: number; end_time: number; description: string
+    node_ids: string[]; intensity: number
+}
+
+export const narrateArcs = (windowHours = 24, collection?: string) =>
+    api.post("/query", { nql: `NARRATE WINDOW ${windowHours} FORMAT json`, collection: collection || DEFAULT_COLLECTION })
+        .then((r) => r.data as { arcs: NarrativeArc[] })
+
+/* ── Daemons ────────────────────────────────────────────── */
+export interface DaemonInfo {
+    id: string; daemon_type: string; status: string
+    config: Record<string, unknown>; last_event?: string
+}
+
+export const listDaemons = (collection?: string) =>
+    api.post("/query", { nql: "MATCH (d:Daemon) RETURN d", collection: collection || DEFAULT_COLLECTION })
+        .then((r) => r.data as { daemons: DaemonInfo[] })
+
+export const createDaemon = (daemonType: string, config: Record<string, unknown> = {}, collection?: string) =>
+    api.post("/query", { nql: `CREATE DAEMON ${daemonType} WITH config ${JSON.stringify(config)}`, collection: collection || DEFAULT_COLLECTION })
+        .then((r) => r.data)
+
+export const dropDaemon = (daemonId: string, collection?: string) =>
+    api.post("/query", { nql: `DROP DAEMON "${daemonId}"`, collection: collection || DEFAULT_COLLECTION })
+        .then((r) => r.data)
+
+/* ── SQL Engine (Swartz) ────────────────────────────────── */
+export interface SqlQueryResult {
+    columns: string[]; rows: Record<string, unknown>[]
+}
+
+export const sqlQuery = (sql: string) =>
+    api.post("/query", { nql: `SQL ${sql}` })
+        .then((r) => r.data as SqlQueryResult)
+
+export const listSqlTables = () =>
+    api.post("/query", { nql: "SQL SHOW TABLES" })
+        .then((r) => r.data as { tables: string[] })
+
+/* ── Hybrid Search ──────────────────────────────────────── */
+export const hybridSearch = (query: string, embedding?: number[], topK = 10, collection?: string) =>
+    api.post("/query", {
+        nql: `MATCH (n) WHERE HYBRID_SEARCH("${query}", ${topK}) RETURN n`,
+        collection: collection || DEFAULT_COLLECTION,
+    }).then((r) => r.data as { nodes: unknown[] })
+
+/* ── Agency Advanced ────────────────────────────────────── */
+export const getAgencyDashboard = (collection?: string) =>
+    api.get("/agency/dashboard", agencyParams(collection)).then((r) => r.data)
+
+export const getAgencyShatter = (collection?: string) =>
+    api.get("/agency/shatter", agencyParams(collection)).then((r) => r.data)
+
+export const getAgencyHealing = (collection?: string) =>
+    api.get("/agency/healing", agencyParams(collection)).then((r) => r.data)
+
+/* ── Navigation (Geodesic) ──────────────────────────────── */
+export const navigateGeodesic = (startId: string, goalId: string, collection?: string) =>
+    api.post("/navigate", { start: startId, goal: goalId, collection: collection || DEFAULT_COLLECTION })
+        .then((r) => r.data)
+
+/* ── Collections ────────────────────────────────────────── */
+export const listCollections = () =>
+    api.get("/collections").then((r) => r.data as { collections: { name: string; dimension: number; metric: string; vector_count: number }[] })

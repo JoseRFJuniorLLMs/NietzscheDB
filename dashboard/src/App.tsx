@@ -15,6 +15,7 @@ import MonitoringPage from "./pages/MonitoringPage"
 import QueryBuilderPage from "./pages/QueryBuilderPage"
 import SchemaManagerPage from "./pages/SchemaManagerPage"
 import ReasoningPage from "./pages/ReasoningPage"
+import SensoryPage from "./pages/SensoryPage"
 
 function App() {
   return (
@@ -35,6 +36,7 @@ function App() {
         <Route path="/builder" element={<QueryBuilderPage />} />
         <Route path="/schemas" element={<SchemaManagerPage />} />
         <Route path="/reasoning" element={<ReasoningPage />} />
+        <Route path="/sensory" element={<SensoryPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

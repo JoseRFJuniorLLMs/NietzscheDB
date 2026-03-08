@@ -2,7 +2,7 @@ import { Outlet, NavLink } from "react-router-dom"
 import {
     LayoutDashboard, Database, Search, Settings, Network,
     Terminal, GitBranch, Brain, Moon, Archive, Activity,
-    Wand2, Lightbulb, FileJson,
+    Wand2, Lightbulb, FileJson, AudioLines,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -50,6 +50,7 @@ export function DashboardLayout() {
                     </div>
 
                     <NavItem to="/schemas" icon={FileJson} label="Schema Manager" />
+                    <NavItem to="/sensory" icon={AudioLines} label="Sensory Layer" badge="New" />
                 </nav>
 
                 <div className="p-4 border-t border-border/50">

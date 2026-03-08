@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
     Play, Trash2, Send, BookOpen, ChevronDown, ChevronRight,
-    Search, Sparkles, Terminal, ArrowDownToLine,
+    Search, Sparkles, Terminal, ArrowDownToLine, Database,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -14,7 +14,8 @@ import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import { executeNql, fullTextSearch, api } from "@/lib/api"
+import { executeNql, fullTextSearch, sqlQuery, listSqlTables, api } from "@/lib/api"
+import type { SqlQueryResult } from "@/lib/api"
 import {
     generateNqlFromPrompt, extractNqlFromResponse,
     isAiConfigured, type Message,
@@ -85,6 +86,14 @@ export default function QueryPage() {
     const [chatMessages, setChatMessages] = useState<ChatMsg[]>([])
     const [chatLoading, setChatLoading] = useState(false)
     const chatEndRef = useRef<HTMLDivElement>(null)
+
+    // SQL
+    const [sqlText, setSqlText] = useState("")
+    const [sqlResults, setSqlResults] = useState<SqlQueryResult | null>(null)
+    const [sqlError, setSqlError] = useState<string | null>(null)
+    const [sqlRunning, setSqlRunning] = useState(false)
+    const [sqlTables, setSqlTables] = useState<string[] | null>(null)
+    const [sqlTablesLoading, setSqlTablesLoading] = useState(false)
 
     // Collections for context
     const { data: collections } = useQuery({
@@ -157,6 +166,33 @@ export default function QueryPage() {
         [],
     )
 
+    const runSql = useCallback(async () => {
+        if (!sqlText.trim()) return
+        setSqlRunning(true)
+        setSqlError(null)
+        setSqlResults(null)
+        try {
+            const data = await sqlQuery(sqlText)
+            setSqlResults(data)
+        } catch (e: unknown) {
+            setSqlError(e instanceof Error ? e.message : "SQL query failed")
+        } finally {
+            setSqlRunning(false)
+        }
+    }, [sqlText])
+
+    const loadSqlTables = useCallback(async () => {
+        setSqlTablesLoading(true)
+        try {
+            const data = await listSqlTables()
+            setSqlTables(data.tables ?? [])
+        } catch (e: unknown) {
+            setSqlError(e instanceof Error ? e.message : "Failed to list tables")
+        } finally {
+            setSqlTablesLoading(false)
+        }
+    }, [])
+
     const highlightNql = (text: string) => {
         let html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
         NQL_KEYWORDS.forEach((kw) => {
@@ -192,6 +228,7 @@ export default function QueryPage() {
                 <TabsList>
                     <TabsTrigger value="nql">NQL Editor</TabsTrigger>
                     <TabsTrigger value="search">Full-Text Search</TabsTrigger>
+                    <TabsTrigger value="sql">SQL</TabsTrigger>
                 </TabsList>
 
                 {/* ── NQL Tab ─────────────────────────────────── */}
@@ -493,6 +530,122 @@ export default function QueryPage() {
                                         </TableBody>
                                     </Table>
                                 )
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* ── SQL Tab ──────────────────────────────────── */}
+                <TabsContent value="sql">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-base flex items-center gap-2">
+                                <Database className="h-4 w-4" /> SQL Query
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="relative">
+                                <textarea
+                                    value={sqlText}
+                                    onChange={(e) => setSqlText(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                                            e.preventDefault()
+                                            runSql()
+                                        }
+                                    }}
+                                    placeholder="SELECT * FROM nodes LIMIT 20"
+                                    className="w-full h-32 rounded-md border border-input bg-background px-3 py-2 text-sm font-mono resize-y placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                    spellCheck={false}
+                                />
+                                <p className="text-[11px] text-muted-foreground mt-1">Ctrl+Enter to run</p>
+                            </div>
+                            <div className="flex gap-2">
+                                <Button onClick={runSql} disabled={sqlRunning || !sqlText.trim()}>
+                                    <Play className="h-4 w-4 mr-1" />
+                                    {sqlRunning ? "Running..." : "Run SQL"}
+                                </Button>
+                                <Button variant="outline" onClick={loadSqlTables} disabled={sqlTablesLoading}>
+                                    <Database className="h-4 w-4 mr-1" />
+                                    {sqlTablesLoading ? "Loading..." : "Tables"}
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => { setSqlText(""); setSqlResults(null); setSqlError(null); setSqlTables(null) }}>
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                            </div>
+
+                            {/* Tables list */}
+                            {sqlTables !== null && (
+                                <div className="rounded border border-border p-3">
+                                    <p className="text-xs font-bold mb-2">Available Tables ({sqlTables.length})</p>
+                                    {sqlTables.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground">No tables found.</p>
+                                    ) : (
+                                        <div className="flex flex-wrap gap-2">
+                                            {sqlTables.map((t) => (
+                                                <Badge
+                                                    key={t}
+                                                    variant="secondary"
+                                                    className="cursor-pointer hover:bg-primary/20"
+                                                    onClick={() => setSqlText(`SELECT * FROM ${t} LIMIT 20`)}
+                                                >
+                                                    {t}
+                                                </Badge>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* SQL Error */}
+                            {sqlError && (
+                                <div className="rounded border border-destructive/50 p-3">
+                                    <p className="text-sm text-destructive font-mono">{sqlError}</p>
+                                </div>
+                            )}
+
+                            {/* SQL Loading */}
+                            {sqlRunning && (
+                                <div className="space-y-2">
+                                    <Skeleton className="h-4 w-full" />
+                                    <Skeleton className="h-4 w-3/4" />
+                                    <Skeleton className="h-4 w-1/2" />
+                                </div>
+                            )}
+
+                            {/* SQL Results */}
+                            {sqlResults !== null && (
+                                <div>
+                                    <p className="text-xs text-muted-foreground mb-2">
+                                        {sqlResults.rows.length} row{sqlResults.rows.length !== 1 ? "s" : ""} returned
+                                    </p>
+                                    {sqlResults.rows.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground">No rows returned.</p>
+                                    ) : (
+                                        <div className="max-h-96 overflow-auto rounded border">
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        {sqlResults.columns.map((col) => (
+                                                            <TableHead key={col}>{col}</TableHead>
+                                                        ))}
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {sqlResults.rows.map((row, i) => (
+                                                        <TableRow key={i}>
+                                                            {sqlResults.columns.map((col) => (
+                                                                <TableCell key={col} className="font-mono text-xs max-w-[200px] truncate">
+                                                                    {row[col] != null ? String(row[col]) : "—"}
+                                                                </TableCell>
+                                                            ))}
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    )}
+                                </div>
                             )}
                         </CardContent>
                     </Card>

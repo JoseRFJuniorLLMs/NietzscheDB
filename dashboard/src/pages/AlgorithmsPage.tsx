@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import {
     GitBranch, Play, Timer, Hash, Layers, ArrowUpDown,
     Network, Triangle, Users, Waypoints, Target, Loader2,
+    BrainCircuit, TreePine, Package, Trash2, FolderOpen,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -114,6 +115,23 @@ export default function AlgorithmsPage() {
     const [executing, setExecuting] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
+    // ── Neural section state ──
+    const [gnnNodeId, setGnnNodeId] = useState("")
+    const [gnnHopDepth, setGnnHopDepth] = useState("2")
+    const [gnnRunning, setGnnRunning] = useState(false)
+    const [gnnResult, setGnnResult] = useState<any>(null)
+    const [gnnError, setGnnError] = useState<string | null>(null)
+
+    const [mctsStartNode, setMctsStartNode] = useState("")
+    const [mctsMaxSims, setMctsMaxSims] = useState("100")
+    const [mctsRunning, setMctsRunning] = useState(false)
+    const [mctsResult, setMctsResult] = useState<any>(null)
+    const [mctsError, setMctsError] = useState<string | null>(null)
+
+    const [modelPath, setModelPath] = useState("")
+    const [modelLoading, setModelLoading] = useState(false)
+    const [modelError, setModelError] = useState<string | null>(null)
+
     const { data: collections } = useQuery({
         queryKey: ["collections"],
         queryFn: () => api.get("/collections").then((r) => r.data),
@@ -150,6 +168,85 @@ export default function AlgorithmsPage() {
             setExecuting(false)
         }
     }, [selected, paramValues, collection])
+
+    // ── Neural handlers ──
+    const runGnn = useCallback(async () => {
+        if (!gnnNodeId.trim()) return
+        setGnnRunning(true)
+        setGnnError(null)
+        setGnnResult(null)
+        try {
+            const depth = Math.min(3, Math.max(1, parseInt(gnnHopDepth) || 2))
+            const res = await api.post("/query", {
+                nql: `GNN INFER NODE "${gnnNodeId.trim()}" HOPS ${depth}`,
+                collection: collection || DEFAULT_COLLECTION,
+            })
+            setGnnResult(res.data)
+        } catch (e: unknown) {
+            setGnnError(e instanceof Error ? e.message : "GNN inference failed")
+        } finally {
+            setGnnRunning(false)
+        }
+    }, [gnnNodeId, gnnHopDepth, collection])
+
+    const runMcts = useCallback(async () => {
+        if (!mctsStartNode.trim()) return
+        setMctsRunning(true)
+        setMctsError(null)
+        setMctsResult(null)
+        try {
+            const sims = Math.min(1000, Math.max(10, parseInt(mctsMaxSims) || 100))
+            const res = await api.post("/query", {
+                nql: `MCTS SEARCH FROM "${mctsStartNode.trim()}" SIMULATIONS ${sims}`,
+                collection: collection || DEFAULT_COLLECTION,
+            })
+            setMctsResult(res.data)
+        } catch (e: unknown) {
+            setMctsError(e instanceof Error ? e.message : "MCTS search failed")
+        } finally {
+            setMctsRunning(false)
+        }
+    }, [mctsStartNode, mctsMaxSims, collection])
+
+    const { data: loadedModels, refetch: refetchModels } = useQuery({
+        queryKey: ["neural-models", collection],
+        queryFn: () => api.post("/query", {
+            nql: "LIST MODELS",
+            collection: collection || DEFAULT_COLLECTION,
+        }).then((r) => r.data),
+        refetchInterval: false,
+        retry: false,
+    })
+
+    const loadModel = useCallback(async () => {
+        if (!modelPath.trim()) return
+        setModelLoading(true)
+        setModelError(null)
+        try {
+            await api.post("/query", {
+                nql: `LOAD MODEL "${modelPath.trim()}"`,
+                collection: collection || DEFAULT_COLLECTION,
+            })
+            setModelPath("")
+            refetchModels()
+        } catch (e: unknown) {
+            setModelError(e instanceof Error ? e.message : "Failed to load model")
+        } finally {
+            setModelLoading(false)
+        }
+    }, [modelPath, collection, refetchModels])
+
+    const unloadModel = useCallback(async (modelId: string) => {
+        try {
+            await api.post("/query", {
+                nql: `UNLOAD MODEL "${modelId}"`,
+                collection: collection || DEFAULT_COLLECTION,
+            })
+            refetchModels()
+        } catch (e: unknown) {
+            setModelError(e instanceof Error ? e.message : "Failed to unload model")
+        }
+    }, [collection, refetchModels])
 
     return (
         <div className="space-y-6 fade-in">
@@ -376,6 +473,310 @@ export default function AlgorithmsPage() {
                     </CardContent>
                 </Card>
             )}
+
+            {/* ═══════════════════════════════════════════════════════════ */}
+            {/*  NEURAL SECTION                                           */}
+            {/* ═══════════════════════════════════════════════════════════ */}
+            <div className="border-t border-border my-4" />
+            <div>
+                <h1 className="text-2xl font-bold flex items-center gap-2">
+                    <BrainCircuit className="h-6 w-6" /> Neural
+                </h1>
+                <p className="text-sm text-muted-foreground mt-1">
+                    GNN inference, MCTS search, and model management
+                </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* ── GNN Inference ── */}
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <BrainCircuit className="h-5 w-5" /> GNN Inference
+                        </CardTitle>
+                        <CardDescription>
+                            Run graph neural network inference on a local subgraph
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="flex flex-wrap gap-4 items-end">
+                            <div className="space-y-1">
+                                <Label className="text-xs">Node ID (subgraph center)</Label>
+                                <Input
+                                    value={gnnNodeId}
+                                    onChange={(e) => setGnnNodeId(e.target.value)}
+                                    placeholder="node-uuid"
+                                    className="w-56 h-8 font-mono text-xs"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-xs">Hop Depth</Label>
+                                <Select value={gnnHopDepth} onValueChange={setGnnHopDepth}>
+                                    <SelectTrigger className="w-20 h-8">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="1">1</SelectItem>
+                                        <SelectItem value="2">2</SelectItem>
+                                        <SelectItem value="3">3</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <Button onClick={runGnn} disabled={gnnRunning || !gnnNodeId.trim()}>
+                                {gnnRunning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Play className="h-4 w-4 mr-1" />}
+                                {gnnRunning ? "Running..." : "RUN GNN"}
+                            </Button>
+                        </div>
+
+                        {gnnError && (
+                            <p className="text-sm text-destructive font-mono">{gnnError}</p>
+                        )}
+
+                        {gnnResult && (
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <Badge variant="outline" className="font-mono">
+                                        <Timer className="h-3 w-3 mr-1" />
+                                        {gnnResult.duration_ms ?? "?"}ms
+                                    </Badge>
+                                    {gnnResult.model_name && (
+                                        <Badge variant="secondary">{gnnResult.model_name}</Badge>
+                                    )}
+                                    {gnnResult.subgraph_nodes !== undefined && (
+                                        <Badge variant="outline">{gnnResult.subgraph_nodes} nodes in subgraph</Badge>
+                                    )}
+                                </div>
+                                {/* Prediction scores table */}
+                                {(gnnResult.predictions || gnnResult.scores) && (
+                                    <ScrollArea className="max-h-64">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead>#</TableHead>
+                                                    <TableHead>Node ID</TableHead>
+                                                    <TableHead>Score</TableHead>
+                                                    <TableHead>Label</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {(gnnResult.predictions || gnnResult.scores || []).slice(0, 100).map((p: any, i: number) => (
+                                                    <TableRow key={p.node_id ?? i}>
+                                                        <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                                                        <TableCell className="font-mono text-xs">{p.node_id}</TableCell>
+                                                        <TableCell className="font-mono">{typeof p.score === "number" ? p.score.toFixed(6) : p.score ?? "—"}</TableCell>
+                                                        <TableCell className="text-xs">{p.label ?? p.predicted_class ?? "—"}</TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </ScrollArea>
+                                )}
+                                {/* Raw JSON fallback */}
+                                {!gnnResult.predictions && !gnnResult.scores && (
+                                    <ScrollArea className="max-h-64">
+                                        <pre className="text-xs font-mono whitespace-pre-wrap p-3 rounded bg-muted/50">
+                                            {JSON.stringify(gnnResult, null, 2)}
+                                        </pre>
+                                    </ScrollArea>
+                                )}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* ── MCTS Search ── */}
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <TreePine className="h-5 w-5" /> MCTS Search
+                        </CardTitle>
+                        <CardDescription>
+                            Monte Carlo Tree Search for optimal graph traversal
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="flex flex-wrap gap-4 items-end">
+                            <div className="space-y-1">
+                                <Label className="text-xs">Start Node ID</Label>
+                                <Input
+                                    value={mctsStartNode}
+                                    onChange={(e) => setMctsStartNode(e.target.value)}
+                                    placeholder="node-uuid"
+                                    className="w-56 h-8 font-mono text-xs"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-xs">Max Simulations</Label>
+                                <Input
+                                    type="number"
+                                    min={10}
+                                    max={1000}
+                                    value={mctsMaxSims}
+                                    onChange={(e) => setMctsMaxSims(e.target.value)}
+                                    className="w-28 h-8"
+                                    placeholder="100"
+                                />
+                            </div>
+                            <Button onClick={runMcts} disabled={mctsRunning || !mctsStartNode.trim()}>
+                                {mctsRunning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Play className="h-4 w-4 mr-1" />}
+                                {mctsRunning ? "Running..." : "RUN MCTS"}
+                            </Button>
+                        </div>
+
+                        {mctsError && (
+                            <p className="text-sm text-destructive font-mono">{mctsError}</p>
+                        )}
+
+                        {mctsResult && (
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <Badge variant="outline" className="font-mono">
+                                        <Timer className="h-3 w-3 mr-1" />
+                                        {mctsResult.duration_ms ?? "?"}ms
+                                    </Badge>
+                                    {mctsResult.total_simulations !== undefined && (
+                                        <Badge variant="secondary">{mctsResult.total_simulations} simulations</Badge>
+                                    )}
+                                    {mctsResult.best_value !== undefined && (
+                                        <Badge variant="outline">Best value: {typeof mctsResult.best_value === "number" ? mctsResult.best_value.toFixed(4) : mctsResult.best_value}</Badge>
+                                    )}
+                                </div>
+
+                                {/* Best path */}
+                                {mctsResult.best_path && (
+                                    <div>
+                                        <p className="text-xs font-medium text-muted-foreground mb-1">Best Path</p>
+                                        <div className="flex flex-wrap items-center gap-1">
+                                            {(Array.isArray(mctsResult.best_path) ? mctsResult.best_path : []).map((nodeId: string, i: number) => (
+                                                <span key={i} className="inline-flex items-center">
+                                                    <Badge variant="outline" className="font-mono text-xs">{nodeId}</Badge>
+                                                    {i < mctsResult.best_path.length - 1 && (
+                                                        <span className="text-muted-foreground mx-0.5">&rarr;</span>
+                                                    )}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Visit counts / tree summary */}
+                                {(mctsResult.visit_counts || mctsResult.tree_summary) && (
+                                    <ScrollArea className="max-h-64">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead>Node ID</TableHead>
+                                                    <TableHead>Visits</TableHead>
+                                                    <TableHead>Avg Value</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {(mctsResult.visit_counts || mctsResult.tree_summary || []).slice(0, 100).map((v: any, i: number) => (
+                                                    <TableRow key={v.node_id ?? i}>
+                                                        <TableCell className="font-mono text-xs">{v.node_id}</TableCell>
+                                                        <TableCell className="font-mono">{v.visits ?? v.visit_count ?? "—"}</TableCell>
+                                                        <TableCell className="font-mono">{typeof v.avg_value === "number" ? v.avg_value.toFixed(4) : v.avg_value ?? "—"}</TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </ScrollArea>
+                                )}
+
+                                {/* Raw JSON fallback */}
+                                {!mctsResult.best_path && !mctsResult.visit_counts && !mctsResult.tree_summary && (
+                                    <ScrollArea className="max-h-64">
+                                        <pre className="text-xs font-mono whitespace-pre-wrap p-3 rounded bg-muted/50">
+                                            {JSON.stringify(mctsResult, null, 2)}
+                                        </pre>
+                                    </ScrollArea>
+                                )}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* ── Model Management ── */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                        <Package className="h-5 w-5" /> Model Management
+                    </CardTitle>
+                    <CardDescription>
+                        Load, list, and unload neural models
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {/* Load model */}
+                    <div className="flex flex-wrap gap-3 items-end">
+                        <div className="space-y-1 flex-1 min-w-[250px]">
+                            <Label className="text-xs">Model Path</Label>
+                            <Input
+                                value={modelPath}
+                                onChange={(e) => setModelPath(e.target.value)}
+                                placeholder="/path/to/model.onnx"
+                                className="h-8 font-mono text-xs"
+                            />
+                        </div>
+                        <Button onClick={loadModel} disabled={modelLoading || !modelPath.trim()}>
+                            {modelLoading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FolderOpen className="h-4 w-4 mr-1" />}
+                            {modelLoading ? "Loading..." : "Load Model"}
+                        </Button>
+                    </div>
+
+                    {modelError && (
+                        <p className="text-sm text-destructive font-mono">{modelError}</p>
+                    )}
+
+                    {/* Loaded models list */}
+                    {loadedModels?.models && Array.isArray(loadedModels.models) && loadedModels.models.length > 0 ? (
+                        <ScrollArea className="max-h-64">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Model ID</TableHead>
+                                        <TableHead>Name</TableHead>
+                                        <TableHead>Type</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead className="w-20"></TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {loadedModels.models.map((m: any) => (
+                                        <TableRow key={m.id ?? m.name}>
+                                            <TableCell className="font-mono text-xs">{m.id ?? "—"}</TableCell>
+                                            <TableCell className="text-sm">{m.name ?? m.path ?? "—"}</TableCell>
+                                            <TableCell>
+                                                <Badge variant="outline">{m.model_type ?? m.type ?? "unknown"}</Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge variant={m.status === "loaded" ? "default" : "secondary"}>
+                                                    {m.status ?? "loaded"}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-7 text-destructive hover:text-destructive"
+                                                    onClick={() => unloadModel(m.id ?? m.name)}
+                                                >
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </ScrollArea>
+                    ) : (
+                        <div className="text-center py-6 text-sm text-muted-foreground">
+                            No models loaded. Use the input above to load a model.
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
         </div>
     )
 }

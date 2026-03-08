@@ -17,6 +17,8 @@
 
 import { PerspektiveEngine } from "@nietzsche/perspektive"
 import type { PerspektiveEngineProps, ManifoldType, StreamingMode } from "@nietzsche/perspektive"
+import type { InteractionCallbacks } from "@nietzsche/perspektive"
+import type { DreamSession, CausalEdge, CausalChainResult, ZaratustraResult, NarrativeArc } from "@nietzsche/perspektive"
 
 // Re-export types that other parts of the dashboard may need
 export type { ManifoldType, StreamingMode }
@@ -24,6 +26,14 @@ export type { PerspektiveEngineProps }
 
 // Re-export engine types for graph data
 export type { NodeData, EdgeData } from "@nietzsche/perspektive"
+
+export interface AlgorithmOverlay {
+    type: "pagerank" | "louvain" | "betweenness" | "degree" | "closeness"
+    /** Map of node ID → score (0-1 normalized) */
+    scores: Map<string, number>
+    /** For community detection: Map of node ID → community ID */
+    communities?: Map<string, number>
+}
 
 export interface PerspektiveViewProps {
     collection?: string
@@ -38,6 +48,22 @@ export interface PerspektiveViewProps {
     enableBoxSelect?: boolean
     enableContextMenu?: boolean
     enableMobiusZoom?: boolean
+    /** Interaction callbacks (onFocus, onDragEnd, etc.) */
+    callbacks?: InteractionCallbacks
+    /** Algorithm visualization overlay */
+    algorithmOverlay?: AlgorithmOverlay | null
+    /** Dream session overlay */
+    dreamSession?: DreamSession | null
+    onDreamAction?: (action: 'apply' | 'reject', dreamId: string) => void
+    /** Causal overlay */
+    causalEdges?: CausalEdge[]
+    causalChain?: CausalChainResult | null
+    /** Zaratustra visualization */
+    zaratustraResult?: ZaratustraResult | null
+    /** Narrative arcs */
+    narrativeArcs?: NarrativeArc[]
+    /** Live daemon data */
+    activeDaemons?: Array<{ id: string; x: number; y: number; type: 'entropy' | 'evolution' | 'patrol'; energy: number }>
 }
 
 /**
@@ -58,6 +84,15 @@ export function PerspektiveView({
     enableBoxSelect = true,
     enableContextMenu = true,
     enableMobiusZoom = true,
+    callbacks,
+    algorithmOverlay,
+    dreamSession,
+    onDreamAction,
+    causalEdges,
+    causalChain,
+    zaratustraResult,
+    narrativeArcs,
+    activeDaemons,
 }: PerspektiveViewProps) {
     return (
         <PerspektiveEngine
@@ -73,6 +108,14 @@ export function PerspektiveView({
             enableBoxSelect={enableBoxSelect}
             enableContextMenu={enableContextMenu}
             enableMobiusZoom={enableMobiusZoom}
+            callbacks={callbacks}
+            dreamSession={dreamSession}
+            onDreamAction={onDreamAction}
+            causalEdges={causalEdges}
+            causalChain={causalChain}
+            zaratustraResult={zaratustraResult}
+            narrativeArcs={narrativeArcs}
+            activeDaemons={activeDaemons}
         />
     )
 }
