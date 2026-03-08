@@ -63,16 +63,16 @@ use {
 // the Index wrapper without triggering its Drop impl.
 #[cfg(feature = "cuda")]
 mod cagra_ffi {
-    // Re-declare the single C function we need. The exact opaque types
-    // don't matter as long as the sizes match (all are pointer-sized).
+    // Re-declare the single C function we need, using opaque void pointers
+    // for all cuVS handle types (they're all pointer-sized opaque handles).
     extern "C" {
         pub fn cuvsCagraSearch(
-            res: usize,
-            params: usize,
-            index: usize,
-            queries: *mut std::ffi::c_void,
-            neighbors: *mut std::ffi::c_void,
-            distances: *mut std::ffi::c_void,
+            res: usize,                       // cuvsResources_t (usize)
+            params: *mut std::ffi::c_void,    // cuvsCagraSearchParams_t (ptr)
+            index: *mut std::ffi::c_void,     // cuvsCagraIndex_t (ptr)
+            queries: *mut std::ffi::c_void,   // DLManagedTensor*
+            neighbors: *mut std::ffi::c_void, // DLManagedTensor*
+            distances: *mut std::ffi::c_void, // DLManagedTensor*
         ) -> u32;
     }
 }
@@ -285,10 +285,11 @@ impl GpuState {
         // Index wrapper without moving it (which would trigger Drop/destroy).
         // Resources.0 and SearchParams.0 are pub, so we access them directly.
         unsafe {
-            let index_raw: usize = std::mem::transmute_copy(index);
+            let index_raw: *mut std::ffi::c_void = std::mem::transmute_copy(index);
+            let params_raw: *mut std::ffi::c_void = std::mem::transmute_copy(&search_params.0);
             let ret = cagra_ffi::cuvsCagraSearch(
                 self.resources.0,
-                search_params.0,
+                params_raw,
                 index_raw,
                 queries_dev.as_ptr() as *mut std::ffi::c_void,
                 neighbors_dev.as_ptr() as *mut std::ffi::c_void,
