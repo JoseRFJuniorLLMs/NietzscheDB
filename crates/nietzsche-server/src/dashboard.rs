@@ -240,6 +240,7 @@ pub async fn serve(
         .route("/api/reasoning/causal-chain", post(reasoning_causal_chain))
         .route("/api/reasoning/klein-path", post(reasoning_klein_path))
         // Navigate (Geodesic Semantic Routing — Phase XVI)
+        .route("/api/ego/:id", get(ego_cache))
         .route("/api/navigate", post(navigate))
         .route("/api/navigate/query", post(navigate_query))
         // Cluster
@@ -1988,6 +1989,56 @@ async fn agency_shatter(
             "avg_degree": 0.0,
             "note": "no dashboard yet — agency engine must tick first"
         })).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+// ── Ego-Cache (Phase XVII) ───────────────────────────────────────────────────
+
+// GET /api/ego/:id?collection= — fetch ego-network (depth-2 neighborhood) for a node
+async fn ego_cache(
+    State((cm, _ops)): State<AppState>,
+    Path(id_str): Path<String>,
+    Query(cq): Query<CollectionQuery>,
+) -> impl IntoResponse {
+    let node_id = match id_str.parse::<Uuid>() {
+        Ok(u) => u,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "invalid UUID"}))).into_response(),
+    };
+    let shared = resolve_col!(cm, cq.collection);
+    let db = shared.read().await;
+    match db.get_or_build_ego(node_id, 50, 100) {
+        Ok(Some(entry)) => Json(serde_json::json!({
+            "root_id": entry.root_id,
+            "root_meta": {
+                "energy": entry.root_meta.energy,
+                "depth": entry.root_meta.depth,
+                "node_type": format!("{:?}", entry.root_meta.node_type),
+                "content": entry.root_meta.content,
+            },
+            "depth1_count": entry.depth1.len(),
+            "depth2_count": entry.depth2.len(),
+            "edge_count": entry.edge_count,
+            "built_at": entry.built_at,
+            "depth1": entry.depth1.iter().map(|n| serde_json::json!({
+                "id": n.id,
+                "energy": n.energy,
+                "depth": n.depth,
+                "node_type": n.node_type,
+                "edge_type": n.edge_type,
+                "weight": n.weight,
+            })).collect::<Vec<_>>(),
+            "depth2": entry.depth2.iter().map(|n| serde_json::json!({
+                "id": n.id,
+                "energy": n.energy,
+                "depth": n.depth,
+                "node_type": n.node_type,
+                "edge_type": n.edge_type,
+                "weight": n.weight,
+                "connected_to_root": n.connected_to_root,
+            })).collect::<Vec<_>>(),
+        })).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "node not found"}))).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
     }
 }

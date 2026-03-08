@@ -658,6 +658,9 @@ impl<V: VectorStore> NietzscheDB<V> {
             self.promote_to_hot_tier(&node);
         }
 
+        // 6. Invalidate ego-cache for affected nodes
+        self.storage.invalidate_ego(&node.meta.id, &self.adjacency);
+
         Ok(())
     }
 
@@ -871,6 +874,9 @@ impl<V: VectorStore> NietzscheDB<V> {
         // 7. Quantum purity cache
         self.quantum_purity_cache.lock().remove(&id);
 
+        // 8. Invalidate ego-cache for affected nodes
+        self.storage.invalidate_ego(&id, &self.adjacency);
+
         Ok(())
     }
 
@@ -971,6 +977,10 @@ impl<V: VectorStore> NietzscheDB<V> {
         // 3. In-memory adjacency
         self.adjacency.add_edge(&edge);
 
+        // 4. Invalidate ego-cache for both endpoints
+        self.storage.invalidate_ego(&edge.from, &self.adjacency);
+        self.storage.invalidate_ego(&edge.to, &self.adjacency);
+
         Ok(())
     }
 
@@ -986,6 +996,10 @@ impl<V: VectorStore> NietzscheDB<V> {
 
         // 2. Fetch edge, remove from adjacency index, then delete from RocksDB
         if let Some(edge) = self.storage.get_edge(&id)? {
+            // 3. Invalidate ego-cache for both endpoints
+            self.storage.invalidate_ego(&edge.from, &self.adjacency);
+            self.storage.invalidate_ego(&edge.to, &self.adjacency);
+
             self.adjacency.remove_edge(&edge);
             self.storage.delete_edge(&edge)?;
         }
@@ -1178,6 +1192,37 @@ impl<V: VectorStore> NietzscheDB<V> {
     /// Get a shared Arc reference to the GraphStorage for Swartz SQL engine.
     pub fn storage_arc(&self) -> Arc<GraphStorage> { Arc::clone(&self.storage) }
     pub fn adjacency(&self) -> &AdjacencyIndex { &self.adjacency }
+
+    // ── Ego-Cache (Phase XVII) ────────────────────────
+
+    /// Get or build an ego-cache entry for a node.
+    ///
+    /// Returns cached entry if available, otherwise builds and caches it.
+    /// `max_depth1` and `max_depth2` limit the neighborhood size.
+    pub fn get_or_build_ego(
+        &self,
+        node_id: Uuid,
+        max_depth1: usize,
+        max_depth2: usize,
+    ) -> Result<Option<crate::ego_cache::EgoCacheEntry>, GraphError> {
+        // Check cache first
+        if let Some(entry) = self.storage.get_ego(&node_id)? {
+            return Ok(Some(entry));
+        }
+        // Cache miss — build and store
+        match crate::ego_cache::build_ego_entry(node_id, &self.storage, &self.adjacency, max_depth1, max_depth2)? {
+            Some(entry) => {
+                let _ = self.storage.put_ego(&entry);
+                Ok(Some(entry))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Invalidate ego-cache for a node and its neighbors.
+    pub fn invalidate_ego(&self, node_id: &Uuid) {
+        self.storage.invalidate_ego(node_id, &self.adjacency);
+    }
 
     // ── Hot-Tier RAM cache ─────────────────────────────
 

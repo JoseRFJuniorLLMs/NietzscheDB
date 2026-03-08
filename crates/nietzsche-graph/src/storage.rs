@@ -605,10 +605,12 @@ const CF_SQL_DATA: &str = "sql_data";
 const CF_COOLDOWNS: &str = "cooldowns";
 const CF_DSI_ID: &str = "dsi_id";           // node_id -> semantic_id (bincode)
 const CF_DSI_SEMANTIC: &str = "dsi_semantic"; // semantic_id -> node_id
+const CF_EGO: &str = "ego";                 // key: node_id (16 bytes) → EgoCacheEntry (bincode)
 
 const ALL_CFS: &[&str] = &[
     CF_NODES, CF_EMBEDDINGS, CF_EDGES, CF_ADJ_OUT, CF_ADJ_IN, CF_META, CF_SENSORY, CF_ENERGY_IDX,
     CF_META_IDX, CF_LISTS, CF_SQL_SCHEMA, CF_SQL_DATA, CF_COOLDOWNS, CF_DSI_ID, CF_DSI_SEMANTIC,
+    CF_EGO,
 ];
 
 // ─────────────────────────────────────────────
@@ -749,6 +751,7 @@ impl GraphStorage {
             ColumnFamilyDescriptor::new(CF_COOLDOWNS,  cf_opts_read_heavy(&cache)),
             ColumnFamilyDescriptor::new(CF_DSI_ID,     cf_opts_read_heavy(&cache)),
             ColumnFamilyDescriptor::new(CF_DSI_SEMANTIC, cf_opts_read_heavy(&cache)),
+            ColumnFamilyDescriptor::new(CF_EGO,          cf_opts_read_heavy(&cache)),
         ];
 
         let db = DB::open_cf_descriptors(&db_opts, path, cf_descs)
@@ -778,6 +781,7 @@ impl GraphStorage {
     #[inline] fn cf_cooldowns(&self)  -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_COOLDOWNS).unwrap() }
     #[inline] fn cf_dsi_id(&self)      -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_DSI_ID).unwrap() }
     #[inline] fn cf_dsi_semantic(&self) -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_DSI_SEMANTIC).unwrap() }
+    #[inline] fn cf_ego(&self)          -> &rocksdb::ColumnFamily { self.db.cf_handle(CF_EGO).unwrap() }
 
     // ── Node operations ────────────────────────────────
 
@@ -1598,6 +1602,51 @@ impl GraphStorage {
             results.push((key.to_vec(), value.to_vec()));
         }
         Ok(results)
+    }
+
+    // ── Ego-Cache (Phase XVII) ─────────────────────────
+
+    /// Store an ego-cache entry in CF_EGO.
+    pub fn put_ego(&self, entry: &crate::ego_cache::EgoCacheEntry) -> Result<(), GraphError> {
+        let bytes = bincode::serialize(entry)
+            .map_err(|e| GraphError::Storage(format!("ego serialize: {e}")))?;
+        self.db.put_cf(&self.cf_ego(), entry.root_id.as_bytes(), &bytes)
+            .map_err(|e| GraphError::Storage(e.to_string()))
+    }
+
+    /// Retrieve an ego-cache entry from CF_EGO.
+    pub fn get_ego(&self, node_id: &uuid::Uuid) -> Result<Option<crate::ego_cache::EgoCacheEntry>, GraphError> {
+        match self.db.get_cf(&self.cf_ego(), node_id.as_bytes())
+            .map_err(|e| GraphError::Storage(e.to_string()))?
+        {
+            Some(bytes) => {
+                let entry: crate::ego_cache::EgoCacheEntry = bincode::deserialize(&bytes)
+                    .map_err(|e| GraphError::Storage(format!("ego deserialize: {e}")))?;
+                Ok(Some(entry))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Delete an ego-cache entry.
+    pub fn delete_ego(&self, node_id: &uuid::Uuid) -> Result<(), GraphError> {
+        self.db.delete_cf(&self.cf_ego(), node_id.as_bytes())
+            .map_err(|e| GraphError::Storage(e.to_string()))
+    }
+
+    /// Invalidate ego-cache entries for a node and all its depth-1 neighbors.
+    pub fn invalidate_ego(&self, node_id: &uuid::Uuid, adjacency: &AdjacencyIndex) {
+        let _ = self.delete_ego(node_id);
+        for neighbor_id in adjacency.neighbors_both(node_id) {
+            let _ = self.delete_ego(&neighbor_id);
+        }
+    }
+
+    /// Count total ego-cache entries (diagnostic).
+    pub fn ego_cache_count(&self) -> usize {
+        let cf = self.cf_ego();
+        let iter = self.db.iterator_cf(&cf, rocksdb::IteratorMode::Start);
+        iter.count()
     }
 
     // ── AdjacencyIndex reconstruction ──────────────────

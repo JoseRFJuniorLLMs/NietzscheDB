@@ -38,6 +38,7 @@ pub mod backup;
 pub mod collection_manager;
 pub mod encryption;
 pub mod concept_path;
+pub mod ego_cache;
 pub mod hyperbolic_export;
 pub mod db;
 pub mod embedded_vector_store;
@@ -67,6 +68,7 @@ pub use traversal::{
     BfsConfig, DiffusionConfig, DijkstraConfig, GreedyRouteConfig, RouteResult,
 };
 pub use concept_path::{concept_path, concept_path_from_embedding, explain_path, ConceptPath, PathHop};
+pub use ego_cache::{EgoCacheEntry, EgoNeighbor, build_ego_entry};
 pub use hyperbolic_export::{export_hyperbolic_space, HyperbolicExport, ExportConfig, ExportNode, ExportEdge, RadialBin, AngularSector};
 pub use wal::{GraphWal, GraphWalEntry};
 pub use backup::{BackupManager, BackupInfo};
