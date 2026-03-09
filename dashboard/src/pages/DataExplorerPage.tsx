@@ -19,7 +19,11 @@ export function DataExplorerPage() {
 
     const { data: collections } = useQuery({
         queryKey: ['collections'],
-        queryFn: () => api.get("/collections").then(r => r.data)
+        queryFn: () => api.get("/collections").then(r => {
+            const d = r.data;
+            // API returns { collections: [...] } — extract the array
+            return Array.isArray(d) ? d : (d?.collections ?? []);
+        })
     })
 
     const handleSelect = (val: string) => {

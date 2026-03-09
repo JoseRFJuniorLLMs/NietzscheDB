@@ -2,7 +2,7 @@ import { Outlet, NavLink } from "react-router-dom"
 import {
     LayoutDashboard, Database, Search, Settings, Network,
     Terminal, GitBranch, Brain, Moon, Archive, Activity,
-    Wand2, Lightbulb, FileJson, AudioLines, Clock, Sun, MoonIcon,
+    Wand2, Lightbulb, FileJson, AudioLines, Clock,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { GlobalAIAssistant } from "@/components/GlobalAIAssistant"

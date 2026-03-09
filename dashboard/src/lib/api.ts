@@ -267,7 +267,7 @@ export const listSqlTables = () =>
         .then((r) => r.data as { tables: string[] })
 
 /* ── Hybrid Search ──────────────────────────────────────── */
-export const hybridSearch = (query: string, embedding?: number[], topK = 10, collection?: string) =>
+export const hybridSearch = (query: string, _embedding?: number[], topK = 10, collection?: string) =>
     api.post("/query", {
         nql: `MATCH (n) WHERE HYBRID_SEARCH("${query}", ${topK}) RETURN n`,
         collection: collection || DEFAULT_COLLECTION,

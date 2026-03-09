@@ -85,7 +85,7 @@ export function PerspektiveView({
     enableContextMenu = true,
     enableMobiusZoom = true,
     callbacks,
-    algorithmOverlay,
+    algorithmOverlay: _algorithmOverlay,
     dreamSession,
     onDreamAction,
     causalEdges,

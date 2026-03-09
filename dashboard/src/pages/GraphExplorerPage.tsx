@@ -6,7 +6,7 @@ import {
     ChevronRight, RefreshCw, AlertCircle,
     Network, GitBranch, Download, Palette,
     BarChart3, Cpu, Route, Users, Zap,
-    Sparkles, Brain, BookOpen,
+    Sparkles, BookOpen,
 } from "lucide-react"
 import { PerspektiveView } from "@/components/PerspektiveView"
 import type { StreamingMode } from "@/components/PerspektiveView"
@@ -115,7 +115,7 @@ export function GraphExplorerPage() {
     const [narrativeLoading, setNarrativeLoading] = useState(false)
 
     // Timeline & CDC state
-    const [timelineEvents, setTimelineEvents]   = useState<TimelineEvent[]>([])
+    const [timelineEvents, _setTimelineEvents]   = useState<TimelineEvent[]>([])
     const [showTimeline, setShowTimeline]       = useState(true)
     const [showCDCPanel, setShowCDCPanel]       = useState(false)
     const [inspectedNodeId, setInspectedNodeId] = useState<string | null>(null)
@@ -810,19 +810,7 @@ export function GraphExplorerPage() {
                         enableBoxSelect={true}
                         enableContextMenu={true}
                         enableMobiusZoom={true}
-                        dreamSession={dreamSession ? {
-                            dreamId: dreamSession.id,
-                            ghostNodes: (dreamSession.nodes ?? []).map((n: any) => ({
-                                id: n.id ?? `dream-${Math.random().toString(36).slice(2)}`,
-                                x: n.x ?? 0, y: n.y ?? 0, z: n.z ?? 0.01,
-                                label: n.label ?? n.content?.title ?? 'dream node',
-                                color: '#ffd700',
-                            })),
-                            ghostEdges: (dreamSession.edges ?? []).map((e: any) => ({
-                                source: e.source ?? e.from,
-                                target: e.target ?? e.to,
-                            })),
-                        } : null}
+                        dreamSession={dreamSession}
                         onDreamAction={async (action, dreamId) => {
                             try {
                                 if (action === 'apply') {
@@ -834,15 +822,9 @@ export function GraphExplorerPage() {
                                 }
                             } catch {}
                         }}
-                        zaratustraResult={zaratustraResult ? {
-                            phase: 'ubermensch',
-                            nodesUpdated: zaratustraResult.nodes_updated ?? 0,
-                            energyDelta: zaratustraResult.energy_delta ?? 0,
-                            eliteNodeIds: zaratustraResult.elite_ids ?? [],
-                            echoNodeIds: zaratustraResult.echo_ids ?? [],
-                        } : null}
+                        zaratustraResult={zaratustraResult}
                         narrativeArcs={narrativeArcs}
-                        activeDaemons={daemonsData?.data?.map((d: any) => ({
+                        activeDaemons={daemonsData?.daemons?.map((d: any) => ({
                             id: d.id ?? d.daemon_id,
                             x: d.x ?? d.position?.x ?? 0,
                             y: d.y ?? d.position?.y ?? 0,
