@@ -392,10 +392,12 @@ async fn graph(
         ).into_response(),
     };
     let db = shared.read().await;
-    // Use scan_nodes_meta (no embedding join) — faster and works for V0-migrated nodes
-    // that may not have separate embeddings in CF_EMBEDDINGS.
+    // Scan node metadata, then join first 3 embedding coords for Poincaré projection.
     let nodes: Vec<NodeJson> = match db.storage().scan_nodes_meta() {
-        Ok(ns) => ns.into_iter().take(max).map(NodeJson::from).collect(),
+        Ok(ns) => ns.into_iter().take(max).map(|meta| {
+            let emb = db.storage().get_embedding(&meta.id).ok().flatten();
+            NodeJson::from_meta_with_embedding(meta, emb.as_ref().map(|e| e.coords.as_slice()))
+        }).collect(),
         Err(e) => {
             warn!(collection = col_name, error = %e, "scan_nodes failed");
             return (StatusCode::INTERNAL_SERVER_ERROR,
@@ -1674,12 +1676,25 @@ struct NodeJson {
     hausdorff:  f32,
     created_at: i64,
     content:    serde_json::Value,
+    /// Truncated embedding (first 3 coords) for Poincaré projection in the dashboard.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    embedding:  Vec<f64>,
 }
 
 impl From<Node> for NodeJson {
     fn from(n: Node) -> Self {
-        let (meta, _embedding) = n.into_parts();
-        Self::from(meta)
+        let (meta, embedding) = n.into_parts();
+        let emb_trunc: Vec<f64> = embedding.coords.iter().take(3).copied().collect();
+        Self {
+            id:         meta.id.to_string(),
+            node_type:  format!("{:?}", meta.node_type),
+            energy:     meta.energy,
+            depth:      meta.depth,
+            hausdorff:  meta.hausdorff_local,
+            created_at: meta.created_at,
+            content:    meta.content,
+            embedding:  emb_trunc,
+        }
     }
 }
 
@@ -1693,6 +1708,24 @@ impl From<NodeMeta> for NodeJson {
             hausdorff:  meta.hausdorff_local,
             created_at: meta.created_at,
             content:    meta.content,
+            embedding:  Vec::new(),
+        }
+    }
+}
+
+impl NodeJson {
+    /// Create from NodeMeta + optional embedding (truncated to first 3 dims).
+    fn from_meta_with_embedding(meta: NodeMeta, emb: Option<&[f64]>) -> Self {
+        let embedding = emb.map(|e| e.iter().take(3).copied().collect()).unwrap_or_default();
+        Self {
+            id:         meta.id.to_string(),
+            node_type:  format!("{:?}", meta.node_type),
+            energy:     meta.energy,
+            depth:      meta.depth,
+            hausdorff:  meta.hausdorff_local,
+            created_at: meta.created_at,
+            content:    meta.content,
+            embedding,
         }
     }
 }
