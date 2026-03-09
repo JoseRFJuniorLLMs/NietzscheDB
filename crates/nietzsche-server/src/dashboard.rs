@@ -32,7 +32,7 @@ use axum::{
     extract::{Extension, Path, Query, State},
     http::{Request, StatusCode},
     middleware::{self, Next},
-    response::{Html, IntoResponse, Json},
+    response::{IntoResponse, Json},
     routing::{delete, get, post},
     Router,
 };
@@ -56,7 +56,7 @@ use nietzsche_sleep::{SleepConfig, SleepCycle};
 use nietzsche_hyp_ops::{riemann, klein, minkowski, manifold};
 use ordered_float::OrderedFloat;
 
-use crate::html::DASHBOARD_HTML;
+use crate::html;
 use crate::metrics::OperationMetrics;
 
 // ── Shared state ──────────────────────────────────────────────────────────────
@@ -179,7 +179,8 @@ pub async fn serve(
     let auth = DashboardAuth::from_env();
 
     let app = Router::new()
-        .route("/", get(root))
+        .route("/", get(html::index))
+        .route("/assets/*path", get(html::static_asset))
         .route("/metrics", get(prometheus_metrics))
         .route("/api/stats", get(stats))
         .route("/api/status", get(stats))   // alias for dashboard compatibility
@@ -249,6 +250,8 @@ pub async fn serve(
         .route("/api/debug/hyperbolic-space", get(debug_hyperbolic_space))
         .route("/api/cluster/status", get(cluster_status))
         .route("/api/cluster/ring", get(cluster_ring))
+        // SPA fallback: any non-API route serves index.html for React Router
+        .fallback(get(html::index))
         .layer(Extension(cluster))
         .layer(middleware::from_fn(auth_middleware))
         .layer(Extension(auth))
@@ -303,9 +306,7 @@ struct CollectionQuery {
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
-async fn root() -> Html<&'static str> {
-    Html(DASHBOARD_HTML)
-}
+// Root handler removed — served by html::index() via rust-embed
 
 // GET /metrics — Prometheus text exposition format
 async fn prometheus_metrics(State((cm, ops)): State<AppState>) -> impl IntoResponse {
