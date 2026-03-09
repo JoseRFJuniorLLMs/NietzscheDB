@@ -103,7 +103,16 @@ export function DataExplorerPage() {
 function RawDataView({ collection }: { collection: string }) {
     const { data: items, isLoading } = useQuery({
         queryKey: ['peek', collection],
-        queryFn: () => api.get(`/collections/${collection}/peek?limit=50`).then(r => r.data),
+        queryFn: async () => {
+            try {
+                const r = await api.get(`/collections/${collection}/peek?limit=50`);
+                const d = r.data;
+                // API may not exist — if response is HTML or non-array, return empty
+                return Array.isArray(d) ? d : (d?.items ?? d?.nodes ?? []);
+            } catch {
+                return [];
+            }
+        },
         enabled: !!collection
     })
 
@@ -239,18 +248,24 @@ function SearchPlayground({ collection }: { collection: string }) {
 function EmbeddingProjectionView({ collection }: { collection: string }) {
     const { data: projectionData, isLoading } = useQuery({
         queryKey: ['embeddings-projection', collection],
-        queryFn: () => api.get(`/collections/${collection}/peek?limit=200`).then(r => {
-            const items = r.data
-            if (!items || items.length === 0) return []
-            // Map peek data to points for the projector
-            return items.map(([id, vec, meta]: any) => ({
+        queryFn: async () => {
+            try {
+                const r = await api.get(`/collections/${collection}/peek?limit=200`);
+                const raw = r.data;
+                const items = Array.isArray(raw) ? raw : (raw?.items ?? raw?.nodes ?? []);
+                if (!items || items.length === 0) return [];
+                // Map peek data to points for the projector
+                return items.map(([id, vec, meta]: any) => ({
                 id,
                 x: vec?.[0] ?? 0,
                 y: vec?.[1] ?? 0,
                 label: meta?.text?.slice(0, 30) || meta?.source || id,
                 metadata: meta
-            }))
-        }),
+            }));
+            } catch {
+                return [];
+            }
+        },
         enabled: !!collection
     })
 
