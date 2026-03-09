@@ -12,6 +12,7 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
       "@nietzsche/perspektive": path.resolve(__dirname, "../../perspektive.js/src"),
     },
+    dedupe: ["react", "react-dom", "three", "@react-three/fiber", "@react-three/drei", "zustand"],
   },
   server: {
     proxy: {
