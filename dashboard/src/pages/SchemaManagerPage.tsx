@@ -20,8 +20,9 @@ export default function SchemaManagerPage() {
 
     useEffect(() => {
         api.get("/collections").then(r => {
-            const names = (r.data as { name: string }[]).map(c => c.name)
-            setCollections(names)
+            const d = r.data;
+            const arr = Array.isArray(d) ? d : (d?.collections ?? []);
+            setCollections(arr.map((c: any) => typeof c === 'string' ? c : c.name).filter(Boolean))
         }).catch(() => {})
     }, [])
 

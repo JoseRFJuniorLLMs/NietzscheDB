@@ -412,8 +412,8 @@ export function GraphExplorerPage() {
                                                 onChange={e => setCollection(e.target.value)}
                                                 className="flex-1 bg-black/40 border border-border/20 rounded px-2 py-1 text-[10px] font-mono text-[#00f0ff] focus:outline-none focus:border-[#00f0ff]"
                                             >
-                                                {collectionsData?.collections?.map(c => (
-                                                    <option key={c.name} value={c.name}>{c.name} ({c.vector_count})</option>
+                                                {collectionsData?.map(c => (
+                                                    <option key={c.name} value={c.name}>{c.name} ({c.node_count})</option>
                                                 )) ?? <option value={collection}>{collection}</option>}
                                             </select>
                                         </div>

@@ -24,7 +24,9 @@ export default function ReasoningPage() {
 
     useEffect(() => {
         api.get("/collections").then(r => {
-            setCollections((r.data as { name: string }[]).map(c => c.name))
+            const d = r.data;
+            const arr = Array.isArray(d) ? d : (d?.collections ?? []);
+            setCollections(arr.map((c: any) => typeof c === 'string' ? c : c.name).filter(Boolean))
         }).catch(() => {})
     }, [])
 

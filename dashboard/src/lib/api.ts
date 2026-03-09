@@ -289,5 +289,12 @@ export const navigateGeodesic = (startId: string, goalId: string, collection?: s
         .then((r) => r.data)
 
 /* ── Collections ────────────────────────────────────────── */
-export const listCollections = () =>
-    api.get("/collections").then((r) => r.data as { collections: { name: string; dimension: number; metric: string; vector_count: number }[] })
+export interface CollectionInfo {
+    name: string; dim: number; metric: string; node_count: number; edge_count: number
+}
+export const listCollections = async (): Promise<CollectionInfo[]> => {
+    const r = await api.get("/collections");
+    const d = r.data;
+    // Server returns plain array [{name,dim,metric,node_count,edge_count}]
+    return Array.isArray(d) ? d : (d?.collections ?? []);
+}

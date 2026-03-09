@@ -19,11 +19,17 @@ export function DataExplorerPage() {
 
     const { data: collections } = useQuery({
         queryKey: ['collections'],
-        queryFn: () => api.get("/collections").then(r => {
-            const d = r.data;
-            // API returns { collections: [...] } — extract the array
-            return Array.isArray(d) ? d : (d?.collections ?? []);
-        })
+        queryFn: async () => {
+            try {
+                const r = await api.get("/collections");
+                const d = r.data;
+                // Server returns plain array [{name,dim,metric,node_count,edge_count}]
+                const arr = Array.isArray(d) ? d : (d?.collections ?? []);
+                return Array.isArray(arr) ? arr : [];
+            } catch {
+                return [];
+            }
+        }
     })
 
     const handleSelect = (val: string) => {
