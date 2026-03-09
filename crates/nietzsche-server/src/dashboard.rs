@@ -1678,13 +1678,13 @@ struct NodeJson {
     content:    serde_json::Value,
     /// Truncated embedding (first 3 coords) for Poincaré projection in the dashboard.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    embedding:  Vec<f64>,
+    embedding:  Vec<f32>,
 }
 
 impl From<Node> for NodeJson {
     fn from(n: Node) -> Self {
         let (meta, embedding) = n.into_parts();
-        let emb_trunc: Vec<f64> = embedding.coords.iter().take(3).copied().collect();
+        let emb_trunc: Vec<f32> = embedding.coords.iter().take(3).copied().collect();
         Self {
             id:         meta.id.to_string(),
             node_type:  format!("{:?}", meta.node_type),
@@ -1715,7 +1715,7 @@ impl From<NodeMeta> for NodeJson {
 
 impl NodeJson {
     /// Create from NodeMeta + optional embedding (truncated to first 3 dims).
-    fn from_meta_with_embedding(meta: NodeMeta, emb: Option<&[f64]>) -> Self {
+    fn from_meta_with_embedding(meta: NodeMeta, emb: Option<&[f32]>) -> Self {
         let embedding = emb.map(|e| e.iter().take(3).copied().collect()).unwrap_or_default();
         Self {
             id:         meta.id.to_string(),
