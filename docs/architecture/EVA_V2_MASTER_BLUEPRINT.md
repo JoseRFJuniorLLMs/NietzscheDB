@@ -3,7 +3,7 @@
 **Date**: 2026-02-23
 **Status**: Architecture Integration Plan
 **Scope**: NietzscheDB (Rust workspace, 41 crates) + EVA (Go, ~30 internal packages)
-**Authors**: Agent 10 (Architecture Integration), Claude Opus 4.6
+**Authors**: Agent 10 (Architecture Integration)
 
 ---
 
@@ -936,4 +936,4 @@ For each new crate (`nietzsche-neural`, `nietzsche-gnn`, etc.):
 ---
 
 *Document prepared by Agent 10 (Architecture Integration) -- 2026-02-23*
-*NietzscheDB v0.1.0 | EVA v2.0 Blueprint | Claude Opus 4.6*
+*NietzscheDB v0.1.0 | EVA v2.0 Blueprint*

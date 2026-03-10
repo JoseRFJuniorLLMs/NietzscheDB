@@ -84,6 +84,7 @@ NietzscheDB doesn't just store data; it projects it across four distinct manifol
 │   · Counterfactual UI (Speculative Reasoning)          │
 │   · Autonomous fractal growth via L-System rules        │
 │   · Multi-scale search via hyperbolic heat diffusion    │
+│   · Fast Boot (WAL truncation + parallel rayon loading)  │
 │   · Active memory reconsolidation during sleep cycles   │
 │   · GPU (cuVS) / TPU (PJRT) accelerated vector search   │
 │   · Hegelian Dialectic Engine (automated synthesis)     │
@@ -94,6 +95,14 @@ NietzscheDB doesn't just store data; it projects it across four distinct manifol
 │   · Knowledge Compression (semantic deduplication)      │
 │   · Hyperbolic Sharding (Poincaré-aware partitioning)   │
 │   · Cognitive Flywheel (unified autonomous feedback)    │
+│   · Hydraulic Flow Engine (Constructal + Murray's Law) │
+│   · EpistemologyDaemon (Karpathy autoresearch loop)    │
+│   · ShadowTGC (full TGC on lightweight ShadowGraph)    │
+│   · Morning Report (post-sleep discovery summary)      │
+│   · NodeLedger (per-action CPU cost tracking)          │
+│   · force_evolution MCP tool (LLM mutation bridge)     │
+│   · React Dashboard via rust-embed (zero external deps)│
+│   · Poincaré 3D coords in /api/graph visualization    │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -156,6 +165,7 @@ NietzscheDB is built as a **Rust nightly workspace** with 41 crates in two layer
 │                         NietzscheDB Layer (32 crates)                        │
 │                                                                              │
 │  Engine:     nietzsche-graph    nietzsche-query     nietzsche-hyp-ops        │
+│  AGI:        nietzsche-agi (17 modules, 7K LOC, 123 tests)                  │
 │  Growth:     nietzsche-lsystem  nietzsche-pregel    nietzsche-sleep          │
 │  Evolution:  nietzsche-zaratustra                                            │
 │  Analytics:  nietzsche-algo     nietzsche-sensory                            │
@@ -240,7 +250,7 @@ Four non-Euclidean geometry modules sharing a single Poincaré storage layer:
 Invariants enforced: Poincaré ‖x‖ < 1.0, Klein ‖x‖ < 1.0, Sphere ‖x‖ = 1.0. Cascaded roundtrip error < 1e-4 after 10 projections. Includes criterion benchmarks.
 
 #### `nietzsche-query` — NQL Query Language
-Nietzsche Query Language — a declarative query language with first-class multi-manifold primitives. Parser built with `pest` (PEG grammar). **NQL 3.0** brings OPTIONAL MATCH, UNION, CASE WHEN, IS NULL/IS NOT NULL, regex matching, EXISTS subqueries, UNWIND, SHORTEST_PATH, COLLECT, 30+ string/math/cast/null built-in functions, and 5 new physicist-named cognitive functions — closing the gap with Cypher/GQL while preserving NQL's unique hyperbolic geometry primitives. Supports arithmetic SET expressions (`n.count = n.count + 1`), edge alias property access (`-[r:TYPE]->` with `r.weight` in WHERE/ORDER BY), CREATE with TTL, DETACH DELETE, and eval_field fallback to `node.content`/`node.metadata` for dynamic properties. 113+ unit + integration tests.
+Nietzsche Query Language — a declarative query language with first-class multi-manifold primitives. Parser built with `pest` (PEG grammar). **NQL 4.0 "The Constructal Update"** adds 5 hydraulic-flow functions (BEJAN_CONDUCTIVITY, POISEUILLE_FRICTION, MURRAY_RATIO, NAVIER_STOKES_TURBULENCE, ONSAGER_DISSIPATION), `r.conductivity` edge field access, ERODE PATH (conductivity boost along shortest path), and INJECT ENERGY statements — making the Hydraulic Flow Engine queryable. **NQL 3.0** brought OPTIONAL MATCH, UNION, CASE WHEN, IS NULL/IS NOT NULL, regex matching, EXISTS subqueries, UNWIND, SHORTEST_PATH, COLLECT, 30+ string/math/cast/null built-in functions, and 5 physicist-named cognitive functions. Supports arithmetic SET expressions (`n.count = n.count + 1`), edge alias property access (`-[r:TYPE]->` with `r.weight`/`r.conductivity` in WHERE/ORDER BY), CREATE with TTL, DETACH DELETE, and eval_field fallback to `node.content`/`node.metadata` for dynamic properties. 113+ unit + integration tests.
 
 **[Full NQL Reference: docs/NQL.md](docs/NQL.md)**
 
@@ -275,6 +285,8 @@ Query types:
 | `SHARE ARCHETYPE` | Publish elite node for cross-collection discovery |
 | `NARRATE` | Generate human-readable narrative from graph evolution |
 | `PSYCHOANALYZE` | Return evolutionary lineage of a node (creation, connections, energy) |
+| `ERODE PATH` | Boost conductivity along shortest path between two nodes (Constructal) |
+| `INJECT ENERGY` | Inject energy into a target node (Constructal) |
 
 ```sql
 -- Hyperbolic nearest-neighbor search with depth filter
@@ -579,6 +591,11 @@ Graph-level autonomous intelligence with counterfactual reasoning and active for
 - **Hyperbolic Sharding (Phase XXII)**: Partition-aware locality analysis respecting Poincaré geometry. Divides the ball into radial bands × angular sectors, assigns nodes by norm (depth) and atan2 (direction), computes per-shard statistics and imbalance ratio. Recommends rebalancing when shard population variance exceeds threshold.
 - **World Model Graph (Phase XXIII)**: Meta-representation of external state — tracks query rates, mutation rates, error rates via rolling statistics. Anomaly detection via z-score (value deviating > sensitivity × σ from mean). Detects quiet periods (rate < 0.3× mean) and busy periods (rate > 2× mean) for adaptive resource scheduling.
 - **Cognitive Flywheel (Phase XXIV)**: Unified feedback loop connecting all subsystems. Assesses per-subsystem health (Healthy/Active/Degraded/Inactive), computes momentum via EMA (exponential moving average with configurable decay factor), tracks healthy streaks, and generates automated recommendations. The flywheel spins when momentum exceeds minimum threshold, creating a self-reinforcing cycle of autonomous intelligence.
+- **Hydraulic Flow Engine (Phase XXV)**: Three-layer biologically-inspired flow system. **FlowLedger**: per-edge CPU cost accounting (DashMap, lock-free) tracking traversal count, EMA CPU ns, peak pressure. **ConductivityTensor**: per-edge `conductivity: f32` field modifying effective distance (`d_eff = d_poincaré / κ`), updated by Hebbian LTP, flow reinforcement, and temporal decay (toward baseline 1.0, not 0). **MurrayRebalancer**: fractal vascular equilibrium during SleepCycle applying Murray's Law (`κ_parent³ = Σκ_child³`) with damped adjustments and flow-weighted variant. Minimizes Constructal Flow Energy `E = Σ(f²/κ)`. Queryable via NQL 4.0: BEJAN_CONDUCTIVITY, POISEUILLE_FRICTION, MURRAY_RATIO, NAVIER_STOKES_TURBULENCE, ONSAGER_DISSIPATION, ERODE PATH, INJECT ENERGY.
+- **EpistemologyDaemon (Phase XXV)**: Autonomous self-research system inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch). Implements Darwinian selection on Code-as-Data NQL queries: **SELECT** highest-friction ActionNode (via NodeLedger CPU cost) → **PROPOSE** mutation (emit `EpistemologyCandidate` event for external LLM bridge) → **EVALUATE** in ShadowGraph sandbox with full ΔTGC measurement → **VERDICT** KEEP (merge) or DISCARD (phantomize). Includes NQL syntax validation gate (Pest parser), content-hash deduplication of rejected mutations, and `force_evolution` MCP tool for LLM-driven mutation injection. Integrated into the SleepCycle with configurable `epistemology_budget` (default: 5 evaluations per sleep). Post-sleep `MorningReport` summarizes overnight discoveries with sleep quality score.
+- **ShadowTGC** (`forgetting/tgc.rs`): Full TGC measurement on lightweight ShadowGraph (~130 bytes/node). Computes degree distribution entropy (Shannon H_s), sampled BFS global efficiency (Latora-Marchiori E_g, depth-limited to 5), and mean energy quality. Formula: `ShadowTGC = Q × (1 + α·H_s) × (1 + β·E_g)` — isomorphic to the main TgcMonitor. Enables counterfactual TGC comparison: `shadow_tgc_delta(baseline, mutant)` returns the health improvement/degradation of a proposed mutation.
+- **NodeLedger** (`hydraulic/flow_ledger.rs`): Per-node CPU cost tracking (parallel to edge-level FlowLedger). DashMap-based lock-free accounting with `record(node_id, cpu_ns)`, EMA smoothing (`α=0.1`), peak tracking, and `friction(node_id)` score combining execution count + EMA cost. `top_friction_nodes(k)` returns the K most expensive nodes — used by EpistemologyDaemon for candidate ranking.
+- **Morning Report** (`morning_report.rs`): Post-sleep discovery summary aggregating SleepReport metrics (Hausdorff delta, semantic drift, commit/rollback) + epistemology results (mutations evaluated/accepted). Computes sleep quality score (0.0–1.0) and generates human-readable narrative. Serializable to JSON for dashboard/API consumption.
 - **EntropyDaemon**: detects Hausdorff variance spikes across angular regions
 - **GapDaemon**: identifies knowledge gaps in depth x angle sectors
 - **CoherenceDaemon**: measures multi-scale diffusion overlap (Chebyshev heat kernel)
@@ -627,6 +644,21 @@ Where:
 4. **Camada 4** — Global Health: TGC + Var(V) + Elite Drift + Anti-Gaming (4 vital signs)
 
 Full mathematical specification: `docs/articles/NietzscheDB-Topological-Generative-Capacity.md` (8 parts, 7 canonical equations).
+
+#### `nietzsche-agency` — Quantum-Inspired Cognitive Kernel (Orch-OR Emulation)
+
+Stochastic emulation layer inspired by the **Orchestrated Objective Reduction** framework (Penrose & Hameroff). Enables the Agency Engine to maintain multiple hypotheses in superposition, accumulate Bayesian evidence, and collapse probabilistically to decisions. **Not real quantum computing** — mathematical emulation over classical hardware.
+
+- **SemanticQudit**: N-dimensional probabilistic state (categorical distribution) with normalized Shannon entropy, Bayesian update via `apply_semantic_gravity()`, weighted categorical sampling via `objective_reduction()`, and `resuperpose()` for post-collapse reuse with prior boost
+- **QuantumMicrotubuleManager**: Per-node qudit management with **lock-free pipeline design** — no lock is held during graph traversal or propagation. Atomic stimulate/collapse/propagate phases prevent deadlocks
+- **Semantic Entanglement**: Collapse of a node propagates Bayesian evidence to graph neighbors with exponential decay ($I = w \cdot \mu_{type} \cdot \gamma^d$), anti-cascade mechanisms (max depth, min influence, visited set, refractory period)
+- **CoherenceEvaluator**: Composite scoring of hypothetical subgraphs — geometric coherence (Poincaré hierarchy), semantic coherence (cosine similarity with real neighbors), topological coherence (orphan ratio, degree compatibility)
+- **Cognitive Superposition Graph (CSG)**: Beam search over hyperbolic topology — spawns N competing subgraphs ("cognitive realities"), evolves them via coherence scoring, collapses to a winner that merges into the permanent graph. Losers leave probabilistic residue influencing future decisions
+- **DeliberationCoordinator**: 4 triggers for CSG instantiation — (1) Semantic Ambiguity (KNN top-K delta < threshold), (2) Valence Conflict (contradicting high-energy nodes), (3) Cascade Saturation (propagation hit max depth with high residual entropy), (4) Historical Inconsistency (new claim vs established fact)
+- **QuantumEventBus**: `tokio::sync::broadcast` channel emitting `QuantumEvent` variants (NodeCollapse, EntanglementInfluence, DeliberationStarted/Evolved/Resolved, RemCycleCompleted) via gRPC stream to Go GlobalWorkspace
+- **Agency Tick Integration**: 3-phase breath — Perception (stimulate) → Unconscious Reaction (propagate cascades) → Conscious Deliberation (evolve active CSGs)
+
+Full specification: [`docs/architecture/QUANTUM_KERNEL_SPEC.md`](docs/architecture/QUANTUM_KERNEL_SPEC.md) | Runtime behavior: [`docs/architecture/COGNITIVE_OS_BEHAVIOR.md`](docs/architecture/COGNITIVE_OS_BEHAVIOR.md)
 
 #### `nietzsche-rl` — Reinforcement Learning Engine
 PPO (Proximal Policy Optimization) for autonomous growth strategy selection:
@@ -711,9 +743,13 @@ EVA sleeps. During sleep:
 2. Snapshot current embeddings (rollback point)
 3. Perturb embeddings in the tangent space (the "dream")
 4. Optimize via **RiemannianAdam** on the Poincare manifold
-5. Measure Hausdorff dimension before and after
-6. **Commit** if `delta(Hausdorff) < threshold` — identity preserved, reconsolidation accepted
-7. **Rollback** if identity was destroyed — dream discarded
+5. **Consolidate sensory** (Phase 11 — decoder fine-tune, latent replay)
+6. **Evaluate epistemology mutations** (Phase 25 — Darwinian selection on pending Code-as-Data rewrites, up to `epistemology_budget` evaluations per cycle)
+7. Measure Hausdorff dimension + semantic drift before and after
+8. **Commit** if `delta(Hausdorff) < threshold` AND `drift < threshold` — identity preserved, reconsolidation accepted
+9. **Rollback** if identity was destroyed — dream discarded, sensory restored
+
+Extensible via trait hooks: `SensoryConsolidator` (Phase 11) and `EpistemologyConsolidator` (Phase 25). Entry points: `run()`, `run_with_sensory()`, `run_with_epistemology()`, `run_full()`.
 
 This prevents catastrophic forgetting while allowing genuine memory reorganization.
 
@@ -777,10 +813,11 @@ GPU-accelerated graph algorithms via NVIDIA cuGraph:
 
 #### `nietzsche-mcp` — Model Context Protocol Server
 JSON-RPC 2.0 server for AI assistant integration (Claude, GPT, etc.):
-- **19 tools**: graph CRUD, NQL query, KNN search, traversal, graph algorithms, diffusion, stats
+- **20 tools**: graph CRUD, NQL query, KNN search, traversal, graph algorithms, diffusion, stats, **force_evolution** (LLM mutation bridge for EpistemologyDaemon)
+- `force_evolution` tool: validates original ActionNode exists, validates mutant NQL syntax via Pest parser, creates `mutation_pending` node with proper embedding dimensions — enabling any LLM to propose Code-as-Data mutations that the EpistemologyDaemon evaluates during the next sleep cycle
 - Stdin/stdout transport (standard MCP protocol)
 - Parameter validation with typed `ParamValue` (String, Float, Int, Bool, Vector)
-- 19 unit tests
+- 20 unit tests
 
 #### `nietzsche-metrics` — Prometheus/OpenTelemetry Metrics
 Observability export layer:
@@ -1155,7 +1192,7 @@ C2.2  HNSW Auto-tuner (ef_search)          ✅ COMPLETE
 C2.3  Named Snapshots (time-travel)        ✅ COMPLETE
 
 ── Expansion Sprint (2026-02-21) ──────────────────────
-E0.1  MCP Server (AI assistant tools)      ✅ COMPLETE  (19 tools, 19 tests)
+E0.1  MCP Server (AI assistant tools)      ✅ COMPLETE  (20 tools, 20 tests)
 E0.2  Prometheus/OTel metrics export       ✅ COMPLETE  (12 metrics, 6 tests)
 E0.3  Filtered KNN + Roaring Bitmaps       ✅ COMPLETE  (5 filter types, 15 tests)
 E0.4  Named Vectors (multi-vector/node)    ✅ COMPLETE  (3 metrics, 8 tests)
@@ -1256,6 +1293,17 @@ NZH-16 NezhmetdinovDaemon                  ✅ COMPLETE  (AgencyDaemon trait, fu
 NZH-17 Reactor integration                 ✅ COMPLETE  (HardDelete + RecordDeletion intents)
 NZH-18 Simulation binary                   ✅ COMPLETE  (5000 nodes × 500 cycles, CSV output)
        Total: 18 new files, 15 submodules, 72 forgetting tests, 155 total agency tests
+
+── Epistemology Sprint (2026-03-10) ─────────────────
+EP-0   force_evolution MCP tool              ✅ COMPLETE  (LLM mutation bridge, NQL validation, 20 MCP tools total)
+EP-1   NQL syntax validator in daemon        ✅ COMPLETE  (Pest parser gate pre-simulation)
+EP-2   ShadowTGC (full TGC on ShadowGraph)   ✅ COMPLETE  (degree entropy + BFS efficiency, shadow_tgc_delta)
+EP-3   SleepCycle epistemology integration   ✅ COMPLETE  (EpistemologyConsolidator trait, budget config, run_full)
+EP-4   Morning Report generation             ✅ COMPLETE  (sleep quality score, discovery summaries, JSON)
+EP-5   NodeLedger (per-action CPU tracking)  ✅ COMPLETE  (DashMap, EMA, friction ranking, top_friction_nodes)
+EP-6   EpistemologyDaemon                    ✅ COMPLETE  (2-phase tick: candidate selection + mutation evaluation)
+EP-7   Reactor integration                   ✅ COMPLETE  (EpistemologyMerge + Phantomize intents)
+       Total: 6 new files, 2 new traits, 20+ epistemology tests
 ```
 
 ---
@@ -1468,6 +1516,215 @@ curl "http://localhost:8080/api/graph?collection=eva_core&limit=500"
 
 ---
 
+## Installation Guide
+
+NietzscheDB can be installed as a system service on Linux or run locally on Windows for development.
+
+### System Requirements
+
+| Component | Minimum | Recommended |
+|---|---|---|
+| **OS** | Ubuntu 22.04 / Debian 12 | Ubuntu 24.04 LTS |
+| **CPU** | 4 cores | 8+ cores |
+| **RAM** | 8 GB | 32 GB |
+| **Disk** | 20 GB SSD | 100 GB NVMe |
+| **GPU** | — | NVIDIA T4 / L4 / A100 (CUDA 12.x) |
+| **Rust** | nightly (required) | latest nightly |
+
+### Linux — Automated Install (recommended)
+
+The installer creates a `nietzsche` system user, sets up FHS-compliant directories, installs the binary and systemd service.
+
+```bash
+# Clone the repository
+git clone https://github.com/JoseRFJuniorLLMs/NietzscheDB.git
+cd NietzscheDB
+
+# Option A: Build + install in one step
+sudo ./dist/install.sh
+
+# Option B: Install a pre-built binary
+sudo ./dist/install.sh --binary /path/to/nietzsche-server
+```
+
+#### What gets installed
+
+```
+/usr/local/bin/nietzsche-server          # Server binary
+/etc/nietzschedb/nietzschedb.env         # Configuration (preserved on upgrades)
+/var/lib/nietzschedb/data/               # RocksDB collections & WAL
+/var/lib/nietzschedb/models/             # ONNX neural models
+/var/log/nietzschedb/                    # Logs (via journald)
+/etc/systemd/system/nietzschedb.service  # Systemd unit
+```
+
+#### Managing the service
+
+```bash
+sudo systemctl start nietzschedb      # Start
+sudo systemctl stop nietzschedb       # Stop
+sudo systemctl restart nietzschedb    # Restart
+sudo systemctl status nietzschedb     # Status
+journalctl -u nietzschedb -f          # Live logs
+```
+
+#### Configuration
+
+Edit `/etc/nietzschedb/nietzschedb.env` and restart the service. All variables are optional — defaults are production-safe. Key settings:
+
+```bash
+NIETZSCHE_DATA_DIR=/var/lib/nietzschedb/data   # Storage root
+NIETZSCHE_PORT=50051                           # gRPC port
+NIETZSCHE_DASHBOARD_PORT=8080                  # HTTP dashboard (0 = off)
+NIETZSCHE_LOG_LEVEL=info                       # trace|debug|info|warn|error
+NIETZSCHE_VECTOR_BACKEND=embedded              # embedded|gpu|tpu
+NIETZSCHE_SLEEP_INTERVAL_SECS=0                # Sleep cycle (0 = off)
+ZARATUSTRA_INTERVAL_SECS=0                     # Cognitive cycle (0 = off)
+```
+
+See the full variable reference in the [Environment Variables](#environment-variables) table above.
+
+#### Uninstall
+
+```bash
+sudo ./dist/install.sh --uninstall
+# Data and config are preserved. To remove everything:
+sudo rm -rf /etc/nietzschedb /var/lib/nietzschedb /var/log/nietzschedb
+```
+
+### Linux — Debian Package (.deb)
+
+For Debian/Ubuntu systems, generate a `.deb` package:
+
+```bash
+# Install cargo-deb (one-time)
+cargo install cargo-deb
+
+# Build the package
+cargo deb -p nietzsche-server
+
+# Install
+sudo dpkg -i target/debian/nietzsche-server_*.deb
+
+# Enable and start
+sudo systemctl enable --now nietzschedb
+```
+
+The `.deb` package includes the binary, default config, systemd service, and a post-install script that creates the system user and directories automatically.
+
+### Linux — GPU Build (NVIDIA cuVS)
+
+For GPU-accelerated vector search, the build host needs CUDA 12.x and cuVS 24.6:
+
+```bash
+# Prerequisites
+apt-get install -y clang libclang-dev
+
+# cuVS via conda (recommended)
+conda create -n cuvs -c rapidsai -c nvidia cuvs=24.6 cuda-version=12.4
+conda activate cuvs
+
+# Export build paths (REQUIRED — build fails without these)
+export CUVS_ROOT=$CONDA_PREFIX
+export CMAKE_PREFIX_PATH=$CUVS_ROOT
+export CPATH=$CUVS_ROOT/include
+export LD_LIBRARY_PATH=$CUVS_ROOT/lib:$LD_LIBRARY_PATH
+export LIBRARY_PATH=$CUVS_ROOT/lib
+
+# Build with GPU (default feature)
+cargo build --release -p nietzsche-server
+
+# Install
+sudo ./dist/install.sh --binary target/release/nietzsche-server
+```
+
+Then set `NIETZSCHE_VECTOR_BACKEND=gpu` in `/etc/nietzschedb/nietzschedb.env`.
+
+### Windows — Development Setup
+
+Windows is supported for **development only** (individual crate checks and tests). The full server binary requires CUDA/cuVS and must be compiled on Linux.
+
+#### Requirements
+
+| Component | Version | Notes |
+|---|---|---|
+| **Rust** | nightly | `rustup default nightly` |
+| **Visual Studio Build Tools** | 2022 | C++ workload (MSVC, Windows SDK, CMake) |
+| **LLVM / Clang** | 16+ | Required by RocksDB (`libclang`). Set `LIBCLANG_PATH` |
+| **Protobuf Compiler** | 3.x+ | `protoc` in PATH (for gRPC proto generation) |
+| **Git** | 2.x | Git Bash or WSL |
+
+#### Install Rust nightly
+
+```powershell
+# Install rustup (if not present)
+winget install Rustlang.Rustup
+
+# Switch to nightly
+rustup default nightly
+rustup update
+```
+
+#### Install Build Tools
+
+```powershell
+# Visual Studio Build Tools (C++ workload)
+winget install Microsoft.VisualStudio.2022.BuildTools
+
+# LLVM (for RocksDB bindgen)
+winget install LLVM.LLVM
+# Add to environment:
+# LIBCLANG_PATH = C:\Program Files\LLVM\bin
+
+# Protobuf compiler
+winget install Google.Protobuf
+```
+
+#### What works on Windows
+
+```bash
+# Check individual crates (no GPU needed)
+cargo check -p nietzsche-graph
+cargo check -p nietzsche-query
+cargo check -p nietzsche-agency
+cargo check -p nietzsche-hyp-ops
+cargo check -p nietzsche-sleep
+
+# Run tests for individual crates
+cargo test -p nietzsche-hyp-ops
+cargo test -p nietzsche-experiment
+cargo test -p nietzsche-query
+```
+
+#### What does NOT compile on Windows
+
+| Crate | Reason |
+|---|---|
+| `nietzsche-server` | Depends on `nietzsche-hnsw-gpu` (CUDA/cuVS) |
+| `nietzsche-hnsw-gpu` | Requires CUDA Toolkit 12.x + cuVS SDK |
+| `nietzsche-lsystem` (cuda feature) | Requires CUDA Toolkit |
+| `nietzsche-tpu` | Requires `libtpu.so` (Linux only) |
+
+#### WSL2 Alternative (full build on Windows)
+
+To build the full server on a Windows machine, use WSL2 with an Ubuntu image:
+
+```powershell
+# Install WSL2 with Ubuntu
+wsl --install -d Ubuntu-24.04
+
+# Inside WSL2 (Linux environment)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain nightly -y
+sudo apt-get install -y clang libclang-dev protobuf-compiler build-essential
+
+cd /mnt/d/DEV/NietzscheDB
+cargo build --release -p nietzsche-server --no-default-features  # CPU-only
+```
+
+> **Note:** GPU passthrough in WSL2 requires NVIDIA GPU + latest Windows drivers + CUDA Toolkit inside WSL. See [NVIDIA WSL docs](https://docs.nvidia.com/cuda/wsl-user-guide/).
+
+---
+
 ## GPU Acceleration
 
 NietzscheDB supports GPU-accelerated vector search via **NVIDIA cuVS CAGRA** and GPU graph traversal via **NVIDIA cuGraph**.
@@ -1658,7 +1915,7 @@ NietzscheDB/
 │   ├── nietzsche-rl/         ← PPO reinforcement learning (ONNX inference)
 │   ├── nietzsche-neural/     ← neural model registry (ONNX lifecycle)
 │   ├── nietzsche-gnn/        ← graph neural network engine
-│   ├── nietzsche-mcp/        ← MCP server for AI assistants (19 tools)
+│   ├── nietzsche-mcp/        ← MCP server for AI assistants (20 tools)
 │   ├── nietzsche-metrics/    ← Prometheus/OpenTelemetry metrics export
 │   ├── nietzsche-filtered-knn/ ← filtered KNN with Roaring Bitmaps
 │   ├── nietzsche-named-vectors/ ← multi-vector per node
@@ -1733,7 +1990,7 @@ NietzscheDB closes gaps that no existing database fills. It is built on the real
 NietzscheDB provides a multi-layer integration stack for external AI models:
 
 ### Model Context Protocol (MCP)
-AI assistants (Claude, GPT, Cursor, Windsurf) interact with NietzscheDB as a discoverable tool via JSON-RPC 2.0 (`nietzsche-mcp`). 19 tools exposed: graph CRUD, NQL query, KNN search, traversal, algorithms, diffusion, stats.
+AI assistants interact with NietzscheDB as a discoverable tool via JSON-RPC 2.0 (`nietzsche-mcp`). 20 tools exposed: graph CRUD, NQL query, KNN search, traversal, algorithms, diffusion, stats, force_evolution (epistemology mutations).
 
 ### Framework Integrations
 

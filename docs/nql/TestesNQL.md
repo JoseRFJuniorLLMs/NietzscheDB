@@ -829,4 +829,4 @@ camada gRPC onde o embedding sensorial real é resolvido antes da execução.
 
 ---
 
-*Relatório gerado por Claude Code — NietzscheDB v2.0.0*
+*Relatório — NietzscheDB v2.0.0*

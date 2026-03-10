@@ -622,4 +622,4 @@ de memória sem equivalente em nenhum outro sistema de banco de dados disponíve
 
 ---
 
-*Relatório gerado por Claude Code — NietzscheDB v2.0.0 — 2026-02-19*
+*Relatório — NietzscheDB v2.0.0 — 2026-02-19*

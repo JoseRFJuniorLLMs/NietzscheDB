@@ -606,7 +606,7 @@ Nunca como métrica primária
 ## PARTE 10 — FEATURES REJEITADAS POR CONFLITO COM GEOMETRIA HIPERBÓLICA
 
 **Data**: 2026-02-21
-**Avaliação**: Claude Opus 4.6 (Anthropic) — Auditoria de Consolidação
+**Avaliação**: Auditoria de Consolidação
 
 Durante a auditoria de tendências de mercado Q1 2026, as seguintes features foram avaliadas e **REJEITADAS** por conflitarem com os princípios fundamentais da geometria hiperbólica (Poincaré ball):
 

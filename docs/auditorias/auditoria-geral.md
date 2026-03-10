@@ -1,6 +1,6 @@
 # AUDITORIA GERAL — PROJETO EVA-Mind
 **Data:** 2026-02-19
-**Auditor:** Claude Code (Análise Automatizada Profunda)
+**Auditor:** Análise Automatizada Profunda
 **Versão do Banco:** v43 (2026-02-13, 190 tabelas)
 
 ---

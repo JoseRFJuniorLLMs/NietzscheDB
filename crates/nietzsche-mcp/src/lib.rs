@@ -1,7 +1,7 @@
 //! NietzscheDB MCP Server — Model Context Protocol integration.
 //!
 //! Exposes NietzscheDB capabilities as MCP tools that AI assistants
-//! (Claude, Cursor, Windsurf, etc.) can discover and invoke.
+//! can discover and invoke.
 //!
 //! ## Protocol
 //!
