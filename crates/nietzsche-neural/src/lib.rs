@@ -44,10 +44,16 @@ impl ModelRegistry {
     }
 
     pub fn load_model(&self, meta: ModelMetadata) -> Result<()> {
+        let cuda_ep = CUDAExecutionProvider::default();
         let session = Session::builder()?
-            .with_execution_providers([CUDAExecutionProvider::default().build()])?
+            .with_execution_providers([cuda_ep.build()])?
             .commit_from_file(&meta.path)?;
-        
+
+        #[cfg(feature = "cuda")]
+        tracing::info!(model = %meta.name, "Model loaded with CUDA execution provider (GPU)");
+        #[cfg(not(feature = "cuda"))]
+        tracing::warn!(model = %meta.name, "Model loaded WITHOUT CUDA (CPU fallback) — build with feature 'cuda' for GPU");
+
         self.sessions.insert(meta.name.clone(), Arc::new(Mutex::new(session)));
         self.metadata.insert(meta.name.clone(), meta);
         Ok(())

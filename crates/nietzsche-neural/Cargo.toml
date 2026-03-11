@@ -3,6 +3,9 @@ name = "nietzsche-neural"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+cuda = ["ort/cuda"]
+
 [dependencies]
 tokio = { workspace = true }
 serde = { workspace = true }
