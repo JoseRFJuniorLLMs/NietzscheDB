@@ -90,8 +90,12 @@ pub fn batch_local_hausdorff(nodes: &[Node], k: usize) -> Vec<f32> {
     // Try GPU path first
     #[cfg(feature = "cuda")]
     {
+        eprintln!("[L-System] GPU batch Hausdorff: launching CUDA kernel for {} nodes, k={}", nodes.len(), k);
         match gpu_batch_hausdorff(nodes, k) {
-            Ok(results) => return results,
+            Ok(results) => {
+                eprintln!("[L-System] GPU batch Hausdorff: completed {} nodes via CUDA", nodes.len());
+                return results;
+            }
             Err(e) => {
                 // GPU failed — fall back to CPU with a warning
                 #[cfg(feature = "tracing")]
@@ -102,6 +106,7 @@ pub fn batch_local_hausdorff(nodes: &[Node], k: usize) -> Vec<f32> {
     }
 
     // CPU fallback: sequential (original path)
+    eprintln!("[L-System] Hausdorff: using CPU path for {} nodes (no CUDA)", nodes.len());
     cpu_batch_hausdorff(nodes, k)
 }
 

@@ -690,7 +690,12 @@ async fn main() -> anyhow::Result<()> {
                                             break;
                                         }
                                         nietzsche_agency::AgencyIntent::TriggerLSystemGrowth { reason } => {
-                                            // Guard: skip L-System for huge collections (CPU Hausdorff is O(n²))
+                                            // Guard: skip L-System for huge collections.
+                                            // With CUDA feature, GPU batch Hausdorff handles large collections efficiently.
+                                            // Without CUDA, CPU Hausdorff is O(n²) — keep conservative limit.
+                                            #[cfg(feature = "gpu")]
+                                            const LSYSTEM_MAX_NODES: usize = 200_000;
+                                            #[cfg(not(feature = "gpu"))]
                                             const LSYSTEM_MAX_NODES: usize = 50_000;
                                             let nc = db.node_count().unwrap_or(0);
                                             if nc > LSYSTEM_MAX_NODES {
@@ -790,7 +795,11 @@ async fn main() -> anyhow::Result<()> {
                                                 }
                                             }).collect();
                                             if !rules.is_empty() {
-                                                // Guard: skip L-System for huge collections (CPU Hausdorff is O(n²))
+                                                // Guard: skip L-System for huge collections.
+                                                // GPU batch Hausdorff via CUDA supports much larger collections.
+                                                #[cfg(feature = "gpu")]
+                                                const LSYSTEM_MAX_NODES: usize = 200_000;
+                                                #[cfg(not(feature = "gpu"))]
                                                 const LSYSTEM_MAX_NODES: usize = 50_000;
                                                 let nc = db.node_count().unwrap_or(0);
                                                 if nc > LSYSTEM_MAX_NODES {
