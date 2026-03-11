@@ -257,6 +257,22 @@ pub enum AgencyIntent {
         /// Average Poincaré distance within the cluster.
         avg_distance: f64,
     },
+
+    // ── Phase 27: Epistemic Evolution ────────────────────────
+
+    /// Propose an epistemic mutation to improve graph quality.
+    /// Produced when: Phase 27 evolution scan detects low-quality regions.
+    /// The server evaluates the mutation via snapshot/rollback.
+    EpistemicMutation {
+        /// Type of mutation: "propose_edge", "reclassify", "energy_boost", "prune_edge".
+        mutation_type: String,
+        /// Affected node IDs.
+        node_ids: Vec<Uuid>,
+        /// Reason for the proposal.
+        reason: String,
+        /// Estimated improvement in composite epistemic score.
+        estimated_delta: f32,
+    },
 }
 
 /// Converts agency events into executable intents.

@@ -4,7 +4,7 @@
 
 ## Manual de Referencia Completo
 
-**Versao:** 3.0 (NQL v3 — Fases 1-11 + NQL 3.0 Sprint implementados)
+**Versao:** 3.1 (NQL v3.1 — Fases 1-11 + NQL 3.0 Sprint + PostgreSQL-inspired Features)
 **Banco:** NietzscheDB — Multi-Manifold Graph Database (Poincaré · Klein · Riemann · Minkowski)
 **Parser:** pest (PEG Grammar) em Rust
 **Repositorio:** github.com/JoseRFJuniorLLMs/NietzscheDB
@@ -90,6 +90,17 @@
 14. [Exemplos por dominio](#14-exemplos-por-dominio)
 15. [Erros e diagnostico](#15-erros-e-diagnostico)
 16. [Referencia rapida](#16-referencia-rapida)
+17. [NQL 3.1: PostgreSQL-inspired Features](#17-nql-31-postgresql-inspired-features)
+    * [CTEs (WITH ... AS)](#171-ctes-with--as)
+    * [Window Functions](#172-window-functions)
+    * [Views](#173-views)
+    * [Materialized Views](#174-materialized-views)
+    * [RETURNING Clause](#175-returning-clause)
+    * [CHECK Constraints](#176-check-constraints)
+    * [UNIQUE Indexes](#177-unique-indexes)
+    * [Prepared Statements](#178-prepared-statements)
+    * [LATERAL Subquery](#179-lateral-subquery)
+    * [Table Partitioning](#1710-table-partitioning)
 
 ---
 
@@ -2238,7 +2249,194 @@ query = { SOI ~ (explain_query | reconstruct_query | diffuse_query
 
 ## Notas finais
 
-NQL v3 e a primeira linguagem de query de banco de dados que:
+## 17. NQL 3.1: PostgreSQL-inspired Features
+
+NQL 3.1 adiciona 10 features inspiradas no PostgreSQL, adaptadas ao paradigma hiperbolico do NietzscheDB.
+
+### 17.1 CTEs (WITH ... AS)
+
+Common Table Expressions permitem composicao de queries nomeadas.
+
+```nql
+-- CTE simples
+WITH active AS (
+  MATCH (n:Memory) WHERE n.energy > 0.5 RETURN n
+)
+MATCH (a) WHERE a.energy > 0.1 RETURN a
+
+-- CTEs multiplos
+WITH hot AS (
+  MATCH (n) WHERE n.energy > 0.8 RETURN n
+),
+cold AS (
+  MATCH (m) WHERE m.energy < 0.2 RETURN m
+)
+MATCH (a) RETURN a
+```
+
+### 17.2 Window Functions
+
+Funcoes de janela para ranking e analytics sem colapsar linhas.
+
+```nql
+-- ROW_NUMBER: numeracao sequencial
+MATCH (n:Memory)
+RETURN n.name, ROW_NUMBER() OVER (ORDER BY n.energy DESC) AS rank
+
+-- RANK com PARTITION BY: ranking dentro de grupos
+MATCH (n:Memory)
+RETURN n.name, n.label,
+  RANK() OVER (PARTITION BY n.label ORDER BY n.energy DESC) AS rank_in_group
+
+-- DENSE_RANK: sem gaps no ranking
+MATCH (n)
+RETURN n.name, DENSE_RANK() OVER (ORDER BY n.energy DESC) AS dense_rank
+
+-- NTILE: distribuir em N buckets
+MATCH (n)
+RETURN n.name, NTILE(4) OVER (ORDER BY n.energy DESC) AS quartile
+
+-- LAG/LEAD: acessar linha anterior/seguinte
+MATCH (n)
+RETURN n.name, LAG(n.energy) OVER (ORDER BY n.created_at ASC) AS prev_energy
+```
+
+**Funcoes suportadas:**
+
+| Funcao | Descricao | Exemplo |
+|--------|-----------|---------|
+| `ROW_NUMBER()` | Numeracao sequencial unica | `ROW_NUMBER() OVER (ORDER BY n.energy DESC)` |
+| `RANK()` | Ranking com gaps (empates recebem mesmo rank) | `RANK() OVER (PARTITION BY n.type ORDER BY n.energy DESC)` |
+| `DENSE_RANK()` | Ranking sem gaps | `DENSE_RANK() OVER (ORDER BY n.energy DESC)` |
+| `NTILE(n)` | Distribuir em n buckets iguais | `NTILE(4) OVER (ORDER BY n.energy DESC)` |
+| `LAG(field)` | Valor da linha anterior | `LAG(n.energy) OVER (ORDER BY n.created_at ASC)` |
+| `LEAD(field)` | Valor da linha seguinte | `LEAD(n.energy) OVER (ORDER BY n.created_at ASC)` |
+
+### 17.3 Views
+
+Queries nomeadas reutilizaveis armazenadas no catalogo.
+
+```nql
+-- Criar uma view
+CREATE VIEW high_energy AS
+  MATCH (n) WHERE n.energy > 0.8 RETURN n
+
+-- Remover uma view
+DROP VIEW high_energy
+```
+
+### 17.4 Materialized Views
+
+Views pre-computadas e cacheadas. Ideal para dashboards e queries pesadas.
+
+```nql
+-- Criar uma materialized view
+CREATE MATERIALIZED VIEW top_nodes AS
+  MATCH (n) RETURN n ORDER BY n.energy DESC LIMIT 100
+
+-- Recomputar (refresh)
+REFRESH MATERIALIZED VIEW top_nodes
+
+-- Remover
+DROP MATERIALIZED VIEW top_nodes
+```
+
+### 17.5 RETURNING Clause
+
+Retorna dados das rows afetadas por mutacoes, evitando um segundo roundtrip.
+
+```nql
+-- CREATE com RETURNING
+CREATE (n:Memory {title: "hello", energy: 0.9}) RETURNING n.id, n.created_at
+
+-- DELETE com RETURN (dados dos nos deletados)
+MATCH (n) WHERE n.energy < 0.01 DELETE n RETURN n.id, n.title
+```
+
+### 17.6 CHECK Constraints
+
+Constraints arbitrarias sobre campos, validadas em cada insercao/update.
+
+```nql
+-- Adicionar constraint
+ALTER COLLECTION memories ADD CONSTRAINT energy_range
+  CHECK (n.energy >= 0.0)
+
+ALTER COLLECTION memories ADD CONSTRAINT energy_max
+  CHECK (n.energy <= 1.0)
+
+-- Remover constraint
+ALTER COLLECTION memories DROP CONSTRAINT energy_range
+```
+
+### 17.7 UNIQUE Indexes
+
+Prevenir duplicatas a nivel de storage.
+
+```nql
+-- Criar indice unico
+CREATE UNIQUE INDEX idx_email ON users (content.email)
+
+-- Criar indice unico composto
+CREATE UNIQUE INDEX idx_name_type ON memories (content.name, content.type)
+
+-- Remover indice
+DROP INDEX idx_email
+```
+
+### 17.8 Prepared Statements
+
+Cache do plano de execucao para queries frequentes.
+
+```nql
+-- Preparar statement com tipos de parametros
+PREPARE find_hot(float) AS
+  MATCH (n) WHERE n.energy > $1 RETURN n
+
+-- Executar com argumentos
+EXECUTE find_hot(0.7)
+
+-- Liberar
+DEALLOCATE find_hot
+```
+
+### 17.9 LATERAL Subquery
+
+Subquery correlacionada que referencia colunas da query externa. Ideal para "top-N por grupo".
+
+```nql
+-- Para cada Memory, buscar os 3 vizinhos mais energeticos
+MATCH (n:Memory)
+  LATERAL (MATCH (m) WHERE m.energy > 0.5 RETURN m LIMIT 3) AS top3
+RETURN n, top3
+```
+
+### 17.10 Table Partitioning
+
+Particionar collections para melhor performance em datasets grandes.
+
+```nql
+-- Particionar por range (ex: data de criacao)
+ALTER COLLECTION logs PARTITION BY RANGE (created_at)
+
+-- Particionar por lista (ex: regiao)
+ALTER COLLECTION users PARTITION BY LIST (region)
+
+-- Particionar por hash (ex: distribuir em 8 buckets)
+ALTER COLLECTION events PARTITION BY HASH (id, 8)
+```
+
+**Estrategias:**
+
+| Estrategia | Uso | Sintaxe |
+|------------|-----|---------|
+| `RANGE` | Dados temporais, sequenciais | `PARTITION BY RANGE (field)` |
+| `LIST` | Valores discretos (enum, regiao) | `PARTITION BY LIST (field)` |
+| `HASH` | Distribuicao uniforme | `PARTITION BY HASH (field, buckets)` |
+
+---
+
+NQL v3.1 e a primeira linguagem de query de banco de dados que:
 
 1. **Opera nativamente em espaco hiperbolico** — nao e um plugin ou extensao
 2. **Nomeia suas funcoes em homenagem a matematicos e fisicos** que fundamentam cada operacao (18 funcoes eponymous: Poincare, Klein, Minkowski, Lobachevsky, Riemann, Gauss, Chebyshev, Ramanujan, Hausdorff, Euler, Laplace, Fourier, Dirichlet, Boltzmann, Helmholtz, Lyapunov, Prigogine, Erdos)
@@ -2247,6 +2445,7 @@ NQL v3 e a primeira linguagem de query de banco de dados que:
 5. **Reconstroi experiencias sensoriais** a partir de latents comprimidos
 6. **Fecha o gap com Cypher/GQL** com OPTIONAL MATCH, UNION, CASE WHEN, IS NULL, regex, EXISTS, UNWIND, SHORTEST\_PATH, COLLECT, 30+ funcoes built-in — mantendo primitivas hiperbolicas unicas
 7. **Funcoes cognitivas fisico-nomeadas** para analise de dinamica do grafo: sobrevivencia (Boltzmann), gradiente de energia (Helmholtz), divergencia (Lyapunov), bacias dissipativas (Prigogine), probabilidade de arestas (Erdos)
+8. **PostgreSQL-grade analytics** — CTEs, Window Functions (ROW\_NUMBER, RANK, DENSE\_RANK, NTILE, LAG, LEAD), Views, Materialized Views, RETURNING clause, CHECK constraints, UNIQUE indexes, Prepared Statements, LATERAL subqueries, e Table Partitioning
 
 ```
 github.com/JoseRFJuniorLLMs/NietzscheDB

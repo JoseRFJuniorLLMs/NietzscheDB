@@ -68,6 +68,7 @@ nietzsche-rl           = { path = "crates/nietzsche-rl" }
 nietzsche-vqvae        = { path = "crates/nietzsche-vqvae" }
 nietzsche-dsi          = { path = "crates/nietzsche-dsi" }
 nietzsche-agi          = { path = "crates/nietzsche-agi" }
+nietzsche-epistemics   = { path = "crates/nietzsche-epistemics" }
 memmap2 = "0.9"
 parking_lot = "0.12"
 ratatui = "0.24"

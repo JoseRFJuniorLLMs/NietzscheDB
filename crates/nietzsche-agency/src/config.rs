@@ -345,6 +345,20 @@ pub struct AgencyConfig {
     pub cognitive_min_cluster: usize,
     /// Maximum concept nodes to propose per tick (default: 10).
     pub cognitive_max_concepts: usize,
+
+    // -- Phase 27: Epistemic Evolution --
+    /// Whether Phase 27 evolution is enabled (default: true).
+    pub evolution_27_enabled: bool,
+    /// Tick interval for evolution analysis (default: 40).
+    pub evolution_27_interval: u64,
+    /// Maximum nodes to evaluate per tick (default: 500).
+    pub evolution_27_max_eval: usize,
+    /// Minimum composite score — nodes below this are candidates (default: 0.4).
+    pub evolution_27_quality_floor: f32,
+    /// Maximum mutations to propose per tick (default: 5).
+    pub evolution_27_max_proposals: usize,
+    /// Minimum energy for participation (default: 0.05).
+    pub evolution_27_min_energy: f32,
 }
 
 impl Default for AgencyConfig {
@@ -495,6 +509,13 @@ impl Default for AgencyConfig {
             cognitive_cluster_radius: 0.3,
             cognitive_min_cluster: 5,
             cognitive_max_concepts: 10,
+            // Phase 27 — Epistemic Evolution
+            evolution_27_enabled: true,
+            evolution_27_interval: 40,
+            evolution_27_max_eval: 500,
+            evolution_27_quality_floor: 0.4,
+            evolution_27_max_proposals: 5,
+            evolution_27_min_energy: 0.05,
         }
     }
 }
@@ -699,6 +720,15 @@ impl AgencyConfig {
             cognitive_cluster_radius: env_f64("AGENCY_COGNITIVE_CLUSTER_RADIUS", 0.3),
             cognitive_min_cluster:    env_usize("AGENCY_COGNITIVE_MIN_CLUSTER", 5),
             cognitive_max_concepts:   env_usize("AGENCY_COGNITIVE_MAX_CONCEPTS", 10),
+            // Phase 27 — Epistemic Evolution
+            evolution_27_enabled: std::env::var("AGENCY_EVOLUTION_27_ENABLED")
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
+            evolution_27_interval:       env_u64("AGENCY_EVOLUTION_27_INTERVAL", 40),
+            evolution_27_max_eval:       env_usize("AGENCY_EVOLUTION_27_MAX_EVAL", 500),
+            evolution_27_quality_floor:  env_f32("AGENCY_EVOLUTION_27_QUALITY_FLOOR", 0.4),
+            evolution_27_max_proposals:  env_usize("AGENCY_EVOLUTION_27_MAX_PROPOSALS", 5),
+            evolution_27_min_energy:     env_f32("AGENCY_EVOLUTION_27_MIN_ENERGY", 0.05),
         }
     }
 }

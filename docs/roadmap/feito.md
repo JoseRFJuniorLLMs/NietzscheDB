@@ -269,3 +269,12 @@
 | C++ SDK | BAIXO | Sem demanda |
 | Migracao EVA-Mind PG | ALTO | 98 arquivos Go + 65 tabelas Python |
 | Managed Cloud / DBaaS | CRITICO | Para adocao externa |
+
+## NietzscheLab — Epistemic Evolution (Phase 27) — IMPLEMENTADO 2026-03-11
+
+- [x] `nietzsche-lab/` — Python hypothesis loop (lab_runner, hypothesis_generator, consistency_scorer, experiment_journal, grpc_client)
+- [x] `crates/nietzsche-epistemics/` — Rust crate com metricas epistémicas (hierarchy, coherence, coverage, redundancy, novelty, scorer)
+- [x] Phase 27 no Agency Engine — `evolution_27.rs` integrado em `AgencyEngine::tick()`, config, reactor
+- [x] `AgencyIntent::EpistemicMutation` — novo intent para mutacoes epistemicas
+- [x] Env vars: `AGENCY_EVOLUTION_27_ENABLED`, `_INTERVAL`, `_MAX_EVAL`, `_QUALITY_FLOOR`, `_MAX_PROPOSALS`, `_MIN_ENERGY`
+- [x] Documentacao: `docs/roadmap/NietzscheLab.md` com analise comparativa autoresearch vs NietzscheDB

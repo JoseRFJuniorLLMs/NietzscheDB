@@ -1,0 +1,6 @@
+anthropic>=0.39.0
+grpcio>=1.62.0
+grpcio-tools>=1.62.0
+protobuf>=5.26.0
+pyyaml>=6.0
+rich>=13.0

@@ -142,6 +142,21 @@ fn parse_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
             Rule::measure_tension_query    => return Ok(Query::MeasureTension(parse_measure_tension_query(inner)?)),
             Rule::measure_tgc_query        => return Ok(Query::MeasureTgc(parse_measure_tgc_query(inner)?)),
             Rule::find_nearest_query       => return Ok(Query::FindNearest(parse_find_nearest_query(inner)?)),
+            // ── NQL 3.0: PostgreSQL-inspired query types ──
+            Rule::with_cte_query                  => return parse_with_cte_query(inner),
+            Rule::create_view_query               => return parse_create_view_query(inner),
+            Rule::drop_view_query                 => return parse_drop_view_query(inner),
+            Rule::create_materialized_view_query  => return parse_create_materialized_view_query(inner),
+            Rule::refresh_materialized_view_query => return parse_refresh_materialized_view_query(inner),
+            Rule::drop_materialized_view_query    => return parse_drop_materialized_view_query(inner),
+            Rule::prepare_query                   => return parse_prepare_query(inner),
+            Rule::execute_query                   => return parse_execute_query(inner),
+            Rule::deallocate_query                => return parse_deallocate_query(inner),
+            Rule::add_check_constraint_query      => return parse_add_check_constraint_query(inner),
+            Rule::drop_constraint_query           => return parse_drop_constraint_query(inner),
+            Rule::create_unique_index_query       => return parse_create_unique_index_query(inner),
+            Rule::drop_index_query                => return parse_drop_index_query(inner),
+            Rule::partition_by_query              => return parse_partition_by_query(inner),
             Rule::EOI                      => {}
             r => return Err(QueryError::Parse(format!("unexpected rule: {r:?}"))),
         }
@@ -175,6 +190,8 @@ fn parse_match_or_mutate_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
     let mut has_delete       = false;
     let mut has_detach       = false;
     let mut as_of_cycle      = None;
+    let mut lateral          = None;
+    let mut delete_ret       = None;
 
     for inner in pair.into_inner() {
         match inner.as_rule() {
@@ -182,6 +199,9 @@ fn parse_match_or_mutate_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
             Rule::optional_match_clause => {
                 let opt_pat = parse_optional_match_clause(inner)?;
                 optional_matches.push(opt_pat);
+            }
+            Rule::lateral_clause => {
+                lateral = Some(parse_lateral_clause(inner)?);
             }
             Rule::where_clause  => { conditions = parse_where_clause(inner)?; }
             Rule::return_clause => { ret = Some(parse_return_clause(inner)?); }
@@ -203,11 +223,17 @@ fn parse_match_or_mutate_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
             Rule::delete_clause => {
                 has_delete = true;
                 for child in inner.into_inner() {
-                    if child.as_rule() == Rule::delete_target {
-                        let alias = child.into_inner().next()
-                            .ok_or_else(|| QueryError::Parse("DELETE target missing ident".into()))?
-                            .as_str().to_string();
-                        targets.push(alias);
+                    match child.as_rule() {
+                        Rule::delete_target => {
+                            let alias = child.into_inner().next()
+                                .ok_or_else(|| QueryError::Parse("DELETE target missing ident".into()))?
+                                .as_str().to_string();
+                            targets.push(alias);
+                        }
+                        Rule::return_clause => {
+                            delete_ret = Some(parse_return_clause(child)?);
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -215,11 +241,17 @@ fn parse_match_or_mutate_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
                 has_delete = true;
                 has_detach = true;
                 for child in inner.into_inner() {
-                    if child.as_rule() == Rule::delete_target {
-                        let alias = child.into_inner().next()
-                            .ok_or_else(|| QueryError::Parse("DETACH DELETE target missing ident".into()))?
-                            .as_str().to_string();
-                        targets.push(alias);
+                    match child.as_rule() {
+                        Rule::delete_target => {
+                            let alias = child.into_inner().next()
+                                .ok_or_else(|| QueryError::Parse("DETACH DELETE target missing ident".into()))?
+                                .as_str().to_string();
+                            targets.push(alias);
+                        }
+                        Rule::return_clause => {
+                            delete_ret = Some(parse_return_clause(child)?);
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -245,6 +277,7 @@ fn parse_match_or_mutate_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
             conditions,
             targets,
             detach:     has_detach,
+            ret:        delete_ret,
         }))
     } else {
         Ok(Query::Match(MatchQuery {
@@ -253,6 +286,7 @@ fn parse_match_or_mutate_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
             conditions,
             ret:              ret.ok_or_else(|| QueryError::Parse("missing RETURN clause".into()))?,
             as_of_cycle,
+            lateral,
         }))
     }
 }
@@ -395,7 +429,8 @@ fn parse_create_query(pair: Pair<Rule>) -> Result<CreateQuery, QueryError> {
                     }
                 }
             }
-            Rule::return_clause => { ret = Some(parse_return_clause(inner)?); }
+            Rule::return_clause    => { ret = Some(parse_return_clause(inner)?); }
+            Rule::returning_clause => { ret = Some(parse_returning_clause(inner)?); }
             r => return Err(QueryError::Parse(format!("unexpected in create_query: {r:?}"))),
         }
     }
@@ -1002,6 +1037,9 @@ fn parse_return_item(pair: Pair<Rule>) -> Result<ReturnItem, QueryError> {
 
     for inner in pair.into_inner() {
         match inner.as_rule() {
+            Rule::window_func => {
+                expr = Some(parse_window_func(inner)?);
+            }
             Rule::agg_func => {
                 expr = Some(parse_agg_func(inner)?);
             }
@@ -1892,6 +1930,473 @@ fn parse_reconstruct_query(pair: Pair<Rule>) -> Result<ReconstructQuery, QueryEr
     })
 }
 
+// ═══════════════════════════════════════════════════════════
+// ── NQL 3.0: PostgreSQL-inspired Parsers ─────────────────
+// ═══════════════════════════════════════════════════════════
+
+// ── Window functions ──────────────────────────────────────
+
+fn parse_window_func(pair: Pair<Rule>) -> Result<ReturnExpr, QueryError> {
+    let mut func_name = None;
+    let mut arg = None;
+    let mut partition_by = Vec::new();
+    let mut order_by = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::window_func_name => {
+                func_name = Some(inner.as_str().to_string());
+            }
+            Rule::agg_arg => {
+                arg = Some(parse_agg_arg(inner)?);
+            }
+            Rule::integer => {
+                let n: usize = inner.as_str().parse()
+                    .map_err(|_| QueryError::Parse("bad NTILE value".into()))?;
+                // For NTILE, store the bucket count; we handle this specially below
+                arg = Some(AggArg::Star); // placeholder
+                // Re-parse func_name to NTILE(n)
+                func_name = Some(format!("NTILE:{n}"));
+            }
+            Rule::window_over => {
+                for over_inner in inner.into_inner() {
+                    match over_inner.as_rule() {
+                        Rule::window_partition => {
+                            for part_inner in over_inner.into_inner() {
+                                match part_inner.as_rule() {
+                                    Rule::prop => {
+                                        let (a, f) = parse_prop(part_inner)?;
+                                        partition_by.push(ReturnExpr::Property(a, f));
+                                    }
+                                    Rule::ident => {
+                                        partition_by.push(ReturnExpr::Alias(part_inner.as_str().to_string()));
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        Rule::window_order => {
+                            order_by = Some(parse_order_by(over_inner)?);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let name_str = func_name.ok_or_else(|| QueryError::Parse("window function missing name".into()))?;
+    let func = if name_str.starts_with("NTILE:") {
+        let n: usize = name_str[6..].parse().unwrap_or(4);
+        WindowFuncKind::Ntile(n)
+    } else {
+        match name_str.as_str() {
+            "ROW_NUMBER" => WindowFuncKind::RowNumber,
+            "RANK"       => WindowFuncKind::Rank,
+            "DENSE_RANK" => WindowFuncKind::DenseRank,
+            "LAG"        => WindowFuncKind::Lag,
+            "LEAD"       => WindowFuncKind::Lead,
+            "NTILE"      => WindowFuncKind::Ntile(4), // default
+            s => return Err(QueryError::Parse(format!("unknown window function: {s}"))),
+        }
+    };
+
+    Ok(ReturnExpr::WindowFunc {
+        func,
+        arg,
+        partition_by,
+        order_by,
+    })
+}
+
+// ── LATERAL clause ────────────────────────────────────────
+
+fn parse_lateral_clause(pair: Pair<Rule>) -> Result<LateralClause, QueryError> {
+    let mut subquery = None;
+    let mut alias = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::match_query => {
+                subquery = Some(Box::new(parse_match_or_mutate_query(inner)?));
+            }
+            Rule::ident => {
+                alias = Some(inner.as_str().to_string());
+            }
+            _ => {}
+        }
+    }
+
+    Ok(LateralClause {
+        subquery: subquery.ok_or_else(|| QueryError::Parse("LATERAL missing subquery".into()))?,
+        alias:    alias.ok_or_else(|| QueryError::Parse("LATERAL missing alias".into()))?,
+    })
+}
+
+// ── RETURNING clause (for CREATE) ─────────────────────────
+
+fn parse_returning_clause(pair: Pair<Rule>) -> Result<ReturnClause, QueryError> {
+    let mut items = Vec::new();
+
+    for inner in pair.into_inner() {
+        if inner.as_rule() == Rule::return_item {
+            items.push(parse_return_item(inner)?);
+        }
+    }
+
+    if items.is_empty() {
+        return Err(QueryError::Parse("RETURNING requires at least one item".into()));
+    }
+
+    Ok(ReturnClause {
+        distinct: false,
+        items,
+        group_by: Vec::new(),
+        order_by: None,
+        limit: None,
+        skip: None,
+    })
+}
+
+// ── WITH (CTEs) ───────────────────────────────────────────
+
+fn parse_with_cte_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let mut ctes = Vec::new();
+    let mut main_query = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::cte_def => {
+                let mut cte_inner = inner.into_inner();
+                let name = cte_inner.next()
+                    .ok_or_else(|| QueryError::Parse("CTE missing name".into()))?
+                    .as_str().to_string();
+                let query_pair = cte_inner.next()
+                    .ok_or_else(|| QueryError::Parse("CTE missing query body".into()))?;
+                let query = match query_pair.as_rule() {
+                    Rule::union_query => Query::Union(parse_union_query(query_pair)?),
+                    Rule::match_query => parse_match_or_mutate_query(query_pair)?,
+                    r => return Err(QueryError::Parse(format!("unexpected in CTE body: {r:?}"))),
+                };
+                ctes.push(CteDef { name, query: Box::new(query) });
+            }
+            Rule::union_query => {
+                main_query = Some(Query::Union(parse_union_query(inner)?));
+            }
+            Rule::match_query => {
+                main_query = Some(parse_match_or_mutate_query(inner)?);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Query::WithCte(WithCteQuery {
+        ctes,
+        main: Box::new(main_query.ok_or_else(|| QueryError::Parse("WITH missing main query".into()))?),
+    }))
+}
+
+// ── CREATE VIEW / DROP VIEW ───────────────────────────────
+
+fn parse_create_view_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let mut name = None;
+    let mut query = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::ident => {
+                if name.is_none() { name = Some(inner.as_str().to_string()); }
+            }
+            Rule::union_query => {
+                query = Some(Query::Union(parse_union_query(inner)?));
+            }
+            Rule::match_query => {
+                query = Some(parse_match_or_mutate_query(inner)?);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Query::CreateView(CreateViewQuery {
+        name:  name.ok_or_else(|| QueryError::Parse("CREATE VIEW missing name".into()))?,
+        query: Box::new(query.ok_or_else(|| QueryError::Parse("CREATE VIEW missing query".into()))?),
+    }))
+}
+
+fn parse_drop_view_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let name = pair.into_inner().next()
+        .ok_or_else(|| QueryError::Parse("DROP VIEW missing name".into()))?
+        .as_str().to_string();
+    Ok(Query::DropView(DropViewQuery { name }))
+}
+
+// ── MATERIALIZED VIEW ─────────────────────────────────────
+
+fn parse_create_materialized_view_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let mut name = None;
+    let mut query = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::ident => {
+                if name.is_none() { name = Some(inner.as_str().to_string()); }
+            }
+            Rule::union_query => {
+                query = Some(Query::Union(parse_union_query(inner)?));
+            }
+            Rule::match_query => {
+                query = Some(parse_match_or_mutate_query(inner)?);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Query::CreateMaterializedView(CreateMaterializedViewQuery {
+        name:  name.ok_or_else(|| QueryError::Parse("CREATE MATERIALIZED VIEW missing name".into()))?,
+        query: Box::new(query.ok_or_else(|| QueryError::Parse("CREATE MATERIALIZED VIEW missing query".into()))?),
+    }))
+}
+
+fn parse_refresh_materialized_view_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let name = pair.into_inner().next()
+        .ok_or_else(|| QueryError::Parse("REFRESH MATERIALIZED VIEW missing name".into()))?
+        .as_str().to_string();
+    Ok(Query::RefreshMaterializedView(RefreshMaterializedViewQuery { name }))
+}
+
+fn parse_drop_materialized_view_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let name = pair.into_inner().next()
+        .ok_or_else(|| QueryError::Parse("DROP MATERIALIZED VIEW missing name".into()))?
+        .as_str().to_string();
+    Ok(Query::DropMaterializedView(DropMaterializedViewQuery { name }))
+}
+
+// ── PREPARE / EXECUTE / DEALLOCATE ────────────────────────
+
+fn parse_prepare_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let mut name = None;
+    let mut params = Vec::new();
+    let mut query = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::ident => {
+                if name.is_none() { name = Some(inner.as_str().to_string()); }
+            }
+            Rule::prepare_param_types => {
+                for child in inner.into_inner() {
+                    if child.as_rule() == Rule::ident {
+                        params.push(child.as_str().to_string());
+                    }
+                }
+            }
+            Rule::union_query => {
+                query = Some(Query::Union(parse_union_query(inner)?));
+            }
+            Rule::match_query => {
+                query = Some(parse_match_or_mutate_query(inner)?);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Query::Prepare(PrepareQuery {
+        name:   name.ok_or_else(|| QueryError::Parse("PREPARE missing name".into()))?,
+        params,
+        query:  Box::new(query.ok_or_else(|| QueryError::Parse("PREPARE missing query body".into()))?),
+    }))
+}
+
+fn parse_execute_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let mut name = None;
+    let mut args = Vec::new();
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::ident => {
+                if name.is_none() { name = Some(inner.as_str().to_string()); }
+            }
+            Rule::execute_args => {
+                for child in inner.into_inner() {
+                    if child.as_rule() == Rule::atom {
+                        args.push(parse_atom(child)?);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Query::Execute(ExecuteQuery {
+        name: name.ok_or_else(|| QueryError::Parse("EXECUTE missing name".into()))?,
+        args,
+    }))
+}
+
+fn parse_deallocate_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let name = pair.into_inner().next()
+        .ok_or_else(|| QueryError::Parse("DEALLOCATE missing name".into()))?
+        .as_str().to_string();
+    Ok(Query::Deallocate(DeallocateQuery { name }))
+}
+
+// ── CHECK CONSTRAINT ──────────────────────────────────────
+
+fn parse_add_check_constraint_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let mut idents = Vec::new();
+    let mut condition = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::ident => { idents.push(inner.as_str().to_string()); }
+            Rule::conditions => {
+                let or = inner.into_inner().next()
+                    .ok_or_else(|| QueryError::Parse("CHECK missing condition".into()))?;
+                condition = Some(parse_or_cond(or)?);
+            }
+            _ => {}
+        }
+    }
+
+    if idents.len() < 2 {
+        return Err(QueryError::Parse("ADD CONSTRAINT requires collection and constraint name".into()));
+    }
+
+    Ok(Query::AddCheckConstraint(AddCheckConstraintQuery {
+        collection:      idents[0].clone(),
+        constraint_name: idents[1].clone(),
+        condition:       condition.ok_or_else(|| QueryError::Parse("CHECK missing condition".into()))?,
+    }))
+}
+
+fn parse_drop_constraint_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let mut idents = Vec::new();
+
+    for inner in pair.into_inner() {
+        if inner.as_rule() == Rule::ident {
+            idents.push(inner.as_str().to_string());
+        }
+    }
+
+    if idents.len() < 2 {
+        return Err(QueryError::Parse("DROP CONSTRAINT requires collection and constraint name".into()));
+    }
+
+    Ok(Query::DropConstraint(DropConstraintQuery {
+        collection:      idents[0].clone(),
+        constraint_name: idents[1].clone(),
+    }))
+}
+
+// ── UNIQUE INDEX ──────────────────────────────────────────
+
+fn parse_create_unique_index_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let mut index_name = None;
+    let mut collection = None;
+    let mut fields = Vec::new();
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::ident => {
+                if index_name.is_none() {
+                    index_name = Some(inner.as_str().to_string());
+                } else if collection.is_none() {
+                    collection = Some(inner.as_str().to_string());
+                }
+            }
+            Rule::unique_index_fields => {
+                for child in inner.into_inner() {
+                    match child.as_rule() {
+                        Rule::prop => {
+                            let (a, f) = parse_prop(child)?;
+                            fields.push(format!("{a}.{f}"));
+                        }
+                        Rule::ident => {
+                            fields.push(child.as_str().to_string());
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Query::CreateUniqueIndex(CreateUniqueIndexQuery {
+        index_name:  index_name.ok_or_else(|| QueryError::Parse("CREATE UNIQUE INDEX missing name".into()))?,
+        collection:  collection.ok_or_else(|| QueryError::Parse("CREATE UNIQUE INDEX missing ON collection".into()))?,
+        fields,
+    }))
+}
+
+fn parse_drop_index_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let name = pair.into_inner().next()
+        .ok_or_else(|| QueryError::Parse("DROP INDEX missing name".into()))?
+        .as_str().to_string();
+    Ok(Query::DropIndex(DropIndexQuery { index_name: name }))
+}
+
+// ── PARTITION BY ──────────────────────────────────────────
+
+fn parse_partition_by_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let mut collection = None;
+    let mut strategy = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::ident => {
+                if collection.is_none() {
+                    collection = Some(inner.as_str().to_string());
+                }
+            }
+            Rule::partition_strategy => {
+                strategy = Some(parse_partition_strategy(inner)?);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Query::PartitionBy(PartitionByQuery {
+        collection: collection.ok_or_else(|| QueryError::Parse("PARTITION BY missing collection".into()))?,
+        strategy:   strategy.ok_or_else(|| QueryError::Parse("PARTITION BY missing strategy".into()))?,
+    }))
+}
+
+fn parse_partition_strategy(pair: Pair<Rule>) -> Result<PartitionStrategy, QueryError> {
+    let inner = pair.into_inner().next()
+        .ok_or_else(|| QueryError::Parse("empty partition_strategy".into()))?;
+
+    let mut field = None;
+    let mut bucket_count = None;
+
+    for child in inner.clone().into_inner() {
+        match child.as_rule() {
+            Rule::prop => {
+                let (a, f) = parse_prop(child)?;
+                field = Some(format!("{a}.{f}"));
+            }
+            Rule::ident => {
+                field = Some(child.as_str().to_string());
+            }
+            Rule::integer => {
+                bucket_count = Some(child.as_str().parse::<usize>()
+                    .map_err(|_| QueryError::Parse("bad HASH bucket count".into()))?);
+            }
+            _ => {}
+        }
+    }
+
+    let f = field.ok_or_else(|| QueryError::Parse("PARTITION BY missing field".into()))?;
+
+    match inner.as_rule() {
+        Rule::partition_range => Ok(PartitionStrategy::Range(f)),
+        Rule::partition_list  => Ok(PartitionStrategy::List(f)),
+        Rule::partition_hash  => Ok(PartitionStrategy::Hash(f, bucket_count.unwrap_or(8))),
+        r => Err(QueryError::Parse(format!("unexpected partition strategy: {r:?}"))),
+    }
+}
+
 // ─────────────────────────────────────────────
 // Tests
 // ─────────────────────────────────────────────
@@ -2701,5 +3206,188 @@ mod tests {
         if let Err(e) = &result {
             assert!(!e.to_string().contains("too long"), "should not reject at exact limit: {e}");
         }
+    }
+
+    // ═══════════════════════════════════════════════════
+    // ── NQL 3.0: PostgreSQL-inspired Feature Tests ────
+    // ═══════════════════════════════════════════════════
+
+    #[test]
+    fn parse_with_cte() {
+        let q = parse(
+            r#"WITH active AS (MATCH (n) WHERE n.energy > 0.5 RETURN n) MATCH (a) WHERE a.energy > 0.1 RETURN a"#
+        ).unwrap();
+        let Query::WithCte(cte) = q else { panic!("expected WithCte") };
+        assert_eq!(cte.ctes.len(), 1);
+        assert_eq!(cte.ctes[0].name, "active");
+    }
+
+    #[test]
+    fn parse_with_multiple_ctes() {
+        let q = parse(
+            r#"WITH hot AS (MATCH (n) WHERE n.energy > 0.8 RETURN n), cold AS (MATCH (m) WHERE m.energy < 0.2 RETURN m) MATCH (a) RETURN a"#
+        ).unwrap();
+        let Query::WithCte(cte) = q else { panic!("expected WithCte") };
+        assert_eq!(cte.ctes.len(), 2);
+        assert_eq!(cte.ctes[0].name, "hot");
+        assert_eq!(cte.ctes[1].name, "cold");
+    }
+
+    #[test]
+    fn parse_create_view() {
+        let q = parse(r#"CREATE VIEW high_energy AS MATCH (n) WHERE n.energy > 0.8 RETURN n"#).unwrap();
+        let Query::CreateView(v) = q else { panic!("expected CreateView") };
+        assert_eq!(v.name, "high_energy");
+    }
+
+    #[test]
+    fn parse_drop_view() {
+        let q = parse("DROP VIEW high_energy").unwrap();
+        let Query::DropView(v) = q else { panic!("expected DropView") };
+        assert_eq!(v.name, "high_energy");
+    }
+
+    #[test]
+    fn parse_create_materialized_view() {
+        let q = parse(
+            r#"CREATE MATERIALIZED VIEW top_nodes AS MATCH (n) RETURN n ORDER BY n.energy DESC LIMIT 100"#
+        ).unwrap();
+        let Query::CreateMaterializedView(v) = q else { panic!("expected CreateMaterializedView") };
+        assert_eq!(v.name, "top_nodes");
+    }
+
+    #[test]
+    fn parse_refresh_materialized_view() {
+        let q = parse("REFRESH MATERIALIZED VIEW top_nodes").unwrap();
+        let Query::RefreshMaterializedView(v) = q else { panic!("expected RefreshMaterializedView") };
+        assert_eq!(v.name, "top_nodes");
+    }
+
+    #[test]
+    fn parse_drop_materialized_view() {
+        let q = parse("DROP MATERIALIZED VIEW top_nodes").unwrap();
+        let Query::DropMaterializedView(v) = q else { panic!("expected DropMaterializedView") };
+        assert_eq!(v.name, "top_nodes");
+    }
+
+    #[test]
+    fn parse_prepare_statement() {
+        let q = parse(
+            r#"PREPARE find_hot(float) AS MATCH (n) WHERE n.energy > 0.5 RETURN n"#
+        ).unwrap();
+        let Query::Prepare(p) = q else { panic!("expected Prepare") };
+        assert_eq!(p.name, "find_hot");
+        assert_eq!(p.params, vec!["float"]);
+    }
+
+    #[test]
+    fn parse_execute_statement() {
+        let q = parse("EXECUTE find_hot(0.7)").unwrap();
+        let Query::Execute(e) = q else { panic!("expected Execute") };
+        assert_eq!(e.name, "find_hot");
+        assert_eq!(e.args.len(), 1);
+    }
+
+    #[test]
+    fn parse_deallocate() {
+        let q = parse("DEALLOCATE find_hot").unwrap();
+        let Query::Deallocate(d) = q else { panic!("expected Deallocate") };
+        assert_eq!(d.name, "find_hot");
+    }
+
+    #[test]
+    fn parse_add_check_constraint() {
+        let q = parse(
+            r#"ALTER COLLECTION memories ADD CONSTRAINT energy_range CHECK (n.energy >= 0.0)"#
+        ).unwrap();
+        let Query::AddCheckConstraint(c) = q else { panic!("expected AddCheckConstraint") };
+        assert_eq!(c.collection, "memories");
+        assert_eq!(c.constraint_name, "energy_range");
+    }
+
+    #[test]
+    fn parse_drop_constraint() {
+        let q = parse("ALTER COLLECTION memories DROP CONSTRAINT energy_range").unwrap();
+        let Query::DropConstraint(c) = q else { panic!("expected DropConstraint") };
+        assert_eq!(c.collection, "memories");
+        assert_eq!(c.constraint_name, "energy_range");
+    }
+
+    #[test]
+    fn parse_create_unique_index() {
+        let q = parse("CREATE UNIQUE INDEX idx_email ON users (content.email)").unwrap();
+        let Query::CreateUniqueIndex(idx) = q else { panic!("expected CreateUniqueIndex") };
+        assert_eq!(idx.index_name, "idx_email");
+        assert_eq!(idx.collection, "users");
+        assert_eq!(idx.fields, vec!["content.email"]);
+    }
+
+    #[test]
+    fn parse_drop_index() {
+        let q = parse("DROP INDEX idx_email").unwrap();
+        let Query::DropIndex(idx) = q else { panic!("expected DropIndex") };
+        assert_eq!(idx.index_name, "idx_email");
+    }
+
+    #[test]
+    fn parse_partition_by_hash() {
+        let q = parse("ALTER COLLECTION events PARTITION BY HASH (id, 8)").unwrap();
+        let Query::PartitionBy(p) = q else { panic!("expected PartitionBy") };
+        assert_eq!(p.collection, "events");
+        assert!(matches!(p.strategy, PartitionStrategy::Hash(_, 8)));
+    }
+
+    #[test]
+    fn parse_window_row_number() {
+        let q = parse(
+            r#"MATCH (n) RETURN n.name, ROW_NUMBER() OVER (ORDER BY n.energy DESC) AS rank"#
+        ).unwrap();
+        let Query::Match(m) = q else { panic!("expected Match") };
+        assert_eq!(m.ret.items.len(), 2);
+        assert!(matches!(&m.ret.items[1].expr, ReturnExpr::WindowFunc { func: WindowFuncKind::RowNumber, .. }));
+        assert_eq!(m.ret.items[1].as_alias.as_deref(), Some("rank"));
+    }
+
+    #[test]
+    fn parse_window_rank_with_partition() {
+        let q = parse(
+            r#"MATCH (n:Memory) RETURN n.name, RANK() OVER (PARTITION BY n.label ORDER BY n.energy DESC) AS r"#
+        ).unwrap();
+        let Query::Match(m) = q else { panic!("expected Match") };
+        if let ReturnExpr::WindowFunc { func, partition_by, order_by, .. } = &m.ret.items[1].expr {
+            assert_eq!(*func, WindowFuncKind::Rank);
+            assert!(!partition_by.is_empty());
+            assert!(order_by.is_some());
+        } else {
+            panic!("expected WindowFunc");
+        }
+    }
+
+    #[test]
+    fn parse_returning_clause() {
+        let q = parse(
+            r#"CREATE (n:Memory {title: "hello"}) RETURNING n.title"#
+        ).unwrap();
+        let Query::Create(c) = q else { panic!("expected Create") };
+        assert!(c.ret.is_some());
+    }
+
+    #[test]
+    fn parse_lateral_subquery() {
+        let q = parse(
+            r#"MATCH (n:Memory) LATERAL (MATCH (m) WHERE m.energy > 0.5 RETURN m LIMIT 3) AS top3 RETURN n"#
+        ).unwrap();
+        let Query::Match(m) = q else { panic!("expected Match") };
+        assert!(m.lateral.is_some());
+        assert_eq!(m.lateral.as_ref().unwrap().alias, "top3");
+    }
+
+    #[test]
+    fn parse_delete_with_returning() {
+        let q = parse(
+            r#"MATCH (n) WHERE n.energy < 0.01 DELETE n RETURN n.id"#
+        ).unwrap();
+        let Query::MatchDelete(md) = q else { panic!("expected MatchDelete") };
+        assert!(md.ret.is_some());
     }
 }

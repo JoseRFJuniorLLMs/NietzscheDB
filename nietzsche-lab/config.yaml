@@ -1,0 +1,46 @@
+# NietzscheLab Configuration
+# Autonomous Knowledge Evolution Engine
+# Author: web2ajax@gmail.com
+
+server:
+  host: "localhost"
+  grpc_port: 50051
+  http_port: 8080
+
+# Target collection for experiments (use a TEST collection, not production!)
+collection: "lab_experiments"
+
+# Experiment loop settings
+experiments:
+  max_per_run: 20
+  score_threshold: 0.02        # minimum delta to accept a mutation
+  cooldown_seconds: 2          # pause between experiments
+
+# LLM settings (Claude API)
+llm:
+  model: "claude-sonnet-4-20250514"
+  max_tokens: 1024
+  temperature: 0.7
+
+# Hypothesis generation
+hypothesis:
+  subgraph_sample_size: 50     # nodes to sample for context
+  min_energy: 0.1              # minimum energy for candidate nodes
+  types:
+    - NEW_EDGE
+    - NEW_CONCEPT
+    - REMOVE_EDGE
+    - RECLASSIFY
+
+# Scoring weights (sum should be ~1.0)
+scoring:
+  hierarchy_weight: 0.30
+  coherence_weight: 0.25
+  energy_weight: 0.20
+  hausdorff_weight: 0.15
+  novelty_weight: 0.10
+
+# Journal
+journal:
+  path: "./experiments.jsonl"
+  verbose: true

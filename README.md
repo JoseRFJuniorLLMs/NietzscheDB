@@ -97,6 +97,8 @@ NietzscheDB doesn't just store data; it projects it across four distinct manifol
 │   · Cognitive Flywheel (unified autonomous feedback)    │
 │   · Hydraulic Flow Engine (Constructal + Murray's Law) │
 │   · EpistemologyDaemon (Karpathy autoresearch loop)    │
+│   · NietzscheLab (autonomous epistemic evolution)     │
+│   · Epistemic Metrics (hierarchy/coherence/coverage)  │
 │   · ShadowTGC (full TGC on lightweight ShadowGraph)    │
 │   · Morning Report (post-sleep discovery summary)      │
 │   · NodeLedger (per-action CPU cost tracking)          │
@@ -158,7 +160,7 @@ It is a fork of **[YARlabs/nietzsche-db](https://github.com/YARlabs/nietzsche-db
 
 ## Architecture
 
-NietzscheDB is built as a **Rust nightly workspace** with 41 crates in two layers:
+NietzscheDB is built as a **Rust nightly workspace** with 42+ crates in two layers:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -167,7 +169,7 @@ NietzscheDB is built as a **Rust nightly workspace** with 41 crates in two layer
 │  Engine:     nietzsche-graph    nietzsche-query     nietzsche-hyp-ops        │
 │  AGI:        nietzsche-agi (17 modules, 7K LOC, 123 tests)                  │
 │  Growth:     nietzsche-lsystem  nietzsche-pregel    nietzsche-sleep          │
-│  Evolution:  nietzsche-zaratustra                                            │
+│  Evolution:  nietzsche-zaratustra nietzsche-epistemics                       │
 │  Analytics:  nietzsche-algo     nietzsche-sensory                            │
 │  Visionary:  nietzsche-dream    nietzsche-narrative  nietzsche-agency        │
 │  Neural:     nietzsche-rl       nietzsche-neural    nietzsche-gnn            │
@@ -250,7 +252,7 @@ Four non-Euclidean geometry modules sharing a single Poincaré storage layer:
 Invariants enforced: Poincaré ‖x‖ < 1.0, Klein ‖x‖ < 1.0, Sphere ‖x‖ = 1.0. Cascaded roundtrip error < 1e-4 after 10 projections. Includes criterion benchmarks.
 
 #### `nietzsche-query` — NQL Query Language
-Nietzsche Query Language — a declarative query language with first-class multi-manifold primitives. Parser built with `pest` (PEG grammar). **NQL 4.0 "The Constructal Update"** adds 5 hydraulic-flow functions (BEJAN_CONDUCTIVITY, POISEUILLE_FRICTION, MURRAY_RATIO, NAVIER_STOKES_TURBULENCE, ONSAGER_DISSIPATION), `r.conductivity` edge field access, ERODE PATH (conductivity boost along shortest path), and INJECT ENERGY statements — making the Hydraulic Flow Engine queryable. **NQL 3.0** brought OPTIONAL MATCH, UNION, CASE WHEN, IS NULL/IS NOT NULL, regex matching, EXISTS subqueries, UNWIND, SHORTEST_PATH, COLLECT, 30+ string/math/cast/null built-in functions, and 5 physicist-named cognitive functions. Supports arithmetic SET expressions (`n.count = n.count + 1`), edge alias property access (`-[r:TYPE]->` with `r.weight`/`r.conductivity` in WHERE/ORDER BY), CREATE with TTL, DETACH DELETE, and eval_field fallback to `node.content`/`node.metadata` for dynamic properties. 113+ unit + integration tests.
+Nietzsche Query Language — a declarative query language with first-class multi-manifold primitives. Parser built with `pest` (PEG grammar). **NQL 4.0 "The Constructal Update"** adds 5 hydraulic-flow functions (BEJAN_CONDUCTIVITY, POISEUILLE_FRICTION, MURRAY_RATIO, NAVIER_STOKES_TURBULENCE, ONSAGER_DISSIPATION), `r.conductivity` edge field access, ERODE PATH (conductivity boost along shortest path), and INJECT ENERGY statements — making the Hydraulic Flow Engine queryable. **NQL 3.1 "PostgreSQL-grade Analytics"** adds CTEs (WITH ... AS), Window Functions (ROW_NUMBER, RANK, DENSE_RANK, NTILE, LAG, LEAD with OVER/PARTITION BY), Views, Materialized Views, RETURNING clause, CHECK constraints, UNIQUE indexes, Prepared Statements (PREPARE/EXECUTE/DEALLOCATE), LATERAL subqueries, and Table Partitioning (RANGE/LIST/HASH). **NQL 3.0** brought OPTIONAL MATCH, UNION, CASE WHEN, IS NULL/IS NOT NULL, regex matching, EXISTS subqueries, UNWIND, SHORTEST_PATH, COLLECT, 30+ string/math/cast/null built-in functions, and 5 physicist-named cognitive functions. Supports arithmetic SET expressions (`n.count = n.count + 1`), edge alias property access (`-[r:TYPE]->` with `r.weight`/`r.conductivity` in WHERE/ORDER BY), CREATE with TTL, DETACH DELETE, and eval_field fallback to `node.content`/`node.metadata` for dynamic properties. 139+ unit + integration tests.
 
 **[Full NQL Reference: docs/NQL.md](docs/NQL.md)**
 
@@ -287,6 +289,16 @@ Query types:
 | `PSYCHOANALYZE` | Return evolutionary lineage of a node (creation, connections, energy) |
 | `ERODE PATH` | Boost conductivity along shortest path between two nodes (Constructal) |
 | `INJECT ENERGY` | Inject energy into a target node (Constructal) |
+| `WITH ... AS (...)` | Common Table Expressions — composable named subqueries (NQL 3.1) |
+| `ROW_NUMBER/RANK/...` | Window Functions with OVER (PARTITION BY ... ORDER BY ...) (NQL 3.1) |
+| `CREATE VIEW` | Named stored queries (NQL 3.1) |
+| `CREATE MATERIALIZED VIEW` | Pre-computed cached queries with REFRESH (NQL 3.1) |
+| `RETURNING` | Return data from mutation results (CREATE/DELETE) (NQL 3.1) |
+| `PREPARE/EXECUTE` | Prepared statements with cached execution plans (NQL 3.1) |
+| `LATERAL (...)` | Correlated subquery for top-N per group (NQL 3.1) |
+| `ALTER ... CHECK` | CHECK constraints for data integrity (NQL 3.1) |
+| `CREATE UNIQUE INDEX` | Unique constraints on fields (NQL 3.1) |
+| `PARTITION BY` | Table partitioning (RANGE/LIST/HASH) (NQL 3.1) |
 
 ```sql
 -- Hyperbolic nearest-neighbor search with depth filter
@@ -473,6 +485,43 @@ MATCH (n) WHERE HELMHOLTZ_GRADIENT(n) > 0.1 RETURN n
 MATCH (a), (b) WHERE LYAPUNOV_DELTA(a, b) < 0.3 RETURN a, b
 MATCH (n) WHERE PRIGOGINE_BASIN(n) > 0.5 RETURN n
 MATCH (a), (b) RETURN ERDOS_EDGE_PROB(a, b) AS prob
+
+-- ── NQL 3.1 Features (PostgreSQL-inspired) ─────────
+
+-- CTEs (Common Table Expressions)
+WITH active AS (
+  MATCH (n:Memory) WHERE n.energy > 0.5 RETURN n
+)
+MATCH (a) WHERE a.energy > 0.1 RETURN a
+
+-- Window Functions
+MATCH (n:Memory)
+RETURN n.name, n.energy,
+  ROW_NUMBER() OVER (ORDER BY n.energy DESC) AS rank,
+  RANK() OVER (PARTITION BY n.label ORDER BY n.energy DESC) AS group_rank
+
+-- Views & Materialized Views
+CREATE VIEW high_energy AS MATCH (n) WHERE n.energy > 0.8 RETURN n
+CREATE MATERIALIZED VIEW top100 AS MATCH (n) RETURN n ORDER BY n.energy DESC LIMIT 100
+REFRESH MATERIALIZED VIEW top100
+
+-- RETURNING clause
+CREATE (n:Memory {title: "hello", energy: 0.9}) RETURNING n.id
+
+-- Prepared Statements
+PREPARE find_hot(float) AS MATCH (n) WHERE n.energy > $1 RETURN n
+EXECUTE find_hot(0.7)
+
+-- LATERAL subquery (top-N per group)
+MATCH (n:Memory) LATERAL (MATCH (m) WHERE m.energy > 0.5 RETURN m LIMIT 3) AS top3 RETURN n
+
+-- Constraints & Unique Indexes
+ALTER COLLECTION memories ADD CONSTRAINT energy_ok CHECK (n.energy >= 0.0)
+CREATE UNIQUE INDEX idx_email ON users (content.email)
+
+-- Table Partitioning
+ALTER COLLECTION logs PARTITION BY RANGE (created_at)
+ALTER COLLECTION events PARTITION BY HASH (id, 8)
 ```
 
 **Built-in geometric functions:**
@@ -577,7 +626,7 @@ Cross-collection archetype sharing via gossip protocol:
 
 #### `nietzsche-agency` — Autonomous Agency Engine
 Graph-level autonomous intelligence with counterfactual reasoning and active forgetting:
-- **AgencyEngine** tick loop: runs 10 built-in daemons (Entropy, Gap, Coherence, Ltd, Nezhmetdinov, Shatter, SelfHealing + more) + MetaObserver + 22-step tick protocol
+- **AgencyEngine** tick loop: runs 10 built-in daemons (Entropy, Gap, Coherence, Ltd, Nezhmetdinov, Shatter, SelfHealing + more) + MetaObserver + 27-step tick protocol
 - **Geometric Self (Phase IX)**: `CentroidGuardian` (maintains the civilization centroid via Fréchet mean with temporal damping and drift veto to prevent cognitive shocks), `MaturityEvaluator` (promotes stable embeddings to Axioms using hyperbolic centrality: $C_i = 1 / (1 + d_D(x_i, C_t))$ and analytical angular variance $\text{Var}(\angle) \approx \text{trace}(\Sigma_{\text{tangent}})$ to penalize redundant clusters), and the **Two-Tier AxiomRegistry** (DashMap L1 + RocksDB L2) for fast $O(1)$ hot-path queries, temporal `EraSnapshot`s, and deep historical persistence.
 - **Hyperbolic Health Monitor (Phase X)**: Pre-emptive structural collapse detector for $K<0$ geometries (> 100k nodes). Computes **Radial Density Entropy (RDE)** $H = -\sum p_i \ln(p_i)$ to identify pathological mass migration to the boundary (*Boundary Crowding*). Tracks $mean\_r$, $std\_r$, $angular\_var$ (*Angular Variance Collapse* to prevent directional crushing), and $centroid\_velocity$. Detects **Semantic Attractors** ("Black Holes" via abnormal radial bin density $p_i > 3\mu$) and healthy structural L-System stratifications.
 - **Attention Economy & Hebbian LTP (Phase XII)**: The ECAN system (`attention_economy.rs`) introduces a free-market bid/ask model for focus allocation. Paired with `hebbian.rs`, 'nodes that fire together, wire together', structurally reinforcing active associative pathways via Long-Term Potentiation (LTP).
@@ -595,6 +644,7 @@ Graph-level autonomous intelligence with counterfactual reasoning and active for
 - **EpistemologyDaemon (Phase XXV)**: Autonomous self-research system inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch). Implements Darwinian selection on Code-as-Data NQL queries: **SELECT** highest-friction ActionNode (via NodeLedger CPU cost) → **PROPOSE** mutation (emit `EpistemologyCandidate` event for external LLM bridge) → **EVALUATE** in ShadowGraph sandbox with full ΔTGC measurement → **VERDICT** KEEP (merge) or DISCARD (phantomize). Includes NQL syntax validation gate (Pest parser), content-hash deduplication of rejected mutations, and `force_evolution` MCP tool for LLM-driven mutation injection. Integrated into the SleepCycle with configurable `epistemology_budget` (default: 5 evaluations per sleep). Post-sleep `MorningReport` summarizes overnight discoveries with sleep quality score.
 - **ShadowTGC** (`forgetting/tgc.rs`): Full TGC measurement on lightweight ShadowGraph (~130 bytes/node). Computes degree distribution entropy (Shannon H_s), sampled BFS global efficiency (Latora-Marchiori E_g, depth-limited to 5), and mean energy quality. Formula: `ShadowTGC = Q × (1 + α·H_s) × (1 + β·E_g)` — isomorphic to the main TgcMonitor. Enables counterfactual TGC comparison: `shadow_tgc_delta(baseline, mutant)` returns the health improvement/degradation of a proposed mutation.
 - **NodeLedger** (`hydraulic/flow_ledger.rs`): Per-node CPU cost tracking (parallel to edge-level FlowLedger). DashMap-based lock-free accounting with `record(node_id, cpu_ns)`, EMA smoothing (`α=0.1`), peak tracking, and `friction(node_id)` score combining execution count + EMA cost. `top_friction_nodes(k)` returns the K most expensive nodes — used by EpistemologyDaemon for candidate ranking.
+- **Epistemic Evolution (Phase 27)**: Autonomous knowledge quality improvement via `nietzsche-epistemics` crate. Evaluates subgraph quality using 5 metrics: hierarchy consistency (depth ordering), coherence (Poincaré distance proportionality), coverage (radial distribution), redundancy (path diversity), and energy balance. Proposes `EpistemicMutation` intents: new edges for unconnected similar-depth nodes, reclassification for hierarchy violations, energy boosts for undervalued hubs. Configurable via `AGENCY_EVOLUTION_27_*` env vars. External Python lab (`nietzsche-lab/`) provides LLM-driven hypothesis generation via Claude API for full autoresearch-style evolution loop.
 - **Morning Report** (`morning_report.rs`): Post-sleep discovery summary aggregating SleepReport metrics (Hausdorff delta, semantic drift, commit/rollback) + epistemology results (mutations evaluated/accepted). Computes sleep quality score (0.0–1.0) and generates human-readable narrative. Serializable to JSON for dashboard/API consumption.
 - **EntropyDaemon**: detects Hausdorff variance spikes across angular regions
 - **GapDaemon**: identifies knowledge gaps in depth x angle sectors
@@ -754,6 +804,15 @@ Extensible via trait hooks: `SensoryConsolidator` (Phase 11) and `EpistemologyCo
 This prevents catastrophic forgetting while allowing genuine memory reorganization.
 
 **Time-travel / Versioning:** Named snapshots (`SnapshotRegistry`) allow creating labeled checkpoints of the entire embedding state, listing all snapshots with timestamps, and restoring any previous state — enabling temporal queries and safe experimentation.
+
+#### `nietzsche-epistemics` — Epistemic Quality Metrics
+Quantitative measures of knowledge graph quality for the NietzscheLab evolution loop (Phase 27):
+- **Hierarchy consistency** (`hierarchy.rs`): fraction of edges respecting Poincaré depth ordering (parent.depth ≤ child.depth)
+- **Coherence** (`coherence.rs`): depth coherence (similar-depth association edges) + distance coherence (Poincaré distance proportional to semantic distance)
+- **Coverage** (`coverage.rs`): radial distribution uniformity (normalized entropy across depth bins) + energy distribution equity
+- **Redundancy** (`redundancy.rs`): path diversity between sampled node pairs (BFS depth-limited to 4 hops, capped at 5 paths)
+- **Novelty** (`novelty.rs`): embedding novelty (average minimum Poincaré distance to existing nodes) + structural novelty (2-hop shared neighbor analysis)
+- **Unified scorer** (`scorer.rs`): `EpistemicScore` composite with configurable `ScoreWeights`, `EpistemicDelta` for mutation evaluation with `is_improvement(threshold)` decision function
 
 #### `nietzsche-zaratustra` — Autonomous Evolution Engine
 Three-phase autonomous cycle inspired by Nietzsche's philosophy:
@@ -1513,6 +1572,56 @@ curl "http://localhost:8080/api/graph?collection=eva_core&limit=500"
 | `build-and-push` | Builds Docker image, pushes to GCP Artifact Registry via WIF |
 | `deploy` | SSH into GCP VM via OS Login, runs `docker compose up -d` |
 | Health check | Verifies `GET /api/health` returns 200 |
+
+---
+
+## NietzscheLab — Autonomous Knowledge Evolution
+
+NietzscheLab implements an **autoresearch-style loop** (inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch)) for autonomous epistemic evolution:
+
+```
+Hypothesis Generator (LLM) → Mutation → Epistemic Scorer → Accept/Reject → Journal
+```
+
+### Quick Start
+
+```bash
+cd nietzsche-lab
+pip install -r requirements.txt
+
+# Dry run (no mutations, just generate hypotheses)
+python lab_runner.py --collection tech_galaxies --dry-run --max-experiments 5
+
+# Random baseline (no LLM needed)
+python lab_runner.py --collection lab_test --random-only --max-experiments 20
+
+# Full LLM-driven evolution (requires ANTHROPIC_API_KEY)
+python lab_runner.py --collection lab_test --max-experiments 50
+```
+
+### Architecture
+
+| Component | File | Role |
+|---|---|---|
+| **Lab Runner** | `lab_runner.py` | Main loop: hypothesize → mutate → measure → select |
+| **Hypothesis Generator** | `hypothesis_generator.py` | LLM-driven or random hypothesis creation |
+| **Consistency Scorer** | `consistency_scorer.py` | Before/after metrics (hierarchy, coherence, energy) |
+| **Experiment Journal** | `experiment_journal.py` | JSONL log of all experiments with full metrics |
+| **gRPC Client** | `grpc_client.py` | HTTP/gRPC wrapper for NietzscheDB |
+
+### Rust Integration (Phase 27)
+
+The Agency Engine runs epistemic evolution autonomously every 40 ticks:
+
+```env
+AGENCY_EVOLUTION_27_ENABLED=true
+AGENCY_EVOLUTION_27_INTERVAL=40
+AGENCY_EVOLUTION_27_MAX_EVAL=500
+AGENCY_EVOLUTION_27_QUALITY_FLOOR=0.4
+AGENCY_EVOLUTION_27_MAX_PROPOSALS=5
+```
+
+The `nietzsche-epistemics` crate provides 5 metrics: hierarchy consistency, coherence, coverage, redundancy, and novelty — computed directly on the Poincaré ball geometry.
 
 ---
 

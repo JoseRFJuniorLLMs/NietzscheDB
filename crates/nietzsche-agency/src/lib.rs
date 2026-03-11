@@ -111,6 +111,9 @@ pub mod graph_growth;
 // Phase E — Cognitive Layer (cluster→centroid→concept)
 pub mod cognitive_layer;
 
+// Phase 27 — Epistemic Evolution (autoresearch-style knowledge evolution)
+pub mod evolution_27;
+
 pub use centroid_guardian::{CentroidGuardian, CentroidUpdate, GuardianError};
 pub use config::AgencyConfig;
 pub use counterfactual::{CounterfactualEngine, CounterfactualOp, CounterfactualResult};
@@ -248,4 +251,10 @@ pub use graph_growth::{
 pub use cognitive_layer::{
     CognitiveLayerConfig, CognitiveLayerReport, ConceptProposal,
     build_cognitive_config, run_cognitive_scan,
+};
+
+// Phase 27 — Epistemic Evolution
+pub use evolution_27::{
+    Evolution27Config, Evolution27Report, EvolutionProposal, EvolutionMutationType,
+    build_evolution_27_config, run_evolution_27_scan,
 };

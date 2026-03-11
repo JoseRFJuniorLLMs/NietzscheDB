@@ -496,6 +496,103 @@ pub fn execute_with_indexes_and_gas(
                 limit:  fq.limit,
             }])
         }
+
+        // ── NQL 3.0: PostgreSQL-inspired features ──
+        // These are DDL/meta-operations — they return descriptors for the server handler
+        // to execute against the catalog (not the graph storage directly).
+        Query::WithCte(cte) => {
+            // Execute CTEs: for now, execute the main query (CTE expansion is done at server level)
+            execute_with_indexes_and_gas(&cte.main, storage, adjacency, params, indexed_fields, gas)
+        }
+        Query::CreateView(v) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(), ScalarValue::Str("CREATE_VIEW".into())),
+                ("name".into(),   ScalarValue::Str(v.name.clone())),
+            ])])
+        }
+        Query::DropView(v) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(), ScalarValue::Str("DROP_VIEW".into())),
+                ("name".into(),   ScalarValue::Str(v.name.clone())),
+            ])])
+        }
+        Query::CreateMaterializedView(v) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(), ScalarValue::Str("CREATE_MATERIALIZED_VIEW".into())),
+                ("name".into(),   ScalarValue::Str(v.name.clone())),
+            ])])
+        }
+        Query::RefreshMaterializedView(v) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(), ScalarValue::Str("REFRESH_MATERIALIZED_VIEW".into())),
+                ("name".into(),   ScalarValue::Str(v.name.clone())),
+            ])])
+        }
+        Query::DropMaterializedView(v) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(), ScalarValue::Str("DROP_MATERIALIZED_VIEW".into())),
+                ("name".into(),   ScalarValue::Str(v.name.clone())),
+            ])])
+        }
+        Query::Prepare(p) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(), ScalarValue::Str("PREPARE".into())),
+                ("name".into(),   ScalarValue::Str(p.name.clone())),
+                ("params".into(), ScalarValue::Str(p.params.join(", "))),
+            ])])
+        }
+        Query::Execute(e) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(), ScalarValue::Str("EXECUTE".into())),
+                ("name".into(),   ScalarValue::Str(e.name.clone())),
+            ])])
+        }
+        Query::Deallocate(d) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(), ScalarValue::Str("DEALLOCATE".into())),
+                ("name".into(),   ScalarValue::Str(d.name.clone())),
+            ])])
+        }
+        Query::AddCheckConstraint(c) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(),     ScalarValue::Str("ADD_CHECK_CONSTRAINT".into())),
+                ("collection".into(), ScalarValue::Str(c.collection.clone())),
+                ("constraint".into(), ScalarValue::Str(c.constraint_name.clone())),
+            ])])
+        }
+        Query::DropConstraint(c) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(),     ScalarValue::Str("DROP_CONSTRAINT".into())),
+                ("collection".into(), ScalarValue::Str(c.collection.clone())),
+                ("constraint".into(), ScalarValue::Str(c.constraint_name.clone())),
+            ])])
+        }
+        Query::CreateUniqueIndex(idx) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(),     ScalarValue::Str("CREATE_UNIQUE_INDEX".into())),
+                ("index_name".into(), ScalarValue::Str(idx.index_name.clone())),
+                ("collection".into(), ScalarValue::Str(idx.collection.clone())),
+                ("fields".into(),     ScalarValue::Str(idx.fields.join(", "))),
+            ])])
+        }
+        Query::DropIndex(idx) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(),     ScalarValue::Str("DROP_INDEX".into())),
+                ("index_name".into(), ScalarValue::Str(idx.index_name.clone())),
+            ])])
+        }
+        Query::PartitionBy(p) => {
+            let strategy_str = match &p.strategy {
+                PartitionStrategy::Range(f) => format!("RANGE({f})"),
+                PartitionStrategy::List(f)  => format!("LIST({f})"),
+                PartitionStrategy::Hash(f, n) => format!("HASH({f}, {n})"),
+            };
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(),     ScalarValue::Str("PARTITION_BY".into())),
+                ("collection".into(), ScalarValue::Str(p.collection.clone())),
+                ("strategy".into(),   ScalarValue::Str(strategy_str)),
+            ])])
+        }
     }
 }
 
@@ -625,6 +722,21 @@ fn execute_explain(
         Query::MeasureTgc(tgc) => format!("MeasureTgc(collection={:?})", tgc.collection),
         Query::FindNearest(fq) => format!("FindNearest(space={:?}, limit={:?})",
             fq.space, fq.limit),
+        // ── NQL 3.0 EXPLAIN entries ──────────────────────
+        Query::WithCte(cte) => format!("WithCTE(ctes={}, main=...)", cte.ctes.len()),
+        Query::CreateView(v) => format!("CreateView(name={})", v.name),
+        Query::DropView(v) => format!("DropView(name={})", v.name),
+        Query::CreateMaterializedView(v) => format!("CreateMaterializedView(name={})", v.name),
+        Query::RefreshMaterializedView(v) => format!("RefreshMaterializedView(name={})", v.name),
+        Query::DropMaterializedView(v) => format!("DropMaterializedView(name={})", v.name),
+        Query::Prepare(p) => format!("Prepare(name={}, params={})", p.name, p.params.len()),
+        Query::Execute(e) => format!("Execute(name={}, args={})", e.name, e.args.len()),
+        Query::Deallocate(d) => format!("Deallocate(name={})", d.name),
+        Query::AddCheckConstraint(c) => format!("AddCheckConstraint(collection={}, name={})", c.collection, c.constraint_name),
+        Query::DropConstraint(c) => format!("DropConstraint(collection={}, name={})", c.collection, c.constraint_name),
+        Query::CreateUniqueIndex(idx) => format!("CreateUniqueIndex(name={}, on={})", idx.index_name, idx.collection),
+        Query::DropIndex(idx) => format!("DropIndex(name={})", idx.index_name),
+        Query::PartitionBy(p) => format!("PartitionBy(collection={})", p.collection),
     };
     let full_plan = format!("{} | {}", plan, cost);
     Ok(vec![QueryResult::ExplainPlan(full_plan)])
@@ -3034,6 +3146,19 @@ fn compute_agg_row(
             ReturnExpr::Alias(_) => {
                 // Return the count of nodes in the group as a fallback
                 ScalarValue::Int(nodes.len() as i64)
+            }
+            ReturnExpr::WindowFunc { func, .. } => {
+                // Window functions in grouped context: return placeholder
+                // Full window function execution happens in the post-processing phase
+                let label = match func {
+                    WindowFuncKind::RowNumber  => "ROW_NUMBER",
+                    WindowFuncKind::Rank       => "RANK",
+                    WindowFuncKind::DenseRank  => "DENSE_RANK",
+                    WindowFuncKind::Ntile(n)   => return Ok(vec![(col_name, ScalarValue::Int(*n as i64))]),
+                    WindowFuncKind::Lag        => "LAG",
+                    WindowFuncKind::Lead       => "LEAD",
+                };
+                ScalarValue::Str(format!("{}(pending)", label))
             }
         };
         row.push((col_name, val));

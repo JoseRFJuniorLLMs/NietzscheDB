@@ -52,6 +52,14 @@ pub use ast::{
     AggFunc, AggArg, GroupByItem,
     OrderBy, OrderExpr, OrderDir,
     DiffuseFrom,
+    // NQL 3.0: PostgreSQL-inspired features
+    WindowFuncKind, LateralClause, CteDef,
+    WithCteQuery, CreateViewQuery, DropViewQuery,
+    CreateMaterializedViewQuery, RefreshMaterializedViewQuery, DropMaterializedViewQuery,
+    PrepareQuery, ExecuteQuery, DeallocateQuery,
+    AddCheckConstraintQuery, DropConstraintQuery,
+    CreateUniqueIndexQuery, DropIndexQuery,
+    PartitionByQuery, PartitionStrategy,
 };
 pub use error::QueryError;
 pub use executor::{execute, execute_with_gas_limit, DEFAULT_GAS_LIMIT, ParamValue, Params, QueryResult, ScalarValue};

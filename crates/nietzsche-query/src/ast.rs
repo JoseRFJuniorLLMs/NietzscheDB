@@ -80,6 +80,39 @@ pub enum Query {
     MeasureTgc(MeasureTgcQuery),
     /// `FIND NEAREST [IN space] TO $vec [LIMIT n] [RETURN …]` — KNN in hyperbolic space.
     FindNearest(FindNearestQuery),
+
+    // ═══════════════════════════════════════════════════
+    // ── NQL 3.0: PostgreSQL-inspired Features ────────
+    // ═══════════════════════════════════════════════════
+
+    /// `WITH name AS (query), ... <main query>` — Common Table Expressions.
+    WithCte(WithCteQuery),
+    /// `CREATE VIEW name AS <query>` — Named stored queries.
+    CreateView(CreateViewQuery),
+    /// `DROP VIEW name` — Remove a named view.
+    DropView(DropViewQuery),
+    /// `CREATE MATERIALIZED VIEW name AS <query>` — Pre-computed cached query.
+    CreateMaterializedView(CreateMaterializedViewQuery),
+    /// `REFRESH MATERIALIZED VIEW name` — Recompute a materialized view.
+    RefreshMaterializedView(RefreshMaterializedViewQuery),
+    /// `DROP MATERIALIZED VIEW name` — Remove a materialized view.
+    DropMaterializedView(DropMaterializedViewQuery),
+    /// `PREPARE name(types) AS <query>` — Prepared statement.
+    Prepare(PrepareQuery),
+    /// `EXECUTE name(params)` — Execute a prepared statement.
+    Execute(ExecuteQuery),
+    /// `DEALLOCATE name` — Remove a prepared statement.
+    Deallocate(DeallocateQuery),
+    /// `ALTER COLLECTION name ADD CONSTRAINT ... CHECK (...)` — Check constraint.
+    AddCheckConstraint(AddCheckConstraintQuery),
+    /// `ALTER COLLECTION name DROP CONSTRAINT name` — Drop a constraint.
+    DropConstraint(DropConstraintQuery),
+    /// `CREATE UNIQUE INDEX name ON collection (fields)` — Unique index.
+    CreateUniqueIndex(CreateUniqueIndexQuery),
+    /// `DROP INDEX name` — Drop an index.
+    DropIndex(DropIndexQuery),
+    /// `ALTER COLLECTION name PARTITION BY ...` — Table partitioning.
+    PartitionBy(PartitionByQuery),
 }
 
 // ── PSYCHOANALYZE ────────────────────────────────────────────
@@ -123,6 +156,8 @@ pub struct MatchDeleteQuery {
     pub targets:    Vec<String>,
     /// `true` for `DETACH DELETE` — removes node + all incident edges.
     pub detach:     bool,
+    /// Optional RETURNING clause — returns data from deleted nodes.
+    pub ret:        Option<ReturnClause>,
 }
 
 // ── DAEMON Agents ────────────────────────────────────────
@@ -281,6 +316,8 @@ pub struct MatchQuery {
     pub ret:              ReturnClause,
     /// `AS OF CYCLE n` — Eternal Return time-travel (Phase 15.4).
     pub as_of_cycle:      Option<u32>,
+    /// NQL 3.0: `LATERAL (subquery) AS alias` — correlated subquery.
+    pub lateral:          Option<LateralClause>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -566,6 +603,13 @@ pub enum ReturnExpr {
     Property(String, String),
     /// Return an aggregate: `RETURN COUNT(n.energy)`
     Aggregate { func: AggFunc, arg: AggArg },
+    /// NQL 3.0: Window function: `ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)`
+    WindowFunc {
+        func: WindowFuncKind,
+        arg:  Option<AggArg>,
+        partition_by: Vec<ReturnExpr>,
+        order_by: Option<OrderBy>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -699,4 +743,140 @@ pub struct FindNearestQuery {
     pub target: Expr,
     pub limit:  Option<usize>,
     pub ret:    Option<ReturnClause>,
+}
+
+// ═══════════════════════════════════════════════════════════
+// ── NQL 3.0: PostgreSQL-inspired Feature Structs ─────────
+// ═══════════════════════════════════════════════════════════
+
+/// Window function kinds (NQL 3.0).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WindowFuncKind {
+    RowNumber,
+    Rank,
+    DenseRank,
+    Ntile(usize),
+    Lag,
+    Lead,
+}
+
+/// CTE binding: `name AS (query)`
+#[derive(Debug, Clone)]
+pub struct CteDef {
+    pub name:  String,
+    pub query: Box<Query>,
+}
+
+/// `WITH name AS (...), ... <main query>`
+#[derive(Debug, Clone)]
+pub struct WithCteQuery {
+    pub ctes:  Vec<CteDef>,
+    pub main:  Box<Query>,
+}
+
+/// `CREATE VIEW name AS <query>`
+#[derive(Debug, Clone)]
+pub struct CreateViewQuery {
+    pub name:  String,
+    pub query: Box<Query>,
+}
+
+/// `DROP VIEW name`
+#[derive(Debug, Clone)]
+pub struct DropViewQuery {
+    pub name: String,
+}
+
+/// `CREATE MATERIALIZED VIEW name AS <query>`
+#[derive(Debug, Clone)]
+pub struct CreateMaterializedViewQuery {
+    pub name:  String,
+    pub query: Box<Query>,
+}
+
+/// `REFRESH MATERIALIZED VIEW name`
+#[derive(Debug, Clone)]
+pub struct RefreshMaterializedViewQuery {
+    pub name: String,
+}
+
+/// `DROP MATERIALIZED VIEW name`
+#[derive(Debug, Clone)]
+pub struct DropMaterializedViewQuery {
+    pub name: String,
+}
+
+/// `PREPARE name(type, ...) AS <query>`
+#[derive(Debug, Clone)]
+pub struct PrepareQuery {
+    pub name:   String,
+    pub params: Vec<String>,
+    pub query:  Box<Query>,
+}
+
+/// `EXECUTE name(val, ...)`
+#[derive(Debug, Clone)]
+pub struct ExecuteQuery {
+    pub name:   String,
+    pub args:   Vec<Expr>,
+}
+
+/// `DEALLOCATE name`
+#[derive(Debug, Clone)]
+pub struct DeallocateQuery {
+    pub name: String,
+}
+
+/// `ALTER COLLECTION col ADD CONSTRAINT name CHECK (condition)`
+#[derive(Debug, Clone)]
+pub struct AddCheckConstraintQuery {
+    pub collection:      String,
+    pub constraint_name: String,
+    pub condition:       Condition,
+}
+
+/// `ALTER COLLECTION col DROP CONSTRAINT name`
+#[derive(Debug, Clone)]
+pub struct DropConstraintQuery {
+    pub collection:      String,
+    pub constraint_name: String,
+}
+
+/// `CREATE UNIQUE INDEX name ON collection (field1, field2, ...)`
+#[derive(Debug, Clone)]
+pub struct CreateUniqueIndexQuery {
+    pub index_name:  String,
+    pub collection:  String,
+    pub fields:      Vec<String>,
+}
+
+/// `DROP INDEX name`
+#[derive(Debug, Clone)]
+pub struct DropIndexQuery {
+    pub index_name: String,
+}
+
+/// Partition strategy for a collection.
+#[derive(Debug, Clone)]
+pub enum PartitionStrategy {
+    /// `RANGE (field)` — partition by value ranges.
+    Range(String),
+    /// `LIST (field)` — partition by discrete value lists.
+    List(String),
+    /// `HASH (field, n)` — partition into n hash buckets.
+    Hash(String, usize),
+}
+
+/// `ALTER COLLECTION col PARTITION BY RANGE|LIST|HASH (field[, n])`
+#[derive(Debug, Clone)]
+pub struct PartitionByQuery {
+    pub collection: String,
+    pub strategy:   PartitionStrategy,
+}
+
+/// `MATCH ... LATERAL (subquery) AS alias` — correlated subquery.
+#[derive(Debug, Clone)]
+pub struct LateralClause {
+    pub subquery: Box<Query>,
+    pub alias:    String,
 }

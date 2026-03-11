@@ -123,6 +123,29 @@ kw_nearest     = _{ ^"NEAREST" }
 kw_find        = _{ ^"FIND"    }
 kw_void_born   = _{ ^"VOID_BORN" }
 
+// ── NQL 3.0 Keywords (PostgreSQL-inspired) ───────────────
+
+kw_view           = _{ ^"VIEW"           }
+kw_materialized   = _{ ^"MATERIALIZED"   }
+kw_refresh        = _{ ^"REFRESH"        }
+kw_prepare        = _{ ^"PREPARE"        }
+kw_execute        = _{ ^"EXECUTE"        }
+kw_deallocate     = _{ ^"DEALLOCATE"     }
+kw_alter          = _{ ^"ALTER"          }
+kw_collection     = _{ ^"COLLECTION"     }
+kw_constraint     = _{ ^"CONSTRAINT"     }
+kw_check          = _{ ^"CHECK"          }
+kw_add            = _{ ^"ADD"            }
+kw_unique         = _{ ^"UNIQUE"         }
+kw_index          = _{ ^"INDEX"          }
+kw_partition      = _{ ^"PARTITION"      }
+kw_range          = _{ ^"RANGE"          }
+kw_list           = _{ ^"LIST"           }
+kw_hash           = _{ ^"HASH"           }
+kw_lateral        = _{ ^"LATERAL"        }
+kw_over           = _{ ^"OVER"           }
+kw_returning      = _{ ^"RETURNING"      }
+
 // ── Terminals ────────────────────────────────────────────
 
 integer = @{ ASCII_DIGIT+ }
@@ -227,6 +250,21 @@ star          = { "*" }
 agg_arg       = { prop | star | ident }
 agg_func      = { agg_func_name ~ "(" ~ agg_arg ~ ")" }
 
+// ── NQL 3.0: Window functions ───────────────────────────
+//
+// ROW_NUMBER() OVER (PARTITION BY n.label ORDER BY n.energy DESC)
+// RANK() OVER (ORDER BY n.energy DESC)
+// DENSE_RANK() OVER (PARTITION BY n.type ORDER BY n.energy DESC)
+// NTILE(4) OVER (ORDER BY n.energy DESC)
+// LAG(n.energy) OVER (ORDER BY n.created_at ASC)
+// LEAD(n.energy) OVER (ORDER BY n.created_at ASC)
+
+window_func_name = @{ ("ROW_NUMBER" | "DENSE_RANK" | "RANK" | "NTILE" | "LAG" | "LEAD") ~ !ident_tail }
+window_partition = { kw_partition ~ kw_by ~ (prop | ident) ~ ("," ~ (prop | ident))* }
+window_order     = { kw_order ~ kw_by ~ order_expr ~ order_dir? }
+window_over      = { kw_over ~ "(" ~ window_partition? ~ window_order? ~ ")" }
+window_func      = { window_func_name ~ "(" ~ (agg_arg | integer)? ~ ")" ~ window_over }
+
 // ── CASE WHEN expression ────────────────────────────────
 //
 // CASE WHEN condition THEN value [WHEN condition THEN value]* [ELSE value] END
@@ -308,9 +346,9 @@ order_by   = { kw_order ~ kw_by ~ order_expr ~ order_dir? }
 limit_clause = { kw_limit ~ integer }
 skip_clause  = { kw_skip ~ integer }
 
-// Items: n, n.energy, COUNT(n.energy), n.energy AS e
+// Items: n, n.energy, COUNT(n.energy), ROW_NUMBER() OVER (...), n.energy AS e
 as_alias     = { kw_as ~ ident }
-return_item  = { (agg_func | prop | ident) ~ as_alias? }
+return_item  = { (window_func | agg_func | prop | ident) ~ as_alias? }
 
 // GROUP BY
 group_by_item = { prop | ident }
@@ -373,6 +411,7 @@ merge_query = {
 match_query = {
     match_clause
     ~ optional_match_clause*
+    ~ lateral_clause?
     ~ where_clause?
     ~ as_of_cycle_clause?
     ~ (set_clause ~ return_clause? | detach_delete_clause | delete_clause | return_clause)
@@ -425,13 +464,25 @@ rollback_tx_query = { kw_rollback }
 //   CREATE (n:Memory {title: "hello"}) RETURN n
 
 create_node_pattern = { "(" ~ ident ~ (":" ~ ident)? ~ prop_map ~ ")" }
-create_query        = { kw_create ~ create_node_pattern ~ return_clause? }
+create_query        = { kw_create ~ create_node_pattern ~ (returning_clause | return_clause)? }
 
 // ── MATCH … DELETE clause ─────────────────────────────────
 
 delete_target        = { ident }
-delete_clause        = { kw_delete ~ delete_target ~ ("," ~ delete_target)* }
-detach_delete_clause = { kw_detach ~ kw_delete ~ delete_target ~ ("," ~ delete_target)* }
+delete_clause        = { kw_delete ~ delete_target ~ ("," ~ delete_target)* ~ return_clause? }
+detach_delete_clause = { kw_detach ~ kw_delete ~ delete_target ~ ("," ~ delete_target)* ~ return_clause? }
+
+// ── NQL 3.0: RETURNING clause for mutations ───────────────
+//
+// CREATE (n:Memory {title: "hello"}) RETURNING n.id, n.created_at
+
+returning_clause = { kw_returning ~ return_item ~ ("," ~ return_item)* }
+
+// ── NQL 3.0: LATERAL subquery ─────────────────────────────
+//
+// MATCH (n:Memory) LATERAL (MATCH (m) WHERE m.parent = n.id RETURN m LIMIT 3) AS top3
+
+lateral_clause = { kw_lateral ~ "(" ~ match_query ~ ")" ~ kw_as ~ ident }
 
 // ── DAEMON queries ──────────────────────────────────────
 //
@@ -625,6 +676,122 @@ union_all_kw   = { kw_all }
 union_sep      = { kw_union ~ union_all_kw? }
 union_query    = { match_query ~ (union_sep ~ match_query)+ }
 
+// ═════════════════════════════════════════════════════════
+// ── NQL 3.0: PostgreSQL-inspired Query Types ─────────────
+// ═════════════════════════════════════════════════════════
+
+// ── WITH (CTEs) ─────────────────────────────────────────
+//
+// WITH active AS (MATCH (n) WHERE n.energy > 0.5 RETURN n)
+// MATCH (a) WHERE a.id IN active RETURN a
+
+cte_def         = { ident ~ kw_as ~ "(" ~ (union_query | match_query) ~ ")" }
+with_cte_query  = { kw_with ~ cte_def ~ ("," ~ cte_def)* ~ (union_query | match_query) }
+
+// ── CREATE VIEW / DROP VIEW ──────────────────────────────
+//
+// CREATE VIEW high_energy AS MATCH (n) WHERE n.energy > 0.8 RETURN n
+// DROP VIEW high_energy
+
+create_view_query = { kw_create ~ kw_view ~ ident ~ kw_as ~ (union_query | match_query) }
+drop_view_query   = { kw_drop ~ kw_view ~ ident }
+
+// ── MATERIALIZED VIEW ────────────────────────────────────
+//
+// CREATE MATERIALIZED VIEW top_nodes AS MATCH (n) RETURN n ORDER BY n.energy DESC LIMIT 100
+// REFRESH MATERIALIZED VIEW top_nodes
+// DROP MATERIALIZED VIEW top_nodes
+
+create_materialized_view_query = {
+    kw_create ~ kw_materialized ~ kw_view ~ ident ~ kw_as ~ (union_query | match_query)
+}
+refresh_materialized_view_query = { kw_refresh ~ kw_materialized ~ kw_view ~ ident }
+drop_materialized_view_query    = { kw_drop ~ kw_materialized ~ kw_view ~ ident }
+
+// ── PREPARE / EXECUTE / DEALLOCATE ──────────────────────
+//
+// PREPARE find_hot(float) AS MATCH (n) WHERE n.energy > $1 RETURN n
+// EXECUTE find_hot(0.7)
+// DEALLOCATE find_hot
+
+prepare_param_types = { "(" ~ ident ~ ("," ~ ident)* ~ ")" }
+prepare_query       = { kw_prepare ~ ident ~ prepare_param_types? ~ kw_as ~ (union_query | match_query) }
+execute_args        = { "(" ~ atom ~ ("," ~ atom)* ~ ")" }
+execute_query       = { kw_execute ~ ident ~ execute_args? }
+deallocate_query    = { kw_deallocate ~ ident }
+
+// ── ALTER COLLECTION ... ADD/DROP CONSTRAINT ─────────────
+//
+// ALTER COLLECTION memories ADD CONSTRAINT energy_range CHECK (n.energy BETWEEN 0.0 AND 1.0)
+// ALTER COLLECTION memories DROP CONSTRAINT energy_range
+
+add_check_constraint_query = {
+    kw_alter ~ kw_collection ~ ident
+    ~ kw_add ~ kw_constraint ~ ident
+    ~ kw_check ~ "(" ~ conditions ~ ")"
+}
+drop_constraint_query = {
+    kw_alter ~ kw_collection ~ ident
+    ~ kw_drop ~ kw_constraint ~ ident
+}
+
+// ── CREATE UNIQUE INDEX / DROP INDEX ─────────────────────
+//
+// CREATE UNIQUE INDEX idx_email ON users (content.email)
+// DROP INDEX idx_email
+
+unique_index_fields        = { "(" ~ (prop | ident) ~ ("," ~ (prop | ident))* ~ ")" }
+create_unique_index_query  = {
+    kw_create ~ kw_unique ~ kw_index ~ ident ~ kw_on ~ ident ~ unique_index_fields
+}
+drop_index_query = { kw_drop ~ kw_index ~ ident }
+
+// ── ALTER COLLECTION ... PARTITION BY ────────────────────
+//
+// ALTER COLLECTION logs PARTITION BY RANGE (created_at)
+// ALTER COLLECTION users PARTITION BY LIST (region)
+// ALTER COLLECTION events PARTITION BY HASH (id, 8)
+
+partition_range = { kw_range ~ "(" ~ (prop | ident) ~ ")" }
+partition_list  = { kw_list  ~ "(" ~ (prop | ident) ~ ")" }
+partition_hash  = { kw_hash  ~ "(" ~ (prop | ident) ~ "," ~ integer ~ ")" }
+partition_strategy = { partition_hash | partition_list | partition_range }
+partition_by_query = {
+    kw_alter ~ kw_collection ~ ident ~ kw_partition ~ kw_by ~ partition_strategy
+}
+
 // ── Top-level ───────────────────────────────────────────
 
-query = { SOI ~ (explain_query | invoke_zaratustra_query | begin_tx_query | commit_tx_query | rollback_tx_query | reconstruct_query | diffuse_query | show_dreams_query | apply_dream_query | reject_dream_query | dream_from_query | show_archetypes_query | share_archetype_query | show_daemons_query | drop_daemon_query | create_daemon_query | counterfactual_query | translate_query | psychoanalyze_query | narrate_query | create_query | merge_query | union_query | shortest_path_query | match_elites_query | measure_tension_query | measure_tgc_query | find_nearest_query | unwind_query | match_query) ~ EOI }
+query = { SOI ~ (
+    // NQL 3.0: PostgreSQL-inspired (must come before shorter prefixes)
+    with_cte_query
+  | create_materialized_view_query
+  | refresh_materialized_view_query
+  | drop_materialized_view_query
+  | create_unique_index_query
+  | create_view_query
+  | drop_view_query
+  | prepare_query
+  | execute_query
+  | deallocate_query
+  | add_check_constraint_query
+  | drop_constraint_query
+  | drop_index_query
+  | partition_by_query
+    // Original queries
+  | explain_query
+  | invoke_zaratustra_query
+  | begin_tx_query | commit_tx_query | rollback_tx_query
+  | reconstruct_query | diffuse_query
+  | show_dreams_query | apply_dream_query | reject_dream_query | dream_from_query
+  | show_archetypes_query | share_archetype_query
+  | show_daemons_query | drop_daemon_query | create_daemon_query
+  | counterfactual_query | translate_query
+  | psychoanalyze_query | narrate_query
+  | create_query | merge_query
+  | union_query
+  | shortest_path_query | match_elites_query
+  | measure_tension_query | measure_tgc_query
+  | find_nearest_query | unwind_query
+  | match_query
+) ~ EOI }
