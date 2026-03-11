@@ -23,10 +23,35 @@ All models are trained in Python (PyTorch) and exported to ONNX for zero-depende
 ## Architecture Principles
 
 1. **Inference-only in Rust**: All networks run via ONNX Runtime (`ort` crate). No training in production.
-2. **Hyperbolic-aware**: Outputs are projected to the Poincaré ball via `exp_map_zero` where needed.
-3. **Small by design**: Each network has < 1M parameters. Total neural footprint < 10MB ONNX.
-4. **Self-supervised**: Most networks can train without labeled data (contrastive, reconstruction, self-play).
-5. **Thread-safe**: Models are managed by `ModelRegistry` with `Arc<Mutex<Session>>`.
+2. **GPU-accelerated**: All 12 models use `CUDAExecutionProvider` for inference on the NVIDIA L4 GPU. The `ort/cuda` feature is enabled via `nietzsche-neural`'s `cuda` feature, wired through the server's `gpu` feature flag. Without the `cuda` feature, `ort` silently falls back to CPU.
+3. **Hyperbolic-aware**: Outputs are projected to the Poincaré ball via `exp_map_zero` where needed.
+4. **Small by design**: Each network has < 1M parameters. Total neural footprint < 10MB ONNX.
+5. **Self-supervised**: Most networks can train without labeled data (contrastive, reconstruction, self-play).
+6. **Thread-safe**: Models are managed by `ModelRegistry` with `Arc<Mutex<Session>>`.
+
+## GPU Inference Configuration
+
+All models are loaded through `nietzsche_neural::REGISTRY.load_model()` which creates an ONNX session with `CUDAExecutionProvider`:
+
+```rust
+// nietzsche-neural/src/lib.rs
+let session = Session::builder()?
+    .with_execution_providers([CUDAExecutionProvider::default().build()])?
+    .commit_from_file(&meta.path)?;
+```
+
+**Feature flags** (Cargo.toml):
+- `nietzsche-neural`: `cuda = ["ort/cuda"]` — enables CUDA execution provider in `ort`
+- `nietzsche-server`: `gpu = [..., "nietzsche-neural/cuda"]` — propagates CUDA to all models
+
+**Runtime requirements**: CUDA 12.x + ONNX Runtime with CUDA support. Models are loaded from `NIETZSCHE_MODEL_DIR` (default: `/var/lib/nietzsche/models/`).
+
+**Startup log** confirms GPU inference per model:
+```
+INFO nietzsche_neural: Model loaded with CUDA execution provider (GPU) model=vqvae
+INFO nietzsche_neural: Model loaded with CUDA execution provider (GPU) model=dsi_decoder
+...
+```
 
 ## Training Pipeline
 

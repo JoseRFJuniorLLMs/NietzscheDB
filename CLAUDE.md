@@ -10,6 +10,8 @@
 ### Feature GPU e OBRIGATORIA
 - O server SEMPRE compila com `--features gpu` (default no Cargo.toml)
 - NUNCA compilar sem GPU — o binary em producao depende de CUDA + cuVS
+- A feature `gpu` ativa `nietzsche-neural/cuda` que habilita `ort/cuda` — todos os 12 modelos ONNX usam `CUDAExecutionProvider` para inferencia na GPU
+- Sem `ort/cuda`, o `CUDAExecutionProvider` faz fallback silencioso para CPU
 - Se precisar testar apenas crates internos, usar `cargo check -p <crate>` sem o server
 
 ---

@@ -255,7 +255,7 @@ Output Layer:   [batch, 24]   (Sigmoid activation → affine scale)
 
 **Total parameters**: 16*64 + 64 + 64*32 + 32 + 32*24 + 24 = **3,960 parameters**
 
-This is intentionally tiny (~16 KB ONNX file). Inference cost: <10 microseconds on CPU.
+This is intentionally tiny (~16 KB ONNX file). Inference cost: <10 microseconds on CPU, even faster on GPU (all models use `CUDAExecutionProvider` via `ort/cuda` feature).
 
 ### 3.2 Why One Multi-Output Model (Not Separate Models)
 
