@@ -448,7 +448,7 @@ async fn main() -> anyhow::Result<()> {
                 // Backup each collection
                 for col_info in cm_bak.list() {
                     if let Some(shared) = cm_bak.get(&col_info.name) {
-                        let db = shared.read().await;
+                        let mut db = shared.read().await;
                         let backup_dir = PathBuf::from(&data_dir)
                             .join("backups")
                             .join(&col_info.name);
@@ -629,11 +629,25 @@ async fn main() -> anyhow::Result<()> {
                     tokio::time::sleep(tick_dur).await;
 
                     for (col_name, engine) in &mut engines {
+                        // FIX #3: Skip cache-only and ephemeral collections
+                        const AGENCY_SKIP: &[&str] = &[
+                            "eva_cache", "eva_perceptions", "speaker_embeddings",
+                            "eva_sensory", "lobby_", "test_",
+                        ];
+                        if AGENCY_SKIP.iter().any(|p| col_name.starts_with(p)) {
+                            continue;
+                        }
+
                         let Some(shared) = cm_agency.get_or_default(col_name) else {
                             continue;
                         };
 
                         let mut db = shared.read().await;
+                        // Skip tiny collections (< 10 nodes)
+                        if db.node_count().unwrap_or(0) < 10 {
+                            continue;
+                        }
+
                         match engine.tick(db.storage(), db.adjacency()) {
                             Ok(report) => {
                                 if let Some(ref health) = report.health_report {

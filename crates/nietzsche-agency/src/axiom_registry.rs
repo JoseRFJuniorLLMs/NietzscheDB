@@ -76,6 +76,10 @@ pub struct EraSnapshot {
 ///
 /// Uses a `DashMap` L1 cache for O(1) hot-path access (`is_axiom`, `get`),
 /// backed by RocksDB CF_META for durability.
+/// Maximum number of axioms in the L1 cache before LRU eviction kicks in.
+/// Prevents unbounded memory growth. At 49KB per record, 2048 = ~100MB cap.
+const AXIOM_CACHE_CAP: usize = 2048;
+
 pub struct AxiomRegistry {
     /// L1 cache: lock-free concurrent reads for MaturityEvaluator hot-path.
     cache: DashMap<Uuid, AxiomRecord>,
@@ -87,6 +91,28 @@ impl AxiomRegistry {
         Self {
             cache: DashMap::new(),
         }
+    }
+
+    /// Evict oldest entries when cache exceeds AXIOM_CACHE_CAP.
+    /// Uses birth_timestamp_ms as LRU proxy (oldest axiom evicted first).
+    fn evict_if_over_cap(&self) {
+        if self.cache.len() <= AXIOM_CACHE_CAP {
+            return;
+        }
+        let to_evict = self.cache.len() - AXIOM_CACHE_CAP;
+        // Collect (id, timestamp) pairs and sort by oldest
+        let mut entries: Vec<(Uuid, u64)> = self.cache.iter()
+            .map(|e| (*e.key(), e.value().birth_timestamp_ms))
+            .collect();
+        entries.sort_by_key(|&(_, ts)| ts);
+        for (id, _) in entries.into_iter().take(to_evict) {
+            self.cache.remove(&id);
+        }
+        tracing::debug!(
+            evicted = to_evict,
+            remaining = self.cache.len(),
+            "AxiomRegistry: L1 cache eviction"
+        );
     }
 
     /// Number of axioms currently in the L1 cache.
@@ -138,6 +164,9 @@ impl AxiomRegistry {
         // L1: Insert into DashMap (O(1), lock-free reads)
         self.cache.insert(node_id, record.clone());
 
+        // Evict oldest entries if cache exceeds cap (prevents unbounded growth)
+        self.evict_if_over_cap();
+
         // L2: Persist to RocksDB CF_META
         let key = format!("axiom:{}", node_id);
         let json = serde_json::to_vec(&record)
@@ -177,6 +206,7 @@ impl AxiomRegistry {
                     .map_err(|e| AgencyError::Internal(format!("axiom deserialize: {e}")))?;
                 // Populate L1 on cache miss
                 self.cache.insert(node_id, record.clone());
+                self.evict_if_over_cap();
                 Ok(Some(record))
             }
             None => Ok(None),

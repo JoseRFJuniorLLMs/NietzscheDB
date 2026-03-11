@@ -291,6 +291,9 @@ impl AgencyEngine {
         let mut demotions = 0usize;
         let mut scanned = 0usize;
 
+        // Pre-allocated buffer for f32->f64 conversion (FIX #2: avoids 24KB alloc per node)
+        let mut coords_buf: Vec<f64> = Vec::with_capacity(dim);
+
         for result in storage.iter_nodes_meta() {
             let meta = match result {
                 Ok(m) => m,
@@ -312,7 +315,9 @@ impl AgencyEngine {
                 Ok(Some(e)) if e.dim == dim => e,
                 _ => continue,
             };
-            let coords_f64: Vec<f64> = emb.coords.iter().map(|&x| x as f64).collect();
+            // Reuse pre-allocated buffer (FIX #2: zero alloc per node)
+            coords_buf.clear();
+            coords_buf.extend(emb.coords.iter().map(|&x| x as f64));
 
             // Determine previous class
             let is_currently_axiom = self.axiom_registry.is_axiom(meta.id);
@@ -338,7 +343,7 @@ impl AgencyEngine {
 
             let input = NodeMaturityInput {
                 node_id: meta.id,
-                embedding: coords_f64.clone(),
+                embedding: coords_buf.clone(),
                 vitality,
                 stability,
                 angular_variance,
@@ -359,7 +364,7 @@ impl AgencyEngine {
                     }
 
                     // Semantic deduplication: check if too close to existing axiom
-                    if self.is_duplicate_axiom(storage, &coords_f64) {
+                    if self.is_duplicate_axiom(storage, &coords_buf) {
                         tracing::debug!(
                             node_id = %meta.id,
                             "promotion skipped: semantic duplicate (within ε of existing axiom)"
@@ -371,7 +376,7 @@ impl AgencyEngine {
                     match self.axiom_registry.register(
                         storage,
                         meta.id,
-                        &coords_f64,
+                        &coords_buf,
                         result.score,
                         &self.centroid_guardian,
                     ) {
@@ -439,6 +444,9 @@ impl AgencyEngine {
         adjacency: &AdjacencyIndex,
     ) -> Result<AgencyTickReport, AgencyError> {
         let t0 = std::time::Instant::now();
+
+        // 0. Drain dirty set from previous tick (FIX #5: prevents unbounded growth)
+        let _dirty_ids = self.dirty_set.drain();
 
         // 1. Tick each daemon
         let mut daemon_reports = Vec::with_capacity(self.daemons.len());
@@ -737,17 +745,18 @@ impl AgencyEngine {
                 }
             }
 
-            // Second pass: fetch embeddings for candidates (read from CF_EMBEDDINGS)
+            // Second pass: fetch embeddings (FIX #4: reuse conversion buffer)
             let mut gravity_nodes = Vec::with_capacity(candidates.len());
+            let mut grav_buf: Vec<f64> = Vec::new();
             for (id, energy, degree) in &candidates {
                 if let Ok(Some(emb)) = storage.get_embedding(id) {
                     if !emb.coords.is_empty() {
-                        let embedding: Vec<f64> = emb.coords.iter().map(|&c| c as f64).collect();
+                        grav_buf.clear(); grav_buf.extend(emb.coords.iter().map(|&c| c as f64));
                         gravity_nodes.push(GravityNode {
                             id: *id,
                             energy: *energy,
                             degree: *degree,
-                            embedding,
+                            embedding: grav_buf.clone(),
                         });
                     }
                 }
@@ -1050,6 +1059,16 @@ impl AgencyEngine {
         } else {
             None
         };
+
+        // FIX #6: Cap Hebbian traces to prevent unbounded growth
+        if self.hebbian_state.trace_count() > 10_000 {
+            let aggressive_cfg = HebbianConfig { trace_decay: 0.1, ..Default::default() };
+            let _ = run_hebbian_tick(&mut self.hebbian_state, &[], &aggressive_cfg);
+        }
+        // FIX #10: Prune stale reflex cooldowns
+        if self.active_reflex_cooldowns.len() > 1000 {
+            self.active_reflex_cooldowns.clear();
+        }
 
         Ok(AgencyTickReport {
             daemon_reports,
