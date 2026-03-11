@@ -643,8 +643,13 @@ async fn main() -> anyhow::Result<()> {
                         };
 
                         let mut db = shared.read().await;
-                        // Skip tiny collections (< 10 nodes)
-                        if db.node_count().unwrap_or(0) < 10 {
+                        // Skip tiny collections (< 10 nodes) UNLESS they are EVA-critical
+                        const AGENCY_ALWAYS: &[&str] = &[
+                            "memories", "signifier_chains", "eva_mind",
+                            "eva_core", "patient_graph",
+                        ];
+                        let is_critical = AGENCY_ALWAYS.iter().any(|c| col_name == *c);
+                        if !is_critical && db.node_count().unwrap_or(0) < 10 {
                             continue;
                         }
 
