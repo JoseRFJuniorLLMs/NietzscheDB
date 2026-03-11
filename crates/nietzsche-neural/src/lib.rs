@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use dashmap::DashMap;
+use ort::execution_providers::CUDAExecutionProvider;
 use ort::session::Session;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -44,6 +45,7 @@ impl ModelRegistry {
 
     pub fn load_model(&self, meta: ModelMetadata) -> Result<()> {
         let session = Session::builder()?
+            .with_execution_providers([CUDAExecutionProvider::default().build()])?
             .commit_from_file(&meta.path)?;
         
         self.sessions.insert(meta.name.clone(), Arc::new(Mutex::new(session)));

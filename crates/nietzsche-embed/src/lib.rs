@@ -2,6 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use ndarray::{Array, ArrayViewD};
 use ort::{
+    execution_providers::CUDAExecutionProvider,
     session::{builder::GraphOptimizationLevel, Session},
     value::Value,
 };
@@ -80,6 +81,7 @@ impl OnnxVectorizer {
             .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {e}"))?;
 
         let session = Session::builder()?
+            .with_execution_providers([CUDAExecutionProvider::default().build()])?
             .with_optimization_level(GraphOptimizationLevel::Level3)?
             .with_intra_threads(4)?
             .commit_from_file(model_path)?;
