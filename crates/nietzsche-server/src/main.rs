@@ -1280,6 +1280,19 @@ async fn main() -> anyhow::Result<()> {
                                                 break; // db was dropped, exit intent loop
                                             }
                                         }
+                                        // ── Phase 27: Epistemic Mutation ──────
+                                        nietzsche_agency::AgencyIntent::EpistemicMutation {
+                                            mutation_type, node_ids, reason, estimated_delta
+                                        } => {
+                                            info!(
+                                                collection = %col_name,
+                                                mutation   = %mutation_type,
+                                                nodes      = node_ids.len(),
+                                                delta      = estimated_delta,
+                                                reason     = %reason,
+                                                "Phase 27: epistemic mutation proposed (logged only)"
+                                            );
+                                        }
                                     }
                                 }
 
