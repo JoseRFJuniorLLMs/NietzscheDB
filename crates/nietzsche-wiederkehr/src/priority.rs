@@ -131,7 +131,7 @@ mod tests {
     fn make_daemon(name: &str, energy: f64, last_run: f64, interval: f64) -> DaemonDef {
         DaemonDef {
             name: name.to_string(),
-            on_pattern: NodePattern { alias: "n".into(), label: Some("Memory".into()) },
+            on_pattern: NodePattern { alias: "n".into(), label: Some("Memory".into()), semantic_id: None },
             when_cond: Condition::Compare {
                 left:  Expr::Property { alias: "n".into(), field: "energy".into() },
                 op:    CompOp::Gt,

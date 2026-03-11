@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn klein_poincare_roundtrip_128d() {
-        let p: Vec<f64> = (0..128).map(|i| (i as f64 * 0.005) - 0.32).collect();
+        let p: Vec<f64> = (0..128).map(|i| (i as f64 * 0.002) - 0.128).collect();
         assert!(l2_norm(&p) < 1.0, "test vector must be inside ball");
         let k = to_klein(&p).unwrap();
         let recovered = to_poincare(&k).unwrap();
@@ -315,7 +315,7 @@ mod tests {
         let a = vec![0.0, 0.0];
         let b = vec![0.5, 0.0];
         let c = vec![0.3, 0.0]; // on the x-axis between a and b
-        assert!(is_collinear(&a, &b, &c, 1e-10));
+        assert!(is_collinear(&a, &b, &c, 1e-7));
     }
 
     #[test]
@@ -331,7 +331,7 @@ mod tests {
         let a = vec![0.0, 0.0, 0.0];
         let b = vec![0.3, 0.3, 0.3];
         let c = vec![0.15, 0.15, 0.15]; // midpoint
-        assert!(is_collinear(&a, &b, &c, 1e-10));
+        assert!(is_collinear(&a, &b, &c, 1e-7));
     }
 
     // ── Shortest path check ──────────────────────

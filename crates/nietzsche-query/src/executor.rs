@@ -265,7 +265,7 @@ pub fn execute(
 /// *lower* limit (e.g. 10_000) for safety.
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// // Agency daemon queries — allow 5× the default budget
 /// let results = execute_with_gas_limit(
 ///     &query, storage, adjacency, params,

@@ -247,11 +247,11 @@ mod tests {
     #[test]
     fn grid_is_two_dimensional() {
         let mut pts = Vec::new();
-        for i in 0..8 {
-            for j in 0..8 {
+        for i in 0..32 {
+            for j in 0..32 {
                 pts.push(vec![
-                    i as f32 / 8.0 * 1.8 - 0.9,
-                    j as f32 / 8.0 * 1.8 - 0.9,
+                    i as f32 / 32.0 * 1.8 - 0.9,
+                    j as f32 / 32.0 * 1.8 - 0.9,
                 ]);
             }
         }

@@ -87,7 +87,7 @@ mod tests {
         use nietzsche_query::ast::*;
         DaemonDef {
             name: name.to_string(),
-            on_pattern: NodePattern { alias: "n".into(), label: Some("Memory".into()) },
+            on_pattern: NodePattern { alias: "n".into(), label: Some("Memory".into()), semantic_id: None },
             when_cond: Condition::Compare {
                 left:  Expr::Property { alias: "n".into(), field: "energy".into() },
                 op:    CompOp::Gt,

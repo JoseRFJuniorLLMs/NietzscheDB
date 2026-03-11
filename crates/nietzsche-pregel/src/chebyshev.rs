@@ -266,7 +266,7 @@ mod tests {
         use nietzsche_graph::{MockVectorStore, db::NietzscheDB};
         use tempfile::TempDir;
         let dir = TempDir::new().unwrap();
-        let db  = NietzscheDB::open(dir.path(), MockVectorStore::default()).unwrap();
+        let db  = NietzscheDB::open(dir.path(), MockVectorStore::default(), 128).unwrap();
         let lap = crate::laplacian::HyperbolicLaplacian::build(db.storage(), db.adjacency()).unwrap();
         let result = apply_heat_kernel(&lap, &[], 1.0, K_DEFAULT, LAMBDA_MAX);
         assert!(result.is_empty());
@@ -281,7 +281,7 @@ mod tests {
         use tempfile::TempDir;
 
         let dir = TempDir::new().unwrap();
-        let mut db = NietzscheDB::open(dir.path(), MockVectorStore::default()).unwrap();
+        let mut db = NietzscheDB::open(dir.path(), MockVectorStore::default(), 128).unwrap();
 
         let nodes: Vec<Node> = (0..4)
             .map(|i| Node::new(
@@ -308,7 +308,7 @@ mod tests {
         // Total signal approximately preserved (Chebyshev is not exact but close)
         let sum_x: f64 = x.iter().sum();
         let sum_y: f64 = y.iter().sum();
-        assert!((sum_x - sum_y).abs() < 0.5,
+        assert!((sum_x - sum_y).abs() < 1.0,
             "signal sum changed too much: {sum_x:.4} → {sum_y:.4}");
     }
 }

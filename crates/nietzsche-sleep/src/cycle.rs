@@ -333,7 +333,7 @@ mod tests {
     use uuid::Uuid;
 
     fn open_db(dir: &std::path::Path) -> NietzscheDB<MockVectorStore> {
-        NietzscheDB::open(dir, MockVectorStore::default()).expect("open db")
+        NietzscheDB::open(dir, MockVectorStore::default(), 128).expect("open db")
     }
 
     fn insert(db: &mut NietzscheDB<MockVectorStore>, x: f64, y: f64) -> Uuid {

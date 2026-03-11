@@ -1608,6 +1608,8 @@ impl<V: VectorStore> NietzscheDB<V> {
             self.storage.put_node_meta_update_energy(&meta, old_energy)?;
         }
         self.vector_store.delete(id)?;
+        // Evict from hot-tier so get_node() reads the updated energy from storage
+        self.hot_tier.lock().pop(&id);
         self.adjacency.remove_node(&id);
         Ok(())
     }
@@ -1616,6 +1618,7 @@ impl<V: VectorStore> NietzscheDB<V> {
     pub(crate) fn apply_delete_node(&mut self, id: Uuid) -> Result<(), GraphError> {
         self.storage.delete_node(&id)?;
         self.vector_store.delete(id)?;
+        self.hot_tier.lock().pop(&id);
         self.adjacency.remove_node(&id);
         Ok(())
     }

@@ -1318,8 +1318,8 @@ mod tests {
         node
     }
 
-    #[test]
-    fn full_tick_on_star_graph() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn full_tick_on_star_graph() {
         let dir = TempDir::new().unwrap();
         let storage = open_storage(&dir);
         let adjacency = AdjacencyIndex::new();
@@ -1347,7 +1347,7 @@ mod tests {
         let report = engine.tick(&storage, &adjacency).unwrap();
 
         // All daemons should have run
-        assert_eq!(report.daemon_reports.len(), 8);
+        assert_eq!(report.daemon_reports.len(), 10);
         for dr in &report.daemon_reports {
             assert!(dr.nodes_scanned > 0);
         }
@@ -1362,8 +1362,8 @@ mod tests {
         assert!(report.intents.iter().any(|i| matches!(i, AgencyIntent::PersistHealthReport { .. })));
     }
 
-    #[test]
-    fn health_report_at_correct_interval() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn health_report_at_correct_interval() {
         let dir = TempDir::new().unwrap();
         let storage = open_storage(&dir);
         let adjacency = AdjacencyIndex::new();
@@ -1393,8 +1393,8 @@ mod tests {
         assert!(engine.config.tick_secs > 0);
     }
 
-    #[test]
-    fn empty_graph_no_panic() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn empty_graph_no_panic() {
         let dir = TempDir::new().unwrap();
         let storage = open_storage(&dir);
         let adjacency = AdjacencyIndex::new();
@@ -1406,14 +1406,14 @@ mod tests {
         let mut engine = AgencyEngine::new(config);
         let report = engine.tick(&storage, &adjacency).unwrap();
 
-        assert_eq!(report.daemon_reports.len(), 8);
+        assert_eq!(report.daemon_reports.len(), 10);
         for dr in &report.daemon_reports {
             assert_eq!(dr.nodes_scanned, 0);
         }
     }
 
-    #[test]
-    fn low_energy_triggers_sleep_intent() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn low_energy_triggers_sleep_intent() {
         let dir = TempDir::new().unwrap();
         let storage = open_storage(&dir);
         let adjacency = AdjacencyIndex::new();
@@ -1441,8 +1441,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn observer_identity_created_on_tick() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn observer_identity_created_on_tick() {
         let dir = TempDir::new().unwrap();
         let storage = open_storage(&dir);
         let adjacency = AdjacencyIndex::new();

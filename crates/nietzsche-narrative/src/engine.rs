@@ -230,6 +230,8 @@ mod tests {
                 expires_at: None,
                 metadata: HashMap::new(),
                 is_phantom: false,
+                valence: 0.0,
+                arousal: 0.0,
             },
             embedding: PoincareVector::origin(8),
         };

@@ -419,6 +419,10 @@ mod tests {
         }
 
         // After eviction, should have at most max_tracked entries
-        assert!(state.access_counts.len() <= config.max_tracked);
+        // Eviction triggers at 2x max_tracked (hysteresis), so final count
+        // is between max_tracked and max_tracked*2
+        assert!(state.access_counts.len() <= config.max_tracked * 2,
+            "access_counts len {} should be <= {}",
+            state.access_counts.len(), config.max_tracked * 2);
     }
 }

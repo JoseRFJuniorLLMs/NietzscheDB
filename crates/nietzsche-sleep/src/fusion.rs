@@ -237,7 +237,7 @@ mod tests {
     fn tmp() -> TempDir { TempDir::new().unwrap() }
 
     fn open_db(dir: &TempDir) -> NietzscheDB<MockVectorStore> {
-        NietzscheDB::open(dir.path(), MockVectorStore::default()).unwrap()
+        NietzscheDB::open(dir.path(), MockVectorStore::default(), 128).unwrap()
     }
 
     fn episodic_node(x: f32, y: f32) -> Node {

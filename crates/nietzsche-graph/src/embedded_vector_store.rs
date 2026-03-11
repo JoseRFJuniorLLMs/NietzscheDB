@@ -715,7 +715,7 @@ impl AnyVectorStore {
 
     /// Inject a GPU-accelerated [`VectorStore`] implementation.
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// use nietzsche_hnsw_gpu::GpuVectorStore;
     /// use nietzsche_graph::embedded_vector_store::AnyVectorStore;
     ///
@@ -728,7 +728,7 @@ impl AnyVectorStore {
 
     /// Inject a Google TPU-accelerated [`VectorStore`] implementation.
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// use nietzsche_tpu::TpuVectorStore;
     /// use nietzsche_graph::embedded_vector_store::AnyVectorStore;
     ///

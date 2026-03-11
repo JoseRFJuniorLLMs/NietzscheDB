@@ -187,7 +187,7 @@ mod tests {
     fn sample_daemon(name: &str, energy: f64, interval: f64, last_run: f64) -> DaemonDef {
         DaemonDef {
             name: name.to_string(),
-            on_pattern: NodePattern { alias: "n".into(), label: None },
+            on_pattern: NodePattern { alias: "n".into(), label: None, semantic_id: None },
             when_cond: Condition::Compare {
                 left:  Expr::Property { alias: "n".into(), field: "energy".into() },
                 op:    CompOp::Gt,
@@ -247,6 +247,8 @@ mod tests {
                 expires_at: None,
                 metadata: std::collections::HashMap::new(),
                 is_phantom: false,
+                valence: 0.0,
+                arousal: 0.0,
             },
             embedding: nietzsche_graph::PoincareVector::origin(8),
         };
