@@ -10,7 +10,7 @@
 //! | TextEncoder   | Done    | Krylov 64D + exp_map_zero (EVA-Mind sends pre-compressed) |
 //! | AudioEncoder  | MVP     | EnCodec frozen + projection (latent comes via gRPC) |
 //! | FusionEncoder | Done    | gyromidpoint from nietzsche-hyp-ops |
-//! | ImageEncoder  | Planned | VAE CNN — lowest priority for voice-first EVA |
+//! | ImageEncoder  | Done    | exp_map_zero projection (EVA-Mind sends pre-compressed) |
 
 use crate::types::{LatentVector, Modality, OriginalShape, SensoryMemory};
 
@@ -82,6 +82,36 @@ impl SensoryEncoder for AudioEncoder {
 
     fn modality(&self) -> &'static str {
         "audio"
+    }
+}
+
+// ─────────────────────────────────────────────
+// ImageEncoder
+// ─────────────────────────────────────────────
+
+/// Image encoder: projects pre-compressed image latents into the Poincaré ball.
+///
+/// EVA-Mind pipeline:
+/// ```text
+/// Camera JPEG → Gemini Vision → feature vector (128D) → gRPC → ImageEncoder
+/// ```
+///
+/// NietzscheDB adds: `exp_map_zero(vec_128d)` → z_hyp ∈ R^128, ‖z‖ < 1.0
+///
+/// For raw pixel encoding (no pre-compression), use `ImageNeuralEncoder`
+/// from `neural_encoders` which runs the ONNX CNN model.
+pub struct ImageEncoder;
+
+impl SensoryEncoder for ImageEncoder {
+    fn encode(&self, euclidean_latent: &[f32]) -> LatentVector {
+        let f64_vec: Vec<f64> = euclidean_latent.iter().map(|&x| x as f64).collect();
+        let projected = nietzsche_hyp_ops::exp_map_zero(&f64_vec);
+        let data: Vec<f32> = projected.iter().map(|&x| x as f32).collect();
+        LatentVector::new(data)
+    }
+
+    fn modality(&self) -> &'static str {
+        "image"
     }
 }
 
@@ -208,7 +238,7 @@ pub fn build_sensory_memory(
     let encoder: Box<dyn SensoryEncoder> = match &modality {
         Modality::Text { .. } => Box::new(TextEncoder),
         Modality::Audio { .. } => Box::new(AudioEncoder),
-        Modality::Image { .. } => Box::new(AudioEncoder), // placeholder — ImageEncoder not yet implemented
+        Modality::Image { .. } => Box::new(ImageEncoder),
         Modality::Fused { .. } => Box::new(TextEncoder),  // fused uses FusionEncoder separately
     };
 
@@ -281,6 +311,44 @@ mod tests {
         let data = latent.data.unwrap();
         let norm: f32 = data.iter().map(|x| x * x).sum::<f32>().sqrt();
         assert!(norm < 1.0, "norm = {norm}, should be < 1.0");
+    }
+
+    #[test]
+    fn image_encoder_projects_inside_ball() {
+        let encoder = ImageEncoder;
+        // Simulate Gemini Vision output (128D, Euclidean)
+        let euclidean: Vec<f32> = (0..128).map(|i| (i as f32 * 0.02) - 1.28).collect();
+        let latent = encoder.encode(&euclidean);
+        assert_eq!(latent.dim, 128);
+        assert_eq!(encoder.modality(), "image");
+
+        let data = latent.data.unwrap();
+        let norm: f32 = data.iter().map(|x| x * x).sum::<f32>().sqrt();
+        assert!(norm < 1.0, "norm = {norm}, should be < 1.0");
+    }
+
+    #[test]
+    fn build_sensory_memory_image() {
+        let vision_output: Vec<f32> = vec![0.1; 128];
+        let sm = build_sensory_memory(
+            &vision_output,
+            Modality::Image {
+                width: 640,
+                height: 480,
+                channels: 3,
+            },
+            OriginalShape::Image {
+                width: 640,
+                height: 480,
+                channels: 3,
+            },
+            640 * 480 * 3, // original bytes
+            1,
+        );
+
+        assert_eq!(sm.encoder_version, 1);
+        assert_eq!(sm.latent.dim, 128);
+        assert!(sm.compression_ratio > 1.0);
     }
 
     #[test]
