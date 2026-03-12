@@ -20,6 +20,9 @@
 //! | Dead edges | edge.to or edge.from is phantom | Delete edge |
 //! | Energy exhaustion | energy ≤ 0 for > N ticks | Phantomize |
 //! | Ghost accumulation | phantom_ratio > threshold | Hard-delete oldest ghosts |
+//! | Neural anomaly | anomaly_detector score > threshold | Flag for inspection |
+//!
+//! - **Neural anomalies**: ONNX anomaly_detector flags structurally degenerate embeddings
 //!
 //! ## Design
 //!
@@ -32,6 +35,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use nietzsche_graph::{AdjacencyIndex, GraphStorage};
+use nietzsche_neural::REGISTRY;
 
 use crate::config::AgencyConfig;
 use crate::daemons::{AgencyDaemon, DaemonReport};
@@ -61,6 +65,12 @@ pub struct HealingConfig {
     pub ghost_cleanup_batch: usize,
     /// Phantom ratio above which ghost cleanup triggers (default: 0.15).
     pub ghost_ratio_threshold: f64,
+    /// Whether neural anomaly detection is enabled (default: false).
+    pub neural_enabled: bool,
+    /// Anomaly score threshold for flagging a node (default: 0.7).
+    pub neural_threshold: f64,
+    /// Maximum nodes to run through neural inference per tick (default: 200).
+    pub neural_max_infer: usize,
 }
 
 impl Default for HealingConfig {
@@ -74,6 +84,9 @@ impl Default for HealingConfig {
             orphan_min_age_secs: 3600, // 1 hour
             ghost_cleanup_batch: 100,
             ghost_ratio_threshold: 0.15,
+            neural_enabled: false,
+            neural_threshold: 0.7,
+            neural_max_infer: 200,
         }
     }
 }
@@ -111,6 +124,12 @@ pub struct HealingReport {
     pub exhausted_node_ids: Vec<Uuid>,
     /// IDs of oldest ghosts to hard-delete.
     pub ghost_delete_ids: Vec<Uuid>,
+    /// Nodes flagged by neural anomaly detector (score > threshold).
+    pub neural_anomaly_count: usize,
+    /// IDs of nodes flagged as anomalous by the neural detector.
+    pub neural_anomaly_ids: Vec<Uuid>,
+    /// Whether neural detection was actually used this scan.
+    pub neural_detection_active: bool,
 }
 
 impl Default for HealingReport {
@@ -129,6 +148,9 @@ impl Default for HealingReport {
             dead_edge_ids: vec![],
             exhausted_node_ids: vec![],
             ghost_delete_ids: vec![],
+            neural_anomaly_count: 0,
+            neural_anomaly_ids: vec![],
+            neural_detection_active: false,
         }
     }
 }
@@ -261,7 +283,151 @@ pub fn scan_healing(
             .collect();
     }
 
+    // ── Phase 4: Neural anomaly detection ─────────
+    //
+    // If AGENCY_HEALING_NEURAL_ENABLED=true and the anomaly_detector model
+    // is loaded in the ONNX registry, run inference on live node embeddings
+    // to detect structurally degenerate patterns that heuristics miss.
+    //
+    // Input:  [1, 64]  — first 64 components of the node embedding (zero-padded)
+    // Output: [1, 65]  — 64D reconstruction + 1D anomaly score
+    // The combined score (learned + reconstruction error) is checked against
+    // `config.neural_threshold`. Nodes above the threshold are flagged.
+
+    if config.neural_enabled {
+        match run_neural_anomaly_scan(storage, config) {
+            Ok((ids, count)) => {
+                report.neural_detection_active = true;
+                report.neural_anomaly_count = count;
+                report.neural_anomaly_ids = ids;
+            }
+            Err(reason) => {
+                // Graceful fallback: log and continue with heuristic-only results
+                tracing::debug!(reason = %reason, "neural anomaly detection skipped");
+            }
+        }
+    }
+
     report
+}
+
+// ─────────────────────────────────────────────
+// Neural anomaly detection (ONNX)
+// ─────────────────────────────────────────────
+
+/// Run the `anomaly_detector` ONNX model over live node embeddings.
+///
+/// Returns `(flagged_ids, flagged_count)` on success, or a reason string on
+/// failure (model not loaded, lock poisoned, etc.). The caller should treat
+/// failure as a non-fatal fallback to heuristic-only mode.
+///
+/// Uses `REGISTRY.infer_f32()` convenience wrapper to avoid depending on
+/// `ort` / `ndarray` crate types directly.
+fn run_neural_anomaly_scan(
+    storage: &GraphStorage,
+    config: &HealingConfig,
+) -> Result<(Vec<Uuid>, usize), String> {
+    // 1. Check that the model is loaded — bail early if not
+    if !REGISTRY.has_model("anomaly_detector") {
+        return Err("anomaly_detector model not loaded in REGISTRY".into());
+    }
+
+    let mut flagged_ids: Vec<Uuid> = Vec::new();
+    let mut flagged_count = 0usize;
+    let mut inferred = 0usize;
+
+    // 2. Iterate live nodes, run inference on each
+    for result in storage.iter_nodes_meta() {
+        let meta = match result {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        // Skip phantoms and exhausted nodes (already handled by heuristics)
+        if meta.is_phantom || meta.energy <= 0.0 {
+            continue;
+        }
+
+        if inferred >= config.neural_max_infer {
+            break;
+        }
+
+        // Load the full node to get the embedding
+        let node = match storage.get_node(&meta.id) {
+            Ok(Some(n)) => n,
+            _ => continue,
+        };
+
+        // Build the 64D input: take first 64 coords, zero-pad if shorter
+        let mut input_data = vec![0.0f32; 64];
+        let copy_len = node.embedding.coords.len().min(64);
+        for i in 0..copy_len {
+            input_data[i] = node.embedding.coords[i] as f32;
+        }
+
+        // 3. Run inference via REGISTRY.infer_f32()
+        //    Input:  [1, 64]  (node embedding, zero-padded)
+        //    Output: [1, 65]  (64D reconstruction + 1D anomaly score)
+        let raw = match REGISTRY.infer_f32("anomaly_detector", vec![1, 64], input_data.clone()) {
+            Ok(output) => output,
+            Err(e) => {
+                tracing::trace!(node_id = %meta.id, error = %e, "anomaly inference failed");
+                continue;
+            }
+        };
+
+        inferred += 1;
+
+        // 4. Parse the output: first 64 = reconstruction, element 64 = learned anomaly score
+        if raw.len() < 65 {
+            tracing::trace!(
+                node_id = %meta.id,
+                output_len = raw.len(),
+                "anomaly_detector output too short, expected 65"
+            );
+            continue;
+        }
+
+        let reconstructed = &raw[..64];
+        let anomaly_score = raw[64];
+
+        // Compute reconstruction error (MSE)
+        let reconstruction_error: f32 = input_data
+            .iter()
+            .zip(reconstructed.iter())
+            .map(|(a, b)| (a - b).powi(2))
+            .sum::<f32>()
+            / 64.0;
+
+        // Combined score: 50% learned + 50% sigmoid(reconstruction_error * 10)
+        let recon_sigmoid = 1.0 / (1.0 + (-reconstruction_error * 10.0).exp());
+        let combined_score = anomaly_score * 0.5 + recon_sigmoid * 0.5;
+
+        // 5. Flag if above threshold
+        if (combined_score as f64) > config.neural_threshold {
+            flagged_count += 1;
+            if flagged_ids.len() < 100 {
+                flagged_ids.push(meta.id);
+            }
+
+            tracing::debug!(
+                node_id = %meta.id,
+                anomaly_score,
+                reconstruction_error,
+                combined_score,
+                "neural anomaly detected"
+            );
+        }
+    }
+
+    tracing::info!(
+        inferred,
+        flagged = flagged_count,
+        threshold = config.neural_threshold,
+        "neural anomaly scan complete"
+    );
+
+    Ok((flagged_ids, flagged_count))
 }
 
 // ─────────────────────────────────────────────
@@ -305,7 +471,8 @@ impl AgencyDaemon for SelfHealingDaemon {
             + report.orphan_count
             + report.dead_edge_count
             + report.exhausted_count
-            + report.ghost_delete_ids.len();
+            + report.ghost_delete_ids.len()
+            + report.neural_anomaly_count;
 
         if total_issues > 0 {
             details.push(format!(
@@ -318,16 +485,30 @@ impl AgencyDaemon for SelfHealingDaemon {
                 report.phantom_ratio * 100.0,
             ));
 
+            if report.neural_detection_active {
+                details.push(format!(
+                    "neural_anomalies={} (threshold={:.2})",
+                    report.neural_anomaly_count,
+                    config.healing_neural_threshold,
+                ));
+            }
+
             bus.publish(crate::event_bus::AgencyEvent::HealingRequired {
                 report: Box::new(report.clone()),
             });
             events_emitted = 1;
         } else {
+            let neural_status = if report.neural_detection_active {
+                ", neural=clean"
+            } else {
+                ""
+            };
             details.push(format!(
-                "healthy — {} nodes, {} ghosts ({:.1}%)",
+                "healthy — {} nodes, {} ghosts ({:.1}%){}",
                 report.live_count,
                 report.ghost_count,
                 report.phantom_ratio * 100.0,
+                neural_status,
             ));
         }
 
@@ -352,6 +533,9 @@ pub fn build_healing_config(config: &AgencyConfig) -> HealingConfig {
         orphan_min_age_secs: config.healing_orphan_min_age,
         ghost_cleanup_batch: 100,
         ghost_ratio_threshold: config.healing_ghost_ratio,
+        neural_enabled: config.healing_neural_enabled,
+        neural_threshold: config.healing_neural_threshold,
+        neural_max_infer: config.healing_neural_max_infer,
     }
 }
 
@@ -389,6 +573,9 @@ mod tests {
             dead_edge_ids: vec![],
             exhausted_node_ids: vec![],
             ghost_delete_ids: vec![],
+            neural_anomaly_count: 0,
+            neural_anomaly_ids: vec![],
+            neural_detection_active: false,
         };
         let json = serde_json::to_string(&report).unwrap();
         assert!(json.contains("\"nodes_scanned\":1000"));

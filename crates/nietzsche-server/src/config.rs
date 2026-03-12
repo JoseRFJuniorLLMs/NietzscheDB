@@ -13,6 +13,7 @@
 //! | `NIETZSCHE_SLEEP_ADAM_STEPS`    | `10`              | RiemannianAdam steps per node             |
 //! | `NIETZSCHE_HAUSDORFF_THRESHOLD` | `0.15`            | Max \|ΔH\| to commit a sleep cycle       |
 //! | `NIETZSCHE_MAX_CONNECTIONS`     | `1024`            | Max concurrent gRPC connections           |
+//! | `SENSORY_NEURAL_ENABLED`        | `false`           | Use ONNX neural encoders for raw sensory data |
 
 /// Runtime configuration for the NietzscheDB server process.
 #[derive(Debug)]
@@ -75,6 +76,13 @@ pub struct Config {
 
     /// Directory containing .onnx models for the neural foundation.
     pub model_dir: String,
+
+    // ── Sensory Neural Encoding ───────────────────────────────────────────
+    /// Enable neural ONNX encoding for raw sensory data (image/audio).
+    /// When false (default), all sensory data goes through exp_map_zero passthrough.
+    /// When true, InsertSensory requests with non-empty `raw_data` will use
+    /// ImageNeuralEncoder/AudioNeuralEncoder ONNX models on GPU.
+    pub sensory_neural_enabled: bool,
 }
 
 impl Config {
@@ -100,6 +108,7 @@ impl Config {
             backup_retention_count:  env_parse("NIETZSCHE_BACKUP_RETENTION_COUNT", 5),
             indexed_fields:          env_csv("NIETZSCHE_INDEXED_FIELDS"),
             model_dir:               env_str("NIETZSCHE_MODEL_DIR", "/data/nietzsche/models"),
+            sensory_neural_enabled:  env_bool("SENSORY_NEURAL_ENABLED"),
         }
     }
 }

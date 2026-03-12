@@ -39,8 +39,7 @@ use nietzsche_zaratustra::{ZaratustraEngine, ZaratustraConfig};
 use nietzsche_lsystem::LSystemEngine;
 use nietzsche_dream::{DreamConfig, DreamEngine};
 use nietzsche_narrative::{NarrativeConfig, NarrativeEngine};
-use nietzsche_dsi::DsiIndexer;
-use nietzsche_vqvae::{VqEncoder, VqVaeConfig};
+use nietzsche_dsi::{DsiPipeline, init_dsi_config};
 
 #[cfg(feature = "gpu")]
 use nietzsche_hnsw_gpu::GpuVectorStore;
@@ -79,6 +78,9 @@ async fn main() -> anyhow::Result<()> {
         port     = config.port,
         "NietzscheDB starting"
     );
+
+    // ── DSI Neural Pipeline config ─────────────────────────────────────────────
+    init_dsi_config();
 
     // ── Open CollectionManager ────────────────────────────────────────────────
     let db_path = PathBuf::from(&config.data_dir);
@@ -160,25 +162,37 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // ── DSI Background Indexer — Periodically index nodes for generative retrieval ──
+    // Uses the vqvae ONNX model to encode node embeddings into hierarchical VQ codes.
+    // Controlled by DSI_NEURAL_ENABLED env var (default false).
     {
         let cm_dsi = Arc::clone(&cm);
+        let model_dir = config.model_dir.clone();
         tokio::spawn(async move {
             info!("background DSI indexer started");
             let mut interval = tokio::time::interval(Duration::from_secs(30));
-            
-            // Wait for models to be loaded by the other scanner
+
+            // Wait for models to be loaded by the background neural model scanner.
             tokio::time::sleep(Duration::from_secs(10)).await;
 
-            let config = VqVaeConfig::default();
-            let indexer = DsiIndexer::new(VqEncoder::new(config), 3); // 3 levels: e.g. 1.2.3
+            // 4 levels: vqvae produces 4 VQ code indices per embedding.
+            let pipeline = DsiPipeline::new(4, &model_dir);
 
             loop {
                 interval.tick().await;
 
+                // Skip entirely if DSI neural is disabled or vqvae model not loaded.
+                if !pipeline.is_fully_available() {
+                    if !nietzsche_dsi::is_dsi_neural_enabled() {
+                        // Only trace-log when disabled (very noisy otherwise).
+                        tracing::trace!("DSI indexer: pipeline disabled, skipping tick");
+                    } else {
+                        tracing::debug!("DSI indexer: vqvae model not yet available, skipping tick");
+                    }
+                    continue;
+                }
+
                 for col_info in cm_dsi.list() {
                     let Some(shared) = cm_dsi.get(&col_info.name) else { continue; };
-                    // We need a read lock to scan, but index_node might need its own locks or internal access.
-                    // Actually DsiIndexer::index_node takes &GraphStorage, which we can get from the db handle.
                     let db = shared.read().await;
                     let storage = db.storage();
 
@@ -191,17 +205,15 @@ async fn main() -> anyhow::Result<()> {
                     };
 
                     for node in nodes {
-                        // Check if node already has a DSI ID
+                        // Skip nodes that already have a DSI ID.
                         match storage.get_dsi_id(&node.id) {
-                            Ok(Some(_)) => continue, // already indexed
+                            Ok(Some(_)) => continue,
                             Ok(None) => {
-                                // Attempt to index the node
-                                // Note: this requires the "vqvae_graph_v1" model to be loaded in REGISTRY.
-                                if let Err(e) = indexer.index_node(storage, &node.id).await {
-                                    // Silent on most errors as it might just be the model not loaded yet
+                                // Index the node via the vqvae ONNX model.
+                                if let Err(e) = pipeline.index_node(storage, &node.id) {
                                     tracing::trace!(node_id = %node.id, error = %e, "DSI indexer: index failed");
                                 } else {
-                                    info!(node_id = %node.id, collection = %col_info.name, "DSI indexer: node indexed");
+                                    info!(node_id = %node.id, collection = %col_info.name, "DSI indexer: node indexed via vqvae");
                                 }
                             }
                             Err(e) => warn!(node_id = %node.id, error = %e, "DSI indexer: storage error"),
@@ -678,6 +690,11 @@ async fn main() -> anyhow::Result<()> {
                                     let obs_frame = nietzsche_agency::ObservationFrame::from_dashboard(&dashboard, &[]);
                                     if let Ok(json) = serde_json::to_vec(&obs_frame) {
                                         let _ = db.storage().put_meta(nietzsche_agency::ObservationFrame::meta_key(), &json);
+                                    }
+                                    // Avalanche stats snapshot for SOC monitoring API
+                                    let avalanche_snap = nietzsche_agency::AvalancheSnapshot::from_stats(engine.avalanche_stats());
+                                    if let Ok(json) = serde_json::to_vec(&avalanche_snap) {
+                                        let _ = db.storage().put_meta(nietzsche_agency::AvalancheSnapshot::meta_key(), &json);
                                     }
                                 }
 

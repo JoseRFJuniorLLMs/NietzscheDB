@@ -23,6 +23,7 @@ nietzsche-neural      = { workspace = true }
 nietzsche-gnn         = { workspace = true }
 nietzsche-mcts        = { workspace = true }
 nietzsche-agency      = { workspace = true }
+nietzsche-dsi         = { workspace = true }
 tonic             = { workspace = true }
 prost             = { workspace = true }
 serde             = { workspace = true }

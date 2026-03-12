@@ -33,6 +33,8 @@
 //!                               (sleep, lsystem, gap signals)
 //! ```
 
+pub mod avalanche;
+pub mod hub_attenuation;
 pub mod axiom_registry;
 pub mod centroid_guardian;
 pub mod hyperbolic_health;
@@ -114,6 +116,13 @@ pub mod cognitive_layer;
 // Phase 27 — Epistemic Evolution (autoresearch-style knowledge evolution)
 pub mod evolution_27;
 
+// Neural Structural Evolution (ONNX-driven L-System strategy)
+pub mod neural_evolution;
+
+// SOC Monitoring — Power-law exponent (τ) estimator (Clauset-Shalizi-Newman 2009)
+pub mod powerlaw;
+
+pub use avalanche::{AvalancheStats, AvalancheSnapshot, DEFAULT_WINDOW as AVALANCHE_DEFAULT_WINDOW};
 pub use centroid_guardian::{CentroidGuardian, CentroidUpdate, GuardianError};
 pub use config::AgencyConfig;
 pub use counterfactual::{CounterfactualEngine, CounterfactualOp, CounterfactualResult};
@@ -257,4 +266,16 @@ pub use cognitive_layer::{
 pub use evolution_27::{
     Evolution27Config, Evolution27Report, EvolutionProposal, EvolutionMutationType,
     build_evolution_27_config, run_evolution_27_scan,
+};
+
+// Neural Structural Evolution
+pub use neural_evolution::{NeuralEvolutionResult, neural_suggest_strategy, action_label};
+
+// SOC Monitoring — Power-law τ estimator
+pub use powerlaw::{PowerLawResult, estimate_tau, ks_test, is_power_law, tau_std_error};
+
+// Hub Avalanche Attenuation — prevents hub domination in SOC cascades
+pub use hub_attenuation::{
+    HubAttenuationConfig, RefractoryTracker, RefractorySnapshot,
+    angular_focus, angular_distance, hub_penalty, compute_attenuation,
 };

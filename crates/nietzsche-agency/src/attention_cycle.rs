@@ -27,13 +27,16 @@ use crate::attention_economy::{
 use crate::curiosity_engine::{
     self, CuriosityConfig, CuriosityState,
 };
+use crate::hub_attenuation::{self, HubAttenuationConfig, RefractoryTracker};
 use crate::error::AgencyError;
 
-/// Combined ECAN + Curiosity configuration.
+/// Combined ECAN + Curiosity + Hub Attenuation configuration.
 #[derive(Debug, Clone)]
 pub struct EcanConfig {
     pub attention: AttentionConfig,
     pub curiosity: CuriosityConfig,
+    /// Hub avalanche attenuation config (angular focus + hub penalty + refractory).
+    pub hub_attenuation: HubAttenuationConfig,
     /// Tick interval: run ECAN every N agency ticks (default 1 = every tick).
     pub interval: u64,
 }
@@ -43,6 +46,7 @@ impl Default for EcanConfig {
         Self {
             attention: AttentionConfig::default(),
             curiosity: CuriosityConfig::default(),
+            hub_attenuation: HubAttenuationConfig::default(),
             interval: 1,
         }
     }
@@ -55,6 +59,8 @@ pub struct EcanCycle {
     last_states: Vec<AttentionState>,
     /// Last cycle's curiosity states.
     last_curiosity: Vec<CuriosityState>,
+    /// Refractory period tracker for hub attenuation (persists across ticks).
+    pub refractory: RefractoryTracker,
 }
 
 impl EcanCycle {
@@ -63,6 +69,7 @@ impl EcanCycle {
             tick_count: 0,
             last_states: Vec::new(),
             last_curiosity: Vec::new(),
+            refractory: RefractoryTracker::new(),
         }
     }
 
@@ -75,28 +82,31 @@ impl EcanCycle {
     ) -> Result<Option<AttentionReport>, AgencyError> {
         self.tick_count += 1;
 
+        // Advance refractory cooldowns every tick (even if ECAN is gated)
+        self.refractory.tick();
+
         // Interval gating
         if config.interval > 1 && self.tick_count % config.interval != 0 {
             return Ok(None);
         }
 
-        let report = run_ecan_cycle(storage, adjacency, config)?;
-
-        // Cache states for next cycle
-        // (We don't cache here to keep the function pure — but we track tick count)
+        let report = run_ecan_cycle(storage, adjacency, config, &mut self.refractory)?;
 
         Ok(Some(report))
     }
 }
 
-/// Run one full ECAN + Curiosity cycle.
+/// Run one full ECAN + Curiosity cycle with hub attenuation.
 ///
-/// This is the core function. It's pure: takes storage + adjacency,
-/// returns a report. No side effects on the graph.
+/// Takes storage + adjacency, returns a report. The `refractory` tracker
+/// is updated in-place when hub attenuation is enabled: nodes that receive
+/// high attention enter a refractory period where their incoming bids are
+/// attenuated, forcing avalanches to explore new pathways.
 pub fn run_ecan_cycle(
     storage: &GraphStorage,
     adjacency: &AdjacencyIndex,
     config: &EcanConfig,
+    refractory: &mut RefractoryTracker,
 ) -> Result<AttentionReport, AgencyError> {
     let att_cfg = &config.attention;
     let cur_cfg = &config.curiosity;
@@ -163,7 +173,18 @@ pub fn run_ecan_cycle(
         &curiosity_states, cur_cfg.max_exploration_ratio,
     );
 
-    // ── Step 3: Generate exploitation bids ───────────────────
+    // ── Step 3: Build lookup maps for hub attenuation ────────
+    let theta_map: HashMap<Uuid, f32> = theta_data.iter().copied().collect();
+    let degree_map: HashMap<Uuid, usize> = attention_states
+        .iter()
+        .map(|s| {
+            let d = adjacency.degree_out(&s.node_id) + adjacency.degree_in(&s.node_id);
+            (s.node_id, d)
+        })
+        .collect();
+    let hub_cfg = &config.hub_attenuation;
+
+    // ── Step 4: Generate exploitation bids ───────────────────
     // Each node bids on its highest-mass neighbour
     let mut exploitation_bids = Vec::new();
     let mass_map: HashMap<Uuid, f32> = attention_states
@@ -186,12 +207,24 @@ pub fn run_ecan_cycle(
             .collect();
         ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
+        let theta_source = theta_map.get(&state.node_id).copied().unwrap_or(0.0);
+
         for (target, target_mass) in ranked.iter().take(att_cfg.max_bids_per_source) {
             let distance = (state.semantic_mass - target_mass).abs() / (state.semantic_mass + 0.01);
-            let bid_value = attention_economy::compute_bid_value(
+            let raw_bid = attention_economy::compute_bid_value(
                 state.semantic_mass * (1.0 - explore_ratio),
                 distance,
             );
+
+            // Apply hub attenuation: angular focus × hub penalty × refractory
+            let theta_target = theta_map.get(target).copied().unwrap_or(0.0);
+            let target_degree = degree_map.get(target).copied().unwrap_or(0);
+            let attenuation = hub_attenuation::compute_attenuation(
+                theta_source, theta_target, target_degree, target,
+                hub_cfg, refractory,
+            );
+            let bid_value = raw_bid * attenuation;
+
             if bid_value > 0.0 {
                 exploitation_bids.push(AttentionBid {
                     source: state.node_id,
@@ -226,13 +259,30 @@ pub fn run_ecan_cycle(
         }
     }
 
-    let exploration_bids = curiosity_engine::generate_exploration_bids(
+    let raw_exploration_bids = curiosity_engine::generate_exploration_bids(
         &curiosity_states,
         &neighbour_candidates,
         cur_cfg,
     );
 
-    // ── Step 5: Merge bids + inflate + resolve ───────────────
+    // Apply hub attenuation to exploration bids
+    let exploration_bids: Vec<AttentionBid> = raw_exploration_bids
+        .into_iter()
+        .map(|mut bid| {
+            let theta_source = theta_map.get(&bid.source).copied().unwrap_or(0.0);
+            let theta_target = theta_map.get(&bid.target).copied().unwrap_or(0.0);
+            let target_degree = degree_map.get(&bid.target).copied().unwrap_or(0);
+            let attenuation = hub_attenuation::compute_attenuation(
+                theta_source, theta_target, target_degree, &bid.target,
+                hub_cfg, refractory,
+            );
+            bid.value *= attenuation;
+            bid
+        })
+        .filter(|bid| bid.value > 0.0)
+        .collect();
+
+    // ── Step 6: Merge bids + inflate + resolve ───────────────
     let mut all_bids = exploitation_bids;
     all_bids.extend(exploration_bids);
     let total_bids = all_bids.len();
@@ -244,7 +294,7 @@ pub fn run_ecan_cycle(
     let (winners, total_flow) = attention_economy::resolve_auctions(&all_bids, price);
     let winning_bids = winners.len();
 
-    // ── Step 6: Update attention received/spent ──────────────
+    // ── Step 7: Update attention received/spent ──────────────
     let mut received_map: HashMap<Uuid, f32> = HashMap::new();
     let mut spent_map: HashMap<Uuid, f32> = HashMap::new();
 
@@ -258,10 +308,19 @@ pub fn run_ecan_cycle(
         state.spent = spent_map.get(&state.node_id).copied().unwrap_or(0.0);
     }
 
-    // ── Step 7: Compute energy deltas ────────────────────────
+    // ── Step 7b: Mark high receivers for refractory ──────────
+    if hub_cfg.enabled && hub_cfg.refractory_enabled {
+        refractory.mark_high_receivers(
+            &received_map,
+            hub_cfg.refractory_threshold,
+            hub_cfg.refractory_ticks,
+        );
+    }
+
+    // ── Step 8: Compute energy deltas ────────────────────────
     let energy_deltas = attention_economy::compute_energy_deltas(&attention_states, att_cfg);
 
-    // ── Step 8: Top receivers ────────────────────────────────
+    // ── Step 9: Top receivers ────────────────────────────────
     let mut receiver_list: Vec<(Uuid, f32)> = received_map.into_iter().collect();
     receiver_list.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     let top_receivers: Vec<(Uuid, f32)> = receiver_list.into_iter().take(10).collect();
@@ -273,6 +332,8 @@ pub fn run_ecan_cycle(
         price = format!("{:.3}", price),
         flow = format!("{:.3}", total_flow),
         explore = format!("{:.2}", explore_ratio),
+        hub_attenuation = hub_cfg.enabled,
+        refractory_active = refractory.active_count(),
         "ECAN cycle complete"
     );
 
@@ -354,7 +415,8 @@ mod tests {
         let (storage, adjacency, nodes) = build_test_graph(&dir);
 
         let config = EcanConfig::default();
-        let report = run_ecan_cycle(&storage, &adjacency, &config).unwrap();
+        let mut refr = RefractoryTracker::new();
+        let report = run_ecan_cycle(&storage, &adjacency, &config, &mut refr).unwrap();
 
         // Should have participants (5 alive, 1 dead below floor)
         assert!(report.participants >= 4, "got {}", report.participants);
@@ -370,7 +432,8 @@ mod tests {
         let (storage, adjacency, nodes) = build_test_graph(&dir);
 
         let config = EcanConfig::default();
-        let report = run_ecan_cycle(&storage, &adjacency, &config).unwrap();
+        let mut refr = RefractoryTracker::new();
+        let report = run_ecan_cycle(&storage, &adjacency, &config, &mut refr).unwrap();
 
         // The hub (highest degree + energy) should be a top receiver
         if !report.top_receivers.is_empty() {
@@ -393,7 +456,8 @@ mod tests {
         let (storage, adjacency, nodes) = build_test_graph(&dir);
 
         let config = EcanConfig::default();
-        let report = run_ecan_cycle(&storage, &adjacency, &config).unwrap();
+        let mut refr = RefractoryTracker::new();
+        let report = run_ecan_cycle(&storage, &adjacency, &config, &mut refr).unwrap();
 
         // Dead node (energy 0.02) should be excluded (floor = 0.05)
         let dead_id = nodes[5].id;
@@ -414,7 +478,8 @@ mod tests {
         let adjacency = AdjacencyIndex::new();
 
         let config = EcanConfig::default();
-        let report = run_ecan_cycle(&storage, &adjacency, &config).unwrap();
+        let mut refr = RefractoryTracker::new();
+        let report = run_ecan_cycle(&storage, &adjacency, &config, &mut refr).unwrap();
 
         assert_eq!(report.participants, 0);
         assert_eq!(report.total_bids, 0);
@@ -454,7 +519,8 @@ mod tests {
         let (storage, adjacency, _) = build_test_graph(&dir);
 
         let config = EcanConfig::default();
-        let report = run_ecan_cycle(&storage, &adjacency, &config).unwrap();
+        let mut refr = RefractoryTracker::new();
+        let report = run_ecan_cycle(&storage, &adjacency, &config, &mut refr).unwrap();
 
         // With decay, some nodes gain (receivers) and some lose (non-receivers)
         // At minimum, there should be energy deltas (positive or negative)

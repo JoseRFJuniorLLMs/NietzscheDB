@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use nietzsche_graph::CollectionManager;
+use nietzsche_sensory::SensoryMetrics;
 
 /// Lock-free operation counters for the NietzscheDB gRPC server.
 pub struct OperationMetrics {
@@ -169,6 +170,18 @@ nietzsche_zaratustra_total {zaratustra}
 # HELP nietzsche_error_total Total gRPC errors
 # TYPE nietzsche_error_total counter
 nietzsche_error_total {errors}
+# HELP nietzsche_sensory_neural_image_total Sensory inserts via ImageNeuralEncoder (ONNX)
+# TYPE nietzsche_sensory_neural_image_total counter
+nietzsche_sensory_neural_image_total {sensory_neural_image}
+# HELP nietzsche_sensory_neural_audio_total Sensory inserts via AudioNeuralEncoder (ONNX)
+# TYPE nietzsche_sensory_neural_audio_total counter
+nietzsche_sensory_neural_audio_total {sensory_neural_audio}
+# HELP nietzsche_sensory_passthrough_total Sensory inserts via exp_map_zero passthrough
+# TYPE nietzsche_sensory_passthrough_total counter
+nietzsche_sensory_passthrough_total {sensory_passthrough}
+# HELP nietzsche_sensory_neural_fallback_total Neural encoding failures that fell back to passthrough
+# TYPE nietzsche_sensory_neural_fallback_total counter
+nietzsche_sensory_neural_fallback_total {sensory_neural_fallback}
 ",
             node_count = node_count,
             edge_count = edge_count,
@@ -190,6 +203,10 @@ nietzsche_error_total {errors}
             sleep = self.sleep_count.load(Ordering::Relaxed),
             zaratustra = self.zaratustra_count.load(Ordering::Relaxed),
             errors = self.error_count.load(Ordering::Relaxed),
+            sensory_neural_image = SensoryMetrics::neural_image_count(),
+            sensory_neural_audio = SensoryMetrics::neural_audio_count(),
+            sensory_passthrough = SensoryMetrics::passthrough_count(),
+            sensory_neural_fallback = SensoryMetrics::neural_fallback_count(),
         )
     }
 }

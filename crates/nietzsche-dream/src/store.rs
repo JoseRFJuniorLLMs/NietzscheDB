@@ -77,6 +77,7 @@ mod tests {
             created_at:  1000,
             status:      DreamStatus::Pending,
             dream_nodes: vec![],
+            generated_node: None,
         }
     }
 

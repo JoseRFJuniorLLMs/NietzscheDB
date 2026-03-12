@@ -24,6 +24,8 @@
 //!   GET  /api/agency/health/latest → most recent HealthReport
 //!   GET  /api/agency/counterfactual/remove/:id → simulate removing node
 //!   POST /api/agency/counterfactual/add        → simulate adding node
+//!   GET  /api/agency/neural-status → ONNX model registry status
+//!   GET  /api/agency/avalanche-stats → SOC avalanche size statistics
 
 use std::sync::Arc;
 use std::net::SocketAddr;
@@ -231,6 +233,9 @@ pub async fn serve(
         .route("/api/agency/healing", get(agency_healing))
         .route("/api/agency/quantum/map", post(agency_quantum_map))
         .route("/api/agency/quantum/fidelity", post(agency_quantum_fidelity))
+        // Neural & SOC Monitoring
+        .route("/api/agency/neural-status", get(agency_neural_status))
+        .route("/api/agency/avalanche-stats", get(agency_avalanche_stats))
         // Schema management
         .route("/api/schemas", get(list_schemas))
         .route("/api/schemas", post(set_schema))
@@ -2348,4 +2353,59 @@ async fn agency_quantum_fidelity(
         "group_a_size": a.len(),
         "group_b_size": b.len(),
     })).into_response()
+}
+
+// ── Neural & SOC Monitoring ──────────────────────────────────────────────────
+
+// GET /api/agency/neural-status — returns status of all loaded ONNX models
+async fn agency_neural_status() -> impl IntoResponse {
+    let models_meta = nietzsche_neural::REGISTRY.list_models();
+    let total_models = models_meta.len();
+
+    let device = if cfg!(feature = "gpu") { "CUDA" } else { "CPU" };
+
+    let models: Vec<serde_json::Value> = models_meta.iter().map(|m| {
+        // Check if session is actually loaded (should be, since list_models only returns loaded)
+        let loaded = nietzsche_neural::REGISTRY.get_session(&m.name).is_ok();
+        serde_json::json!({
+            "name": m.name,
+            "loaded": loaded,
+            "device": device,
+            "version": m.version,
+            "input_shape": m.input_shape,
+            "output_shape": m.output_shape,
+            "last_inference_ms": null,
+            "total_inferences": 0,
+        })
+    }).collect();
+
+    let active_models = models.iter().filter(|m| m["loaded"].as_bool().unwrap_or(false)).count();
+
+    // GPU memory not directly queryable from ORT — report null; callers can
+    // use nvidia-smi or NVML for precise numbers.
+    Json(serde_json::json!({
+        "models": models,
+        "gpu_memory_used_mb": null,
+        "total_models": total_models,
+        "active_models": active_models,
+    })).into_response()
+}
+
+// GET /api/agency/avalanche-stats?collection= — SOC avalanche size distribution
+async fn agency_avalanche_stats(
+    State((cm, _ops)): State<AppState>,
+    Query(cq): Query<CollectionQuery>,
+) -> impl IntoResponse {
+    let shared = resolve_col!(cm, cq.collection);
+    let db = shared.read().await;
+    match db.storage().get_meta(nietzsche_agency::AvalancheSnapshot::meta_key()) {
+        Ok(Some(bytes)) => {
+            match serde_json::from_slice::<nietzsche_agency::AvalancheSnapshot>(&bytes) {
+                Ok(snap) => Json(serde_json::json!(snap)).into_response(),
+                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("corrupt avalanche snapshot: {e}")}))).into_response(),
+            }
+        }
+        Ok(None) => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "no avalanche stats yet — agency engine must tick first"}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
 }

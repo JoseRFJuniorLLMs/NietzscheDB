@@ -16,6 +16,7 @@ rocksdb   = { workspace = true }
 ort       = { version = "2.0.0-rc.11", features = ["ndarray"] }
 ndarray   = { workspace = true }
 once_cell = { workspace = true }
+tracing   = { workspace = true }
 
 [dev-dependencies]
 rand = { workspace = true }

@@ -205,6 +205,16 @@ pub struct AgencyConfig {
     pub healing_orphan_min_age: i64,
     /// Phantom ratio above which ghost cleanup triggers (default: 0.15).
     pub healing_ghost_ratio: f64,
+    /// Whether neural anomaly detection via ONNX is enabled (default: false).
+    /// Requires the `anomaly_detector` model to be loaded in the REGISTRY.
+    /// If true but model is not available, falls back to heuristic-only.
+    pub healing_neural_enabled: bool,
+    /// Anomaly score threshold above which a node is flagged (default: 0.7).
+    /// The anomaly_detector outputs a combined score in [0, 1].
+    pub healing_neural_threshold: f64,
+    /// Maximum nodes to run through neural anomaly detection per tick (default: 200).
+    /// Neural inference is more expensive than heuristic checks.
+    pub healing_neural_max_infer: usize,
 
     // -- DirtySet: Adaptive Sampling (Phase XV) --
     /// Whether adaptive sampling is enabled (default: true).
@@ -331,6 +341,11 @@ pub struct AgencyConfig {
     pub growth_min_energy: f32,
     /// Maximum degree for a node to receive new edges (default: 100).
     pub growth_max_target_degree: usize,
+    /// Whether to use the neural edge_predictor ONNX model for scoring candidates (default: false).
+    /// Requires the model to be loaded in `nietzsche_neural::REGISTRY` as "edge_predictor".
+    pub growth_neural_enabled: bool,
+    /// Minimum predicted probability from the neural edge_predictor to accept an edge (default: 0.5).
+    pub growth_neural_threshold: f32,
 
     // -- Cognitive Layer (Phase E) --
     /// Whether the cognitive layer is enabled (default: true).
@@ -345,6 +360,11 @@ pub struct AgencyConfig {
     pub cognitive_min_cluster: usize,
     /// Maximum concept nodes to propose per tick (default: 10).
     pub cognitive_max_concepts: usize,
+    /// Whether to use the neural cluster_scorer model for keep/split/merge
+    /// decisions instead of heuristic thresholds (default: false).
+    /// Requires the `cluster_scorer` ONNX model to be loaded in the registry.
+    /// Falls back to heuristics if the model is not available.
+    pub cognitive_neural_enabled: bool,
 
     // -- Phase 27: Epistemic Evolution --
     /// Whether Phase 27 evolution is enabled (default: true).
@@ -440,6 +460,9 @@ impl Default for AgencyConfig {
             healing_norm_threshold: 0.995,
             healing_orphan_min_age: 3600,
             healing_ghost_ratio: 0.15,
+            healing_neural_enabled: false,
+            healing_neural_threshold: 0.7,
+            healing_neural_max_infer: 200,
             dirty_enabled: true,
             dirty_full_scan_ratio: 0.3,
             dirty_stability_sample: 50,
@@ -502,6 +525,8 @@ impl Default for AgencyConfig {
             growth_max_new_edges: 50,
             growth_min_energy: 0.1,
             growth_max_target_degree: 100,
+            growth_neural_enabled: false,
+            growth_neural_threshold: 0.5,
             // Phase E — Cognitive Layer
             cognitive_enabled: true,
             cognitive_interval: 30,
@@ -509,6 +534,7 @@ impl Default for AgencyConfig {
             cognitive_cluster_radius: 0.3,
             cognitive_min_cluster: 5,
             cognitive_max_concepts: 10,
+            cognitive_neural_enabled: false,
             // Phase 27 — Epistemic Evolution
             evolution_27_enabled: true,
             evolution_27_interval: 40,
@@ -623,6 +649,11 @@ impl AgencyConfig {
             healing_norm_threshold: env_f64("AGENCY_HEALING_NORM_THRESHOLD", 0.995),
             healing_orphan_min_age: env_u64("AGENCY_HEALING_ORPHAN_AGE", 3600) as i64,
             healing_ghost_ratio:    env_f64("AGENCY_HEALING_GHOST_RATIO", 0.15),
+            healing_neural_enabled: std::env::var("AGENCY_HEALING_NEURAL_ENABLED")
+                .map(|v| v == "1" || v.to_lowercase() == "true")
+                .unwrap_or(false),
+            healing_neural_threshold: env_f64("AGENCY_HEALING_NEURAL_THRESHOLD", 0.7),
+            healing_neural_max_infer: env_usize("AGENCY_HEALING_NEURAL_MAX_INFER", 200),
             shatter_enabled: std::env::var("AGENCY_SHATTER_ENABLED")
                 .map(|v| v != "0" && v.to_lowercase() != "false")
                 .unwrap_or(true),
@@ -711,6 +742,10 @@ impl AgencyConfig {
             growth_max_new_edges:     env_usize("AGENCY_GROWTH_MAX_NEW_EDGES", 50),
             growth_min_energy:        env_f32("AGENCY_GROWTH_MIN_ENERGY", 0.1),
             growth_max_target_degree: env_usize("AGENCY_GROWTH_MAX_TARGET_DEGREE", 100),
+            growth_neural_enabled: std::env::var("AGENCY_GROWTH_NEURAL_ENABLED")
+                .map(|v| v == "1" || v.to_lowercase() == "true")
+                .unwrap_or(false),
+            growth_neural_threshold: env_f32("AGENCY_GROWTH_NEURAL_THRESHOLD", 0.5),
             // Phase E — Cognitive Layer
             cognitive_enabled: std::env::var("AGENCY_COGNITIVE_ENABLED")
                 .map(|v| v != "0" && v.to_lowercase() != "false")
@@ -720,6 +755,9 @@ impl AgencyConfig {
             cognitive_cluster_radius: env_f64("AGENCY_COGNITIVE_CLUSTER_RADIUS", 0.3),
             cognitive_min_cluster:    env_usize("AGENCY_COGNITIVE_MIN_CLUSTER", 5),
             cognitive_max_concepts:   env_usize("AGENCY_COGNITIVE_MAX_CONCEPTS", 10),
+            cognitive_neural_enabled: std::env::var("AGENCY_COGNITIVE_NEURAL_ENABLED")
+                .map(|v| v == "1" || v.to_lowercase() == "true")
+                .unwrap_or(false),
             // Phase 27 — Epistemic Evolution
             evolution_27_enabled: std::env::var("AGENCY_EVOLUTION_27_ENABLED")
                 .map(|v| v != "0" && v.to_lowercase() != "false")

@@ -227,6 +227,7 @@ message DreamSessionProto {
   string status      = 6; // "pending" | "applied" | "rejected"
   repeated DreamEventProto     events      = 7;
   repeated DreamNodeDeltaProto node_deltas = 8;
+  string generated_node = 9; // UUID of neural-generated DreamSnapshot (empty if not used)
 }
 
 message DreamEventProto {
@@ -609,6 +610,11 @@ message InsertSensoryRequest {
   uint32         encoder_version = 6;   // encoder version for decoder compatibility
   bytes          modality_meta   = 7;   // e.g. {"sample_rate":16000,"duration_ms":5000}
   string         collection      = 8;   // empty → "default"
+  bytes          raw_data        = 9;   // optional: raw image/audio bytes for neural encoding
+                                        // If non-empty AND SENSORY_NEURAL_ENABLED=true,
+                                        // neural ONNX encoders are used instead of exp_map_zero.
+                                        // Image: flattened CHW [3,64,64] f32 (12288 floats as LE bytes)
+                                        // Audio: flattened mel [1,64,32] f32 (2048 floats as LE bytes)
 }
 
 message SensoryResponse {

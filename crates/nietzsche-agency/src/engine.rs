@@ -22,6 +22,7 @@ use crate::hyperbolic_training::{TrainingResult, build_training_config, train_hy
 use crate::temporal_decay::{TemporalDecayReport, build_decay_config, scan_temporal_decay};
 use crate::graph_growth::{GraphGrowthReport, build_growth_config, run_graph_growth_scan};
 use crate::cognitive_layer::{CognitiveLayerReport, build_cognitive_config, run_cognitive_scan};
+use crate::avalanche::AvalancheStats;
 use crate::axiom_registry::AxiomRegistry;
 use crate::centroid_guardian::CentroidGuardian;
 use crate::hyperbolic_health::{HyperbolicHealth, HyperbolicHealthMonitor};
@@ -163,6 +164,8 @@ pub struct AgencyEngine {
     growth_tick: u64,
     /// Cognitive layer tick counter (Phase E).
     cognitive_tick: u64,
+    /// Avalanche size tracker for SOC (Self-Organized Criticality) monitoring.
+    avalanche_stats: AvalancheStats,
 }
 
 impl AgencyEngine {
@@ -226,6 +229,7 @@ impl AgencyEngine {
             temporal_decay_tick: 0,
             growth_tick: 0,
             cognitive_tick: 0,
+            avalanche_stats: AvalancheStats::default(),
             config,
         }
     }
@@ -473,6 +477,33 @@ impl AgencyEngine {
                 intent_count = intents.len(),
                 "agency reactor produced intents"
             );
+        }
+
+        // 3b. Neural evolution override: if structural_evolver model is loaded
+        //     and AGENCY_EVOLUTION_NEURAL_ENABLED=true, replace heuristic/PPO
+        //     strategy in EvolveLSystemRules intents with neural model output.
+        if let Some(ref health) = health_report {
+            if crate::neural_evolution::is_available() {
+                if let Some(result) = crate::neural_evolution::neural_suggest_strategy(health, adjacency) {
+                    let label = crate::neural_evolution::action_label(result.action_index);
+                    tracing::info!(
+                        action = label,
+                        confidence = result.confidence,
+                        probs = ?result.action_probs,
+                        "structural_evolver selected evolution strategy"
+                    );
+                    // Patch any EvolveLSystemRules intents produced by the reactor
+                    for intent in intents.iter_mut() {
+                        if let AgencyIntent::EvolveLSystemRules { strategy, reason } = intent {
+                            *strategy = result.strategy.clone();
+                            *reason = format!(
+                                "[neural:{}] confidence={:.3} | {}",
+                                label, result.confidence, reason
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         // 4. Collect gap events and feed to desire engine
@@ -975,6 +1006,8 @@ impl AgencyEngine {
                     pairs = report.pairs_evaluated,
                     proposed = report.edges_proposed,
                     avg_dist = format!("{:.4}", report.avg_proposed_distance),
+                    neural_accepted = report.neural_accepted,
+                    neural_rejected = report.neural_rejected,
                     "Phase C: Autonomous graph growth scan complete"
                 );
 
@@ -1069,6 +1102,9 @@ impl AgencyEngine {
         if self.active_reflex_cooldowns.len() > 1000 {
             self.active_reflex_cooldowns.clear();
         }
+
+        // Record avalanche size for SOC monitoring (observation only, O(1))
+        self.avalanche_stats.record(intents.len() as u32);
 
         Ok(AgencyTickReport {
             daemon_reports,
@@ -1172,6 +1208,11 @@ impl AgencyEngine {
     /// that modify node energy/metadata (HebbianLTP, HeatFlow, GravityPull, etc.).
     pub fn dirty_set(&self) -> std::sync::Arc<DirtySet> {
         std::sync::Arc::clone(&self.dirty_set)
+    }
+
+    /// Access the avalanche statistics for SOC monitoring (read-only).
+    pub fn avalanche_stats(&self) -> &AvalancheStats {
+        &self.avalanche_stats
     }
 
     pub fn ensure_observer_identity(
@@ -1293,6 +1334,7 @@ fn build_ecan_config(cfg: &AgencyConfig) -> EcanConfig {
             curiosity_threshold: cfg.ecan_curiosity_threshold,
             max_exploration_ratio: cfg.ecan_max_explore_ratio,
         },
+        hub_attenuation: crate::hub_attenuation::HubAttenuationConfig::from_env(),
         interval: cfg.ecan_interval,
     }
 }

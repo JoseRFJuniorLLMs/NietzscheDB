@@ -13,6 +13,9 @@
 //! | ImageEncoder  | Done    | exp_map_zero projection (EVA-Mind sends pre-compressed) |
 
 use crate::types::{LatentVector, Modality, OriginalShape, SensoryMemory};
+use crate::neural_encoders::{ImageNeuralEncoder, AudioNeuralEncoder};
+use std::sync::atomic::{AtomicU64, Ordering};
+use tracing::{debug, info, warn};
 
 /// Trait for encoding raw sensory data into a Poincaré ball latent vector.
 ///
@@ -261,6 +264,246 @@ pub fn build_sensory_memory(
 }
 
 // ─────────────────────────────────────────────
+// Neural encoding config and metrics
+// ─────────────────────────────────────────────
+
+/// Configuration for neural sensory encoding.
+///
+/// When enabled, `build_sensory_memory_with_raw()` will attempt to use ONNX
+/// neural encoders (CNN for images, Conv for audio) on raw data instead of
+/// the passthrough `exp_map_zero` projection.
+///
+/// Controlled by env var `SENSORY_NEURAL_ENABLED` (default: false).
+#[derive(Debug, Clone)]
+pub struct SensoryNeuralConfig {
+    /// Whether neural encoding is enabled. If false, raw_data is ignored
+    /// and the passthrough path (exp_map_zero) is always used.
+    pub enabled: bool,
+    /// Directory containing ONNX model files.
+    pub models_dir: String,
+}
+
+impl SensoryNeuralConfig {
+    /// Load configuration from environment variables.
+    pub fn from_env() -> Self {
+        let enabled = std::env::var("SENSORY_NEURAL_ENABLED")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        let models_dir = std::env::var("NIETZSCHE_MODEL_DIR")
+            .unwrap_or_else(|_| "/data/nietzsche/models".to_string());
+        Self { enabled, models_dir }
+    }
+}
+
+// ── Metrics counters ──────────────────────────────────────────────────────────
+
+/// Global counters for sensory encoding path metrics.
+pub struct SensoryMetrics;
+
+static NEURAL_IMAGE_COUNT: AtomicU64 = AtomicU64::new(0);
+static NEURAL_AUDIO_COUNT: AtomicU64 = AtomicU64::new(0);
+static PASSTHROUGH_COUNT: AtomicU64 = AtomicU64::new(0);
+static NEURAL_FALLBACK_COUNT: AtomicU64 = AtomicU64::new(0);
+
+impl SensoryMetrics {
+    /// Number of times the neural image encoder was used successfully.
+    pub fn neural_image_count() -> u64 { NEURAL_IMAGE_COUNT.load(Ordering::Relaxed) }
+    /// Number of times the neural audio encoder was used successfully.
+    pub fn neural_audio_count() -> u64 { NEURAL_AUDIO_COUNT.load(Ordering::Relaxed) }
+    /// Number of times the passthrough exp_map_zero path was used.
+    pub fn passthrough_count() -> u64 { PASSTHROUGH_COUNT.load(Ordering::Relaxed) }
+    /// Number of times neural encoding failed and fell back to passthrough.
+    pub fn neural_fallback_count() -> u64 { NEURAL_FALLBACK_COUNT.load(Ordering::Relaxed) }
+
+    /// Reset all counters (useful for tests).
+    pub fn reset() {
+        NEURAL_IMAGE_COUNT.store(0, Ordering::Relaxed);
+        NEURAL_AUDIO_COUNT.store(0, Ordering::Relaxed);
+        PASSTHROUGH_COUNT.store(0, Ordering::Relaxed);
+        NEURAL_FALLBACK_COUNT.store(0, Ordering::Relaxed);
+    }
+}
+
+// ─────────────────────────────────────────────
+// Build SensoryMemory with optional neural encoding
+// ─────────────────────────────────────────────
+
+/// Expected raw data sizes for neural encoder inputs.
+const IMAGE_ENCODER_FLOATS: usize = 3 * 64 * 64;  // [1,3,64,64] = 12288 f32
+const AUDIO_ENCODER_FLOATS: usize = 1 * 64 * 32;  // [1,1,64,32] = 2048 f32
+
+/// Build a `SensoryMemory` with optional neural encoding of raw data.
+///
+/// This is the upgraded entry point that supports two paths:
+///
+/// 1. **Passthrough** (existing): `raw_data` is empty or neural is disabled.
+///    Uses `euclidean_latent` + `exp_map_zero` as before.
+///
+/// 2. **Neural** (new): `raw_data` is non-empty, neural is enabled, and the
+///    data size matches the expected ONNX model input. Runs the raw data
+///    through `ImageNeuralEncoder` or `AudioNeuralEncoder`, producing a 128D
+///    hyperbolic latent directly. Falls back to passthrough on any error.
+///
+/// The `euclidean_latent` field is **always required** as a fallback — even when
+/// sending raw data, clients should still provide a pre-compressed vector so the
+/// passthrough path works if the neural models are unavailable.
+pub fn build_sensory_memory_with_raw(
+    euclidean_latent: &[f32],
+    modality: Modality,
+    original_shape: OriginalShape,
+    original_bytes: usize,
+    encoder_version: u32,
+    raw_data: &[u8],
+    config: &SensoryNeuralConfig,
+) -> SensoryMemory {
+    // ── Try neural path ──────────────────────────────────────────────────
+    if config.enabled && !raw_data.is_empty() {
+        if let Some(sm) = try_neural_encode(
+            raw_data,
+            &modality,
+            original_shape.clone(),
+            original_bytes,
+            encoder_version,
+            config,
+        ) {
+            return sm;
+        }
+        // Neural encoding failed — fall through to passthrough
+        NEURAL_FALLBACK_COUNT.fetch_add(1, Ordering::Relaxed);
+        warn!(
+            modality = %modality.label(),
+            raw_bytes = raw_data.len(),
+            "neural encoding failed, falling back to passthrough"
+        );
+    }
+
+    // ── Passthrough path (existing behavior) ─────────────────────────────
+    PASSTHROUGH_COUNT.fetch_add(1, Ordering::Relaxed);
+    debug!(modality = %modality.label(), dim = euclidean_latent.len(), path = "passthrough", "sensory encoding");
+    build_sensory_memory(euclidean_latent, modality, original_shape, original_bytes, encoder_version)
+}
+
+/// Attempt neural encoding of raw image or audio data.
+///
+/// Returns `Some(SensoryMemory)` on success, `None` on any failure.
+fn try_neural_encode(
+    raw_data: &[u8],
+    modality: &Modality,
+    original_shape: OriginalShape,
+    original_bytes: usize,
+    encoder_version: u32,
+    config: &SensoryNeuralConfig,
+) -> Option<SensoryMemory> {
+    // Convert raw bytes to f32 slice (little-endian)
+    let raw_floats = bytes_to_f32(raw_data)?;
+
+    match modality {
+        Modality::Image { .. } => {
+            if raw_floats.len() != IMAGE_ENCODER_FLOATS {
+                warn!(
+                    expected = IMAGE_ENCODER_FLOATS,
+                    got = raw_floats.len(),
+                    "raw image data size mismatch for neural encoder"
+                );
+                return None;
+            }
+            let encoder = ImageNeuralEncoder::new(&config.models_dir);
+            match encoder.encode_image(&raw_floats) {
+                Ok(latent) => {
+                    NEURAL_IMAGE_COUNT.fetch_add(1, Ordering::Relaxed);
+                    let latent_bytes = latent.byte_size();
+                    let compression_ratio = if latent_bytes > 0 {
+                        original_bytes as f32 / latent_bytes as f32
+                    } else {
+                        0.0
+                    };
+                    info!(
+                        dim = latent.dim,
+                        path = "neural_image",
+                        compression = %format!("{:.1}x", compression_ratio),
+                        "sensory encoding via ImageNeuralEncoder"
+                    );
+                    Some(SensoryMemory {
+                        modality: modality.clone(),
+                        latent,
+                        reconstruction_quality: 1.0,
+                        original_shape,
+                        compression_ratio,
+                        encoder_version,
+                    })
+                }
+                Err(e) => {
+                    warn!(error = %e, "ImageNeuralEncoder inference failed");
+                    None
+                }
+            }
+        }
+        Modality::Audio { .. } => {
+            if raw_floats.len() != AUDIO_ENCODER_FLOATS {
+                warn!(
+                    expected = AUDIO_ENCODER_FLOATS,
+                    got = raw_floats.len(),
+                    "raw audio data size mismatch for neural encoder"
+                );
+                return None;
+            }
+            let encoder = AudioNeuralEncoder::new(&config.models_dir);
+            match encoder.encode_mel(&raw_floats) {
+                Ok(latent) => {
+                    NEURAL_AUDIO_COUNT.fetch_add(1, Ordering::Relaxed);
+                    let latent_bytes = latent.byte_size();
+                    let compression_ratio = if latent_bytes > 0 {
+                        original_bytes as f32 / latent_bytes as f32
+                    } else {
+                        0.0
+                    };
+                    info!(
+                        dim = latent.dim,
+                        path = "neural_audio",
+                        compression = %format!("{:.1}x", compression_ratio),
+                        "sensory encoding via AudioNeuralEncoder"
+                    );
+                    Some(SensoryMemory {
+                        modality: modality.clone(),
+                        latent,
+                        reconstruction_quality: 1.0,
+                        original_shape,
+                        compression_ratio,
+                        encoder_version,
+                    })
+                }
+                Err(e) => {
+                    warn!(error = %e, "AudioNeuralEncoder inference failed");
+                    None
+                }
+            }
+        }
+        _ => {
+            debug!(
+                modality = %modality.label(),
+                "neural encoding not supported for this modality, using passthrough"
+            );
+            None
+        }
+    }
+}
+
+/// Convert a raw byte slice to a Vec<f32> (little-endian).
+///
+/// Returns `None` if the byte length is not a multiple of 4.
+fn bytes_to_f32(data: &[u8]) -> Option<Vec<f32>> {
+    if data.len() % 4 != 0 {
+        warn!(bytes = data.len(), "raw_data length not multiple of 4, cannot interpret as f32");
+        return None;
+    }
+    let floats: Vec<f32> = data
+        .chunks_exact(4)
+        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect();
+    Some(floats)
+}
+
+// ─────────────────────────────────────────────
 // Errors
 // ─────────────────────────────────────────────
 
@@ -420,5 +663,169 @@ mod tests {
         let fused = FusionEncoder::fuse(&[&z]).unwrap();
         assert_eq!(fused.dim, z.dim);
         assert_eq!(fused.data, z.data);
+    }
+
+    // ── Neural encoding path tests ──────────────────────────────────────
+
+    fn disabled_config() -> SensoryNeuralConfig {
+        SensoryNeuralConfig {
+            enabled: false,
+            models_dir: "/nonexistent".to_string(),
+        }
+    }
+
+    fn enabled_config() -> SensoryNeuralConfig {
+        SensoryNeuralConfig {
+            enabled: true,
+            models_dir: "/nonexistent".to_string(), // models won't load → fallback
+        }
+    }
+
+    #[test]
+    fn with_raw_disabled_uses_passthrough() {
+        SensoryMetrics::reset();
+        let euclidean: Vec<f32> = vec![0.1; 128];
+        // Even with raw data, if neural is disabled, use passthrough
+        let raw_data: Vec<u8> = vec![0u8; IMAGE_ENCODER_FLOATS * 4];
+
+        let sm = build_sensory_memory_with_raw(
+            &euclidean,
+            Modality::Image { width: 64, height: 64, channels: 3 },
+            OriginalShape::Image { width: 64, height: 64, channels: 3 },
+            IMAGE_ENCODER_FLOATS * 4,
+            1,
+            &raw_data,
+            &disabled_config(),
+        );
+
+        assert_eq!(sm.latent.dim, 128);
+        assert_eq!(sm.encoder_version, 1);
+        assert!(SensoryMetrics::passthrough_count() > 0);
+    }
+
+    #[test]
+    fn with_raw_empty_raw_uses_passthrough() {
+        SensoryMetrics::reset();
+        let euclidean: Vec<f32> = vec![0.1; 128];
+
+        let sm = build_sensory_memory_with_raw(
+            &euclidean,
+            Modality::Image { width: 64, height: 64, channels: 3 },
+            OriginalShape::Image { width: 64, height: 64, channels: 3 },
+            640 * 480 * 3,
+            1,
+            &[], // empty raw_data → passthrough
+            &enabled_config(),
+        );
+
+        assert_eq!(sm.latent.dim, 128);
+        assert!(SensoryMetrics::passthrough_count() > 0);
+    }
+
+    #[test]
+    fn with_raw_enabled_but_no_model_falls_back() {
+        SensoryMetrics::reset();
+        let euclidean: Vec<f32> = vec![0.1; 128];
+        // Correct size raw data but model won't load (nonexistent dir)
+        let raw_floats: Vec<f32> = vec![0.5; IMAGE_ENCODER_FLOATS];
+        let raw_data: Vec<u8> = raw_floats
+            .iter()
+            .flat_map(|f| f.to_le_bytes())
+            .collect();
+
+        let sm = build_sensory_memory_with_raw(
+            &euclidean,
+            Modality::Image { width: 64, height: 64, channels: 3 },
+            OriginalShape::Image { width: 64, height: 64, channels: 3 },
+            IMAGE_ENCODER_FLOATS * 4,
+            1,
+            &raw_data,
+            &enabled_config(),
+        );
+
+        // Falls back to passthrough because model isn't loaded
+        assert_eq!(sm.latent.dim, 128);
+        assert!(SensoryMetrics::neural_fallback_count() > 0);
+        assert!(SensoryMetrics::passthrough_count() > 0);
+    }
+
+    #[test]
+    fn with_raw_wrong_size_falls_back() {
+        SensoryMetrics::reset();
+        let euclidean: Vec<f32> = vec![0.1; 128];
+        // Wrong size raw data (not IMAGE_ENCODER_FLOATS * 4)
+        let raw_data: Vec<u8> = vec![0u8; 100]; // too small, also not multiple of 4 for 25 floats
+
+        let sm = build_sensory_memory_with_raw(
+            &euclidean,
+            Modality::Image { width: 64, height: 64, channels: 3 },
+            OriginalShape::Image { width: 64, height: 64, channels: 3 },
+            100,
+            1,
+            &raw_data,
+            &enabled_config(),
+        );
+
+        // Falls back to passthrough
+        assert_eq!(sm.latent.dim, 128);
+    }
+
+    #[test]
+    fn with_raw_text_modality_uses_passthrough() {
+        SensoryMetrics::reset();
+        let euclidean: Vec<f32> = vec![0.1; 64];
+        // Neural encoding not supported for text
+        let raw_data: Vec<u8> = vec![0u8; 256];
+
+        let sm = build_sensory_memory_with_raw(
+            &euclidean,
+            Modality::Text { token_count: 50, language: "en".into() },
+            OriginalShape::Text { tokens: 50 },
+            256,
+            1,
+            &raw_data,
+            &enabled_config(),
+        );
+
+        assert_eq!(sm.latent.dim, 64);
+        // Text goes through fallback → passthrough
+        assert!(SensoryMetrics::passthrough_count() > 0);
+    }
+
+    #[test]
+    fn bytes_to_f32_valid() {
+        let floats = vec![1.0_f32, 2.0, 3.0];
+        let bytes: Vec<u8> = floats.iter().flat_map(|f| f.to_le_bytes()).collect();
+        let result = bytes_to_f32(&bytes).unwrap();
+        assert_eq!(result, floats);
+    }
+
+    #[test]
+    fn bytes_to_f32_invalid_length() {
+        let bytes = vec![0u8; 5]; // not multiple of 4
+        assert!(bytes_to_f32(&bytes).is_none());
+    }
+
+    #[test]
+    fn bytes_to_f32_empty() {
+        let result = bytes_to_f32(&[]).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn config_from_env_defaults() {
+        // Ensure no env vars are set for this test
+        std::env::remove_var("SENSORY_NEURAL_ENABLED");
+        let config = SensoryNeuralConfig::from_env();
+        assert!(!config.enabled);
+    }
+
+    #[test]
+    fn metrics_reset_works() {
+        SensoryMetrics::reset();
+        assert_eq!(SensoryMetrics::neural_image_count(), 0);
+        assert_eq!(SensoryMetrics::neural_audio_count(), 0);
+        assert_eq!(SensoryMetrics::passthrough_count(), 0);
+        assert_eq!(SensoryMetrics::neural_fallback_count(), 0);
     }
 }

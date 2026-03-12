@@ -36,8 +36,8 @@ use nietzsche_sleep::{SleepConfig, SleepCycle};
 use nietzsche_zaratustra::{ZaratustraConfig, ZaratustraEngine};
 use nietzsche_neural::{REGISTRY, ModelMetadata};
 use nietzsche_sensory::{
-    Modality, OriginalShape, QuantLevel,
-    encoder::build_sensory_memory,
+    Modality, OriginalShape, QuantLevel, SensoryNeuralConfig,
+    encoder::build_sensory_memory_with_raw,
     storage::SensoryStorage,
 };
 use nietzsche_gnn::{GnnEngine, NeighborSampler};
@@ -244,16 +244,26 @@ pub struct NietzscheServer {
     archetype_registry: nietzsche_cluster::ArchetypeRegistry,
     /// Speculative exploration engine.
     dream_engine: nietzsche_dream::DreamEngine,
+    /// Configuration for neural sensory encoding (ONNX image/audio encoders).
+    sensory_neural_config: SensoryNeuralConfig,
+    /// DSI neural pipeline: vqvae indexer + dsi_decoder retrieval.
+    /// When `DSI_NEURAL_ENABLED=true`, KNN search will first attempt neural DSI
+    /// retrieval before falling back to HNSW.
+    dsi_pipeline: nietzsche_dsi::DsiPipeline,
 }
 
 impl NietzscheServer {
     pub fn new(cm: Arc<CollectionManager>, cdc: Arc<CdcBroadcaster>) -> Self {
+        let models_dir = std::env::var("NIETZSCHE_MODEL_DIR")
+            .unwrap_or_else(|_| "models".to_string());
         Self {
             cm,
             cdc,
             cluster_registry: None,
             archetype_registry: nietzsche_cluster::ArchetypeRegistry::new(),
             dream_engine: nietzsche_dream::DreamEngine::new(nietzsche_dream::DreamConfig::from_env()),
+            sensory_neural_config: SensoryNeuralConfig::from_env(),
+            dsi_pipeline: nietzsche_dsi::DsiPipeline::new(4, &models_dir),
         }
     }
 
@@ -1242,15 +1252,33 @@ impl NietzscheDb for NietzscheServer {
             dim:    r.query_coords.len() as u32,
         };
         validate_embedding(&query_proto)?;
-        let query = PoincareVector::from_f64(r.query_coords);
+        let query = PoincareVector::from_f64(r.query_coords.clone());
         let k     = r.k as usize;
 
         let shared  = get_col!(self.cm, &r.collection);
         let db      = shared.read().await;
 
-        // Convert proto filters → MetadataFilter
+        // ── DSI Neural Retrieval (fast path) ────────────────────────────────
+        // When DSI_NEURAL_ENABLED=true and models are loaded, attempt O(1) neural
+        // retrieval via the dsi_decoder before falling back to HNSW.
+        // Only used for unfiltered searches (filters require HNSW pre-filter).
         let filter = proto_filters_to_metadata_filter(&r.filters);
-        let results = db.knn_filtered(&query, k, &filter).map_err(graph_err)?;
+        let results = if matches!(filter, MetadataFilter::None) {
+            if let Some(dsi_results) = self.dsi_pipeline.try_search_with_fallback(
+                db.storage(),
+                &r.query_coords.iter().map(|&x| x as f32).collect::<Vec<_>>(),
+                k,
+            ) {
+                tracing::debug!(count = dsi_results.len(), "KNN: served via DSI neural retrieval");
+                dsi_results
+            } else {
+                // Fallback to HNSW
+                db.knn_filtered(&query, k, &filter).map_err(graph_err)?
+            }
+        } else {
+            // Filtered search: always use HNSW (DSI doesn't support metadata filters).
+            db.knn_filtered(&query, k, &filter).map_err(graph_err)?
+        };
 
         Ok(Response::new(nietzsche::KnnResponse {
             results: results.into_iter()
@@ -2139,12 +2167,14 @@ impl NietzscheDb for NietzscheServer {
         };
 
         let latent_f32: Vec<f32> = r.latent.iter().map(|&f| f as f32).collect();
-        let sm = build_sensory_memory(
+        let sm = build_sensory_memory_with_raw(
             &latent_f32,
             modality,
             original_shape,
             r.original_bytes as usize,
             r.encoder_version,
+            &r.raw_data,
+            &self.sensory_neural_config,
         );
 
         let shared = get_col!(self.cm, &col_name);
@@ -2156,7 +2186,15 @@ impl NietzscheDb for NietzscheServer {
                 .map_err(|e| Status::internal(format!("sensory put: {e}")))?;
         }
 
-        debug!(collection = %col_name, node_id = %node_id, modality = %r.modality, dim = sm.latent.dim, "InsertSensory ok");
+        debug!(
+            collection = %col_name,
+            node_id = %node_id,
+            modality = %r.modality,
+            dim = sm.latent.dim,
+            raw_data_len = r.raw_data.len(),
+            neural_enabled = self.sensory_neural_config.enabled,
+            "InsertSensory ok"
+        );
         Ok(Response::new(ok_status()))
     }
 
@@ -3598,5 +3636,6 @@ fn dream_session_to_proto(s: nietzsche_dream::DreamSession) -> nietzsche::DreamS
             new_energy: d.new_energy,
             event_type: d.event_type.map(|et| format!("{:?}", et)).unwrap_or_default(),
         }).collect(),
+        generated_node: s.generated_node.map(|id| id.to_string()).unwrap_or_default(),
     }
 }
