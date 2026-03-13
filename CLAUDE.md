@@ -207,7 +207,29 @@ O engine produz `AgencyIntent` (read-only) → server handler executa mutations 
 - `EpistemicMutation` → avalia qualidade epistemica + aplica/rejeita mutacao
 
 ### Config env vars (todas com prefixo AGENCY_)
+
+#### Collection selection (controla ONDE o Agency/L-System corre)
 ```env
+# Collections a EXCLUIR do Agency Engine (comma-separated, exact match)
+# Sobrepoe o skip list hardcoded. Impede L-System, sleep, dreams, etc.
+AGENCY_SKIP_COLLECTIONS=eva_core,eva_self_knowledge,eva_codebase,eva_docs
+
+# Override do AGENCY_ALWAYS hardcoded (collections que correm mesmo com <10 nodes)
+# Se definido, SUBSTITUI a lista hardcoded. Se vazio, usa defaults.
+AGENCY_ALWAYS_COLLECTIONS=memories,signifier_chains,eva_mind,patient_graph
+```
+
+**Skip list hardcoded** (sempre activo, alem do env var):
+`eva_cache`, `eva_perceptions`, `speaker_embeddings`, `eva_sensory`, `lobby_*`, `test_*`
+
+**Always list hardcoded** (default se `AGENCY_ALWAYS_COLLECTIONS` nao definido):
+`memories`, `signifier_chains`, `eva_mind`, `eva_core`, `patient_graph`
+
+**Logica**: `AGENCY_SKIP_COLLECTIONS` tem prioridade sobre tudo (skip ganha sobre always).
+
+#### Parametros do Agency Engine
+```env
+AGENCY_TICK_SECS=60
 AGENCY_TEMPORAL_DECAY_ENABLED=true
 AGENCY_TEMPORAL_DECAY_INTERVAL=10
 AGENCY_TEMPORAL_DECAY_LAMBDA=0.0000001
@@ -223,6 +245,12 @@ AGENCY_EVOLUTION_27_MAX_EVAL=500
 AGENCY_EVOLUTION_27_QUALITY_FLOOR=0.4
 AGENCY_EVOLUTION_27_MAX_PROPOSALS=5
 AGENCY_EVOLUTION_27_MIN_ENERGY=0.05
+```
+
+#### Parametros L-System
+```env
+LSYSTEM_HAUSDORFF_SAMPLE=8000   # nodes amostrados por tick (0 = todos)
+LSYSTEM_K=12                     # k vizinhos para Hausdorff local (min 3)
 ```
 
 ---
