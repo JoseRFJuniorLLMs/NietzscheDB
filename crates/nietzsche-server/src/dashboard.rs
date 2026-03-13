@@ -188,6 +188,7 @@ pub async fn serve(
         .route("/api/stats", get(stats))
         .route("/api/status", get(stats))   // alias for dashboard compatibility
         .route("/api/health", get(health))
+        .route("/api/brain-scan", get(brain_scan))
         .route("/api/collections", get(list_collections))
         .route("/api/graph", get(graph))
         .route("/api/node/:id", get(get_node))
@@ -369,6 +370,141 @@ async fn list_collections(State((cm, _ops)): State<AppState>) -> impl IntoRespon
         edge_count: i.edge_count,
     }).collect();
     Json(list)
+}
+
+// GET /api/brain-scan — proprioception snapshot for EVA system prompt
+#[derive(Serialize)]
+struct BrainScanCollection {
+    name:       String,
+    node_count: usize,
+    edge_count: usize,
+    dim:        usize,
+    metric:     String,
+}
+
+#[derive(Serialize)]
+struct BrainScanResult {
+    status:            String,
+    total_nodes:       usize,
+    total_edges:       usize,
+    total_collections: usize,
+    collections:       Vec<BrainScanCollection>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pagerank_top5:     Vec<PageRankEntry>,
+    uptime_secs:       u64,
+    ram_usage_mb:      u64,
+    scan_ms:           u64,
+}
+
+#[derive(Serialize)]
+struct PageRankEntry {
+    id:    String,
+    label: String,
+    score: f64,
+}
+
+async fn brain_scan(State((cm, _ops)): State<AppState>) -> impl IntoResponse {
+    let start = std::time::Instant::now();
+
+    let infos = cm.list();
+    let mut total_nodes = 0usize;
+    let mut total_edges = 0usize;
+    let mut collections = Vec::with_capacity(infos.len());
+
+    for info in &infos {
+        total_nodes += info.node_count;
+        total_edges += info.edge_count;
+        collections.push(BrainScanCollection {
+            name:       info.name.clone(),
+            node_count: info.node_count,
+            edge_count: info.edge_count,
+            dim:        info.dim,
+            metric:     info.metric.clone(),
+        });
+    }
+
+    // Sort by node_count descending
+    collections.sort_by(|a, b| b.node_count.cmp(&a.node_count));
+
+    // PageRank top-5 from the largest collection (best-effort, 800ms timeout)
+    let mut pagerank_top5 = Vec::new();
+    if let Some(largest) = collections.first() {
+        if let Some(shared) = cm.get(&largest.name) {
+            let pr_future = async {
+                let db = shared.read().await;
+                let storage = db.storage();
+                let adjacency = db.adjacency();
+                let config = nietzsche_algo::PageRankConfig {
+                    damping_factor: 0.85,
+                    max_iterations: 20,
+                    convergence_threshold: 1e-7,
+                };
+                let pr_result = nietzsche_algo::pagerank(storage, adjacency, &config);
+                let scores = match pr_result {
+                    Ok(r) => r.scores,
+                    Err(_) => Vec::new(),
+                };
+                let mut ranked = scores;
+                ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                ranked.truncate(5);
+
+                let mut entries = Vec::new();
+                for (id, score) in ranked {
+                    let label = match storage.get_node(&id) {
+                        Ok(Some(meta)) => {
+                            meta.content.get("title")
+                                .or_else(|| meta.content.get("name"))
+                                .or_else(|| meta.content.get("text"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("(sem título)")
+                                .chars().take(60).collect::<String>()
+                        }
+                        _ => "(unknown)".to_string(),
+                    };
+                    entries.push(PageRankEntry {
+                        id: id.to_string(),
+                        label,
+                        score,
+                    });
+                }
+                entries
+            };
+
+            match tokio::time::timeout(std::time::Duration::from_millis(800), pr_future).await {
+                Ok(entries) => pagerank_top5 = entries,
+                Err(_) => warn!("brain_scan: PageRank timeout (800ms)"),
+            }
+        }
+    }
+
+    // System info (best-effort)
+    let uptime_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // Approximate process RSS from /proc/self/statm (Linux only)
+    let ram_usage_mb = std::fs::read_to_string("/proc/self/statm")
+        .ok()
+        .and_then(|s| s.split_whitespace().nth(1)?.parse::<u64>().ok())
+        .map(|pages| pages * 4096 / (1024 * 1024))
+        .unwrap_or(0);
+
+    let scan_ms = start.elapsed().as_millis() as u64;
+    if scan_ms > 200 {
+        warn!(scan_ms, "brain_scan took > 200ms");
+    }
+
+    Json(BrainScanResult {
+        status: "ok".to_string(),
+        total_nodes,
+        total_edges,
+        total_collections: infos.len(),
+        collections,
+        pagerank_top5,
+        uptime_secs,
+        ram_usage_mb,
+        scan_ms,
+    })
 }
 
 // GET /api/graph?collection=name&limit=1000
