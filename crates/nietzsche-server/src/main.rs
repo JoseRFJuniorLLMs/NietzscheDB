@@ -1324,6 +1324,15 @@ async fn main() -> anyhow::Result<()> {
                                                 "Phase 27: epistemic mutation proposed (logged only)"
                                             );
                                         }
+                                        nietzsche_agency::AgencyIntent::GeometricUncertainty { node_id, variance, uncertainty, suggested_action } => {
+                                            info!(
+                                                node_id = %node_id,
+                                                variance = variance,
+                                                uncertainty = uncertainty,
+                                                action = %suggested_action,
+                                                "agency: geometric uncertainty detected"
+                                            );
+                                        }
                                     }
                                 }
 
