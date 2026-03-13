@@ -113,6 +113,50 @@ pub enum Query {
     DropIndex(DropIndexQuery),
     /// `ALTER COLLECTION name PARTITION BY ...` — Table partitioning.
     PartitionBy(PartitionByQuery),
+
+    // ═══════════════════════════════════════════════════
+    // ── NQL 4.0: Language Expansion ──────────────────
+    // ═══════════════════════════════════════════════════
+
+    // ── Phase 1: Completing the Language ─────────────
+
+    /// `MATCH … INTERSECT MATCH …` — set intersection.
+    Intersect(IntersectQuery),
+    /// `MATCH … EXCEPT MATCH …` — set difference.
+    Except(ExceptQuery),
+    /// `CALL algo_name(args) [YIELD field1, field2]` — call a named procedure.
+    Call(CallQuery),
+    /// `EXPLAIN ANALYZE <query>` — run query and return plan + actual metrics.
+    ExplainAnalyze(Box<Query>),
+    /// `CREATE TYPE name { field: type, ... }` — formal type definition.
+    CreateType(CreateTypeQuery),
+    /// `DROP TYPE name` — remove a type definition.
+    DropType(DropTypeQuery),
+    /// `SHOW TYPES` — list all type definitions.
+    ShowTypes,
+
+    // ── Phase 2: Beyond NietzscheDB ──────────────────
+
+    /// `FETCH "url" [HEADERS {...}] AS alias [UNWIND alias.path AS item] RETURN …`
+    Fetch(FetchQuery),
+    /// `STREAM MATCH (n) WHERE … RETURN …` — reactive subscription.
+    Stream(StreamQuery),
+    /// `REGISTER FUNCTION name FROM "source" [LANGUAGE lang]` — extensibility.
+    RegisterFunction(RegisterFunctionQuery),
+    /// `DROP FUNCTION name` — remove a registered function.
+    DropFunction(DropFunctionQuery),
+    /// `SHOW FUNCTIONS` — list registered functions.
+    ShowFunctions,
+    /// `ASK "prompt" ABOUT $node [WITH CONTEXT depth] [MODEL model]` — LLM integration.
+    Ask(AskQuery),
+    /// `SCHEDULE EVERY "interval" <query> [INTO "collection"]` — cron-style scheduling.
+    Schedule(ScheduleQuery),
+    /// `DROP SCHEDULE name` — remove a scheduled query.
+    DropSchedule(DropScheduleQuery),
+    /// `SHOW SCHEDULES` — list active scheduled queries.
+    ShowSchedules,
+    /// `IMPORT format "source" AS (n:Type {mapping}) [INTO "collection"]` — data ingestion.
+    Import(ImportQuery),
 }
 
 // ── PSYCHOANALYZE ────────────────────────────────────────────
@@ -438,6 +482,27 @@ pub enum Expr {
         branches:  Vec<(Condition, Box<Expr>)>,
         else_expr: Option<Box<Expr>>,
     },
+    /// NQL 4.0: JSON path access: `n.content->'key'` or `n.content->>'nested.key'`
+    JsonAccess {
+        expr:    Box<Expr>,
+        path:    String,
+        /// `true` for `->>` (returns text), `false` for `->` (returns JSON)
+        as_text: bool,
+    },
+    /// NQL 4.0: Array/list literal: `[expr1, expr2, ...]`
+    Array(Vec<Expr>),
+    /// NQL 4.0: `ANY(x IN expr WHERE condition)` — existential quantifier over array
+    AnyExpr {
+        var:       String,
+        iterable:  Box<Expr>,
+        condition: Box<Condition>,
+    },
+    /// NQL 4.0: `ALL(x IN expr WHERE condition)` — universal quantifier over array
+    AllExpr {
+        var:       String,
+        iterable:  Box<Expr>,
+        condition: Box<Condition>,
+    },
 }
 
 /// Arithmetic operators for SET expressions.
@@ -563,6 +628,21 @@ pub enum MathFunc {
     PrigoginBasin,
     /// Paul Erdős — ERDOS_EDGE_PROB(a, b): predicted edge emergence probability
     ErdosEdgeProb,
+
+    // ── GeometricKernels Integration ──────────────────────────
+
+    /// Élie Cartan — MATERN_KERNEL(n1, n2, nu, lengthscale): Matérn kernel
+    /// similarity between two nodes using Poincaré geodesic distance.
+    /// Respects hyperbolic geometry unlike Euclidean kernels.
+    MaternKernel,
+
+    /// HYPERBOLIC_HEAT(n, t): Heat kernel from origin using correct
+    /// Poincaré distance d_P(x,0) = 2·atanh(‖x‖) instead of Euclidean ‖x‖².
+    HyperbolicHeat,
+
+    /// EPISTEMIC_UNCERTAINTY(n): Spectral uncertainty estimate based on
+    /// graph Laplacian eigendecomposition. High values indicate knowledge gaps.
+    EpistemicUncertainty,
 }
 
 /// Argument to a mathematician-named function.
@@ -584,6 +664,8 @@ pub struct ReturnClause {
     pub distinct: bool,
     pub items:    Vec<ReturnItem>,
     pub group_by: Vec<GroupByItem>,
+    /// NQL 4.0: `HAVING condition` — filter after GROUP BY aggregation.
+    pub having:   Option<Condition>,
     pub order_by: Option<OrderBy>,
     pub limit:    Option<usize>,
     pub skip:     Option<usize>,
@@ -879,4 +961,129 @@ pub struct PartitionByQuery {
 pub struct LateralClause {
     pub subquery: Box<Query>,
     pub alias:    String,
+}
+
+// ═══════════════════════════════════════════════════════════
+// ── NQL 4.0: Language Expansion Structs ─────────────────
+// ═══════════════════════════════════════════════════════════
+
+// ── Phase 1: Completing the Language ────────────────────
+
+/// `MATCH … INTERSECT MATCH …` — set intersection (by node ID).
+#[derive(Debug, Clone)]
+pub struct IntersectQuery {
+    pub left:  Box<Query>,
+    pub right: Box<Query>,
+}
+
+/// `MATCH … EXCEPT MATCH …` — set difference (by node ID).
+#[derive(Debug, Clone)]
+pub struct ExceptQuery {
+    pub left:  Box<Query>,
+    pub right: Box<Query>,
+}
+
+/// `CALL procedure_name(arg1, arg2, ...) [YIELD field1, field2, ...]`
+#[derive(Debug, Clone)]
+pub struct CallQuery {
+    pub procedure: String,
+    pub args:      Vec<Expr>,
+    pub yields:    Vec<String>,
+}
+
+/// `CREATE TYPE name { field_name: field_type, ... }`
+#[derive(Debug, Clone)]
+pub struct CreateTypeQuery {
+    pub name:   String,
+    pub fields: Vec<TypeField>,
+}
+
+/// A typed field within a type definition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TypeField {
+    pub name:      String,
+    pub field_type: String,
+    pub nullable:   bool,
+}
+
+/// `DROP TYPE name`
+#[derive(Debug, Clone)]
+pub struct DropTypeQuery {
+    pub name: String,
+}
+
+// ── Phase 2: Beyond NietzscheDB ────────────────────────
+
+/// `FETCH "url" [HEADERS {k: v}] AS alias [UNWIND alias.path AS item] RETURN …`
+#[derive(Debug, Clone)]
+pub struct FetchQuery {
+    pub url:     Expr,
+    pub headers: Vec<(String, Expr)>,
+    pub alias:   String,
+    pub unwind:  Option<FetchUnwind>,
+    pub ret:     Option<ReturnClause>,
+}
+
+/// Inline UNWIND for FETCH results.
+#[derive(Debug, Clone)]
+pub struct FetchUnwind {
+    pub path:  String,
+    pub alias: String,
+}
+
+/// `STREAM MATCH (n) WHERE … RETURN …` — reactive subscription.
+#[derive(Debug, Clone)]
+pub struct StreamQuery {
+    pub inner: MatchQuery,
+    /// Optional throttle interval (e.g. "1s", "500ms").
+    pub throttle: Option<String>,
+}
+
+/// `REGISTER FUNCTION name FROM "source" [LANGUAGE lang]`
+#[derive(Debug, Clone)]
+pub struct RegisterFunctionQuery {
+    pub name:     String,
+    pub source:   String,
+    pub language: Option<String>,
+}
+
+/// `DROP FUNCTION name`
+#[derive(Debug, Clone)]
+pub struct DropFunctionQuery {
+    pub name: String,
+}
+
+/// `ASK "prompt" ABOUT $node [WITH CONTEXT depth] [MODEL model]`
+#[derive(Debug, Clone)]
+pub struct AskQuery {
+    pub prompt:        Expr,
+    pub target:        ReconstructTarget,
+    pub context_depth: Option<usize>,
+    pub model:         Option<String>,
+}
+
+/// `SCHEDULE EVERY "interval" <query> [INTO "collection"] [AS name]`
+#[derive(Debug, Clone)]
+pub struct ScheduleQuery {
+    pub name:       Option<String>,
+    pub interval:   String,
+    pub query:      Box<Query>,
+    pub into_collection: Option<String>,
+}
+
+/// `DROP SCHEDULE name`
+#[derive(Debug, Clone)]
+pub struct DropScheduleQuery {
+    pub name: String,
+}
+
+/// `IMPORT format "source" AS (n:Type {mapping}) [INTO "collection"]`
+#[derive(Debug, Clone)]
+pub struct ImportQuery {
+    pub format:     String,
+    pub source:     Expr,
+    pub alias:      String,
+    pub label:      Option<String>,
+    pub mapping:    Vec<(String, Expr)>,
+    pub collection: Option<String>,
 }

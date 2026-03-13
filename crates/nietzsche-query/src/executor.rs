@@ -593,6 +593,212 @@ pub fn execute_with_indexes_and_gas(
                 ("strategy".into(),   ScalarValue::Str(strategy_str)),
             ])])
         }
+
+        // ═══════════════════════════════════════════════════
+        // ── NQL 4.0: Language Expansion ──────────────────
+        // ═══════════════════════════════════════════════════
+
+        // ── Phase 1: Completing the Language ─────────────
+
+        Query::Intersect(iq) => {
+            let left_results  = execute_with_indexes_and_gas(&iq.left, storage, adjacency, params, indexed_fields, gas)?;
+            let right_results = execute_with_indexes_and_gas(&iq.right, storage, adjacency, params, indexed_fields, gas)?;
+            let right_ids: HashSet<Uuid> = right_results.iter().filter_map(|r| match r {
+                QueryResult::Node(n) => Some(n.id),
+                _ => None,
+            }).collect();
+            Ok(left_results.into_iter().filter(|r| match r {
+                QueryResult::Node(n) => right_ids.contains(&n.id),
+                _ => false,
+            }).collect())
+        }
+
+        Query::Except(eq) => {
+            let left_results  = execute_with_indexes_and_gas(&eq.left, storage, adjacency, params, indexed_fields, gas)?;
+            let right_results = execute_with_indexes_and_gas(&eq.right, storage, adjacency, params, indexed_fields, gas)?;
+            let right_ids: HashSet<Uuid> = right_results.iter().filter_map(|r| match r {
+                QueryResult::Node(n) => Some(n.id),
+                _ => None,
+            }).collect();
+            Ok(left_results.into_iter().filter(|r| match r {
+                QueryResult::Node(n) => !right_ids.contains(&n.id),
+                _ => true,
+            }).collect())
+        }
+
+        Query::Call(c) => {
+            // Return as scalar intent — the server handler dispatches to the appropriate algorithm.
+            let mut scalars = vec![
+                ("action".into(), ScalarValue::Str("CALL".into())),
+                ("procedure".into(), ScalarValue::Str(c.procedure.clone())),
+            ];
+            for (i, arg) in c.args.iter().enumerate() {
+                let val = match arg {
+                    Expr::Str(s) => ScalarValue::Str(s.clone()),
+                    Expr::Float(f) => ScalarValue::Float(*f),
+                    Expr::Int(n) => ScalarValue::Int(*n),
+                    Expr::Param(p) => match params.get(p) {
+                        Some(ParamValue::Str(s)) => ScalarValue::Str(s.clone()),
+                        Some(ParamValue::Float(f)) => ScalarValue::Float(*f),
+                        Some(ParamValue::Int(n)) => ScalarValue::Int(*n),
+                        _ => ScalarValue::Null,
+                    },
+                    _ => ScalarValue::Str(format!("{:?}", arg)),
+                };
+                scalars.push((format!("arg{i}"), val));
+            }
+            if !c.yields.is_empty() {
+                scalars.push(("yields".into(), ScalarValue::Str(c.yields.join(", "))));
+            }
+            Ok(vec![QueryResult::Scalar(scalars)])
+        }
+
+        Query::ExplainAnalyze(inner) => {
+            let start = std::time::Instant::now();
+            let mut analyze_gas = GasTracker { remaining: gas.remaining };
+            let results = execute_with_indexes_and_gas(inner, storage, adjacency, params, indexed_fields, &mut analyze_gas)?;
+            let elapsed = start.elapsed();
+            let gas_used = gas.remaining - analyze_gas.remaining;
+            gas.remaining = analyze_gas.remaining;
+            let row_count = results.len();
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(),       ScalarValue::Str("EXPLAIN_ANALYZE".into())),
+                ("rows_returned".into(), ScalarValue::Int(row_count as i64)),
+                ("gas_used".into(),      ScalarValue::Int(gas_used as i64)),
+                ("elapsed_us".into(),    ScalarValue::Int(elapsed.as_micros() as i64)),
+                ("elapsed_ms".into(),    ScalarValue::Float(elapsed.as_secs_f64() * 1000.0)),
+            ])])
+        }
+
+        Query::CreateType(ct) => {
+            let fields_json: Vec<String> = ct.fields.iter().map(|f| {
+                format!("{}: {}{}", f.name, f.field_type, if f.nullable { " NULLABLE" } else { "" })
+            }).collect();
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(),  ScalarValue::Str("CREATE_TYPE".into())),
+                ("name".into(),    ScalarValue::Str(ct.name.clone())),
+                ("fields".into(),  ScalarValue::Str(fields_json.join(", "))),
+            ])])
+        }
+
+        Query::DropType(dt) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(), ScalarValue::Str("DROP_TYPE".into())),
+                ("name".into(),   ScalarValue::Str(dt.name.clone())),
+            ])])
+        }
+
+        Query::ShowTypes => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(), ScalarValue::Str("SHOW_TYPES".into())),
+            ])])
+        }
+
+        // ── Phase 2: Beyond NietzscheDB ──────────────────
+
+        Query::Fetch(f) => {
+            let url_str = match &f.url {
+                Expr::Str(s) => s.clone(),
+                Expr::Param(p) => match params.get(p) {
+                    Some(ParamValue::Str(s)) => s.clone(),
+                    _ => return Err(QueryError::Execution("FETCH: URL parameter must be a string".into())),
+                },
+                _ => return Err(QueryError::Execution("FETCH: URL must be a string literal or parameter".into())),
+            };
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(), ScalarValue::Str("FETCH".into())),
+                ("url".into(),    ScalarValue::Str(url_str)),
+                ("alias".into(),  ScalarValue::Str(f.alias.clone())),
+            ])])
+        }
+
+        Query::Stream(s) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(),   ScalarValue::Str("STREAM".into())),
+                ("throttle".into(), ScalarValue::Str(s.throttle.clone().unwrap_or_else(|| "none".into()))),
+            ])])
+        }
+
+        Query::RegisterFunction(rf) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(),   ScalarValue::Str("REGISTER_FUNCTION".into())),
+                ("name".into(),     ScalarValue::Str(rf.name.clone())),
+                ("source".into(),   ScalarValue::Str(rf.source.clone())),
+                ("language".into(), ScalarValue::Str(rf.language.clone().unwrap_or_else(|| "wasm".into()))),
+            ])])
+        }
+
+        Query::DropFunction(df) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(), ScalarValue::Str("DROP_FUNCTION".into())),
+                ("name".into(),   ScalarValue::Str(df.name.clone())),
+            ])])
+        }
+
+        Query::ShowFunctions => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(), ScalarValue::Str("SHOW_FUNCTIONS".into())),
+            ])])
+        }
+
+        Query::Ask(a) => {
+            let prompt_str = match &a.prompt {
+                Expr::Str(s) => s.clone(),
+                Expr::Param(p) => match params.get(p) {
+                    Some(ParamValue::Str(s)) => s.clone(),
+                    _ => return Err(QueryError::Execution("ASK: prompt must be a string".into())),
+                },
+                _ => return Err(QueryError::Execution("ASK: prompt must be a string literal or parameter".into())),
+            };
+            let target_str = match &a.target {
+                ReconstructTarget::Param(p) => format!("${p}"),
+                ReconstructTarget::Alias(a) => a.clone(),
+            };
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(),        ScalarValue::Str("ASK".into())),
+                ("prompt".into(),        ScalarValue::Str(prompt_str)),
+                ("target".into(),        ScalarValue::Str(target_str)),
+                ("context_depth".into(), ScalarValue::Int(a.context_depth.unwrap_or(2) as i64)),
+                ("model".into(),         ScalarValue::Str(a.model.clone().unwrap_or_else(|| "default".into()))),
+            ])])
+        }
+
+        Query::Schedule(s) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(),    ScalarValue::Str("SCHEDULE".into())),
+                ("name".into(),      ScalarValue::Str(s.name.clone().unwrap_or_else(|| "unnamed".into()))),
+                ("interval".into(),  ScalarValue::Str(s.interval.clone())),
+                ("into".into(),      ScalarValue::Str(s.into_collection.clone().unwrap_or_else(|| "none".into()))),
+            ])])
+        }
+
+        Query::DropSchedule(ds) => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(), ScalarValue::Str("DROP_SCHEDULE".into())),
+                ("name".into(),   ScalarValue::Str(ds.name.clone())),
+            ])])
+        }
+
+        Query::ShowSchedules => {
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(), ScalarValue::Str("SHOW_SCHEDULES".into())),
+            ])])
+        }
+
+        Query::Import(imp) => {
+            let source_str = match &imp.source {
+                Expr::Str(s) => s.clone(),
+                Expr::Param(p) => format!("${p}"),
+                _ => format!("{:?}", imp.source),
+            };
+            Ok(vec![QueryResult::Scalar(vec![
+                ("action".into(),     ScalarValue::Str("IMPORT".into())),
+                ("format".into(),     ScalarValue::Str(imp.format.clone())),
+                ("source".into(),     ScalarValue::Str(source_str)),
+                ("label".into(),      ScalarValue::Str(imp.label.clone().unwrap_or_default())),
+                ("collection".into(), ScalarValue::Str(imp.collection.clone().unwrap_or_default())),
+            ])])
+        }
     }
 }
 
@@ -737,6 +943,24 @@ fn execute_explain(
         Query::CreateUniqueIndex(idx) => format!("CreateUniqueIndex(name={}, on={})", idx.index_name, idx.collection),
         Query::DropIndex(idx) => format!("DropIndex(name={})", idx.index_name),
         Query::PartitionBy(p) => format!("PartitionBy(collection={})", p.collection),
+        // ── NQL 4.0 EXPLAIN entries ──────────────────────
+        Query::Intersect(_) => "Intersect(left=..., right=...)".into(),
+        Query::Except(_) => "Except(left=..., right=...)".into(),
+        Query::Call(c) => format!("Call(procedure={}, args={})", c.procedure, c.args.len()),
+        Query::ExplainAnalyze(_) => "ExplainAnalyze(...)".into(),
+        Query::CreateType(ct) => format!("CreateType(name={}, fields={})", ct.name, ct.fields.len()),
+        Query::DropType(dt) => format!("DropType(name={})", dt.name),
+        Query::ShowTypes => "ShowTypes".into(),
+        Query::Fetch(f) => format!("Fetch(alias={})", f.alias),
+        Query::Stream(_) => "Stream(...)".into(),
+        Query::RegisterFunction(rf) => format!("RegisterFunction(name={}, source={})", rf.name, rf.source),
+        Query::DropFunction(df) => format!("DropFunction(name={})", df.name),
+        Query::ShowFunctions => "ShowFunctions".into(),
+        Query::Ask(a) => format!("Ask(context_depth={:?}, model={:?})", a.context_depth, a.model),
+        Query::Schedule(s) => format!("Schedule(interval={}, name={:?})", s.interval, s.name),
+        Query::DropSchedule(ds) => format!("DropSchedule(name={})", ds.name),
+        Query::ShowSchedules => "ShowSchedules".into(),
+        Query::Import(imp) => format!("Import(format={}, label={:?})", imp.format, imp.label),
     };
     let full_plan = format!("{} | {}", plan, cost);
     Ok(vec![QueryResult::ExplainPlan(full_plan)])
@@ -1971,6 +2195,41 @@ fn eval_expr_with_edges(
                 Ok(Value::Null)
             }
         }
+
+        // ── NQL 4.0: JSON path access ────────────────────────
+        Expr::JsonAccess { expr, path, as_text: _ } => {
+            let base = eval_expr_with_edges(expr, binding, edge_bindings, params, storage, adjacency)?;
+            let current = match base {
+                Value::Str(ref s) => serde_json::from_str::<serde_json::Value>(s)
+                    .ok()
+                    .and_then(|v| v.get(path.as_str()).cloned())
+                    .unwrap_or(serde_json::Value::Null),
+                _ => serde_json::Value::Null,
+            };
+            match current {
+                serde_json::Value::Null => Ok(Value::Null),
+                serde_json::Value::Bool(b) => Ok(Value::Bool(b)),
+                serde_json::Value::Number(n) => Ok(Value::Float(n.as_f64().unwrap_or(0.0))),
+                serde_json::Value::String(s) => Ok(Value::Str(s)),
+                other => Ok(Value::Str(other.to_string())),
+            }
+        }
+
+        // ── NQL 4.0: Array literal ───────────────────────────
+        Expr::Array(items) => {
+            let vals: Vec<String> = items.iter()
+                .map(|e| eval_expr_with_edges(e, binding, edge_bindings, params, storage, adjacency)
+                    .map(|v| format!("{:?}", v)))
+                .collect::<Result<_, _>>()?;
+            Ok(Value::Str(format!("[{}]", vals.join(", "))))
+        }
+
+        // ── NQL 4.0: ANY/ALL quantifiers ─────────────────────
+        Expr::AnyExpr { .. } | Expr::AllExpr { .. } => {
+            // Quantifier expressions require collection iteration context;
+            // evaluated as true/false in condition evaluation, stub here.
+            Ok(Value::Bool(false))
+        }
     }
 }
 
@@ -2656,6 +2915,129 @@ fn eval_math_func(
             // Logistic decay: P = 1 / (1 + exp(dist - 1))
             let prob = 1.0 / (1.0 + (dist - 1.0).exp());
             Ok(Value::Float(prob))
+        }
+
+        // ═══════════════════════════════════════════════════
+        // ── GeometricKernels Integration ───────────────────
+        // ═══════════════════════════════════════════════════
+
+        // Élie Cartan — MATERN_KERNEL(n1, n2, nu, lengthscale)
+        // Matérn kernel using correct Poincaré geodesic distance.
+        // k(x,y) = (2^{1-ν} / Γ(ν)) · (√(2ν) · d / κ)^ν · K_ν(√(2ν) · d / κ)
+        // where d = d_P(x,y), κ = lengthscale, K_ν = modified Bessel 2nd kind.
+        // Simplified: for ν=∞ falls back to heat kernel exp(-d²/(2κ²)).
+        MathFunc::MaternKernel => {
+            // Args: (node_a, node_b, nu, lengthscale)
+            let (node_a, node_b) = resolve_two_alias_nodes(args, binding)?;
+            let nu = if args.len() > 2 {
+                resolve_scalar_arg(&args[2], binding, params, storage, adjacency)?
+            } else {
+                2.5 // default smoothness
+            };
+            let lengthscale = if args.len() > 3 {
+                resolve_scalar_arg(&args[3], binding, params, storage, adjacency)?
+            } else {
+                1.0 // default
+            };
+
+            // Poincaré distance (correct geodesic)
+            let dist = node_a.embedding.distance(&node_b.embedding);
+            let ls = lengthscale.max(1e-15);
+
+            if nu.is_infinite() || nu > 100.0 {
+                // Heat kernel (ν=∞): k = exp(-d²/(2κ²))
+                let kernel = (-dist * dist / (2.0 * ls * ls)).exp();
+                Ok(Value::Float(kernel))
+            } else if (nu - 0.5).abs() < 1e-6 {
+                // Matérn ν=1/2: k = exp(-d/κ)
+                let kernel = (-dist / ls).exp();
+                Ok(Value::Float(kernel))
+            } else if (nu - 1.5).abs() < 1e-6 {
+                // Matérn ν=3/2: k = (1 + √3·d/κ) · exp(-√3·d/κ)
+                let z = 3.0_f64.sqrt() * dist / ls;
+                let kernel = (1.0 + z) * (-z).exp();
+                Ok(Value::Float(kernel))
+            } else if (nu - 2.5).abs() < 1e-6 {
+                // Matérn ν=5/2: k = (1 + √5·d/κ + 5d²/(3κ²)) · exp(-√5·d/κ)
+                let z = 5.0_f64.sqrt() * dist / ls;
+                let kernel = (1.0 + z + z * z / 3.0) * (-z).exp();
+                Ok(Value::Float(kernel))
+            } else {
+                // General: approximate via RBF-like decay
+                let z = (2.0 * nu).sqrt() * dist / ls;
+                let kernel = (-z).exp();
+                Ok(Value::Float(kernel))
+            }
+        }
+
+        // HYPERBOLIC_HEAT(n, t): correct heat kernel using Poincaré distance.
+        //
+        // Unlike GAUSS_KERNEL which uses Euclidean ‖x‖², this uses the
+        // correct geodesic distance from origin:
+        //   d_P(x, 0) = 2·atanh(‖x‖)
+        //   h_t(x) = exp(-d_P(x,0)² / (4t))
+        //
+        // This matters for nodes near the boundary of the Poincaré disk
+        // where Euclidean and hyperbolic distances diverge significantly.
+        MathFunc::HyperbolicHeat => {
+            let (node, t) = resolve_alias_and_scalar(args, binding, params)?;
+            let norm_sq: f64 = node.embedding.coords.iter()
+                .map(|&x| (x as f64) * (x as f64))
+                .sum();
+            let norm = norm_sq.sqrt().min(1.0 - 1e-10); // clamp to avoid atanh(1)
+
+            // Correct Poincaré distance from origin: d = 2·atanh(‖x‖)
+            let poincare_dist = 2.0 * norm.atanh();
+            let d_sq = poincare_dist * poincare_dist;
+
+            let kernel = (-d_sq / (4.0 * t.max(1e-15))).exp();
+            Ok(Value::Float(kernel))
+        }
+
+        // EPISTEMIC_UNCERTAINTY(n): spectral uncertainty estimate.
+        //
+        // Heuristic based on graph Laplacian properties:
+        // - Nodes with few connections have high uncertainty
+        // - Nodes in sparse regions (high Dirichlet energy) have high uncertainty
+        // - Nodes with low energy have high uncertainty
+        //
+        // Formula: U(n) = 1 / (1 + √degree) · (1 + dirichlet_energy) · (1 - energy)
+        // Normalized to [0, 1] where 1 = maximum uncertainty.
+        //
+        // For exact GP-based uncertainty, use the Python GeometricKernels service.
+        MathFunc::EpistemicUncertainty => {
+            let node = resolve_alias_node(args, binding)?;
+            let neighbors_out = adjacency.neighbors_out(&node.id);
+            let neighbors_in = adjacency.neighbors_in(&node.id);
+            let degree = (neighbors_out.len() + neighbors_in.len()) as f64;
+
+            // Degree factor: isolated nodes → high uncertainty
+            let degree_factor = 1.0 / (1.0 + degree.sqrt());
+
+            // Dirichlet energy: high variation with neighbors → boundary of knowledge
+            let mut dirichlet_energy = 0.0;
+            let mut neighbor_count = 0usize;
+            for nid in &neighbors_out {
+                if let Ok(Some(neighbor)) = storage.get_node(nid) {
+                    let diff = node.energy as f64 - neighbor.energy as f64;
+                    dirichlet_energy += diff * diff;
+                    neighbor_count += 1;
+                }
+            }
+            let dirichlet_factor = if neighbor_count > 0 {
+                (dirichlet_energy / neighbor_count as f64).min(1.0)
+            } else {
+                1.0 // no neighbors = very uncertain
+            };
+
+            // Energy factor: low energy = less explored
+            let energy_factor = 1.0 - (node.energy as f64).clamp(0.0, 1.0);
+
+            // Composite uncertainty
+            let uncertainty = (0.4 * degree_factor + 0.3 * dirichlet_factor + 0.3 * energy_factor)
+                .clamp(0.0, 1.0);
+
+            Ok(Value::Float(uncertainty))
         }
     }
 }

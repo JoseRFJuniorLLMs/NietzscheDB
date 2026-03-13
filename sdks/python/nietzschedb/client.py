@@ -765,7 +765,18 @@ class NietzscheClient:
         encoder_version: int = 0,
         modality_meta: Optional[Dict[str, Any]] = None,
         collection: str = "",
+        precomputed_poincare: bool = False,
+        embedding_model: str = "",
     ) -> bool:
+        """Insert sensory data for a node.
+
+        Args:
+            precomputed_poincare: If True, `latent` is already in the
+                Poincaré ball (||v|| < 1). Server skips exp_map_zero.
+                Use with GeminiEmbedder(auto_project=True).
+            embedding_model: Model ID used (e.g. "gemini-embedding-002").
+                Stored for provenance tracking.
+        """
         resp = self._stub.InsertSensory(pb.InsertSensoryRequest(
             node_id=node_id,
             modality=modality,
@@ -775,6 +786,8 @@ class NietzscheClient:
             encoder_version=encoder_version,
             modality_meta=_to_json_bytes(modality_meta),
             collection=collection,
+            precomputed_poincare=precomputed_poincare,
+            embedding_model=embedding_model,
         ))
         return resp.status == "ok"
 

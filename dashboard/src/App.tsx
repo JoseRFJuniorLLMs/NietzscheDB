@@ -17,6 +17,7 @@ import SchemaManagerPage from "./pages/SchemaManagerPage"
 import ReasoningPage from "./pages/ReasoningPage"
 import SensoryPage from "./pages/SensoryPage"
 import ActivityPage from "./pages/ActivityPage"
+import CausalScrubberPage from "./pages/CausalScrubberPage"
 
 function App() {
   return (
@@ -39,6 +40,7 @@ function App() {
         <Route path="/reasoning" element={<ReasoningPage />} />
         <Route path="/sensory" element={<SensoryPage />} />
         <Route path="/activity" element={<ActivityPage />} />
+        <Route path="/scrubber" element={<CausalScrubberPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

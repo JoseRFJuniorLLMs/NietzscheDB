@@ -146,6 +146,34 @@ kw_lateral        = _{ ^"LATERAL"        }
 kw_over           = _{ ^"OVER"           }
 kw_returning      = _{ ^"RETURNING"      }
 
+// ── NQL 4.0 Keywords ──────────────────────────────────────
+
+kw_having         = _{ ^"HAVING"         }
+kw_intersect      = _{ ^"INTERSECT"      }
+kw_except         = _{ ^"EXCEPT"         }
+kw_call           = _{ ^"CALL"           }
+kw_yield          = _{ ^"YIELD"          }
+kw_analyze        = _{ ^"ANALYZE"        }
+kw_fetch          = _{ ^"FETCH"          }
+kw_headers        = _{ ^"HEADERS"        }
+kw_stream         = _{ ^"STREAM"         }
+kw_throttle       = _{ ^"THROTTLE"       }
+kw_register       = _{ ^"REGISTER"       }
+kw_function       = _{ ^"FUNCTION"       }
+kw_functions      = _{ ^"FUNCTIONS"      }
+kw_language       = _{ ^"LANGUAGE"       }
+kw_ask            = _{ ^"ASK"            }
+kw_about          = _{ ^"ABOUT"          }
+kw_model          = _{ ^"MODEL"          }
+kw_context        = _{ ^"CONTEXT"        }
+kw_schedule       = _{ ^"SCHEDULE"       }
+kw_schedules      = _{ ^"SCHEDULES"      }
+kw_into           = _{ ^"INTO"           }
+kw_import         = _{ ^"IMPORT"         }
+kw_type           = _{ ^"TYPE"           }
+kw_types          = _{ ^"TYPES"          }
+kw_nullable       = _{ ^"NULLABLE"       }
+
 // ── Terminals ────────────────────────────────────────────
 
 integer = @{ ASCII_DIGIT+ }
@@ -354,6 +382,9 @@ return_item  = { (window_func | agg_func | prop | ident) ~ as_alias? }
 group_by_item = { prop | ident }
 group_by      = { kw_group ~ kw_by ~ group_by_item ~ ("," ~ group_by_item)* }
 
+// HAVING (NQL 4.0) — filter after GROUP BY
+having_clause = { kw_having ~ conditions }
+
 // DISTINCT marker (non-silent so we detect its presence)
 distinct_kw = { kw_distinct }
 
@@ -361,6 +392,7 @@ return_clause = {
     kw_return ~ distinct_kw?
     ~ return_item ~ ("," ~ return_item)*
     ~ group_by?
+    ~ having_clause?
     ~ order_by?
     ~ (skip_clause ~ limit_clause? | limit_clause ~ skip_clause?)?
 }
@@ -760,11 +792,146 @@ partition_by_query = {
     kw_alter ~ kw_collection ~ ident ~ kw_partition ~ kw_by ~ partition_strategy
 }
 
+// ═════════════════════════════════════════════════════════
+// ── NQL 4.0: Language Expansion Query Types ──────────────
+// ═════════════════════════════════════════════════════════
+
+// ── HAVING is handled inside return_clause ─────────────
+
+// ── INTERSECT / EXCEPT ──────────────────────────────────
+//
+// MATCH (n) WHERE n.energy > 0.5 RETURN n INTERSECT MATCH (m:Concept) RETURN m
+// MATCH (n) WHERE n.energy > 0.5 RETURN n EXCEPT MATCH (m) WHERE m.energy < 0.1 RETURN m
+
+intersect_query = { match_query ~ kw_intersect ~ match_query }
+except_query    = { match_query ~ kw_except ~ match_query }
+
+// ── CALL procedure(args) [YIELD field1, field2] ────────
+//
+// CALL pagerank("tech_galaxies") YIELD node, score
+// CALL louvain("memories", 1.0) YIELD community, modularity
+
+call_yield   = { kw_yield ~ ident ~ ("," ~ ident)* }
+call_args    = { "(" ~ (atom ~ ("," ~ atom)*)? ~ ")" }
+call_query   = { kw_call ~ ident ~ call_args? ~ call_yield? }
+
+// ── EXPLAIN ANALYZE <query> ────────────────────────────
+//
+// EXPLAIN ANALYZE MATCH (n) WHERE n.energy > 0.5 RETURN n
+
+explain_analyze_query = { kw_explain ~ kw_analyze ~ (match_query | diffuse_query) }
+
+// ── CREATE TYPE / DROP TYPE / SHOW TYPES ────────────────
+//
+// CREATE TYPE Person { name: String, age: Int, embedding: Vector[128], bio: String NULLABLE }
+// DROP TYPE Person
+// SHOW TYPES
+
+type_field_def  = { ident ~ ":" ~ ident ~ ("[" ~ integer ~ "]")? ~ kw_nullable? }
+type_body       = { "{" ~ type_field_def ~ ("," ~ type_field_def)* ~ "}" }
+create_type_query = { kw_create ~ kw_type ~ ident ~ type_body }
+drop_type_query   = { kw_drop ~ kw_type ~ ident }
+show_types_query  = { kw_show ~ kw_types }
+
+// ── FETCH "url" [HEADERS {...}] AS alias RETURN … ──────
+//
+// FETCH "https://api.example.com/data" AS response RETURN response
+// FETCH $url HEADERS {Authorization: $token} AS data UNWIND data.items AS item RETURN item
+
+fetch_header     = { ident ~ ":" ~ atom }
+fetch_headers    = { kw_headers ~ "{" ~ fetch_header ~ ("," ~ fetch_header)* ~ "}" }
+fetch_unwind     = { kw_unwind ~ prop ~ kw_as ~ ident }
+fetch_query      = {
+    kw_fetch ~ atom
+    ~ fetch_headers?
+    ~ kw_as ~ ident
+    ~ fetch_unwind?
+    ~ return_clause?
+}
+
+// ── STREAM MATCH (n) WHERE … RETURN … ──────────────────
+//
+// STREAM MATCH (n) WHERE n.energy RETURN n
+// STREAM MATCH (n)-[:CONTAINS]->(m) RETURN n, m THROTTLE "1s"
+
+stream_throttle = { kw_throttle ~ string }
+stream_query    = { kw_stream ~ match_query ~ stream_throttle? }
+
+// ── REGISTER FUNCTION / DROP FUNCTION / SHOW FUNCTIONS ──
+//
+// REGISTER FUNCTION my_metric FROM "metrics.wasm" LANGUAGE wasm
+// REGISTER FUNCTION custom_score FROM "https://example.com/fn" LANGUAGE python
+// DROP FUNCTION my_metric
+// SHOW FUNCTIONS
+
+register_function_query = {
+    kw_register ~ kw_function ~ ident
+    ~ kw_from ~ string
+    ~ (kw_language ~ ident)?
+}
+drop_function_query   = { kw_drop ~ kw_function ~ ident }
+show_functions_query  = { kw_show ~ kw_functions }
+
+// ── ASK "prompt" ABOUT $node ───────────────────────────
+//
+// ASK "What is this concept about?" ABOUT $node
+// ASK "Summarize relationships" ABOUT $node WITH CONTEXT 3 MODEL "claude-sonnet-4-20250514"
+
+ask_context = { kw_with ~ kw_context ~ integer }
+ask_model   = { kw_model ~ string }
+ask_query   = {
+    kw_ask ~ atom
+    ~ kw_about ~ (param | ident)
+    ~ ask_context?
+    ~ ask_model?
+}
+
+// ── SCHEDULE EVERY "interval" <query> [INTO "col"] [AS name] ──
+//
+// SCHEDULE EVERY "1h" MATCH (n) WHERE n.energy < 0.01 DELETE n AS cleanup
+// SCHEDULE EVERY "30m" INVOKE ZARATUSTRA IN "memories" INTO "evolution_log"
+
+schedule_into  = { kw_into ~ string }
+schedule_as    = { kw_as ~ ident }
+schedule_query = {
+    kw_schedule ~ kw_every ~ string
+    ~ (match_query | invoke_zaratustra_query | diffuse_query)
+    ~ schedule_into?
+    ~ schedule_as?
+}
+drop_schedule_query  = { kw_drop ~ kw_schedule ~ ident }
+show_schedules_query = { kw_show ~ kw_schedules }
+
+// ── IMPORT format "source" AS (n:Type {mapping}) [INTO "col"] ──
+//
+// IMPORT CSV "data.csv" AS (n:Sensor {name: col1, value: col2}) INTO "sensors"
+// IMPORT JSON $url AS (n:Memory {content: data}) INTO "knowledge"
+
+import_mapping = { "{" ~ (ident ~ ":" ~ ident) ~ ("," ~ ident ~ ":" ~ ident)* ~ "}" }
+import_target  = { "(" ~ ident ~ (":" ~ ident)? ~ import_mapping? ~ ")" }
+import_into    = { kw_into ~ string }
+import_query   = {
+    kw_import ~ ident ~ atom
+    ~ kw_as ~ import_target
+    ~ import_into?
+}
+
 // ── Top-level ───────────────────────────────────────────
 
 query = { SOI ~ (
+    // NQL 4.0: Language expansion (must come before shorter prefixes)
+    explain_analyze_query
+  | schedule_query | drop_schedule_query | show_schedules_query
+  | stream_query
+  | fetch_query
+  | ask_query
+  | import_query
+  | register_function_query | drop_function_query | show_functions_query
+  | create_type_query | drop_type_query | show_types_query
+  | call_query
+  | intersect_query | except_query
     // NQL 3.0: PostgreSQL-inspired (must come before shorter prefixes)
-    with_cte_query
+  | with_cte_query
   | create_materialized_view_query
   | refresh_materialized_view_query
   | drop_materialized_view_query

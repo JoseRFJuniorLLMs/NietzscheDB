@@ -263,6 +263,44 @@ pub fn build_sensory_memory(
     }
 }
 
+/// Build a `SensoryMemory` from a **precomputed Poincaré** vector.
+///
+/// Skips `exp_map_zero` entirely — the caller guarantees `poincare_latent`
+/// is already inside the unit ball (‖v‖ < 1). Used when the client did the
+/// projection (e.g. GeminiEmbedder with `auto_project=True`).
+pub fn build_sensory_memory_precomputed(
+    poincare_latent: &[f32],
+    modality: Modality,
+    original_shape: OriginalShape,
+    original_bytes: usize,
+    encoder_version: u32,
+) -> SensoryMemory {
+    PASSTHROUGH_COUNT.fetch_add(1, Ordering::Relaxed);
+    let latent = LatentVector::new(poincare_latent.to_vec());
+    let latent_bytes = latent.byte_size();
+    let compression_ratio = if latent_bytes > 0 {
+        original_bytes as f32 / latent_bytes as f32
+    } else {
+        0.0
+    };
+
+    debug!(
+        modality = %modality.label(),
+        dim = poincare_latent.len(),
+        path = "precomputed_poincare",
+        "sensory encoding (skip exp_map_zero)"
+    );
+
+    SensoryMemory {
+        modality,
+        latent,
+        reconstruction_quality: 1.0,
+        original_shape,
+        compression_ratio,
+        encoder_version,
+    }
+}
+
 // ─────────────────────────────────────────────
 // Neural encoding config and metrics
 // ─────────────────────────────────────────────

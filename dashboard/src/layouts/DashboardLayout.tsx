@@ -2,7 +2,7 @@ import { Outlet, NavLink } from "react-router-dom"
 import {
     LayoutDashboard, Database, Search, Settings, Network,
     Terminal, GitBranch, Brain, Moon, Archive, Activity,
-    Wand2, Lightbulb, FileJson, AudioLines, Clock,
+    Wand2, Lightbulb, FileJson, AudioLines, Clock, Scan,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { GlobalAIAssistant } from "@/components/GlobalAIAssistant"
@@ -49,6 +49,7 @@ export function DashboardLayout() {
                     <NavItem to="/algorithms" icon={GitBranch} label="Algorithms" />
                     <NavItem to="/agency" icon={Brain} label="Agency" />
                     <NavItem to="/reasoning" icon={Lightbulb} label="Reasoning" badge="New" />
+                    <NavItem to="/scrubber" icon={Scan} label="Causal Scrubber" badge="New" />
                     <NavItem to="/sleep" icon={Moon} label="Sleep & Dream" />
                     <NavItem to="/backup" icon={Archive} label="Backup & Export" />
                     <NavItem to="/monitoring" icon={Activity} label="Monitoring" />

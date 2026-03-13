@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <em>Euclidean geometry failed. The world isn't flat, and neither is intelligence.</em>
+  <em>"A system for everyone and for no one."</em>
 </p>
 
 <p align="center">
@@ -252,7 +252,7 @@ Four non-Euclidean geometry modules sharing a single Poincaré storage layer:
 Invariants enforced: Poincaré ‖x‖ < 1.0, Klein ‖x‖ < 1.0, Sphere ‖x‖ = 1.0. Cascaded roundtrip error < 1e-4 after 10 projections. Includes criterion benchmarks.
 
 #### `nietzsche-query` — NQL Query Language
-Nietzsche Query Language — a declarative query language with first-class multi-manifold primitives. Parser built with `pest` (PEG grammar). **NQL 4.0 "The Constructal Update"** adds 5 hydraulic-flow functions (BEJAN_CONDUCTIVITY, POISEUILLE_FRICTION, MURRAY_RATIO, NAVIER_STOKES_TURBULENCE, ONSAGER_DISSIPATION), `r.conductivity` edge field access, ERODE PATH (conductivity boost along shortest path), and INJECT ENERGY statements — making the Hydraulic Flow Engine queryable. **NQL 3.1 "PostgreSQL-grade Analytics"** adds CTEs (WITH ... AS), Window Functions (ROW_NUMBER, RANK, DENSE_RANK, NTILE, LAG, LEAD with OVER/PARTITION BY), Views, Materialized Views, RETURNING clause, CHECK constraints, UNIQUE indexes, Prepared Statements (PREPARE/EXECUTE/DEALLOCATE), LATERAL subqueries, and Table Partitioning (RANGE/LIST/HASH). **NQL 3.0** brought OPTIONAL MATCH, UNION, CASE WHEN, IS NULL/IS NOT NULL, regex matching, EXISTS subqueries, UNWIND, SHORTEST_PATH, COLLECT, 30+ string/math/cast/null built-in functions, and 5 physicist-named cognitive functions. Supports arithmetic SET expressions (`n.count = n.count + 1`), edge alias property access (`-[r:TYPE]->` with `r.weight`/`r.conductivity` in WHERE/ORDER BY), CREATE with TTL, DETACH DELETE, and eval_field fallback to `node.content`/`node.metadata` for dynamic properties. 139+ unit + integration tests.
+Nietzsche Query Language — a declarative query language with first-class multi-manifold primitives. Parser built with `pest` (PEG grammar). **NQL 4.2 "Beyond the Database"** extends NQL into a general-purpose data language: FETCH (HTTP client), STREAM (real-time event processing), REGISTER FUNCTION (user-defined functions), ASK...ABOUT (LLM integration), SCHEDULE (cron-style automation), IMPORT (external data sources), CREATE/DROP TYPE (user-defined schemas), HAVING (post-aggregation filtering), INTERSECT/EXCEPT (set algebra), CALL (stored procedures), EXPLAIN ANALYZE (runtime profiling), and JSON path access (`->`, `->>`). **NQL 4.0 "The Constructal Update"** adds 5 hydraulic-flow functions (BEJAN_CONDUCTIVITY, POISEUILLE_FRICTION, MURRAY_RATIO, NAVIER_STOKES_TURBULENCE, ONSAGER_DISSIPATION), `r.conductivity` edge field access, ERODE PATH (conductivity boost along shortest path), and INJECT ENERGY statements — making the Hydraulic Flow Engine queryable. **NQL 3.1 "PostgreSQL-grade Analytics"** adds CTEs (WITH ... AS), Window Functions (ROW_NUMBER, RANK, DENSE_RANK, NTILE, LAG, LEAD with OVER/PARTITION BY), Views, Materialized Views, RETURNING clause, CHECK constraints, UNIQUE indexes, Prepared Statements (PREPARE/EXECUTE/DEALLOCATE), LATERAL subqueries, and Table Partitioning (RANGE/LIST/HASH). **NQL 3.0** brought OPTIONAL MATCH, UNION, CASE WHEN, IS NULL/IS NOT NULL, regex matching, EXISTS subqueries, UNWIND, SHORTEST_PATH, COLLECT, 30+ string/math/cast/null built-in functions, and 5 physicist-named cognitive functions. Supports arithmetic SET expressions (`n.count = n.count + 1`), edge alias property access (`-[r:TYPE]->` with `r.weight`/`r.conductivity` in WHERE/ORDER BY), CREATE with TTL, DETACH DELETE, and eval_field fallback to `node.content`/`node.metadata` for dynamic properties. 155+ unit + integration tests.
 
 **[Full NQL Reference: docs/NQL.md](docs/NQL.md)**
 
@@ -299,6 +299,24 @@ Query types:
 | `ALTER ... CHECK` | CHECK constraints for data integrity (NQL 3.1) |
 | `CREATE UNIQUE INDEX` | Unique constraints on fields (NQL 3.1) |
 | `PARTITION BY` | Table partitioning (RANGE/LIST/HASH) (NQL 3.1) |
+| `HAVING` | Post-aggregation filtering on grouped results (NQL 4.2) |
+| `INTERSECT` | Set intersection — return rows common to two queries (NQL 4.2) |
+| `EXCEPT` | Set difference — return rows in first query but not second (NQL 4.2) |
+| `CALL` | Invoke stored procedures with arguments and YIELD (NQL 4.2) |
+| `EXPLAIN ANALYZE` | Execute query and return runtime profiling (time, gas, row count) (NQL 4.2) |
+| `CREATE/DROP TYPE` | User-defined schemas with typed fields and constraints (NQL 4.2) |
+| `SHOW TYPES` | List all registered custom types (NQL 4.2) |
+| `FETCH` | HTTP client — GET/POST external APIs with headers, INTO, UNWIND (NQL 4.2) |
+| `STREAM` | Real-time event processing with THROTTLE interval (NQL 4.2) |
+| `REGISTER/DROP FUNCTION` | User-defined functions in NQL or external languages (NQL 4.2) |
+| `SHOW FUNCTIONS` | List all registered UDFs (NQL 4.2) |
+| `ASK ... ABOUT` | LLM integration — query AI models with graph context (NQL 4.2) |
+| `SCHEDULE` | Cron-style query automation with EVERY interval (NQL 4.2) |
+| `DROP/SHOW SCHEDULES` | Manage scheduled query jobs (NQL 4.2) |
+| `IMPORT` | Load external data (CSV, JSON, Parquet) into collections (NQL 4.2) |
+| `expr->key` / `expr->>key` | JSON path access on content fields (NQL 4.2) |
+| `ANY(x IN ... WHERE ...)` | Existential quantifier over arrays (NQL 4.2) |
+| `ALL(x IN ... WHERE ...)` | Universal quantifier over arrays (NQL 4.2) |
 
 ```sql
 -- Hyperbolic nearest-neighbor search with depth filter
@@ -522,6 +540,68 @@ CREATE UNIQUE INDEX idx_email ON users (content.email)
 -- Table Partitioning
 ALTER COLLECTION logs PARTITION BY RANGE (created_at)
 ALTER COLLECTION events PARTITION BY HASH (id, 8)
+
+-- ── NQL 4.2 Features ("Beyond the Database") ─────
+
+-- HAVING (post-aggregation filter)
+MATCH (n:Memory)
+RETURN n.label, COUNT(n) AS cnt, AVG(n.energy) AS avg_e
+GROUP BY n.label
+HAVING cnt > 5 AND avg_e > 0.3
+
+-- INTERSECT / EXCEPT (set algebra)
+INTERSECT (
+  MATCH (a:Concept) WHERE a.energy > 0.7 RETURN a
+) AND (
+  MATCH (b:Concept) WHERE b.depth < 0.5 RETURN b
+)
+EXCEPT (
+  MATCH (a:Memory) WHERE a.energy > 0.5 RETURN a
+) MINUS (
+  MATCH (b:Memory) WHERE b.label = "archived" RETURN b
+)
+
+-- CALL stored procedures
+CALL pagerank("knowledge_galaxies", 20, 0.85) YIELD node_id, score
+
+-- EXPLAIN ANALYZE (runtime profiling)
+EXPLAIN ANALYZE MATCH (n:Memory) WHERE n.energy > 0.5 RETURN n
+
+-- CREATE TYPE (user-defined schemas)
+CREATE TYPE Person (name STRING, age INT, email STRING NULLABLE)
+SHOW TYPES
+DROP TYPE Person
+
+-- JSON path access
+MATCH (n) RETURN n.content->"name" AS name, n.metadata->>"version" AS ver
+
+-- ANY / ALL quantifiers
+MATCH (n) WHERE ANY(tag IN n.tags WHERE tag = "important") RETURN n
+
+-- FETCH (HTTP client)
+FETCH "https://api.example.com/data" WITH HEADERS {"Authorization": "Bearer $token"}
+  INTO result UNWIND result.items AS item
+
+-- STREAM (real-time event processing)
+STREAM MATCH (n:Episodic) WITH THROTTLE "5s"
+
+-- REGISTER FUNCTION (user-defined functions)
+REGISTER FUNCTION normalize(x FLOAT) RETURNS FLOAT LANGUAGE NQL AS "x / ABS(x)"
+SHOW FUNCTIONS
+DROP FUNCTION normalize
+
+-- ASK ... ABOUT (LLM integration)
+ASK "claude-sonnet-4-20250514" ABOUT "summarize the main concepts"
+  CONTEXT MATCH (n:Concept) WHERE n.energy > 0.7 RETURN n.title LIMIT 10
+
+-- SCHEDULE (cron automation)
+SCHEDULE "cleanup" EVERY "1h" DO MATCH (n) WHERE n.energy < 0.01 DETACH DELETE n
+SHOW SCHEDULES
+DROP SCHEDULE "cleanup"
+
+-- IMPORT external data
+IMPORT "data/nodes.csv" FORMAT CSV INTO my_collection
+IMPORT "data/graph.json" FORMAT JSON INTO my_collection
 ```
 
 **Built-in geometric functions:**
@@ -1262,6 +1342,29 @@ E0.8  Table Store (SQLite)                 ✅ COMPLETE  (7 column types, 15 tes
 E0.9  Media/Blob Store (OpenDAL)           ✅ COMPLETE  (5 media types, 8 tests)
 E1.0  Go SDK batch RPCs                    ✅ COMPLETE  (42/42 RPCs)
 
+── NQL 4.2 "Beyond the Database" (2026-03-13) ──────
+NQL-30 HAVING clause (post-aggregation)   ✅ COMPLETE  (filter on grouped results after GROUP BY)
+NQL-31 INTERSECT / EXCEPT set algebra     ✅ COMPLETE  (HashSet intersection/difference by node ID)
+NQL-32 CALL stored procedures             ✅ COMPLETE  (CALL name(args) YIELD fields)
+NQL-33 EXPLAIN ANALYZE runtime profiling  ✅ COMPLETE  (actual execution time + gas + row count)
+NQL-34 CREATE/DROP/SHOW TYPE              ✅ COMPLETE  (user-defined schemas with nullable/default)
+NQL-35 JSON path access (-> / ->>)        ✅ COMPLETE  (expr->key returns JSON, ->> returns text)
+NQL-36 ANY/ALL quantifiers                ✅ COMPLETE  (existential/universal over arrays)
+NQL-37 FETCH HTTP client                  ✅ COMPLETE  (GET/POST with HEADERS, INTO, UNWIND)
+NQL-38 STREAM real-time events            ✅ COMPLETE  (MATCH pattern WITH THROTTLE interval)
+NQL-39 REGISTER/DROP/SHOW FUNCTION        ✅ COMPLETE  (UDFs in NQL or external languages)
+NQL-40 ASK ... ABOUT LLM integration     ✅ COMPLETE  (query AI models with graph CONTEXT)
+NQL-41 SCHEDULE cron automation           ✅ COMPLETE  (EVERY interval, DROP/SHOW SCHEDULES)
+NQL-42 IMPORT external data               ✅ COMPLETE  (CSV/JSON/Parquet INTO collection)
+
+── Gemini Embedding 2 Integration (2026-03-13) ──
+GE-1  GeminiEmbedder Python SDK             ✅ COMPLETE  (text/image/audio/video/multimodal → Poincaré)
+GE-2  Matryoshka dim support (128–3072)     ✅ COMPLETE  (auto L2-normalize sub-3072D)
+GE-3  exp_map_zero client-side projection   ✅ COMPLETE  (pure Python, matches Rust nietzsche-hyp-ops)
+GE-4  precomputed_poincare proto field      ✅ COMPLETE  (skip server-side exp_map_zero)
+GE-5  embedding_model provenance tracking   ✅ COMPLETE  (model ID stored in modality_meta)
+GE-6  Task-type aware asymmetric retrieval  ✅ COMPLETE  (embed_query vs embed_document)
+
 ── NQL 3.0 Sprint (2026-03-01) ─────────────────────
 NQL-8  OPTIONAL MATCH (left-outer-join)    ✅ COMPLETE
 NQL-9  UNION / UNION ALL                   ✅ COMPLETE
@@ -1430,7 +1533,7 @@ Three telemetry profiles: `D_foam` (void-born orphans), `E_anchored` (elite-pare
 | `nietzsche-agency` | 155 | Event bus, 8 daemons, observer, reactor, desire, identity, counterfactual, dialectic, code-as-data |
 | `nietzsche-agency/forgetting` | 72 | Vitality, judgment, bounds, Ricci, causal immunity, ledger, TGC, elite drift, anti-gaming, stability, variance, friction, Zaratustra cycle |
 | `nietzsche-hyp-ops` | 40+ | All 4 geometries, manifold roundtrips, synthesis, Minkowski causality |
-| `nietzsche-query` | 113+ | NQL parser, executor, all statement types (NQL 3.0: OPTIONAL MATCH, UNION, CASE WHEN, IS NULL, regex, EXISTS, 30+ functions) |
+| `nietzsche-query` | 155+ | NQL parser, executor, all statement types (NQL 4.2: HAVING, INTERSECT/EXCEPT, CALL, FETCH, STREAM, ASK, SCHEDULE, IMPORT, JSON path, type system, UDFs) |
 | `nietzsche-graph` | 50+ | Storage, traversal, merge, fulltext, schrodinger |
 | **Total workspace** | 800+ | All 41 crates with unit + integration tests |
 
@@ -2117,9 +2220,45 @@ AI assistants interact with NietzscheDB as a discoverable tool via JSON-RPC 2.0 
 | OpenAI | `OpenAIEmbedder` | text-embedding-3-small |
 | Cohere | `CohereEmbedder` | embed-english-v3.0 |
 | Voyage AI | `VoyageEmbedder` | voyage models |
-| Google | `GoogleEmbedder` | Gemini embedding |
+| **Google** | **`GeminiEmbedder`** | **Gemini Embedding 2** (text/image/audio/video/PDF → Poincaré, Matryoshka 128–3072D) |
 | HuggingFace | `SentenceTransformerEmbedder` | BAAI/bge-m3 (local) |
 | OpenRouter | `OpenRouterEmbedder` | OpenAI-compatible API |
+
+### Gemini Embedding 2 Integration (Multimodal → Poincaré)
+
+Native integration with Google's [Gemini Embedding 2](https://blog.google/innovation-and-ai/models-and-research/gemini-models/gemini-embedding-2/) — the first natively multimodal embedding model. Text, images, audio, video, and PDFs are mapped into a **unified vector space**, then projected into the Poincaré ball via `exp_map_zero`.
+
+```python
+from nietzschedb import NietzscheClient, GeminiEmbedder
+
+embedder = GeminiEmbedder(dim=768)  # Matryoshka: 128/768/1536/3072
+client = NietzscheClient("localhost:50051")
+
+# Text → Poincaré (auto exp_map_zero + L2 normalize)
+vec = embedder.embed_document("Quantum entanglement enables non-local correlations")
+node_id = client.insert_node(coords=vec, content={"text": "..."}, collection="physics")
+
+# Image → same Poincaré space (cross-modal KNN works!)
+img_vec = embedder.embed_image("diagram.png")
+
+# Asymmetric retrieval (RETRIEVAL_QUERY vs RETRIEVAL_DOCUMENT)
+query_vec = embedder.embed_query("what is entanglement?")
+results = client.knn_search(query=query_vec, k=10, collection="physics")
+
+# Precomputed Poincaré via InsertSensory (skip server-side exp_map_zero)
+client.insert_sensory(
+    node_id=node_id, modality="text", latent=vec,
+    precomputed_poincare=True, embedding_model="gemini-embedding-002",
+)
+
+# Multimodal (interleaved text + image in same embedding)
+multi_vec = embedder.embed_multimodal([
+    {"text": "A cat sitting on a mat"},
+    {"image": "cat.jpg"},
+])
+```
+
+**Key features**: Matryoshka dimensionality (128→3072 without retraining), 8 task types for optimized retrieval, cross-modal KNN (find images with text queries), `precomputed_poincare` flag to skip redundant server-side projection.
 
 ### Code-as-Data (NQL as Executable LLM Output)
 LLM-generated NQL queries can be stored as `ActionNode` graph nodes. When a node's energy exceeds its `activation_threshold` (via heat diffusion / Will-to-Power), the stored query auto-executes. This transforms the database into a reactive rule engine where LLMs teach the graph autonomous behaviors.
@@ -2164,6 +2303,85 @@ Developed as the memory core for the **EVA AGI System**.
   <em>"He who has a why to live can bear almost any how."</em><br>
   — <strong>Friedrich Nietzsche</strong>
 </p>
+
+---
+
+## GeometricKernels Integration
+
+NietzscheDB integrates the [**GeometricKernels**](https://github.com/geometric-kernels/GeometricKernels) v1.0 library — a production-ready toolkit for **Matérn and Heat kernels on Riemannian manifolds, graphs, and Lie groups** — extending its cognitive geometry capabilities with mathematically exact kernels, epistemic uncertainty estimation, and hyperbolic-aware similarity functions.
+
+### What It Adds
+
+| NietzscheDB Before | With GeometricKernels |
+|---|---|
+| Heat diffusion via **Chebyshev approximation** (`nietzsche-pregel`) | **Mathematically exact** heat kernels as ground truth + calibration |
+| `GAUSS_KERNEL(n, t)` uses **Euclidean** distance | **`HYPERBOLIC_HEAT(n, t)`** — Poincaré-aware heat kernel using geodesic `d_P = 2·atanh(‖x‖)` |
+| No uncertainty estimation | **`EPISTEMIC_UNCERTAINTY(n)`** — GP-inspired heuristic for knowledge gap detection |
+| Fixed kernel type | **`MATERN_KERNEL(a, b, ν, κ)`** — pluggable Matérn (ν=0.5–2.5), Heat (ν=∞), RBF |
+
+### Architecture
+
+```
+NietzscheDB (Rust)                     GeometricKernels (Python)
+┌─────────────────────┐                ┌─────────────────────────┐
+│ nietzsche-pregel    │◄── calibrate ──│ Graph Space             │
+│ (Chebyshev approx)  │                │ + MaternKarhunenLoeve   │
+├─────────────────────┤                ├─────────────────────────┤
+│ nietzsche-hyp-ops   │◄── validate ──│ Hyperbolic Space        │
+│ (Poincaré/Klein)    │                │ + MaternFeatureMap      │
+├─────────────────────┤                ├─────────────────────────┤
+│ nietzsche-neural    │◄── ONNX ──────│ Feature Map Export      │
+│ (ONNX Runtime)      │                │ (PyTorch → ONNX)        │
+├─────────────────────┤                ├─────────────────────────┤
+│ nietzsche-agency    │◄── gaps ──────│ GP Uncertainty          │
+│ (Evolution Phase 27)│                │ (GPyTorch frontend)     │
+└─────────────────────┘                └─────────────────────────┘
+```
+
+**Python is NEVER in the hot path** — it trains/calibrates offline → exports ONNX → Rust infers at runtime via `nietzsche-neural` (ort/ONNX Runtime with CUDA). The 3 NQL functions (`MATERN_KERNEL`, `HYPERBOLIC_HEAT`, `EPISTEMIC_UNCERTAINTY`) are 100% Rust with closed-form formulas.
+
+### Implementation Status
+
+| Phase | Status | Deliverable |
+|-------|--------|-------------|
+| **1. Python Foundation** | Done | `nietzsche-lab/geometric_service/` — graph bridge, kernel service, calibration |
+| **2. Chebyshev Calibration** | Done | `ChebyshevCalibrator` — compares Chebyshev approx vs exact; finds optimal `K_max` per cognitive scale |
+| **3. Cognitive Uncertainty** | Done | `EpistemicUncertaintyEstimator` — GPyTorch mode + spectral fallback; knowledge gap detection |
+| **4. Hyperbolic Kernels** | Done | `HyperbolicKernelService` — Matérn on Poincaré ball via hyperboloid; `validate_gauss_kernel()` for bug analysis |
+| **5. ONNX Export** | Done | `GeometricFeatureMapExporter` — graph features → ONNX embedding lookup (O(1) per node) |
+| **6. NQL Extensions** | Done | `MATERN_KERNEL()`, `HYPERBOLIC_HEAT()`, `EPISTEMIC_UNCERTAINTY()` — 100% Rust in `nietzsche-query` |
+| **7. Agency Integration** | Done | `GeometricUncertainty` intent in `nietzsche-agency`; `scan_geometric_uncertainty()` in Evolution27 |
+
+### NQL Examples
+
+```nql
+-- Matérn similarity (respects Poincaré geodesics)
+MATCH (a:Concept), (b:Concept)
+RETURN a.title, b.title, MATERN_KERNEL(a, b, 2.5, 1.0) AS similarity
+ORDER BY similarity DESC LIMIT 10
+
+-- Corrected hyperbolic heat diffusion (fixes GAUSS_KERNEL Euclidean bug)
+MATCH (n:Semantic)
+RETURN n.title, HYPERBOLIC_HEAT(n, 1.0) AS heat
+ORDER BY heat DESC LIMIT 20
+
+-- Knowledge gap detection
+MATCH (n)
+WHERE EPISTEMIC_UNCERTAINTY(n) > 0.7
+RETURN n.title, EPISTEMIC_UNCERTAINTY(n) AS uncertainty
+ORDER BY uncertainty DESC LIMIT 15
+```
+
+### Key Design Decisions
+
+- **No Rust port** — Python trains/calibrates → ONNX → Rust infers at runtime
+- **Chebyshev stays** as fast-path for real-time diffusion; GK provides offline ground truth
+- **GPyTorch frontend** with spectral numpy fallback (no torch dependency required for basic use)
+- **Binary Quantization remains REJECTED** — geometric kernels depend on magnitude (geodesic distance)
+
+> Full roadmap: [`docs/roadmap/GeometricKernels-Integration.md`](docs/roadmap/GeometricKernels-Integration.md)
+
+---
 
 <p align="center">
   <strong>Retina of the AGI</strong> · Powered by <strong>Rust nightly</strong> · <strong>Perspektive.js 0.1.3</strong> · <strong>4 Manifolds</strong> · <strong>MCP + gRPC</strong> · <strong>GPU/TPU</strong> · <strong>Hegelian Engine</strong>

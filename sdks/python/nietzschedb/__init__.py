@@ -1,6 +1,7 @@
 """NietzscheDB Python SDK — multi-manifold graph database client."""
 
 from nietzschedb.client import NietzscheClient
+from nietzschedb.gemini_embed import GeminiEmbedder, exp_map_zero
 from nietzschedb.types import (
     AlgorithmResult,
     BackupInfo,
@@ -25,6 +26,8 @@ from nietzschedb.types import (
 __version__ = "0.1.0"
 __all__ = [
     "NietzscheClient",
+    "GeminiEmbedder",
+    "exp_map_zero",
     "AlgorithmResult",
     "BackupInfo",
     "CausalEdgeInfo",

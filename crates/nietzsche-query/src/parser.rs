@@ -157,6 +157,24 @@ fn parse_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
             Rule::create_unique_index_query       => return parse_create_unique_index_query(inner),
             Rule::drop_index_query                => return parse_drop_index_query(inner),
             Rule::partition_by_query              => return parse_partition_by_query(inner),
+            // ── NQL 4.0: Language expansion ──
+            Rule::intersect_query            => return parse_intersect_query(inner),
+            Rule::except_query               => return parse_except_query(inner),
+            Rule::call_query                 => return Ok(Query::Call(parse_call_query(inner)?)),
+            Rule::explain_analyze_query      => return parse_explain_analyze_query(inner),
+            Rule::create_type_query          => return Ok(Query::CreateType(parse_create_type_query(inner)?)),
+            Rule::drop_type_query            => return parse_drop_type_query(inner),
+            Rule::show_types_query           => return Ok(Query::ShowTypes),
+            Rule::fetch_query                => return Ok(Query::Fetch(parse_fetch_query(inner)?)),
+            Rule::stream_query               => return Ok(Query::Stream(parse_stream_query(inner)?)),
+            Rule::register_function_query    => return Ok(Query::RegisterFunction(parse_register_function_query(inner)?)),
+            Rule::drop_function_query        => return parse_drop_function_query(inner),
+            Rule::show_functions_query       => return Ok(Query::ShowFunctions),
+            Rule::ask_query                  => return Ok(Query::Ask(parse_ask_query(inner)?)),
+            Rule::schedule_query             => return Ok(Query::Schedule(parse_schedule_query(inner)?)),
+            Rule::drop_schedule_query        => return parse_drop_schedule_query(inner),
+            Rule::show_schedules_query       => return Ok(Query::ShowSchedules),
+            Rule::import_query               => return Ok(Query::Import(parse_import_query(inner)?)),
             Rule::EOI                      => {}
             r => return Err(QueryError::Parse(format!("unexpected rule: {r:?}"))),
         }
@@ -890,6 +908,10 @@ fn parse_math_func_name(s: &str) -> Result<MathFunc, QueryError> {
         "LYAPUNOV_DELTA"      => Ok(MathFunc::LyapunovDelta),
         "PRIGOGINE_BASIN"     => Ok(MathFunc::PrigoginBasin),
         "ERDOS_EDGE_PROB"     => Ok(MathFunc::ErdosEdgeProb),
+        // ── GeometricKernels Integration ──
+        "MATERN_KERNEL"           => Ok(MathFunc::MaternKernel),
+        "HYPERBOLIC_HEAT"         => Ok(MathFunc::HyperbolicHeat),
+        "EPISTEMIC_UNCERTAINTY"   => Ok(MathFunc::EpistemicUncertainty),
         s => Err(QueryError::Parse(format!("unknown math function: {s}"))),
     }
 }
@@ -981,6 +1003,10 @@ fn validate_math_func_arity(func: &MathFunc, n: usize) -> Result<(), QueryError>
         MathFunc::LyapunovDelta     => (2, 2),  // LYAPUNOV_DELTA(prop, cycles)
         MathFunc::PrigoginBasin     => (1, 1),
         MathFunc::ErdosEdgeProb     => (2, 2),
+        // ── GeometricKernels Integration ──
+        MathFunc::MaternKernel          => (2, 4),  // MATERN_KERNEL(n1, n2[, nu, lengthscale])
+        MathFunc::HyperbolicHeat        => (2, 2),  // HYPERBOLIC_HEAT(n, t)
+        MathFunc::EpistemicUncertainty  => (1, 1),  // EPISTEMIC_UNCERTAINTY(n)
     };
     if n < min || n > max {
         return Err(QueryError::Parse(format!(
@@ -996,6 +1022,7 @@ fn parse_return_clause(pair: Pair<Rule>) -> Result<ReturnClause, QueryError> {
     let mut distinct = false;
     let mut items    = Vec::new();
     let mut group_by = Vec::new();
+    let mut having   = None;
     let mut order_by = None;
     let mut limit    = None;
     let mut skip     = None;
@@ -1004,7 +1031,8 @@ fn parse_return_clause(pair: Pair<Rule>) -> Result<ReturnClause, QueryError> {
         match inner.as_rule() {
             Rule::distinct_kw  => { distinct = true; }
             Rule::return_item  => items.push(parse_return_item(inner)?),
-            Rule::group_by     => { group_by = parse_group_by(inner)?; }
+            Rule::group_by      => { group_by = parse_group_by(inner)?; }
+            Rule::having_clause => { having = Some(parse_or_cond(inner.into_inner().next().unwrap())?); }
             Rule::order_by     => order_by = Some(parse_order_by(inner)?),
             Rule::limit_clause => {
                 let n: usize = inner.into_inner().next()
@@ -1028,7 +1056,7 @@ fn parse_return_clause(pair: Pair<Rule>) -> Result<ReturnClause, QueryError> {
         return Err(QueryError::Parse("RETURN requires at least one item".into()));
     }
 
-    Ok(ReturnClause { distinct, items, group_by, order_by, limit, skip })
+    Ok(ReturnClause { distinct, items, group_by, having, order_by, limit, skip })
 }
 
 fn parse_return_item(pair: Pair<Rule>) -> Result<ReturnItem, QueryError> {
@@ -2053,6 +2081,7 @@ fn parse_returning_clause(pair: Pair<Rule>) -> Result<ReturnClause, QueryError> 
         distinct: false,
         items,
         group_by: Vec::new(),
+        having: None,
         order_by: None,
         limit: None,
         skip: None,
@@ -2395,6 +2424,414 @@ fn parse_partition_strategy(pair: Pair<Rule>) -> Result<PartitionStrategy, Query
         Rule::partition_hash  => Ok(PartitionStrategy::Hash(f, bucket_count.unwrap_or(8))),
         r => Err(QueryError::Parse(format!("unexpected partition strategy: {r:?}"))),
     }
+}
+
+// ═══════════════════════════════════════════════════════════
+// ── NQL 4.0: Language Expansion Parsers ──────────────────
+// ═══════════════════════════════════════════════════════════
+
+/// Remove surrounding double quotes from a PEG-matched string literal.
+fn unquote(s: &str) -> String {
+    s.trim_matches('"').to_string()
+}
+
+fn parse_intersect_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let mut queries = pair.into_inner();
+    let left = parse_match_or_mutate_query(
+        queries.next().ok_or_else(|| QueryError::Parse("INTERSECT missing left query".into()))?
+    )?;
+    let right = parse_match_or_mutate_query(
+        queries.next().ok_or_else(|| QueryError::Parse("INTERSECT missing right query".into()))?
+    )?;
+    Ok(Query::Intersect(IntersectQuery { left: Box::new(left), right: Box::new(right) }))
+}
+
+fn parse_except_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let mut queries = pair.into_inner();
+    let left = parse_match_or_mutate_query(
+        queries.next().ok_or_else(|| QueryError::Parse("EXCEPT missing left query".into()))?
+    )?;
+    let right = parse_match_or_mutate_query(
+        queries.next().ok_or_else(|| QueryError::Parse("EXCEPT missing right query".into()))?
+    )?;
+    Ok(Query::Except(ExceptQuery { left: Box::new(left), right: Box::new(right) }))
+}
+
+fn parse_call_query(pair: Pair<Rule>) -> Result<CallQuery, QueryError> {
+    let mut procedure = None;
+    let mut args = Vec::new();
+    let mut yields = Vec::new();
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::ident => {
+                if procedure.is_none() {
+                    procedure = Some(inner.as_str().to_string());
+                } else {
+                    yields.push(inner.as_str().to_string());
+                }
+            }
+            Rule::call_args => {
+                for arg in inner.into_inner() {
+                    if arg.as_rule() == Rule::atom {
+                        args.push(parse_atom(arg)?);
+                    }
+                }
+            }
+            Rule::call_yield => {
+                for y in inner.into_inner() {
+                    if y.as_rule() == Rule::ident {
+                        yields.push(y.as_str().to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(CallQuery {
+        procedure: procedure.ok_or_else(|| QueryError::Parse("CALL missing procedure name".into()))?,
+        args,
+        yields,
+    })
+}
+
+fn parse_explain_analyze_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let inner = pair.into_inner().next()
+        .ok_or_else(|| QueryError::Parse("EXPLAIN ANALYZE requires a query".into()))?;
+    match inner.as_rule() {
+        Rule::match_query   => Ok(Query::ExplainAnalyze(Box::new(parse_match_or_mutate_query(inner)?))),
+        Rule::diffuse_query => Ok(Query::ExplainAnalyze(Box::new(Query::Diffuse(parse_diffuse_query(inner)?)))),
+        r => Err(QueryError::Parse(format!("unexpected in explain_analyze: {r:?}"))),
+    }
+}
+
+fn parse_create_type_query(pair: Pair<Rule>) -> Result<CreateTypeQuery, QueryError> {
+    let mut name = None;
+    let mut fields = Vec::new();
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::ident => {
+                if name.is_none() {
+                    name = Some(inner.as_str().to_string());
+                }
+            }
+            Rule::type_body => {
+                for field_def in inner.into_inner() {
+                    if field_def.as_rule() == Rule::type_field_def {
+                        let mut fname = None;
+                        let mut ftype = None;
+                        let mut nullable = false;
+                        for child in field_def.into_inner() {
+                            match child.as_rule() {
+                                Rule::ident => {
+                                    if fname.is_none() {
+                                        fname = Some(child.as_str().to_string());
+                                    } else if ftype.is_none() {
+                                        ftype = Some(child.as_str().to_string());
+                                    } else if child.as_str().eq_ignore_ascii_case("NULLABLE") {
+                                        nullable = true;
+                                    }
+                                }
+                                Rule::integer => {
+                                    // Vector[128] — append dimension to type
+                                    if let Some(ref mut t) = ftype {
+                                        t.push('[');
+                                        t.push_str(child.as_str());
+                                        t.push(']');
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        if let (Some(n), Some(t)) = (fname, ftype) {
+                            fields.push(TypeField { name: n, field_type: t, nullable });
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(CreateTypeQuery {
+        name: name.ok_or_else(|| QueryError::Parse("CREATE TYPE missing name".into()))?,
+        fields,
+    })
+}
+
+fn parse_drop_type_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let name = pair.into_inner()
+        .find(|p| p.as_rule() == Rule::ident)
+        .ok_or_else(|| QueryError::Parse("DROP TYPE missing name".into()))?
+        .as_str().to_string();
+    Ok(Query::DropType(DropTypeQuery { name }))
+}
+
+fn parse_fetch_query(pair: Pair<Rule>) -> Result<FetchQuery, QueryError> {
+    let mut url = None;
+    let mut headers = Vec::new();
+    let mut alias = None;
+    let mut unwind = None;
+    let mut ret = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::atom => {
+                if url.is_none() { url = Some(parse_atom(inner)?); }
+            }
+            Rule::fetch_headers => {
+                for h in inner.into_inner() {
+                    if h.as_rule() == Rule::fetch_header {
+                        let mut parts = h.into_inner();
+                        let key = parts.next().map(|p| p.as_str().to_string()).unwrap_or_default();
+                        let val = parts.next().map(|p| parse_atom(p)).transpose()?.unwrap_or(Expr::Str(String::new()));
+                        headers.push((key, val));
+                    }
+                }
+            }
+            Rule::ident => { alias = Some(inner.as_str().to_string()); }
+            Rule::fetch_unwind => {
+                let mut parts = inner.into_inner();
+                let path = parts.next().map(|p| {
+                    let (a, f) = parse_prop(p).unwrap_or_default();
+                    format!("{a}.{f}")
+                }).unwrap_or_default();
+                let ua = parts.find(|p| p.as_rule() == Rule::ident)
+                    .map(|p| p.as_str().to_string()).unwrap_or_default();
+                unwind = Some(FetchUnwind { path, alias: ua });
+            }
+            Rule::return_clause => { ret = Some(parse_return_clause(inner)?); }
+            _ => {}
+        }
+    }
+
+    Ok(FetchQuery {
+        url: url.ok_or_else(|| QueryError::Parse("FETCH missing URL".into()))?,
+        headers,
+        alias: alias.ok_or_else(|| QueryError::Parse("FETCH missing AS alias".into()))?,
+        unwind,
+        ret,
+    })
+}
+
+fn parse_stream_query(pair: Pair<Rule>) -> Result<StreamQuery, QueryError> {
+    let mut inner_query = None;
+    let mut throttle = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::match_query => {
+                if let Query::Match(m) = parse_match_or_mutate_query(inner)? {
+                    inner_query = Some(m);
+                }
+            }
+            Rule::stream_throttle => {
+                throttle = inner.into_inner()
+                    .find(|p| p.as_rule() == Rule::string)
+                    .map(|p| unquote(p.as_str()));
+            }
+            _ => {}
+        }
+    }
+
+    Ok(StreamQuery {
+        inner: inner_query.ok_or_else(|| QueryError::Parse("STREAM missing MATCH query".into()))?,
+        throttle,
+    })
+}
+
+fn parse_register_function_query(pair: Pair<Rule>) -> Result<RegisterFunctionQuery, QueryError> {
+    let mut name = None;
+    let mut source = None;
+    let mut language = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::ident => {
+                if name.is_none() {
+                    name = Some(inner.as_str().to_string());
+                } else {
+                    language = Some(inner.as_str().to_string());
+                }
+            }
+            Rule::string => { source = Some(unquote(inner.as_str())); }
+            _ => {}
+        }
+    }
+
+    Ok(RegisterFunctionQuery {
+        name: name.ok_or_else(|| QueryError::Parse("REGISTER FUNCTION missing name".into()))?,
+        source: source.ok_or_else(|| QueryError::Parse("REGISTER FUNCTION missing FROM source".into()))?,
+        language,
+    })
+}
+
+fn parse_drop_function_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let name = pair.into_inner()
+        .find(|p| p.as_rule() == Rule::ident)
+        .ok_or_else(|| QueryError::Parse("DROP FUNCTION missing name".into()))?
+        .as_str().to_string();
+    Ok(Query::DropFunction(DropFunctionQuery { name }))
+}
+
+fn parse_ask_query(pair: Pair<Rule>) -> Result<AskQuery, QueryError> {
+    let mut prompt = None;
+    let mut target = None;
+    let mut context_depth = None;
+    let mut model = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::atom => {
+                if prompt.is_none() { prompt = Some(parse_atom(inner)?); }
+            }
+            Rule::param => {
+                let pname = inner.as_str().trim_start_matches('$').to_string();
+                target = Some(ReconstructTarget::Param(pname));
+            }
+            Rule::ident => {
+                if target.is_none() {
+                    target = Some(ReconstructTarget::Alias(inner.as_str().to_string()));
+                }
+            }
+            Rule::ask_context => {
+                context_depth = inner.into_inner()
+                    .find(|p| p.as_rule() == Rule::integer)
+                    .and_then(|p| p.as_str().parse().ok());
+            }
+            Rule::ask_model => {
+                model = inner.into_inner()
+                    .find(|p| p.as_rule() == Rule::string)
+                    .map(|p| unquote(p.as_str()));
+            }
+            _ => {}
+        }
+    }
+
+    Ok(AskQuery {
+        prompt: prompt.ok_or_else(|| QueryError::Parse("ASK missing prompt".into()))?,
+        target: target.ok_or_else(|| QueryError::Parse("ASK missing ABOUT target".into()))?,
+        context_depth,
+        model,
+    })
+}
+
+fn parse_schedule_query(pair: Pair<Rule>) -> Result<ScheduleQuery, QueryError> {
+    let mut interval = None;
+    let mut query = None;
+    let mut into_collection = None;
+    let mut name = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::string => {
+                if interval.is_none() {
+                    interval = Some(unquote(inner.as_str()));
+                }
+            }
+            Rule::match_query => {
+                query = Some(Box::new(parse_match_or_mutate_query(inner)?));
+            }
+            Rule::invoke_zaratustra_query => {
+                query = Some(Box::new(Query::InvokeZaratustra(parse_invoke_zaratustra(inner)?)));
+            }
+            Rule::diffuse_query => {
+                query = Some(Box::new(Query::Diffuse(parse_diffuse_query(inner)?)));
+            }
+            Rule::schedule_into => {
+                into_collection = inner.into_inner()
+                    .find(|p| p.as_rule() == Rule::string)
+                    .map(|p| unquote(p.as_str()));
+            }
+            Rule::schedule_as => {
+                name = inner.into_inner()
+                    .find(|p| p.as_rule() == Rule::ident)
+                    .map(|p| p.as_str().to_string());
+            }
+            _ => {}
+        }
+    }
+
+    Ok(ScheduleQuery {
+        name,
+        interval: interval.ok_or_else(|| QueryError::Parse("SCHEDULE missing EVERY interval".into()))?,
+        query: query.ok_or_else(|| QueryError::Parse("SCHEDULE missing query".into()))?,
+        into_collection,
+    })
+}
+
+fn parse_drop_schedule_query(pair: Pair<Rule>) -> Result<Query, QueryError> {
+    let name = pair.into_inner()
+        .find(|p| p.as_rule() == Rule::ident)
+        .ok_or_else(|| QueryError::Parse("DROP SCHEDULE missing name".into()))?
+        .as_str().to_string();
+    Ok(Query::DropSchedule(DropScheduleQuery { name }))
+}
+
+fn parse_import_query(pair: Pair<Rule>) -> Result<ImportQuery, QueryError> {
+    let mut format = None;
+    let mut source = None;
+    let mut alias = None;
+    let mut label = None;
+    let mut mapping = Vec::new();
+    let mut collection = None;
+
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::ident => {
+                if format.is_none() {
+                    format = Some(inner.as_str().to_string());
+                }
+            }
+            Rule::atom => {
+                if source.is_none() { source = Some(parse_atom(inner)?); }
+            }
+            Rule::import_target => {
+                for child in inner.into_inner() {
+                    match child.as_rule() {
+                        Rule::ident => {
+                            if alias.is_none() {
+                                alias = Some(child.as_str().to_string());
+                            } else if label.is_none() {
+                                label = Some(child.as_str().to_string());
+                            }
+                        }
+                        Rule::import_mapping => {
+                            let mut idents: Vec<String> = Vec::new();
+                            for m in child.into_inner() {
+                                if m.as_rule() == Rule::ident {
+                                    idents.push(m.as_str().to_string());
+                                }
+                            }
+                            for chunk in idents.chunks(2) {
+                                if chunk.len() == 2 {
+                                    mapping.push((chunk[0].clone(), Expr::Str(chunk[1].clone())));
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Rule::import_into => {
+                collection = inner.into_inner()
+                    .find(|p| p.as_rule() == Rule::string)
+                    .map(|p| unquote(p.as_str()));
+            }
+            _ => {}
+        }
+    }
+
+    Ok(ImportQuery {
+        format: format.ok_or_else(|| QueryError::Parse("IMPORT missing format".into()))?,
+        source: source.ok_or_else(|| QueryError::Parse("IMPORT missing source".into()))?,
+        alias: alias.unwrap_or_else(|| "n".to_string()),
+        label,
+        mapping,
+        collection,
+    })
 }
 
 // ─────────────────────────────────────────────

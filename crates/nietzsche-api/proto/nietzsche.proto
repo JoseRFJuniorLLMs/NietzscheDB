@@ -615,6 +615,12 @@ message InsertSensoryRequest {
                                         // neural ONNX encoders are used instead of exp_map_zero.
                                         // Image: flattened CHW [3,64,64] f32 (12288 floats as LE bytes)
                                         // Audio: flattened mel [1,64,32] f32 (2048 floats as LE bytes)
+  bool   precomputed_poincare    = 10;  // If true, `latent` is already in Poincaré ball (||v|| < 1).
+                                        // Server skips exp_map_zero and stores directly.
+                                        // Use when client did the projection (e.g. GeminiEmbedder).
+  string embedding_model         = 11;  // Optional: model ID used to generate the embedding
+                                        // (e.g. "gemini-embedding-002"). Stored in modality_meta
+                                        // for provenance tracking.
 }
 
 message SensoryResponse {

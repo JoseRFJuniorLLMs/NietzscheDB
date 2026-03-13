@@ -37,7 +37,7 @@ use nietzsche_zaratustra::{ZaratustraConfig, ZaratustraEngine};
 use nietzsche_neural::{REGISTRY, ModelMetadata};
 use nietzsche_sensory::{
     Modality, OriginalShape, QuantLevel, SensoryNeuralConfig,
-    encoder::build_sensory_memory_with_raw,
+    encoder::{build_sensory_memory_with_raw, build_sensory_memory_precomputed},
     storage::SensoryStorage,
 };
 use nietzsche_gnn::{GnnEngine, NeighborSampler};
@@ -2167,15 +2167,27 @@ impl NietzscheDb for NietzscheServer {
         };
 
         let latent_f32: Vec<f32> = r.latent.iter().map(|&f| f as f32).collect();
-        let sm = build_sensory_memory_with_raw(
-            &latent_f32,
-            modality,
-            original_shape,
-            r.original_bytes as usize,
-            r.encoder_version,
-            &r.raw_data,
-            &self.sensory_neural_config,
-        );
+
+        // ── Precomputed Poincaré path (Gemini Embedding 2 / client-side projection)
+        let sm = if r.precomputed_poincare {
+            build_sensory_memory_precomputed(
+                &latent_f32,
+                modality,
+                original_shape,
+                r.original_bytes as usize,
+                r.encoder_version,
+            )
+        } else {
+            build_sensory_memory_with_raw(
+                &latent_f32,
+                modality,
+                original_shape,
+                r.original_bytes as usize,
+                r.encoder_version,
+                &r.raw_data,
+                &self.sensory_neural_config,
+            )
+        };
 
         let shared = get_col!(self.cm, &col_name);
         let db = shared.read().await;
