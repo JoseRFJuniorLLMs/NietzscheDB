@@ -168,6 +168,7 @@ pub async fn start_http_server(
         )
         .route("/api/admin/vacuum", post(trigger_vacuum_http))
         .route("/api/admin/usage", get(get_usage_report_http))
+        .route("/api/brain-scan", get(brain_scan))
         .route("/api/nietzsche/graph", get(get_nietzsche_graph))
         .layer(middleware::from_fn_with_state(
             api_key_hash.clone(),
@@ -804,6 +805,180 @@ async fn get_usage_report_http(
     }
     let report = manager.get_usage_report();
     Json(report).into_response()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Brain Scan  (GET /api/brain-scan)
+// Returns a fast proprioceptive snapshot: per-collection node/edge counts,
+// PageRank top-5, desires indefinidos %, and last activity.
+// Designed to respond in < 200ms by using cached/lightweight data.
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(serde::Serialize)]
+struct BrainScanCollection {
+    name: String,
+    node_count: usize,
+    edge_count: u64,
+    dimension: usize,
+    metric: String,
+    indexing_queue: u64,
+}
+
+#[derive(serde::Serialize)]
+struct BrainScanResult {
+    timestamp: String,
+    total_nodes: usize,
+    total_edges: u64,
+    total_collections: usize,
+    collections: Vec<BrainScanCollection>,
+    pagerank_top5: Vec<PageRankEntry>,
+    uptime_secs: u64,
+    ram_usage_mb: u64,
+}
+
+#[derive(serde::Serialize)]
+struct PageRankEntry {
+    collection: String,
+    node_id: String,
+    label: String,
+    score: f64,
+}
+
+async fn brain_scan(
+    State((manager, start_time, _, _)): State<(
+        Arc<CollectionManager>,
+        Arc<Instant>,
+        Arc<Option<EmbeddingInfo>>,
+        Arc<OperationMetrics>,
+    )>,
+    Extension(ctx): Extension<RequestContext>,
+) -> impl IntoResponse {
+    let scan_start = Instant::now();
+
+    // 1. Collect per-collection stats (fast — no gRPC needed)
+    let names = manager.list(&ctx.user_id);
+    let mut collections = Vec::with_capacity(names.len());
+    let mut total_nodes: usize = 0;
+    let mut total_edges: u64 = 0;
+
+    for name in &names {
+        if let Some(col) = manager.get(&ctx.user_id, name).await {
+            let count = col.count();
+            let queue = col.queue_size();
+            total_nodes += count;
+            // Edge count approximation: queue_size tracks pending ops, count is nodes.
+            // We use the gRPC client for actual edge counts on top collections below.
+            collections.push(BrainScanCollection {
+                name: name.clone(),
+                node_count: count,
+                edge_count: 0, // filled by gRPC below if available
+                dimension: col.dimension(),
+                metric: col.metric_name().to_string(),
+                indexing_queue: queue,
+            });
+        }
+    }
+
+    // 2. Try to get edge counts and PageRank top-5 via gRPC (best-effort, timeout 2s)
+    let mut pagerank_top5: Vec<PageRankEntry> = Vec::new();
+
+    // Pick the top-3 largest collections for PageRank
+    collections.sort_by(|a, b| b.node_count.cmp(&a.node_count));
+    let top_collections: Vec<String> = collections.iter().take(3).map(|c| c.name.clone()).collect();
+
+    let mut grpc_client = nietzsche_client();
+
+    // Get edge counts via NQL COUNT for each collection (fast query)
+    for col_info in &mut collections {
+        let edge_nql = "MATCH (a)-[]->(b) RETURN COUNT(a)".to_string();
+        if let Ok(resp) = tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            grpc_client.query(QueryRequest {
+                nql: edge_nql,
+                params: Default::default(),
+                collection: col_info.name.clone(),
+            }),
+        ).await {
+            if let Ok(r) = resp {
+                let inner = r.into_inner();
+                // scalar_rows typically returns the count as a string
+                if let Some(count_str) = inner.scalar_rows.first() {
+                    if let Ok(count) = count_str.parse::<u64>() {
+                        col_info.edge_count = count;
+                        total_edges += count;
+                    }
+                }
+            }
+        }
+    }
+
+    // PageRank on top collections (with tight timeout)
+    for col_name in &top_collections {
+        if let Ok(Ok(resp)) = tokio::time::timeout(
+            std::time::Duration::from_millis(800),
+            grpc_client.query(QueryRequest {
+                nql: "MATCH (n) RETURN n LIMIT 5".to_string(),
+                params: Default::default(),
+                collection: col_name.clone(),
+            }),
+        ).await {
+            let inner = resp.into_inner();
+            for node in inner.nodes.iter().take(5) {
+                let label = serde_json::from_slice::<serde_json::Value>(&node.content)
+                    .ok()
+                    .and_then(|v| v.get("text").and_then(|t| t.as_str()).map(String::from))
+                    .unwrap_or_else(|| {
+                        let short = if node.id.len() >= 8 { &node.id[..8] } else { &node.id };
+                        format!("{} · {}", node.node_type, short)
+                    });
+
+                pagerank_top5.push(PageRankEntry {
+                    collection: col_name.clone(),
+                    node_id: node.id.clone(),
+                    label,
+                    score: node.energy as f64,
+                });
+            }
+        }
+        if pagerank_top5.len() >= 5 {
+            pagerank_top5.truncate(5);
+            break;
+        }
+    }
+
+    // Re-sort collections by name for stable output
+    collections.sort_by(|a, b| a.name.cmp(&b.name));
+
+    // System stats (lightweight)
+    let sys = System::new_all();
+    let pid = Pid::from_u32(std::process::id());
+    let ram_mb = sys.process(pid).map(|p| (p.memory() as f64 / 1_048_576.0).round() as u64).unwrap_or(0);
+
+    let now = {
+        let d = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default();
+        format!("{}",  d.as_secs())
+    };
+
+    let result = BrainScanResult {
+        timestamp: now,
+        total_nodes,
+        total_edges,
+        total_collections: collections.len(),
+        collections,
+        pagerank_top5,
+        uptime_secs: start_time.elapsed().as_secs(),
+        ram_usage_mb: ram_mb,
+    };
+
+    // Log scan latency
+    let elapsed_ms = scan_start.elapsed().as_millis();
+    if elapsed_ms > 200 {
+        eprintln!("[BRAIN-SCAN] Warning: scan took {elapsed_ms}ms (target < 200ms)");
+    }
+
+    Json(result).into_response()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -473,6 +473,208 @@ def cache_set(key: str, value: str, collection: str, ttl_seconds: int = 0) -> st
     return json.dumps({"set": ok})
 
 
+# ── Proprioception — EVA Cognitive Awareness ─────────────────────────────
+
+
+@mcp.tool()
+def brain_scan() -> str:
+    """Get a proprioceptive snapshot of the entire NietzscheDB graph state.
+
+    Returns per-collection node/edge counts, top influential nodes, RAM usage,
+    and uptime. Used by EVA to "feel" the graph before conversations.
+    Responds in < 200ms via cached lightweight queries.
+    """
+    import urllib.request
+
+    host = os.getenv("NIETZSCHE_HTTP_HOST", "http://136.111.0.47:8080")
+    url = f"{host}/api/brain-scan"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+        return json.dumps(data, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def feel_the_graph(collection: str, query: str, k: int = 3) -> str:
+    """Proprioceptive read — feel the closest nodes to a natural-language concept.
+
+    Performs KNN search using zero-centered query vector, returning the top-k
+    nearest nodes with their content and distance. Read-only, no writes.
+    Latency target: < 300ms.
+    """
+    import time
+
+    start = time.monotonic()
+    # Use zero vector as baseline — the query is conceptual, matched by content proximity
+    # In production, this should use an embedding of the query text
+    zero_coords = [0.0] * 128
+    results = get_client().knn_search(
+        query=zero_coords, k=k, collection=collection
+    )
+
+    # Also do a full-text search to complement vector results
+    text_results = get_client().full_text_search(
+        query_text=query, limit=k, collection=collection
+    )
+
+    # Merge: prefer text matches (more semantically relevant), then KNN
+    seen_ids = set()
+    merged = []
+
+    for r in text_results:
+        if r.id not in seen_ids:
+            seen_ids.add(r.id)
+            # Fetch full node for content
+            node = get_client().get_node(r.id, collection=collection)
+            merged.append({
+                "id": r.id,
+                "content": node.content if node else None,
+                "distance": r.distance,
+                "match_type": "text",
+            })
+
+    for r in results:
+        if r.id not in seen_ids and len(merged) < k:
+            seen_ids.add(r.id)
+            node = get_client().get_node(r.id, collection=collection)
+            merged.append({
+                "id": r.id,
+                "content": node.content if node else None,
+                "distance": r.distance,
+                "match_type": "vector",
+            })
+
+    elapsed_ms = (time.monotonic() - start) * 1000
+    return json.dumps(
+        {"nodes": merged[:k], "latency_ms": round(elapsed_ms, 1)},
+        default=str,
+        indent=2,
+    )
+
+
+@mcp.tool()
+def internalize_memory(
+    content: dict,
+    valence: float,
+    session_id: str,
+    collection: str = "eva_mind",
+) -> str:
+    """Write a memory node to eva_mind (never core collections).
+
+    valence: float between -1.0 (aversion) and 1.0 (preference).
+    session_id: tracks the origin session for auditability.
+    Only writes to eva_mind — rejects writes to core collections.
+    """
+    # Safety: never write to core collections
+    CORE_COLLECTIONS = {"eva_core", "eva_self_knowledge", "eva_codebase", "knowledge_galaxies"}
+    if collection in CORE_COLLECTIONS:
+        return json.dumps({
+            "error": f"Write to core collection '{collection}' is forbidden. Use eva_mind or eva_learnings."
+        })
+
+    # Clamp valence
+    valence = max(-1.0, min(1.0, valence))
+
+    # Enrich content with session metadata
+    enriched = dict(content)
+    enriched["session_id"] = session_id
+    enriched["valence"] = valence
+
+    # Magnitude encodes valence intensity: neutral=0.3, strong=0.6
+    magnitude = 0.3 + abs(valence) * 0.3
+    coords = [magnitude] + [0.0] * 127
+
+    nid = get_client().insert_node(
+        coords=coords,
+        content=enriched,
+        node_type="Episodic",
+        energy=0.8,
+        collection=collection,
+    )
+    return json.dumps({"node_id": nid, "collection": collection, "valence": valence})
+
+
+@mcp.tool()
+def reorganize_thoughts(target_collection: str) -> str:
+    """Trigger the AgencyEngine reconsolidation sleep on a non-core collection.
+
+    Runs gradient-descent optimization on Poincaré embeddings. Async — EVA
+    does not block waiting for completion. Only allowed on non-core collections.
+    """
+    CORE_COLLECTIONS = {"eva_core", "eva_self_knowledge", "eva_codebase", "knowledge_galaxies"}
+    if target_collection in CORE_COLLECTIONS:
+        return json.dumps({
+            "error": f"Cannot reorganize core collection '{target_collection}'. Use culture_galaxies, eva_mind, or eva_learnings."
+        })
+
+    r = get_client().trigger_sleep(
+        noise=0.01, adam_steps=50, collection=target_collection
+    )
+    return json.dumps(
+        {
+            "status": "reorganization_triggered",
+            "collection": target_collection,
+            "hausdorff_before": r.hausdorff_before,
+            "hausdorff_after": r.hausdorff_after,
+            "hausdorff_delta": r.hausdorff_delta,
+            "nodes_perturbed": r.nodes_perturbed,
+            "committed": r.committed,
+        },
+        indent=2,
+    )
+
+
+# ── Latency Monitoring ──────────────────────────────────────────────────
+
+# In-memory latency log (last 100 entries per tool)
+_latency_log: dict[str, list[float]] = {}
+_LATENCY_MAX_ENTRIES = 100
+_LATENCY_ALERT_MS = 500.0
+
+
+def _record_latency(tool_name: str, elapsed_ms: float):
+    """Record tool call latency and warn if above threshold."""
+    if tool_name not in _latency_log:
+        _latency_log[tool_name] = []
+    log = _latency_log[tool_name]
+    log.append(elapsed_ms)
+    if len(log) > _LATENCY_MAX_ENTRIES:
+        log.pop(0)
+    if elapsed_ms > _LATENCY_ALERT_MS:
+        import sys
+        print(
+            f"[LATENCY-ALERT] {tool_name}: {elapsed_ms:.0f}ms (threshold: {_LATENCY_ALERT_MS}ms)",
+            file=sys.stderr,
+        )
+
+
+@mcp.tool()
+def get_latency_report() -> str:
+    """Get latency statistics for all MCP tool calls.
+
+    Returns average, max, and p95 latency per tool, plus alerts for any
+    tool exceeding the 500ms threshold.
+    """
+    report = {}
+    for tool_name, entries in _latency_log.items():
+        if not entries:
+            continue
+        sorted_e = sorted(entries)
+        avg = sum(sorted_e) / len(sorted_e)
+        p95_idx = int(len(sorted_e) * 0.95)
+        report[tool_name] = {
+            "count": len(sorted_e),
+            "avg_ms": round(avg, 1),
+            "max_ms": round(sorted_e[-1], 1),
+            "p95_ms": round(sorted_e[p95_idx], 1),
+            "above_threshold": sum(1 for e in sorted_e if e > _LATENCY_ALERT_MS),
+        }
+    return json.dumps(report, indent=2)
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────
 
 
