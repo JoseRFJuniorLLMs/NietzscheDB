@@ -52,8 +52,9 @@ use crate::proto::nietzsche::{
     nietzsche_db_server::{NietzscheDb, NietzscheDbServer},
 };
 use crate::validation::{
-    parse_uuid as val_uuid, validate_embedding, validate_energy, validate_k,
-    validate_nql, validate_sleep_params, validate_source_count, validate_t_values,
+    parse_uuid as val_uuid, validate_content, validate_embedding, validate_energy,
+    validate_k, validate_nql, validate_sleep_params, validate_source_count,
+    validate_t_values,
 };
 
 pub use nietzsche::nietzsche_db_server::NietzscheDbServer as TonicServer;
@@ -379,6 +380,7 @@ impl NietzscheDb for NietzscheServer {
             PoincareVector::origin(col_dim)
         };
         validate_energy(r.energy)?;
+        validate_content(&r.content)?;
         let content: serde_json::Value = if r.content.is_empty() {
             serde_json::Value::Null
         } else {
@@ -1570,6 +1572,7 @@ impl NietzscheDb for NietzscheServer {
             })?;
             validate_embedding(emb_proto)?;
             let embedding = PoincareVector::from_f64(emb_proto.coords.clone());
+            validate_content(&nr.content)?;
             let content: serde_json::Value = if nr.content.is_empty() {
                 serde_json::Value::Null
             } else {

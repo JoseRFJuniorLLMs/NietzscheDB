@@ -17,10 +17,22 @@
 //! | source_ids count   | ≤ 1024 seeds per diffusion request                     |
 //! | UUID strings       | parseable as UUIDv4                                     |
 
+use std::sync::LazyLock;
+
 use tonic::Status;
 use uuid::Uuid;
 
 use crate::proto::nietzsche::PoincareVector;
+
+/// When `false` (the default), `InsertNode` / `BatchInsertNodes` reject
+/// requests whose `content` field is empty or null.
+///
+/// Set `ALLOW_EMPTY_CONTENT=true` (case-insensitive) to disable the check.
+pub static ALLOW_EMPTY_CONTENT: LazyLock<bool> = LazyLock::new(|| {
+    std::env::var("ALLOW_EMPTY_CONTENT")
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false)
+});
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -197,6 +209,34 @@ pub fn validate_sleep_params(noise: f64, adam_lr: f64) -> Result<(), Status> {
     Ok(())
 }
 
+// ── Content ──────────────────────────────────────────────────────────────
+
+/// Validate that `content` bytes are non-empty (golden rule: *no node without
+/// content*).
+///
+/// When `ALLOW_EMPTY_CONTENT=true` this is a no-op and always returns `Ok(())`.
+/// Otherwise, empty / whitespace-only content is rejected with
+/// `INVALID_ARGUMENT`.
+pub fn validate_content(raw: &[u8]) -> Result<(), Status> {
+    if *ALLOW_EMPTY_CONTENT {
+        return Ok(());
+    }
+    if raw.is_empty() || raw.iter().all(|b| b.is_ascii_whitespace()) {
+        return Err(Status::invalid_argument(
+            "content must not be empty (golden rule: no node without content). \
+             Set ALLOW_EMPTY_CONTENT=true to override.",
+        ));
+    }
+    // Also reject literal JSON null ("null") since it carries no information.
+    if raw == b"null" {
+        return Err(Status::invalid_argument(
+            "content must not be JSON null (golden rule: no node without content). \
+             Set ALLOW_EMPTY_CONTENT=true to override.",
+        ));
+    }
+    Ok(())
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -334,5 +374,29 @@ mod tests {
     #[test]
     fn invalid_uuid_rejected() {
         assert!(parse_uuid("not-a-uuid", "id").is_err());
+    }
+
+    // ── content ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn valid_content_passes() {
+        assert!(validate_content(b"{\"hello\":\"world\"}").is_ok());
+        assert!(validate_content(b"some text").is_ok());
+    }
+
+    #[test]
+    fn empty_content_rejected() {
+        assert!(validate_content(b"").is_err());
+    }
+
+    #[test]
+    fn whitespace_only_content_rejected() {
+        assert!(validate_content(b"   ").is_err());
+        assert!(validate_content(b"\n\t ").is_err());
+    }
+
+    #[test]
+    fn json_null_content_rejected() {
+        assert!(validate_content(b"null").is_err());
     }
 }
