@@ -641,12 +641,30 @@ async fn main() -> anyhow::Result<()> {
                 loop {
                     tokio::time::sleep(tick_dur).await;
 
+                    // Runtime skip/always overrides via env vars (read once per tick cycle)
+                    let env_skip: Vec<String> = std::env::var("AGENCY_SKIP_COLLECTIONS")
+                        .unwrap_or_default()
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    let env_always: Vec<String> = std::env::var("AGENCY_ALWAYS_COLLECTIONS")
+                        .unwrap_or_default()
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+
                     for (col_name, engine) in &mut engines {
                         // FIX #3: Skip cache-only and ephemeral collections
                         const AGENCY_SKIP: &[&str] = &[
                             "eva_cache", "eva_perceptions", "speaker_embeddings",
                             "eva_sensory", "lobby_", "test_",
                         ];
+                        // Env var skip takes priority (exact match)
+                        if env_skip.iter().any(|s| col_name == s) {
+                            continue;
+                        }
                         if AGENCY_SKIP.iter().any(|p| col_name.starts_with(p)) {
                             continue;
                         }
@@ -661,7 +679,12 @@ async fn main() -> anyhow::Result<()> {
                             "memories", "signifier_chains", "eva_mind",
                             "eva_core", "patient_graph",
                         ];
-                        let is_critical = AGENCY_ALWAYS.iter().any(|c| col_name == *c);
+                        // Env var always overrides; env_skip already handled above
+                        let is_critical = if !env_always.is_empty() {
+                            env_always.iter().any(|c| col_name == c)
+                        } else {
+                            AGENCY_ALWAYS.iter().any(|c| col_name == *c)
+                        };
                         if !is_critical && db.node_count().unwrap_or(0) < 10 {
                             continue;
                         }
