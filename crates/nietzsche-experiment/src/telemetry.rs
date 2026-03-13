@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Telemetry output for the experiment: CSV writer for per-cycle metrics.
 
 use std::fs::File;

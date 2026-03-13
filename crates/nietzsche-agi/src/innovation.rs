@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # Innovation — Acceptance function Φ(τ) for knowledge integration
 //!
 //! The [`InnovationEvaluator`] decides the fate of each inference using

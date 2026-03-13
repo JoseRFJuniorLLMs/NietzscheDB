@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Phase VI.1 — Cortex bootstrap with controlled asymmetry.
 //!
 //! On first startup (empty "default" collection), seeds the Ur-Cortex node,

@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 use pest::Parser;
 use pest::iterators::Pair;
 use pest_derive::Parser;

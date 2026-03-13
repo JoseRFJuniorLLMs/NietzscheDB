@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # Orchestrated Objective Reduction (Orch-OR) Emulation Layer
 //!
 //! Quantum-inspired cognitive kernel for NietzscheDB's Agency Engine.

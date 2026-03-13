@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Integration tests for nietzsche-cugraph.
 //!
 //! Tests the CPU-fallback path (feature `cuda` OFF):

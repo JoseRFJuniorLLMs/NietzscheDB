@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Avalanche size tracking for Self-Organized Criticality (SOC) monitoring.
 //!
 //! In SOC theory, an **avalanche** is a cascade of mutations triggered by a

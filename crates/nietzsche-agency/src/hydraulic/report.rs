@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Reports for the Hydraulic Flow Engine.
 //!
 //! These structs are added to `AgencyTickReport` and `SleepCycleReport`

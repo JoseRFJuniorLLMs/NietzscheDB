@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # Klein model operations
 //!
 //! The Klein (Beltrami-Klein) model of hyperbolic space where **geodesics are

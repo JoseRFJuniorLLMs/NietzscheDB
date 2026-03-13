@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Phase XXI — Knowledge Compression: semantic deduplication and merge engine.
 //!
 //! Large knowledge graphs accumulate redundancy over time:

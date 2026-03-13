@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Persistence layer for agency data in RocksDB CF_META.
 //!
 //! Uses the existing `GraphStorage::put_meta` / `get_meta` / `scan_meta_prefix`

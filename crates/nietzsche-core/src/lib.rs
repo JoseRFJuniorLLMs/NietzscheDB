@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 #![cfg_attr(feature = "nightly-simd", feature(portable_simd))]
 #![warn(clippy::pedantic)]
 #![allow(clippy::missing_errors_doc)]

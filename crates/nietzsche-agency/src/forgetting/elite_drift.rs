@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Elite Drift — Identity Defense Monitor.
 //!
 //! Monitors ||centroid(E_t) - centroid(E_0)|| to ensure the system

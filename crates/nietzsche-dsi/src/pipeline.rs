@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! DSI Neural Pipeline — coordinates VQ-VAE indexing and DSI decoder retrieval.
 //!
 //! Controlled by the `DSI_NEURAL_ENABLED` environment variable (default: `false`).

@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 pub mod tree;
 pub mod advisor;
 pub mod value_network;

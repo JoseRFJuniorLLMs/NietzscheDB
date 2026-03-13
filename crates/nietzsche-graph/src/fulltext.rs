@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Full-text search using an inverted index with BM25 scoring.
 //!
 //! Stores posting lists in the `meta` column family with a `fts:` prefix.

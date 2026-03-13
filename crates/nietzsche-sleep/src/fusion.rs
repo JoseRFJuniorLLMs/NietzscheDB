@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Memory Fusion: Episodic → Semantic consolidation.
 //!
 //! During sleep, groups of similar episodic nodes are fused into a single

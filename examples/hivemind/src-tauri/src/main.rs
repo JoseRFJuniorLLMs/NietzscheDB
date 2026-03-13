@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use tauri::State;

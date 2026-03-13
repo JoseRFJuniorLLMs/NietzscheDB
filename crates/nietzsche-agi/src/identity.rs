@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # Identity — Axiom Drift Detection & Ur-Cortex Shield (Phase VIII)
 //!
 //! The identity module implements the **Geometric Constitution** of the AGI system:

@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Unified epistemic scorer.
 //!
 //! Combines all individual metrics into a composite `EpistemicScore`

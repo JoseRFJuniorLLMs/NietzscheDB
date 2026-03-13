@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # nietzsche-tpu
 //!
 //! Google **TPU**-accelerated vector store for NietzscheDB via the **PJRT C API**.

@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Phase XV.1 — ObservationBridge: live metrics for visualization.
 //!
 //! Aggregates thermodynamic, attention, and gravity data into a format

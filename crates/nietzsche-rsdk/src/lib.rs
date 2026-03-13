@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 pub use nietzsche_proto::db::database_client::DatabaseClient;
 pub use nietzsche_proto::db::{
     BatchInsertRequest, BatchSearchRequest, DurabilityLevel, EventMessage,

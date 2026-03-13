@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Stability Monitor — Detection of three pathological attractors.
 //!
 //! The Forgetting Engine must avoid three collapse modes:

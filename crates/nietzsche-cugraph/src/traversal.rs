@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! BFS, Dijkstra (SSSP), PageRank — dispatches to GPU or CPU fallback.
 
 use std::collections::HashMap;

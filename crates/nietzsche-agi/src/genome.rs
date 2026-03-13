@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # Genome — Evolutionary Parameter Adaptation (Phase VIII)
 //!
 //! Implements autonomous evolution of the navigability innovation parameters

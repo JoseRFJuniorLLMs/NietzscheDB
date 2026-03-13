@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Neural Anomaly Detector — autoencoder for detecting degenerative graph patterns.
 //!
 //! ONNX model: `models/anomaly_detector.onnx`

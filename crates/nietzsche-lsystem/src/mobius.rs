@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Möbius addition for the Poincaré ball model of hyperbolic space.
 //!
 //! The **Möbius addition** u ⊕ v is the group operation of the Poincaré

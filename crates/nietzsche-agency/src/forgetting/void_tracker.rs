@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Void Tracker — Maps the abysses left by the Forgetting Engine.
 //!
 //! CAMADA 3 of the Nezhmetdinov architecture: the Voids left by deleted nodes

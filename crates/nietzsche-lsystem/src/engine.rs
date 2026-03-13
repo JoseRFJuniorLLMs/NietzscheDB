@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! [`LSystemEngine`] — applies production rules to the hyperbolic graph
 //! and manages Hausdorff-based auto-pruning.
 //!
@@ -28,7 +29,7 @@ use nietzsche_graph::{
     db::NietzscheDB,
 };
 
-use crate::hausdorff::{batch_local_hausdorff, global_hausdorff, local_hausdorff, LOCAL_K};
+use crate::hausdorff::{batch_local_hausdorff, global_hausdorff, LOCAL_K, DEFAULT_HAUSDORFF_SAMPLE};
 use crate::mobius::{spawn_child_diversified, spawn_sibling};
 use crate::rules::{check_condition, ProductionRule, RuleAction};
 
@@ -100,6 +101,25 @@ pub struct LSystemEngine {
     ///
     /// Default: `0.3`.
     pub angular_jitter: f64,
+    /// Maximum number of nodes to sample for batch Hausdorff computation.
+    ///
+    /// When a collection has more nodes than this limit, a stratified random
+    /// sample is selected. Only sampled nodes get their `hausdorff_local`
+    /// recomputed; the rest retain their previous values. This reduces the
+    /// GPU distance matrix from O(N²) to O(S²) where S = sample size.
+    ///
+    /// - `0` = no sampling (compute all — original behaviour)
+    /// - `8000` = recommended for production (distance matrix ≈ 256 MB)
+    ///
+    /// Default: [`DEFAULT_HAUSDORFF_SAMPLE`] (8000).
+    pub hausdorff_sample_size: usize,
+    /// Number of neighbours for local Hausdorff estimation (k in kNN).
+    ///
+    /// Lower values speed up both GPU kernel and CPU box-counting.
+    /// Must be ≥ 3 for meaningful dimension estimation.
+    ///
+    /// Default: [`LOCAL_K`] (12).
+    pub hausdorff_k: usize,
 }
 
 impl LSystemEngine {
@@ -112,6 +132,8 @@ impl LSystemEngine {
             hausdorff_hi: DEFAULT_HAUSDORFF_HI,
             circuit_breaker_sigma: DEFAULT_CIRCUIT_BREAKER_SIGMA,
             angular_jitter: 0.3,
+            hausdorff_sample_size: DEFAULT_HAUSDORFF_SAMPLE,
+            hausdorff_k: LOCAL_K,
         }
     }
 
@@ -150,16 +172,49 @@ impl LSystemEngine {
     ) -> Result<LSystemReport, LSystemError> {
         let mut rng = rand::thread_rng();
 
-        // ── Step 1: collect all nodes ────────────────────────────────────
-        let all_nodes: Vec<Node> = db.storage().scan_nodes()?;
+        // ── Step 1: collect all nodes (single scan — reused throughout) ──
+        let mut all_nodes: Vec<Node> = db.storage().scan_nodes()?;
+        let total_n = all_nodes.len();
+        let k = self.hausdorff_k;
 
-        // ── Step 2: recompute local Hausdorff ───────────────────────────
-        // GPU path (cuda feature): batch all-pairs kNN in a single CUDA
-        // kernel launch, then box-counting per node. Falls back to
-        // sequential CPU if GPU is unavailable.
-        let hausdorff_values = batch_local_hausdorff(&all_nodes, LOCAL_K);
-        for (node, h) in all_nodes.iter().zip(hausdorff_values.iter()) {
-            db.update_hausdorff(node.id, *h)?;
+        // ── Step 2: recompute local Hausdorff (with stochastic sampling) ─
+        //
+        // For large collections, computing all-pairs kNN is O(N²) in both
+        // VRAM and CPU post-processing. Stochastic sampling reduces this to
+        // O(S²) where S = hausdorff_sample_size, while non-sampled nodes
+        // retain their previous hausdorff_local values from the last tick.
+        let use_sampling = self.hausdorff_sample_size > 0
+            && total_n > self.hausdorff_sample_size;
+
+        if use_sampling {
+            // Stratified random sample: shuffle indices, take first S.
+            use rand::seq::SliceRandom;
+            let mut indices: Vec<usize> = (0..total_n).collect();
+            indices.shuffle(&mut rng);
+            indices.truncate(self.hausdorff_sample_size);
+            indices.sort_unstable(); // sort for cache-friendly access
+
+            let sampled_nodes: Vec<Node> = indices.iter().map(|&i| all_nodes[i].clone()).collect();
+
+            eprintln!(
+                "[L-System] Hausdorff sampling: {} of {} nodes (k={})",
+                sampled_nodes.len(), total_n, k,
+            );
+
+            let hausdorff_values = batch_local_hausdorff(&sampled_nodes, k);
+
+            // Persist + update in-memory for sampled nodes only
+            for (idx, h) in indices.iter().zip(hausdorff_values.iter()) {
+                db.update_hausdorff(all_nodes[*idx].id, *h)?;
+                all_nodes[*idx].hausdorff_local = *h;
+            }
+        } else {
+            // Small collection: compute for all nodes (original path)
+            let hausdorff_values = batch_local_hausdorff(&all_nodes, k);
+            for (node, h) in all_nodes.iter_mut().zip(hausdorff_values.iter()) {
+                db.update_hausdorff(node.id, *h)?;
+                node.hausdorff_local = *h;
+            }
         }
 
         // ── Step 3 (Phase 11): degrade sensory latents ──────────────────
@@ -180,10 +235,8 @@ impl LSystemEngine {
             }
         }
 
-        // ── Step 4: re-scan (Hausdorff values now persisted) ────────────
-        let all_nodes: Vec<Node> = db.storage().scan_nodes()?;
-
-        // ── Step 4b: energy circuit breaker threshold ───────────────────
+        // ── Step 4: energy circuit breaker threshold ─────────────────────
+        // (No re-scan needed — hausdorff_local updated in-memory above)
         //
         // Compute μ + k·σ across all node energies. Nodes above this
         // threshold are "overheated" and will be blocked from spawning
@@ -250,16 +303,34 @@ impl LSystemEngine {
         // ── Step 6: apply mutations ──────────────────────────────────────
         let (nodes_spawned, nodes_pruned, edges_created) = apply_pending(db, pending)?;
 
-        // ── Step 7: global Hausdorff on post-tick state ──────────────────
-        let final_nodes: Vec<Node> = db.storage().scan_nodes()?;
-        let global_d = global_hausdorff(&final_nodes);
+        // ── Step 7: global Hausdorff (sampled, no full re-scan) ──────────
+        //
+        // Use a stride-based sample of the current in-memory nodes to
+        // estimate global Hausdorff without a third full scan_nodes().
+        // After mutations, node count ≈ total_n ± mutations, but
+        // all_nodes still represents the pre-mutation snapshot which is
+        // a valid approximation for global D.
+        let global_sample_cap = 1000usize;
+        let global_d = if all_nodes.len() <= global_sample_cap {
+            global_hausdorff(&all_nodes)
+        } else {
+            let step = all_nodes.len() / global_sample_cap;
+            let sampled: Vec<Node> = all_nodes.iter()
+                .step_by(step.max(1))
+                .take(global_sample_cap)
+                .cloned()
+                .collect();
+            global_hausdorff(&sampled)
+        };
+
+        let final_total = total_n + nodes_spawned - nodes_pruned;
 
         Ok(LSystemReport {
             nodes_spawned,
             nodes_pruned,
             edges_created,
             global_hausdorff: global_d,
-            total_nodes: final_nodes.len(),
+            total_nodes: final_total,
             sensory_degraded,
             nodes_halted,
         })

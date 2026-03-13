@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! ClusterRegistry — in-memory peer table with gossip-merge support.
 
 use dashmap::DashMap;

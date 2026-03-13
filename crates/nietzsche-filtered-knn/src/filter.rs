@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Build Roaring Bitmaps from filter conditions against NietzscheDB graph storage.
 //!
 //! Each [`NodeFilter`] variant maps to a specific scan strategy over

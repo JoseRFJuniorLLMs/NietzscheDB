@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Observer Identity — the agency's self-representation in the graph.
 //!
 //! The Observer Identity is a special meta-node in the knowledge graph

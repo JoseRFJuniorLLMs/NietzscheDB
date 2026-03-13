@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # Riemann (Spherical) model operations
 //!
 //! The sphere S^n is the space of constant **positive curvature** (K > 0).

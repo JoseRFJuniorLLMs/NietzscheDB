@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 /// GPU-accelerated batch Lorentz distance computation.
 ///
 /// This module provides compute shader source (WGSL) and a Rust reference

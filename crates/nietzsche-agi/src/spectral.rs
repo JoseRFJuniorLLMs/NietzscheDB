@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # Spectral — Graph Laplacian monitoring via λ₂ (Fiedler eigenvalue)
 //!
 //! Monitors the structural health of graph subregions by computing

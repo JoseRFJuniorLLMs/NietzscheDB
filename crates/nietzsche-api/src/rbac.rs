@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Role-Based Access Control types for NietzscheDB gRPC API.
 //!
 //! The [`Role`] enum is injected into `tonic::Request::extensions()` by the

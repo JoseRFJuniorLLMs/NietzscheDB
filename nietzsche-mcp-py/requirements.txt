@@ -1,0 +1,4 @@
+mcp>=1.0.0
+grpcio>=1.78.0
+grpcio-tools>=1.78.0
+protobuf>=5.26.0

@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # Inference Engine — rule engine that classifies trajectories
 //!
 //! The [`InferenceEngine`] takes a validated [`GeodesicTrajectory`] and produces

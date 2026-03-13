@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! ClusterRouter — consistent-hashing request router.
 //!
 //! Uses a **token ring**: every node owns the half-open range

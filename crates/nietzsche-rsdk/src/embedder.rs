@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::error::Error;

@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use nietzsche_core::vector::HyperVector;
 use rand::Rng;

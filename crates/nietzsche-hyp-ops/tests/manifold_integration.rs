@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Integration tests for the multi-manifold pipeline.
 //!
 //! These tests verify the same operations that the 6 gRPC RPC handlers execute:

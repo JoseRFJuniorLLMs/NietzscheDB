@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Phase XIX — Self-Healing Graph: autonomous graph maintenance daemon.
 //!
 //! Large knowledge graphs inevitably degrade over time:

@@ -10,6 +10,18 @@ import (
 	pb "nietzsche-sdk/pb"
 )
 
+// ReapExpired removes nodes and edges that have passed their TTL expiry.
+// Returns the number of reaped items.
+func (c *NietzscheClient) ReapExpired(ctx context.Context, collection string) (uint64, error) {
+	resp, err := c.stub.ReapExpired(ctx, &pb.ReapExpiredRequest{
+		Collection: collection,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("nietzsche ReapExpired: %w", err)
+	}
+	return resp.ReapedCount, nil
+}
+
 // TriggerSleep initiates a Riemannian reconsolidation sleep cycle.
 // During sleep, the database perturbs node embeddings via Adam optimisation
 // and commits only if the Hausdorff distance delta stays within threshold.

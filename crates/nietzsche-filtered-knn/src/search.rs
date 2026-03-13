@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Filtered KNN search: brute-force search over bitmap-selected nodes.
 //!
 //! This module implements the core filtered vector search: given a query point

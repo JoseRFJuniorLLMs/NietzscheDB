@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Integration tests for nietzsche-filtered-knn.
 //!
 //! These tests exercise the full pipeline: create a temp RocksDB, insert nodes,

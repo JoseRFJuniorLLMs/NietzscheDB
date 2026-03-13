@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Unit tests for nietzsche-wasm (non-WASM target).
 //!
 //! These tests validate the core logic (IndexWrapper, ID mapping, dimension

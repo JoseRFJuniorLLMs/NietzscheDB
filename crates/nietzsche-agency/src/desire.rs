@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Motor de Desejo — Desire Engine for NietzscheDB.
 //!
 //! Transforms knowledge gaps detected by the GapDaemon into structured

@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Import/Export: CSV and JSONL streaming for nodes and edges.
 
 use std::io::{BufRead, Write};

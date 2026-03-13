@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # Certification — Epistemological quality levels for inferences
 //!
 //! Maps the continuous energy E(τ) from the [`stability`](crate::stability) module

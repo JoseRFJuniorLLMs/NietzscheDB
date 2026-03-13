@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Daemon Niilista — Semantic Garbage Collector.
 //!
 //! The "immune system" of NietzscheDB.  Inspired by Nietzsche's *Amor Fati*

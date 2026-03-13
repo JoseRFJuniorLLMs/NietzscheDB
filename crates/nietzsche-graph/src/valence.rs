@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! **Valence / Arousal** — emotional dimensions affecting heat diffusion.
 //!
 //! Human memory is inseparable from emotion. Traumatic or rewarding events

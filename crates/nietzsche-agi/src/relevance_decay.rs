@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # Relevance Decay — frequency-based weight adjustment
 //!
 //! Adjusts the energy of synthesis nodes based on how frequently they are

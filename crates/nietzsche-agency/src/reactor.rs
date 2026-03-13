@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Reactive layer that converts agency events into executable intents.
 //!
 //! The reactor consumes `AgencyEvent`s from the event bus and produces
@@ -272,6 +273,27 @@ pub enum AgencyIntent {
         reason: String,
         /// Estimated improvement in composite epistemic score.
         estimated_delta: f32,
+    },
+
+    // ── Phase 28: Geometric Uncertainty (GeometricKernels) ────
+
+    /// Signal geometric uncertainty detected on a node.
+    /// Produced when: Evolution27 scan evaluates EPISTEMIC_UNCERTAINTY(n)
+    /// and finds nodes above threshold.
+    ///
+    /// Actions:
+    /// - "research": High uncertainty → trigger EpistemologyDaemon
+    /// - "consolidate": Low uncertainty, high energy → strengthen connections
+    /// - "prune": Low uncertainty, zero energy → candidate for removal
+    GeometricUncertainty {
+        /// Node with detected uncertainty.
+        node_id: Uuid,
+        /// GP posterior variance (or spectral estimate).
+        variance: f32,
+        /// Composite uncertainty score [0..1].
+        uncertainty: f32,
+        /// Suggested action based on uncertainty + energy analysis.
+        suggested_action: String,
     },
 }
 

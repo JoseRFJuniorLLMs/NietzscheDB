@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Evaluate an AST [`Condition`] against a node's metadata.
 //!
 //! This is used by the daemon engine to check WHEN clauses

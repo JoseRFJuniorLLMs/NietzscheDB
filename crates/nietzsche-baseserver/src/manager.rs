@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 use crate::collection::CollectionImpl;
 use dashmap::DashMap;
 use nietzsche_core::{Collection, CosineMetric, EuclideanMetric, LorentzMetric, PoincareMetric};

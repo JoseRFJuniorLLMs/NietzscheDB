@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! seed_1gb — Carrega ~1 GB de dados filosóficos hierárquicos no NietzscheDB.
 //!
 //! Gera um grafo de conhecimento filosófico com 5 níveis de profundidade,

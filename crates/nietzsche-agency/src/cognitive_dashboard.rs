@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Cognitive Dashboard — unified snapshot of all agency subsystems.
 //!
 //! Aggregates the latest reports from ECAN, Hebbian LTP, Thermodynamics,

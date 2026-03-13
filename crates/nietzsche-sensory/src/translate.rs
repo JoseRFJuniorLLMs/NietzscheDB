@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Synesthesia — cross-modal projection via hyperbolic parallel transport.
 //!
 //! Translates a node's sensory representation from one modality to another

@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Async Rust client for the NietzscheDB gRPC API.
 //!
 //! Wraps the tonic-generated `NietzscheDbClient` with ergonomic typed methods.

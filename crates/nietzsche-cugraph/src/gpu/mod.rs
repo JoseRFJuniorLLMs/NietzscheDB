@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! GPU execution layer: cuGraph BFS / Dijkstra / PageRank + Poincaré kNN.
 //!
 //! Uses `libloading` to dynamically load `libcugraph.so` (RAPIDS 24.6) at

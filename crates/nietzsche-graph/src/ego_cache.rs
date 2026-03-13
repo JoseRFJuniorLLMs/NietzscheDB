@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Phase XVII — Ego-Cache: depth-2 subgraph cache in RocksDB CF_EGO.
 //!
 //! Caches the "ego network" (depth-2 neighborhood) of frequently accessed

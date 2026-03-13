@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Schema validation for NietzscheDB nodes.
 //!
 //! Allows defining per-`NodeType` constraints: required fields, field types,

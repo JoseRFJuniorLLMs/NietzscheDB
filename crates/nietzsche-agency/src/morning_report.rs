@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Morning Report — post-sleep summary of overnight cognitive activity.
 //!
 //! Aggregates data from the sleep cycle (embedding reconsolidation) and

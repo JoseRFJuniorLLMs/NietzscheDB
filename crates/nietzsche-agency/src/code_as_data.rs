@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! **Code-as-Data** — NQL queries stored as activatable graph nodes (AGI-4).
 //!
 //! # Concept

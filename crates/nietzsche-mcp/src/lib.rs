@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! NietzscheDB MCP Server — Model Context Protocol integration.
 //!
 //! Exposes NietzscheDB capabilities as MCP tools that AI assistants

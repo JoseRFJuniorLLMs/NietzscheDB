@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Neural Structural Evolution — ONNX-driven L-System strategy selection.
 //!
 //! Replaces (or augments) the heuristic `RuleEvolution::suggest_strategy` with

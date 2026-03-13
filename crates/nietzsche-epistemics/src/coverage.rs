@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Coverage metric.
 //!
 //! Measures how well the embeddings utilize the Poincaré ball space.

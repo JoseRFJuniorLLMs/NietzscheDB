@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! seed_100 — insere 100 nós filosóficos + ~150 edges no NietzscheDB.
 //!
 //! Estrutura do grafo (5 clusters):

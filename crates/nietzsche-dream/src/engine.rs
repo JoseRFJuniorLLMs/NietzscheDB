@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Dream Engine — speculative graph exploration via hyperbolic diffusion.
 //!
 //! A dream simulation diffuses energy from a seed node, applying noise

@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # Discovery — measuring productive friction in trajectories
 //!
 //! The [`DiscoveryField`] detects **innovative** trajectories — those that

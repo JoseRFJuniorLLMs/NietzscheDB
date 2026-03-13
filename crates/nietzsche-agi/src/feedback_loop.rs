@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # Feedback Loop — re-insertion of conclusions into the graph
 //!
 //! After a synthesis produces a new node, the feedback loop prepares:

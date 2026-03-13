@@ -59,6 +59,9 @@
    * [LYAPUNOV\_DELTA](#63-lyapunov_delta--aleksandr-lyapunov)
    * [PRIGOGINE\_BASIN](#64-prigogine_basin--ilya-prigogine)
    * [ERDOS\_EDGE\_PROB](#65-erdos_edge_prob--paul-erdos)
+   * [MATERN\_KERNEL](#66-matern_kernel--bertil-matern)
+   * [HYPERBOLIC\_HEAT](#67-hyperbolic_heat--helgason--gangolli)
+   * [EPISTEMIC\_UNCERTAINTY](#68-epistemic_uncertainty--carl-edward-rasmussen)
 7. [Funcoes Built-in (NQL 3.0)](#7-funcoes-built-in-nql-30)
    * [String](#71-string)
    * [Math](#72-math)
@@ -1348,6 +1351,145 @@ LIMIT 10
 
 ---
 
+### 6.6 MATERN\_KERNEL — Bertil Matern
+
+Kernel de Matern sobre distancia geodesica de Poincare entre dois nos. Respeita a geometria hiperbolica do NietzscheDB — usa `d_P(x,y) = acosh(1 + 2||x-y||² / ((1-||x||²)(1-||y||²)))` em vez de distancia euclidiana.
+
+```
+MATERN_KERNEL(alias1, alias2 [, nu, lengthscale]) -> Float   (0.0-1.0)
+```
+
+**Parametros:**
+- `nu` (opcional, default 2.5): Suavidade. Valores comuns: 0.5 (Laplaciano), 1.5, 2.5, ∞ (Gaussiano/RBF)
+- `lengthscale` (opcional, default 1.0): Escala de comprimento κ
+
+**Formulas (closed-form):**
+- ν = 0.5: `k(r) = exp(-r/κ)`
+- ν = 1.5: `k(r) = (1 + √3·r/κ) · exp(-√3·r/κ)`
+- ν = 2.5: `k(r) = (1 + √5·r/κ + 5r²/3κ²) · exp(-√5·r/κ)`
+- ν = ∞: `k(r) = exp(-r²/2κ²)` (heat kernel)
+
+onde `r = d_P(x, y)` e a distancia geodesica de Poincare.
+
+```nql
+-- Similaridade Matern entre dois conceitos
+MATCH (a:Concept {title: "Neural Networks"}), (b:Concept {title: "Deep Learning"})
+RETURN MATERN_KERNEL(a, b) AS similarity
+
+-- Com parametros customizados (nu=1.5, lengthscale=2.0)
+MATCH (a), (b)
+WHERE MATERN_KERNEL(a, b, 1.5, 2.0) > 0.7
+RETURN a.title, b.title, MATERN_KERNEL(a, b, 1.5, 2.0) AS sim
+ORDER BY sim DESC LIMIT 20
+
+-- Comparar suavidades diferentes
+MATCH (a:Semantic), (b:Semantic)
+RETURN a.title, b.title,
+       MATERN_KERNEL(a, b, 0.5, 1.0) AS rough,
+       MATERN_KERNEL(a, b, 2.5, 1.0) AS smooth,
+       MATERN_KERNEL(a, b, 99999, 1.0) AS gaussian
+ORDER BY smooth DESC LIMIT 10
+```
+
+> **Fundamentacao:** Bertil Matern (1917-2007) introduziu a classe de funcoes de covariancia Matern em geostatistica. O kernel de Matern generaliza o kernel Gaussiano/RBF permitindo controlo explicito da suavidade via parametro ν. Sobre variedades Riemannianas, a formulacao correta usa distancia geodesica — nao euclidiana — preservando a estrutura hiperbolica do espaco de Poincare.
+
+---
+
+### 6.7 HYPERBOLIC\_HEAT — Helgason & Gangolli
+
+Kernel de calor hiperbolico corrigido. Substitui `GAUSS_KERNEL` que usa distancia euclidiana `||x||²` pela distancia geodesica correta `d_P(x, 0) = 2·atanh(||x||)`.
+
+```
+HYPERBOLIC_HEAT(alias, t) -> Float   (0.0-1.0)
+```
+
+**Formula:**
+```
+h_t(x) = exp(-d_P(x, 0)² / (4t))
+```
+
+onde `d_P(x, 0) = 2·atanh(||x||)` e a distancia de Poincare ate a origem.
+
+**Comparacao com GAUSS\_KERNEL (incorreto para geometria hiperbolica):**
+| | GAUSS\_KERNEL | HYPERBOLIC\_HEAT |
+|---|---|---|
+| Distancia | `\|\|x\|\|²` (euclidiana) | `(2·atanh(\|\|x\|\|))²` (Poincare) |
+| Geometria | Plana | Hiperbolica |
+| Erro | Cresce com `\|\|x\|\|` → 1 | Zero (exato) |
+
+```nql
+-- Difusao hiperbolica correta
+MATCH (n:Semantic)
+RETURN n.title, HYPERBOLIC_HEAT(n, 1.0) AS heat
+ORDER BY heat DESC LIMIT 20
+
+-- Comparar kernel incorreto vs correto
+MATCH (n)
+RETURN n.title,
+       GAUSS_KERNEL(n, 1.0) AS euclidean_heat,
+       HYPERBOLIC_HEAT(n, 1.0) AS hyperbolic_heat
+ORDER BY n.energy DESC LIMIT 10
+
+-- Multi-escala temporal
+MATCH (n:Concept)
+RETURN n.title,
+       HYPERBOLIC_HEAT(n, 0.1) AS focused,
+       HYPERBOLIC_HEAT(n, 1.0) AS medium,
+       HYPERBOLIC_HEAT(n, 10.0) AS diffuse
+```
+
+> **Fundamentacao:** Sigurdur Helgason e Ramesh Gangolli desenvolveram a teoria do kernel de calor em espacos hiperbolicos. No disco de Poincare, a distancia geodesica `d_P(x,0) = 2·atanh(||x||)` diverge logaritmicamente quando `||x|| → 1`, capturando a expansao exponencial do volume hiperbolico. Usar distancia euclidiana (como `GAUSS_KERNEL`) subestima drasticamente a difusao para nos proximos da fronteira do disco.
+
+---
+
+### 6.8 EPISTEMIC\_UNCERTAINTY — Carl Edward Rasmussen
+
+Estimativa heuristica de incerteza epistemica de um no, combinando grau topologico, energia de Dirichlet e energia do no. Valores altos indicam nos com conhecimento incerto ou incompleto.
+
+```
+EPISTEMIC_UNCERTAINTY(alias) -> Float   (0.0-1.0)
+```
+
+**Formula:**
+```
+U(n) = 0.4 × degree_factor + 0.3 × dirichlet_factor + 0.3 × energy_factor
+```
+
+onde:
+- `degree_factor = 1 / (1 + degree(n))` — nos isolados tem alta incerteza
+- `dirichlet_factor = min(1, DIRICHLET_ENERGY(n) / 2)` — alta energia de Dirichlet = inconsistencia com vizinhos
+- `energy_factor = 1 - energy(n)` — baixa energia = pouca ativacao = incerteza
+
+```nql
+-- Nos com maior incerteza epistemica (knowledge gaps)
+MATCH (n:Semantic)
+RETURN n.title, EPISTEMIC_UNCERTAINTY(n) AS uncertainty
+ORDER BY uncertainty DESC LIMIT 20
+
+-- Classificar acao sugerida
+MATCH (n)
+WITH n, EPISTEMIC_UNCERTAINTY(n) AS u
+RETURN n.title, u,
+       CASE
+         WHEN u > 0.7 THEN "research"
+         WHEN u > 0.4 THEN "consolidate"
+         ELSE "stable"
+       END AS action
+ORDER BY u DESC LIMIT 15
+
+-- Combinar com Matern para encontrar clusters incertos
+MATCH (a:Concept), (b:Concept)
+WHERE EPISTEMIC_UNCERTAINTY(a) > 0.5
+  AND MATERN_KERNEL(a, b) > 0.6
+RETURN a.title, b.title,
+       EPISTEMIC_UNCERTAINTY(a) AS uncertainty_a,
+       MATERN_KERNEL(a, b) AS similarity
+```
+
+> **Fundamentacao:** Carl Edward Rasmussen (n. 1963) e autor de *Gaussian Processes for Machine Learning*, obra que formalizou o uso de GPs para quantificacao de incerteza. A heuristica implementada em NQL combina tres sinais complementares — conectividade topologica, coerencia local (Dirichlet) e ativacao energetica — como proxy leve para a variancia posterior de um GP completo. Para estimativas exatas, usar o servico Python `geometric_service.uncertainty` com GPyTorch.
+
+---
+
 ## 7. Funcoes Built-in (NQL 3.0)
 
 NQL 3.0 adiciona **30+ funcoes built-in** para manipulacao de strings, matematica, conversao de tipos e tratamento de nulos.
@@ -2161,6 +2303,9 @@ Error: ParamTypeMismatch { name: "q", expected: "Vector", got: "other" }
 | `LYAPUNOV_DELTA(a, b)`           | 2    | Float   | Aleksandr Lyapunov    | Divergencia de estabilidade          |
 | `PRIGOGINE_BASIN(alias)`         | 1    | Float   | Ilya Prigogine        | Profundidade do basin dissipativo    |
 | `ERDOS_EDGE_PROB(a, b)`          | 2    | Float   | Paul Erdos            | Probabilidade de aresta (Erdos-Renyi)|
+| `MATERN_KERNEL(a, b[, ν, κ])`   | 2-4  | Float   | Bertil Matern         | Kernel Matern sobre geodesica Poincare|
+| `HYPERBOLIC_HEAT(n, t)`         | 2    | Float   | Helgason & Gangolli   | Kernel de calor hiperbolico corrigido|
+| `EPISTEMIC_UNCERTAINTY(n)`      | 1    | Float   | C.E. Rasmussen        | Incerteza epistemica heuristica      |
 
 ### Funcoes built-in (NQL 3.0)
 

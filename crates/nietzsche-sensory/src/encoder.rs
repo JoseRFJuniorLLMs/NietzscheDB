@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Encoder traits and implementations for sensory compression.
 //!
 //! Each modality has its own encoder that compresses raw data into

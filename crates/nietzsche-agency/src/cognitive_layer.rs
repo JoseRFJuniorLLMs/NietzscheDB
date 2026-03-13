@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Phase E — Cognitive Layer.
 //!
 //! Discovers semantic clusters in the Poincaré ball and proposes

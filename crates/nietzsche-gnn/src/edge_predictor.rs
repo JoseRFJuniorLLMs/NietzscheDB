@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Neural Edge Predictor — link prediction for graph topology optimization.
 //!
 //! ONNX model: `models/edge_predictor.onnx`

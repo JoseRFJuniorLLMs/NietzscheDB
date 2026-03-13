@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # Sandbox — Quarantine and promotion for innovative inferences
 //!
 //! The sandbox is the **immune system** of the AGI layer. When the

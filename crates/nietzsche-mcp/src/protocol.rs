@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! MCP JSON-RPC protocol types.
 //!
 //! Implements the Model Context Protocol v1 specification:

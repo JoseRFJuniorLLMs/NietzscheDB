@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Application-level authenticated encryption at-rest using AES-256-GCM.
 //!
 //! Provides transparent encrypt/decrypt for data stored in RocksDB.

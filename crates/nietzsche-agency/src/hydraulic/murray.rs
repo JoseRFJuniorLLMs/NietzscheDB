@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! MurrayRebalancer — fractal vascular equilibrium during sleep.
 //!
 //! Applies Murray's Law (1926) to the conductivity network:

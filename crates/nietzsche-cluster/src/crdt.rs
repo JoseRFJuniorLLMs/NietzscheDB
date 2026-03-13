@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! **Semantic CRDTs** — Conflict-Free Replicated Data Types for graph knowledge.
 //!
 //! When cluster nodes independently evolve their knowledge graphs (e.g., Node A

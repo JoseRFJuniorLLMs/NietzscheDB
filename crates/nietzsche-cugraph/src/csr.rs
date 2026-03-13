@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Convert a NietzscheDB `AdjacencyIndex` into CSR (Compressed Sparse Row) format
 //! suitable for upload to GPU via cuGraph or a custom CUDA kernel.
 

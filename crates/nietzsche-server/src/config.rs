@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Server configuration loaded from environment variables.
 //!
 //! All settings have production-safe defaults. Override any variable at

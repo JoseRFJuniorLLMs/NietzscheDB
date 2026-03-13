@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Vitality Sigmoid Function — The mathematical heart of the Forgetting Engine.
 //!
 //! Implements V(n) = σ(w₁e + w₂H − w₃ξ + w₄π + w₅κ − w₆τ) where:

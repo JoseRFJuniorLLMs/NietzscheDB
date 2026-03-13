@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! GPU-accelerated **batch** Poincaré kNN for the L-System tick.
 //!
 //! Instead of computing distances one query at a time (O(n) kernel launches),

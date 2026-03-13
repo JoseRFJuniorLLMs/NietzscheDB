@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Phase XIII — Cognitive Thermodynamics for NietzscheDB.
 //!
 //! Formalises the knowledge graph as a **thermodynamic system** where energy,

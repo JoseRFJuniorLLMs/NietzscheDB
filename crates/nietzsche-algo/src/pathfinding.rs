@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Pathfinding: A* and Triangle Count.
 
 use std::collections::{BinaryHeap, HashMap, HashSet};

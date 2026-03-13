@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # CentroidGuardian — The Geometric Self of the EVA
 //!
 //! Maintains the "civilizational centroid" $C_t$ — the weighted Fréchet mean

@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! DSI Indexer — encodes node embeddings into hierarchical VQ codes via the `vqvae` ONNX model.
 //!
 //! The `vqvae` model:

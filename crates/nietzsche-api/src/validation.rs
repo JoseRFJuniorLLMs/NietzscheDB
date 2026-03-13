@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Input validation for all gRPC request handlers.
 //!
 //! Every `validate_*` function returns `Ok(())` on success or a

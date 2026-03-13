@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! NQL executor: maps AST nodes to graph operations.
 //!
 //! Each `execute_*` function takes references to `GraphStorage` and

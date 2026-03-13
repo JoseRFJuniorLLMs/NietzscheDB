@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! **EpistemologyDaemon** — The Scientist (Phase XXV: Autopoietic Research)
 //!
 //! Implements Karpathy's autoresearch loop mapped to NietzscheDB's geometry:

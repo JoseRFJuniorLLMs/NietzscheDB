@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Judgment system — Verdict and ForgetteringJudgment for the Forgetting Engine.
 //!
 //! Each node receives a verdict after evaluation by the Nezhmetdinov daemon:

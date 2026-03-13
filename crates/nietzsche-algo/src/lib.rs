@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Graph algorithm library for NietzscheDB.
 //!
 //! Provides production-grade implementations of common graph algorithms,

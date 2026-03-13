@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Cluster Scorer — thin wrapper around the `cluster_scorer` ONNX model.
 //!
 //! Provides a high-level API that downstream crates (e.g. `nietzsche-agency`)

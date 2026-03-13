@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Safe wrappers around the cuGraph C API (RAPIDS 24.6).
 //!
 //! Loaded dynamically via `libloading` so the crate compiles without RAPIDS

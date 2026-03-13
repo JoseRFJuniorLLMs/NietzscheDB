@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Collective Unconscious — cross-collection archetype sharing.
 //!
 //! Archetypes are elite nodes that have been "published" for sharing

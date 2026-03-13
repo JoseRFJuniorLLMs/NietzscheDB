@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 use uuid::Uuid;
 use std::collections::{HashSet, VecDeque};
 use nietzsche_graph::{AdjacencyIndex, GraphStorage, Node};

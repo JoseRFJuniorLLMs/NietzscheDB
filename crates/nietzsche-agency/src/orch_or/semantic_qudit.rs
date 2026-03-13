@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # SemanticQudit — N-Dimensional Cognitive Superposition Unit
 //!
 //! The atomic building block of the Orch-OR emulation layer.

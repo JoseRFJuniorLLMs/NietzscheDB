@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Neural Cluster Scorer — evaluates cluster health and recommends actions.
 //!
 //! ONNX model: `models/cluster_scorer.onnx`

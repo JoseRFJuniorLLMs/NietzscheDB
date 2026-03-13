@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! `nietzsche-pregel` — Hyperbolic heat kernel diffusion engine.
 //!
 //! Implements **multi-scale activation propagation** across the Poincaré-ball

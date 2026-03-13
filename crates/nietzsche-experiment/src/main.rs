@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # NietzscheDB Link Prediction Experiment
 //!
 //! Validates that Topological Generative Capacity (TGC) improves the structural

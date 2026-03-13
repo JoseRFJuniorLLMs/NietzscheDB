@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Structural Metrics — Entropy + Global Efficiency.
 //!
 //! These are the TWO topological vital signs that feed the upgraded TGC:

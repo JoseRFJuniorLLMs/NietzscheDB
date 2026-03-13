@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! `nietzsche-lsystem` — L-System fractal growth engine for the Poincaré-ball graph.
 //!
 //! ## Crate structure
@@ -44,7 +45,7 @@ pub use engine::{
 };
 
 // ── Hausdorff ─────────────────────────────────────────────────────────────────
-pub use hausdorff::{batch_local_hausdorff, box_counting, global_hausdorff, local_hausdorff, LOCAL_K};
+pub use hausdorff::{batch_local_hausdorff, box_counting, global_hausdorff, local_hausdorff, LOCAL_K, DEFAULT_HAUSDORFF_SAMPLE};
 
 // ── Möbius / geometry ─────────────────────────────────────────────────────────
 pub use mobius::{mobius_add, project_into_ball, spawn_child, spawn_sibling};

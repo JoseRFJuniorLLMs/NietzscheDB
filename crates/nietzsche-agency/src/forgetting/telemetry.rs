@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Telemetry — The blood of numbers from the Forgetting Engine.
 //!
 //! Outputs CSV data tracking all vital signs across cycles for

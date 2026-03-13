@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;

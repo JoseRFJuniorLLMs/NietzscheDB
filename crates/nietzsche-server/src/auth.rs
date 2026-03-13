@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! gRPC RBAC authentication interceptor.
 //!
 //! Supports multiple API keys with different roles:

@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! gRPC service implementation for NietzscheDB.
 //!
 //! [`NietzscheServer`] wraps an [`Arc<CollectionManager>`] and dispatches every

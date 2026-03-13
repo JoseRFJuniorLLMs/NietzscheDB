@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 /// Configuration for the Wiederkehr daemon engine.
 #[derive(Debug, Clone)]
 pub struct DaemonEngineConfig {

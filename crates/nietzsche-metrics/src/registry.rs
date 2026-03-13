@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Global metrics registry singleton backed by `prometheus::Registry`.
 
 use once_cell::sync::Lazy;

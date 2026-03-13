@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! External Friction Score — Epistemological Closure Prevention.
 //!
 //! From the Nezhmetdinov spec (CAMADA 3):

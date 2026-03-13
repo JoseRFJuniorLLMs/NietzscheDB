@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Riemannian geometry tools for the Poincaré ball model.
 //!
 //! All operations keep vectors strictly inside the **open unit ball** ‖x‖ < 1.

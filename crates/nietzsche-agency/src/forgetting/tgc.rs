@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! TGC — Topological Generative Capacity.
 //!
 //! The "gold metric" of the Forgetting Engine (CAMADA 4):

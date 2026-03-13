@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Unit tests for nietzsche-sdk parameter structs and serialization.
 //!
 //! These tests do NOT require a running NietzscheDB server — they validate

@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Box-counting Hausdorff dimension estimator for Poincaré-ball embeddings.
 //!
 //! ## Algorithm
@@ -21,8 +22,13 @@ use std::collections::HashSet;
 /// Scales used for the multi-scale box count.
 const SCALES: &[u32] = &[4, 8, 16, 32, 64];
 
-/// Number of neighbours for local Hausdorff estimation.
+/// Default number of neighbours for local Hausdorff estimation.
 pub const LOCAL_K: usize = 12;
+
+/// Default maximum number of nodes to sample for batch Hausdorff computation.
+/// When a collection exceeds this size, a random subset is sampled and the
+/// remaining nodes retain their previous `hausdorff_local` values.
+pub const DEFAULT_HAUSDORFF_SAMPLE: usize = 8_000;
 
 // ─────────────────────────────────────────────
 // Public API

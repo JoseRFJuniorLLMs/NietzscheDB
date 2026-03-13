@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Wiederkehr Daemon Engine — ticks through all daemon definitions,
 //! evaluates WHEN conditions against matching nodes, collects intents.
 

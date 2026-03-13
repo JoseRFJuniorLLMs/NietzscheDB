@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Neural Dream Generator — generates new node embeddings from seed + noise.
 //!
 //! ONNX model: `models/dream_generator.onnx`

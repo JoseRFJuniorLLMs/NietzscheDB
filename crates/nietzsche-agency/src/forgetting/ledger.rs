@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Deletion Ledger — Auditable record of the Forgetting Engine's kills.
 //!
 //! CAMADA 2 of the Nezhmetdinov architecture: cryptographic receipts for

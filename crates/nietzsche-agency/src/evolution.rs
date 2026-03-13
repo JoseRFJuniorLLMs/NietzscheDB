@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Open Evolution — L-System rule mutation and selection.
 //!
 //! Transforms health metrics into adaptive L-System rule strategies.

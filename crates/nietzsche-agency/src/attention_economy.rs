@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Phase XII — Economic Attention Network (ECAN) for NietzscheDB.
 //!
 //! Transforms the graph's energy system into a **cognitive economy** where

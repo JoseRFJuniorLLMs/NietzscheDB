@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Forgetting Engine — The Nezhmetdinov Active Forgetting System.
 //!
 //! A four-layer architecture for intelligent data deletion:

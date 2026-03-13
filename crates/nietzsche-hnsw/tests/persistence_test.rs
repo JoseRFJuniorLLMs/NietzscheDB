@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 use nietzsche_core::{EuclideanMetric, GlobalConfig, Metric, QuantizationMode};
 use nietzsche_hnsw::{HnswIndex, SnapshotData, SnapshotMetadata, SnapshotNode};
 use nietzsche_vecstore::VectorStore;

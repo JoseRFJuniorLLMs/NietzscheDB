@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Named Vectors — multi-vector-per-node for NietzscheDB.
 //!
 //! Each node can have multiple named embedding spaces:

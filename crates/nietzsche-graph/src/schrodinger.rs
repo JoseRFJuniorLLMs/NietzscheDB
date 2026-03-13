@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! **Schrödinger Edges** — probabilistic edges with Markov transition probabilities.
 //!
 //! An association between "Apple" and "Isaac Newton" should not be fixed; it

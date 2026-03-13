@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Phase XVIII — Hyperbolic Contrastive Training Loss.
 //!
 //! Trains Poincaré ball embeddings to reflect the true hierarchical structure

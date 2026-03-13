@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! **Hegelian Dialectic Engine** — autonomous contradiction resolution (AGI-2).
 //!
 //! # Philosophy

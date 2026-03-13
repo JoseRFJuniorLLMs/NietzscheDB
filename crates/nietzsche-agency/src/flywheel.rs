@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Phase XXIV — Cognitive Flywheel: unified autonomous pipeline.
 //!
 //! The Cognitive Flywheel connects all agency subsystems into a

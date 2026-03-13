@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! HTTP dashboard server — REST API + embedded web UI.
 //!
 //! Exposes a JSON REST API backed by the shared [`CollectionManager`] and

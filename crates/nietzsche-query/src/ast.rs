@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 // ─────────────────────────────────────────────
 // NQL Abstract Syntax Tree  (v3 — NQL 2.0)
 // ─────────────────────────────────────────────

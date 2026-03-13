@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Narrative Engine — compiles graph state into human-readable stories.
 //!
 //! Analyzes node energy distributions, edge patterns, and temporal evolution

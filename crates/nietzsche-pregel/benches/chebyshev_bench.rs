@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Criterion benchmarks for Chebyshev heat-kernel diffusion.
 //!
 //! Run with:

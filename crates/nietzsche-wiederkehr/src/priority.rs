@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Will to Power — priority-based daemon scheduling.
 //!
 //! Daemons compete for execution slots based on their energy level and

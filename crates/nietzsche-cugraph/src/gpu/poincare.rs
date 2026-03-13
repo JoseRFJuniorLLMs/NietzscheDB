@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! GPU-accelerated Poincaré ball kNN.
 //!
 //! Compiles a CUDA kernel at runtime via NVRTC (NVIDIA Runtime Compilation)

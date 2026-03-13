@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Embedding snapshot — checkpoint and restore for the reconsolidation cycle.
 //!
 //! The snapshot captures all node embeddings at a point in time so that

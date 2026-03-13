@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! **EnergyCircuitBreaker** — anti-tumor mechanism for the hyperbolic graph.
 //!
 //! The basic L-System circuit breaker (μ + kσ spawn-blocking) operates only

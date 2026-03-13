@@ -120,8 +120,15 @@ def run_experiment_loop(
     sample_size: int = 50,
     min_energy: float = 0.1,
     allowed_types: list[str] | None = None,
+    enable_geometric_uncertainty: bool = False,
 ):
-    """Run the main experiment loop."""
+    """Run the main experiment loop.
+
+    Args:
+        enable_geometric_uncertainty: If True, uses GeometricKernels GP-based
+            uncertainty estimation to guide hypothesis generation toward
+            knowledge gaps. Requires: pip install geometric-kernels scipy
+    """
     print("\n" + "=" * 60)
     print("  NietzscheLab — Autonomous Knowledge Evolution")
     print("=" * 60)
@@ -130,6 +137,7 @@ def run_experiment_loop(
     print(f"  Score threshold: {score_threshold}")
     print(f"  Mode:            {'random' if random_only else 'LLM'}")
     print(f"  Dry run:         {dry_run}")
+    print(f"  Geometric uncertainty: {enable_geometric_uncertainty}")
     print("=" * 60 + "\n")
 
     # Verify connection
@@ -158,6 +166,42 @@ def run_experiment_loop(
             if len(nodes) < 2:
                 print("[SKIP] Not enough nodes in collection. Aborting.")
                 break
+
+            # 1b. GeometricKernels uncertainty analysis (optional)
+            knowledge_gaps = None
+            if enable_geometric_uncertainty and len(nodes) >= 10:
+                try:
+                    import numpy as _np
+                    from geometric_service.graph_bridge import (
+                        ndb_to_geometric_graph, NodeInfo as _NI, EdgeInfo as _EI,
+                    )
+                    from geometric_service.uncertainty import EpistemicUncertaintyEstimator
+
+                    _gk_nodes = [
+                        _NI(n.id, n.energy, getattr(n, "depth", 0.0))
+                        for n in nodes
+                    ]
+                    _gk_edges = [
+                        _EI(e.id, e.from_id, e.to_id, getattr(e, "weight", 1.0))
+                        for e in edges
+                    ]
+                    _space, _nids, _idx = ndb_to_geometric_graph(_gk_nodes, _gk_edges)
+                    _estimator = EpistemicUncertaintyEstimator(_space, _nids)
+
+                    _obs_idx = _np.array([j for j, n in enumerate(nodes) if n.energy > 0.1])
+                    _obs_val = _np.array([nodes[j].energy for j in _obs_idx], dtype=_np.float64)
+
+                    if len(_obs_idx) >= 3:
+                        _estimator.fit(_obs_idx, _obs_val)
+                        knowledge_gaps = _estimator.find_knowledge_gaps(top_k=5)
+                        print(f"      [GK] Found {len(knowledge_gaps)} knowledge gaps:")
+                        for _g in knowledge_gaps[:3]:
+                            print(f"           - {_g.node_id[:12]}... "
+                                  f"uncertainty={_g.uncertainty:.4f} → {_g.suggested_action}")
+                except ImportError:
+                    print("      [GK] geometric-kernels not installed, skipping uncertainty")
+                except Exception as _e:
+                    print(f"      [GK] Uncertainty analysis failed: {_e}")
 
             # 2. Generate hypothesis
             print("[2/5] Generating hypothesis...")

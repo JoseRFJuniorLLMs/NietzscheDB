@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Phase XV.2 — Temporal Adaptive Sampling via DirtySet.
 //!
 //! Instead of scanning every node on every agency tick (O(N)), the DirtySet

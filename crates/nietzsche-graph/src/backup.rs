@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Backup and restore using RocksDB checkpoints.
 //!
 //! A checkpoint is a hard-link-based snapshot — creating one is O(1) and

@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # Criticality — formal edge-of-chaos regime detection
 //!
 //! This module formalizes the "edge of chaos" as a **measurable region** in the

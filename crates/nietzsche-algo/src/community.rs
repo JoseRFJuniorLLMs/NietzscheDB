@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Community detection: Louvain modularity optimization + Label Propagation.
 
 use std::collections::HashMap;

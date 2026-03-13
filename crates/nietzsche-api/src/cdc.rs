@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Change Data Capture (CDC) broadcaster.
 //!
 //! Broadcasts mutation events via `tokio::broadcast` to all active subscribers.

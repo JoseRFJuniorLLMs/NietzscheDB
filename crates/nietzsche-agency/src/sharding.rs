@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Phase XXII — Hyperbolic Sharding: partition-aware locality analysis.
 //!
 //! In a Poincaré ball, data has natural hierarchical structure:

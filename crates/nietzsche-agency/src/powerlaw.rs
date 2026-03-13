@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Power-law exponent (τ) estimator for Self-Organized Criticality monitoring.
 //!
 //! # Background: Self-Organized Criticality (SOC)

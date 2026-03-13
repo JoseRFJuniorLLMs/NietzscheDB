@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! NietzscheDB production gRPC server.
 //!
 //! Reads configuration from environment variables (see [`config::Config`]),
@@ -749,6 +750,19 @@ async fn main() -> anyhow::Result<()> {
                                             ]);
                                             // Disable Hausdorff auto-prune: nodes with D=0.0 must NOT be killed
                                             lsystem.hausdorff_lo = 0.0;
+                                            // Stochastic sampling: avoid O(N²) Hausdorff on large collections.
+                                            // Default 8000; set LSYSTEM_HAUSDORFF_SAMPLE=0 to disable sampling.
+                                            if let Ok(s) = std::env::var("LSYSTEM_HAUSDORFF_SAMPLE") {
+                                                if let Ok(v) = s.parse::<usize>() {
+                                                    lsystem.hausdorff_sample_size = v;
+                                                }
+                                            }
+                                            // kNN neighbour count for local Hausdorff (default 12).
+                                            if let Ok(s) = std::env::var("LSYSTEM_K") {
+                                                if let Ok(v) = s.parse::<usize>() {
+                                                    if v >= 3 { lsystem.hausdorff_k = v; }
+                                                }
+                                            }
                                             match lsystem.tick(&mut *db_w) {
                                                 Ok(r) => info!(spawned = r.nodes_spawned, pruned = r.nodes_pruned, "agency L-System tick complete"),
                                                 Err(e) => warn!(error = %e, "agency L-System tick failed"),

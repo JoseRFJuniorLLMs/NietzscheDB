@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! ACID transaction coordinator for NietzscheDB.
 //!
 //! Implements a **Saga pattern** spanning RocksDB (graph) and the vector

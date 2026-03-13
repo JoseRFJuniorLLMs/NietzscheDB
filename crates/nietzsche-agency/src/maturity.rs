@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # MaturityEvaluator — Natural Selection of Concepts
 //!
 //! Evaluates node maturity based on the integrated maturity score:

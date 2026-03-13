@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # Minkowski spacetime operations
 //!
 //! The Minkowski metric defines causal structure on the NietzscheDB edge graph.

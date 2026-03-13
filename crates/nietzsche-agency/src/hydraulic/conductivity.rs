@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! ConductivityTensor — adaptive metric that makes frequently-used paths shorter.
 //!
 //! Each edge carries a `conductivity: f32` field that modifies the effective

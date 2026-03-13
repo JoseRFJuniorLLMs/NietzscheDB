@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! AUC computation via Wilcoxon-Mann-Whitney U statistic.
 //!
 //! O(N log N) — sorts once, then linear scan over ranks.

@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Phase XX — Graph Learning Engine: the graph learns from its own operations.
 //!
 //! Tracks operational patterns across agency ticks:

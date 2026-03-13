@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! FlowLedger — per-edge CPU cost accounting (the "ATP meter").
 //!
 //! Every edge traversal deposits a measurement: `(+1 traversal, +N cpu_ns)`.

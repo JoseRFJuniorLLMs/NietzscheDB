@@ -1,0 +1,21 @@
+# GeometricKernels integration for NietzscheDB
+# Install: pip install -r requirements.txt
+
+# Core (required)
+geometric-kernels>=1.0
+numpy>=2.0,<2.4
+scipy>=1.3
+
+# GP inference (optional but recommended for uncertainty estimation)
+torch>=2.0
+gpytorch>=1.11
+
+# ONNX export (optional, for Rust runtime inference)
+onnx>=1.14
+
+# NietzscheDB communication
+grpcio>=1.78.0
+grpcio-tools>=1.78.0
+
+# Testing
+pytest>=7.0

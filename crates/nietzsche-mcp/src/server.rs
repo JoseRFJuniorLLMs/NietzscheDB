@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! MCP stdio server — reads JSON-RPC from stdin, writes to stdout.
 //!
 //! This implements the Model Context Protocol (MCP) server that AI

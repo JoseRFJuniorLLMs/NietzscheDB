@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Phase 27 — Epistemic Evolution Analysis.
 //!
 //! Implements an autonomous knowledge evolution loop within the Agency Engine.
@@ -108,6 +109,24 @@ pub enum EvolutionMutationType {
     EnergyBoost,
     /// Prune a low-quality edge.
     PruneEdge,
+    /// Flag a node as having high geometric uncertainty (knowledge gap).
+    /// Triggers GeometricUncertainty intent for the server to handle.
+    GeometricUncertaintyFlag,
+}
+
+/// Result of geometric uncertainty analysis for a single node.
+#[derive(Debug, Clone)]
+pub struct GeometricUncertaintyInfo {
+    /// Node ID.
+    pub node_id: Uuid,
+    /// Spectral uncertainty estimate [0..1].
+    pub uncertainty: f32,
+    /// Degree-based isolation factor.
+    pub degree_factor: f32,
+    /// Dirichlet energy factor (boundary of knowledge).
+    pub dirichlet_factor: f32,
+    /// Suggested action: "research", "consolidate", or "prune".
+    pub suggested_action: String,
 }
 
 // ── Main scan function ─────────────────────────────────────────
@@ -349,6 +368,89 @@ fn propose_energy_boosts(
     }
 
     proposals
+}
+
+// ── GeometricKernels: Uncertainty scan ──────────────────────────
+
+/// Scan nodes for geometric/epistemic uncertainty.
+///
+/// Uses a spectral heuristic similar to EPISTEMIC_UNCERTAINTY(n) in NQL:
+/// - Degree factor: isolated nodes → high uncertainty
+/// - Dirichlet energy: high variation with neighbors → boundary of knowledge
+/// - Energy factor: low energy = less explored
+///
+/// Returns list of nodes above the uncertainty threshold, with suggested actions.
+pub fn scan_geometric_uncertainty(
+    storage: &GraphStorage,
+    adjacency: &AdjacencyIndex,
+    node_ids: &[Uuid],
+    uncertainty_threshold: f32,
+    max_results: usize,
+) -> Vec<GeometricUncertaintyInfo> {
+    let mut results: Vec<GeometricUncertaintyInfo> = Vec::new();
+
+    for nid in node_ids {
+        let meta = match storage.get_node_meta(nid) {
+            Ok(Some(m)) => m,
+            _ => continue,
+        };
+
+        let neighbors_out = adjacency.neighbors_out(nid);
+        let neighbors_in = adjacency.neighbors_in(nid);
+        let degree = (neighbors_out.len() + neighbors_in.len()) as f32;
+
+        // Degree factor: isolated nodes → high uncertainty
+        let degree_factor = 1.0 / (1.0 + degree.sqrt());
+
+        // Dirichlet energy: energy variation with neighbors
+        let mut dirichlet_energy = 0.0_f32;
+        let mut neighbor_count = 0usize;
+        for nbr_id in &neighbors_out {
+            if let Ok(Some(nbr)) = storage.get_node_meta(nbr_id) {
+                let diff = meta.energy - nbr.energy;
+                dirichlet_energy += diff * diff;
+                neighbor_count += 1;
+            }
+        }
+        let dirichlet_factor = if neighbor_count > 0 {
+            (dirichlet_energy / neighbor_count as f32).min(1.0)
+        } else {
+            1.0
+        };
+
+        // Energy factor
+        let energy_factor = 1.0 - meta.energy.clamp(0.0, 1.0);
+
+        // Composite
+        let uncertainty = 0.4 * degree_factor + 0.3 * dirichlet_factor + 0.3 * energy_factor;
+
+        if uncertainty >= uncertainty_threshold {
+            let suggested_action = if uncertainty > 0.7 {
+                "research".to_string()
+            } else if meta.energy < 0.05 {
+                "prune".to_string()
+            } else {
+                "consolidate".to_string()
+            };
+
+            results.push(GeometricUncertaintyInfo {
+                node_id: *nid,
+                uncertainty,
+                degree_factor,
+                dirichlet_factor,
+                suggested_action,
+            });
+
+            if results.len() >= max_results {
+                break;
+            }
+        }
+    }
+
+    // Sort by uncertainty descending
+    results.sort_by(|a, b| b.uncertainty.partial_cmp(&a.uncertainty).unwrap_or(std::cmp::Ordering::Equal));
+
+    results
 }
 
 #[cfg(test)]

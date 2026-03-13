@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! # HyperbolicHealthMonitor — Geometric Health of the Poincaré Ball
 //!
 //! Periodically samples embeddings and computes structural health metrics

@@ -1,3 +1,4 @@
+// Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 //! Production rules for the L-System fractal growth engine.
 //!
 //! A [`ProductionRule`] pairs a [`RuleCondition`] (evaluated per node)
