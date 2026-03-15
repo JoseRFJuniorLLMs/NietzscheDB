@@ -427,11 +427,13 @@ async fn brain_scan(State((cm, _ops)): State<AppState>) -> impl IntoResponse {
     collections.sort_by(|a, b| b.node_count.cmp(&a.node_count));
 
     // PageRank top-5 from the largest collection (best-effort, 800ms timeout)
+    // CPU-bound PageRank runs in spawn_blocking to avoid starving the async runtime.
     let mut pagerank_top5 = Vec::new();
     if let Some(largest) = collections.first() {
         if let Some(shared) = cm.get(&largest.name) {
-            let pr_future = async {
-                let db = shared.read().await;
+            let shared_c = Arc::clone(&shared);
+            let pr_future = tokio::task::spawn_blocking(move || {
+                let db = shared_c.blocking_read();
                 let storage = db.storage();
                 let adjacency = db.adjacency();
                 let config = nietzsche_algo::PageRankConfig {
@@ -468,10 +470,11 @@ async fn brain_scan(State((cm, _ops)): State<AppState>) -> impl IntoResponse {
                     });
                 }
                 entries
-            };
+            });
 
             match tokio::time::timeout(std::time::Duration::from_millis(800), pr_future).await {
-                Ok(entries) => pagerank_top5 = entries,
+                Ok(Ok(entries)) => pagerank_top5 = entries,
+                Ok(Err(e)) => warn!(error = %e, "brain_scan: PageRank spawn_blocking panicked"),
                 Err(_) => warn!("brain_scan: PageRank timeout (800ms)"),
             }
         }

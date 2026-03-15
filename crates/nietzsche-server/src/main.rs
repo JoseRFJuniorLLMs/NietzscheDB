@@ -41,6 +41,7 @@ use nietzsche_lsystem::LSystemEngine;
 use nietzsche_dream::{DreamConfig, DreamEngine};
 use nietzsche_narrative::{NarrativeConfig, NarrativeEngine};
 use nietzsche_dsi::{DsiPipeline, init_dsi_config};
+use nietzsche_naq::cache::NaqCache;
 
 #[cfg(feature = "gpu")]
 use nietzsche_hnsw_gpu::GpuVectorStore;
@@ -313,6 +314,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // ── Sleep scheduler — runs against the "default" collection ───────────────
+    // CPU-bound work runs in spawn_blocking to avoid starving the async runtime.
     if config.sleep_interval_secs > 0 {
         let interval  = Duration::from_secs(config.sleep_interval_secs);
         let sleep_cfg = SleepConfig {
@@ -334,12 +336,17 @@ async fn main() -> anyhow::Result<()> {
                     continue;
                 };
 
-                let mut db    = shared.write().await;
-                let seed: u64 = rand::random();
-                let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(seed);
+                let shared_c = Arc::clone(&shared);
+                let cfg = sleep_cfg.clone();
+                let result = tokio::task::spawn_blocking(move || {
+                    let mut db = shared_c.blocking_write();
+                    let seed: u64 = rand::random();
+                    let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(seed);
+                    SleepCycle::run(&cfg, &mut *db, &mut rng)
+                }).await;
 
-                match SleepCycle::run(&sleep_cfg, &mut *db, &mut rng) {
-                    Ok(r) => info!(
+                match result {
+                    Ok(Ok(r)) => info!(
                         hausdorff_before    = r.hausdorff_before,
                         hausdorff_after     = r.hausdorff_after,
                         hausdorff_delta     = r.hausdorff_delta,
@@ -349,7 +356,8 @@ async fn main() -> anyhow::Result<()> {
                         nodes_perturbed     = r.nodes_perturbed,
                         "sleep cycle complete"
                     ),
-                    Err(e) => warn!(error = %e, "sleep cycle failed"),
+                    Ok(Err(e)) => warn!(error = %e, "sleep cycle failed"),
+                    Err(e) => warn!(error = %e, "sleep scheduler: spawn_blocking panicked"),
                 }
             }
         });
@@ -385,13 +393,18 @@ async fn main() -> anyhow::Result<()> {
                     continue;
                 };
 
-                // Hold a read lock for Zaratustra — it only reads storage/adjacency.
-                let db        = shared.read().await;
-                let storage   = db.storage();
-                let adjacency = db.adjacency();
+                // CPU-bound: run in blocking thread pool
+                let shared_c = Arc::clone(&shared);
+                let eng = engine.clone();
+                let result = tokio::task::spawn_blocking(move || {
+                    let db        = shared_c.blocking_read();
+                    let storage   = db.storage();
+                    let adjacency = db.adjacency();
+                    eng.run_cycle(storage, adjacency)
+                }).await;
 
-                match engine.run_cycle(storage, adjacency) {
-                    Ok(r) => info!(
+                match result {
+                    Ok(Ok(r)) => info!(
                         nodes_updated    = r.will_to_power.nodes_updated,
                         energy_before    = r.will_to_power.mean_energy_before,
                         energy_after     = r.will_to_power.mean_energy_after,
@@ -401,7 +414,8 @@ async fn main() -> anyhow::Result<()> {
                         duration_ms      = r.duration_ms,
                         "Zaratustra cycle complete"
                     ),
-                    Err(e) => warn!(error = %e, "Zaratustra cycle failed"),
+                    Ok(Err(e)) => warn!(error = %e, "Zaratustra cycle failed"),
+                    Err(e) => warn!(error = %e, "Zaratustra: spawn_blocking panicked"),
                 }
             }
         });
@@ -410,6 +424,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // ── TTL reaper — periodically deletes expired nodes ──────────────────────
+    // CPU-bound iteration runs in spawn_blocking.
     if config.ttl_reaper_interval_secs > 0 {
         let cm_ttl   = Arc::clone(&cm);
         let interval = Duration::from_secs(config.ttl_reaper_interval_secs);
@@ -418,18 +433,31 @@ async fn main() -> anyhow::Result<()> {
             info!(interval_secs = config.ttl_reaper_interval_secs, "TTL reaper started");
             loop {
                 tokio::time::sleep(interval).await;
-                for col_info in cm_ttl.list() {
-                    if let Some(shared) = cm_ttl.get(&col_info.name) {
-                        let mut db = shared.write().await;
-                        match db.reap_expired() {
+
+                let cm_c = Arc::clone(&cm_ttl);
+                let results = tokio::task::spawn_blocking(move || {
+                    let mut reaped_results = Vec::new();
+                    for col_info in cm_c.list() {
+                        if let Some(shared) = cm_c.get(&col_info.name) {
+                            let mut db = shared.blocking_write();
+                            let result = db.reap_expired();
+                            reaped_results.push((col_info.name.clone(), result));
+                        }
+                    }
+                    reaped_results
+                }).await;
+
+                if let Ok(results) = results {
+                    for (col_name, result) in results {
+                        match result {
                             Ok(0) => {}
                             Ok(n) => info!(
-                                collection = %col_info.name,
+                                collection = %col_name,
                                 reaped     = n,
                                 "TTL reaper: expired nodes removed"
                             ),
                             Err(e) => warn!(
-                                collection = %col_info.name,
+                                collection = %col_name,
                                 error      = %e,
                                 "TTL reaper error"
                             ),
@@ -443,6 +471,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // ── Scheduled backup with pruning ────────────────────────────────────────
+    // I/O-bound backup runs in spawn_blocking to avoid starving the async runtime.
     if config.backup_interval_secs > 0 {
         let cm_bak     = Arc::clone(&cm);
         let interval   = Duration::from_secs(config.backup_interval_secs);
@@ -458,50 +487,48 @@ async fn main() -> anyhow::Result<()> {
             loop {
                 tokio::time::sleep(interval).await;
 
-                // Backup each collection
-                for col_info in cm_bak.list() {
-                    if let Some(shared) = cm_bak.get(&col_info.name) {
-                        let mut db = shared.read().await;
-                        let backup_dir = PathBuf::from(&data_dir)
-                            .join("backups")
-                            .join(&col_info.name);
+                let cm_c = Arc::clone(&cm_bak);
+                let dd   = data_dir.clone();
+                let ret  = retention;
+                let results = tokio::task::spawn_blocking(move || {
+                    let mut backup_results = Vec::new();
+                    for col_info in cm_c.list() {
+                        if let Some(shared) = cm_c.get(&col_info.name) {
+                            let db = shared.blocking_read();
+                            let backup_dir = PathBuf::from(&dd)
+                                .join("backups")
+                                .join(&col_info.name);
 
-                        match nietzsche_graph::BackupManager::new(&backup_dir) {
-                            Ok(mgr) => {
-                                match mgr.create_backup(db.storage(), "scheduled") {
-                                    Ok(bi) => {
-                                        info!(
-                                            collection = %col_info.name,
-                                            label      = %bi.label,
-                                            size_bytes = bi.size_bytes,
-                                            "scheduled backup created"
-                                        );
-                                        // Prune old backups
-                                        match mgr.prune_backups(retention) {
-                                            Ok(0) => {}
-                                            Ok(n) => info!(
-                                                collection = %col_info.name,
-                                                pruned     = n,
-                                                "old backups pruned"
-                                            ),
-                                            Err(e) => warn!(
-                                                collection = %col_info.name,
-                                                error      = %e,
-                                                "backup prune error"
-                                            ),
-                                        }
-                                    }
-                                    Err(e) => warn!(
-                                        collection = %col_info.name,
-                                        error      = %e,
-                                        "scheduled backup failed"
-                                    ),
+                            let result = nietzsche_graph::BackupManager::new(&backup_dir)
+                                .and_then(|mgr| {
+                                    let bi = mgr.create_backup(db.storage(), "scheduled")?;
+                                    let pruned = mgr.prune_backups(ret).unwrap_or(0);
+                                    Ok((bi, pruned))
+                                });
+                            backup_results.push((col_info.name.clone(), result));
+                        }
+                    }
+                    backup_results
+                }).await;
+
+                if let Ok(results) = results {
+                    for (col_name, result) in results {
+                        match result {
+                            Ok((bi, pruned)) => {
+                                info!(
+                                    collection = %col_name,
+                                    label      = %bi.label,
+                                    size_bytes = bi.size_bytes,
+                                    "scheduled backup created"
+                                );
+                                if pruned > 0 {
+                                    info!(collection = %col_name, pruned, "old backups pruned");
                                 }
                             }
                             Err(e) => warn!(
-                                collection = %col_info.name,
+                                collection = %col_name,
                                 error      = %e,
-                                "backup manager init failed"
+                                "scheduled backup failed"
                             ),
                         }
                     }
@@ -514,12 +541,13 @@ async fn main() -> anyhow::Result<()> {
 
     // ── Wiederkehr daemon engine ─────────────────────────────────────────────
     // Background loop that ticks daemon agents. Reads `DAEMON_TICK_SECS` (default 30, 0 = disabled).
+    // CPU-bound tick runs in spawn_blocking; intents executed on async thread.
     {
         let daemon_cfg = nietzsche_wiederkehr::DaemonEngineConfig::from_env();
         if daemon_cfg.tick_secs > 0 {
             let cm_daemon  = Arc::clone(&cm);
             let tick_dur   = Duration::from_secs(daemon_cfg.tick_secs);
-            let engine     = nietzsche_wiederkehr::DaemonEngine::new(daemon_cfg);
+            let engine     = Arc::new(nietzsche_wiederkehr::DaemonEngine::new(daemon_cfg));
 
             tokio::spawn(async move {
                 info!(tick_secs = tick_dur.as_secs(), "Wiederkehr daemon engine started");
@@ -531,57 +559,60 @@ async fn main() -> anyhow::Result<()> {
                         continue;
                     };
 
-                    // Tick under read lock (put_daemon internally writes to CF_META
-                    // which is safe even under read lock since CF_META updates are
-                    // atomic at the RocksDB level).
-                    let db = shared.read().await;
-                    match engine.tick(db.storage()) {
-                        Ok(result) => {
-                            if !result.intents.is_empty() || !result.reaped.is_empty() {
-                                info!(
-                                    intents = result.intents.len(),
-                                    reaped  = result.reaped.len(),
-                                    "Wiederkehr tick complete"
-                                );
+                    // CPU-bound tick in blocking thread pool
+                    let shared_c = Arc::clone(&shared);
+                    let eng = Arc::clone(&engine);
+                    let tick_result = tokio::task::spawn_blocking(move || {
+                        let db = shared_c.blocking_read();
+                        eng.tick(db.storage())
+                    }).await;
+
+                    let result = match tick_result {
+                        Ok(Ok(r)) => r,
+                        Ok(Err(e)) => { warn!(error = %e, "Wiederkehr tick failed"); continue; }
+                        Err(e) => { warn!(error = %e, "Wiederkehr: spawn_blocking panicked"); continue; }
+                    };
+
+                    if !result.intents.is_empty() || !result.reaped.is_empty() {
+                        info!(
+                            intents = result.intents.len(),
+                            reaped  = result.reaped.len(),
+                            "Wiederkehr tick complete"
+                        );
+                    }
+
+                    // Execute intents on async thread (fast I/O writes)
+                    for intent in result.intents {
+                        match intent {
+                            nietzsche_wiederkehr::DaemonIntent::DeleteNode(nid) => {
+                                let mut db_w = shared.write().await;
+                                if let Err(e) = db_w.delete_node(nid) {
+                                    warn!(node_id = %nid, error = %e, "daemon delete failed");
+                                }
+                                break; // re-tick next cycle
                             }
-                            // Execute intents that require mutation
-                            for intent in result.intents {
-                                match intent {
-                                    nietzsche_wiederkehr::DaemonIntent::DeleteNode(nid) => {
-                                        drop(db);
-                                        let mut db_w = shared.write().await;
-                                        if let Err(e) = db_w.delete_node(nid) {
-                                            warn!(node_id = %nid, error = %e, "daemon delete failed");
-                                        }
-                                        drop(db_w);
-                                        break; // re-tick next cycle
-                                    }
-                                    nietzsche_wiederkehr::DaemonIntent::SetNodeFields { node_id, fields } => {
-                                        if let Ok(Some(mut meta)) = db.storage().get_node_meta(&node_id) {
-                                            if let serde_json::Value::Object(map) = fields {
-                                                for (k, v) in map {
-                                                    meta.content[&k] = v;
-                                                }
-                                            }
-                                            if let Err(e) = db.storage().put_node_meta(&meta) {
-                                                warn!(node_id = %node_id, error = %e, "daemon set failed");
-                                            }
+                            nietzsche_wiederkehr::DaemonIntent::SetNodeFields { node_id, fields } => {
+                                let db = shared.read().await;
+                                if let Ok(Some(mut meta)) = db.storage().get_node_meta(&node_id) {
+                                    if let serde_json::Value::Object(map) = fields {
+                                        for (k, v) in map {
+                                            meta.content[&k] = v;
                                         }
                                     }
-                                    nietzsche_wiederkehr::DaemonIntent::DiffuseFromNode { node_id, t_values, max_hops } => {
-                                        // Diffuse intents are logged; actual diffusion
-                                        // can be triggered via the standard NQL pipeline.
-                                        info!(
-                                            node_id  = %node_id,
-                                            t_values = ?t_values,
-                                            max_hops = max_hops,
-                                            "daemon diffuse intent (logged)"
-                                        );
+                                    if let Err(e) = db.storage().put_node_meta(&meta) {
+                                        warn!(node_id = %node_id, error = %e, "daemon set failed");
                                     }
                                 }
                             }
+                            nietzsche_wiederkehr::DaemonIntent::DiffuseFromNode { node_id, t_values, max_hops } => {
+                                info!(
+                                    node_id  = %node_id,
+                                    t_values = ?t_values,
+                                    max_hops = max_hops,
+                                    "daemon diffuse intent (logged)"
+                                );
+                            }
                         }
-                        Err(e) => warn!(error = %e, "Wiederkehr tick failed"),
                     }
                 }
             });
@@ -596,6 +627,7 @@ async fn main() -> anyhow::Result<()> {
     // evolution, dream triggers, narrative generation, and Zaratustra modulation.
     // Reads `AGENCY_TICK_SECS` (default 60, 0 = disabled).
     // Multi-collection: iterates all collections, one engine per collection.
+    // CPU-bound tick runs in spawn_blocking to avoid starving the async runtime.
     {
         let agency_cfg = nietzsche_agency::AgencyConfig::from_env();
         if agency_cfg.tick_secs > 0 {
@@ -603,19 +635,23 @@ async fn main() -> anyhow::Result<()> {
             let tick_dur   = Duration::from_secs(agency_cfg.tick_secs);
 
             // Build collection → engine map for multi-collection support
-            let mut engines: std::collections::HashMap<String, nietzsche_agency::AgencyEngine> =
+            // Wrapped in std::sync::Mutex for spawn_blocking access (engine.tick needs &mut self)
+            let mut engines_map: std::collections::HashMap<String, nietzsche_agency::AgencyEngine> =
                 std::collections::HashMap::new();
             for col_info in cm_agency.list() {
                 let engine = nietzsche_agency::AgencyEngine::new(agency_cfg.clone());
-                engines.insert(col_info.name.clone(), engine);
+                engines_map.insert(col_info.name.clone(), engine);
             }
             // Ensure at least the "default" collection has an engine
-            engines
+            engines_map
                 .entry("default".to_string())
                 .or_insert_with(|| nietzsche_agency::AgencyEngine::new(agency_cfg.clone()));
 
+            // NAQ AST Cache: parse NQL once, execute forever (Layer 2 optimization)
+            let naq_cache = std::sync::Mutex::new(NaqCache::new(256));
+
             // Initialize Observer Identity for each collection
-            for (col_name, eng) in &engines {
+            for (col_name, eng) in &engines_map {
                 if let Some(shared) = cm_agency.get_or_default(col_name) {
                     let db = shared.read().await;
                     match eng.ensure_observer_identity(db.storage()) {
@@ -624,6 +660,9 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
+
+            // Wrap engines in Arc<std::sync::Mutex> for spawn_blocking
+            let engines = Arc::new(std::sync::Mutex::new(engines_map));
 
             // Shared Zaratustra config for modulation (wrapped in Arc<Mutex>)
             let zara_config = Arc::new(tokio::sync::Mutex::new(ZaratustraConfig::from_env()));
@@ -635,7 +674,7 @@ async fn main() -> anyhow::Result<()> {
             tokio::spawn(async move {
                 info!(
                     tick_secs   = tick_dur.as_secs(),
-                    collections = engines.len(),
+                    collections = engines.lock().map(|e| e.len()).unwrap_or(0),
                     "Agency engine started (multi-collection)"
                 );
                 loop {
@@ -655,7 +694,12 @@ async fn main() -> anyhow::Result<()> {
                         .filter(|s| !s.is_empty())
                         .collect();
 
-                    for (col_name, engine) in &mut engines {
+                    // Collect collection names to process
+                    let col_names: Vec<String> = engines.lock()
+                        .map(|e| e.keys().cloned().collect())
+                        .unwrap_or_default();
+
+                    for col_name in &col_names {
                         // FIX #3: Skip cache-only and ephemeral collections
                         const AGENCY_SKIP: &[&str] = &[
                             "eva_cache", "eva_perceptions", "speaker_embeddings",
@@ -673,58 +717,86 @@ async fn main() -> anyhow::Result<()> {
                             continue;
                         };
 
-                        let mut db = shared.read().await;
-                        // Skip tiny collections (< 10 nodes) UNLESS they are EVA-critical
-                        const AGENCY_ALWAYS: &[&str] = &[
-                            "memories", "signifier_chains", "eva_mind",
-                            "eva_core", "patient_graph",
-                        ];
-                        // Env var always overrides; env_skip already handled above
-                        let is_critical = if !env_always.is_empty() {
-                            env_always.iter().any(|c| col_name == c)
-                        } else {
-                            AGENCY_ALWAYS.iter().any(|c| col_name == *c)
-                        };
-                        if !is_critical && db.node_count().unwrap_or(0) < 10 {
-                            continue;
+                        // Quick check: skip tiny collections (fast, no blocking needed)
+                        {
+                            let db = shared.read().await;
+                            const AGENCY_ALWAYS: &[&str] = &[
+                                "memories", "signifier_chains", "eva_mind",
+                                "eva_core", "patient_graph",
+                            ];
+                            let is_critical = if !env_always.is_empty() {
+                                env_always.iter().any(|c| col_name == c)
+                            } else {
+                                AGENCY_ALWAYS.iter().any(|c| col_name == *c)
+                            };
+                            if !is_critical && db.node_count().unwrap_or(0) < 10 {
+                                continue;
+                            }
                         }
 
-                        match engine.tick(db.storage(), db.adjacency()) {
-                            Ok(report) => {
-                                if let Some(ref health) = report.health_report {
-                                    info!(
-                                        collection       = %col_name,
-                                        global_hausdorff = health.global_hausdorff,
-                                        mean_energy      = health.mean_energy,
-                                        coherence        = health.coherence_score,
-                                        gap_count        = health.gap_count,
-                                        entropy_spikes   = health.entropy_spike_count,
-                                        duration_ms      = report.duration_ms,
-                                        "Agency health report"
-                                    );
-                                }
+                        // CPU-bound tick in blocking thread pool
+                        let shared_c = Arc::clone(&shared);
+                        let engines_c = Arc::clone(&engines);
+                        let cn = col_name.clone();
+                        let tick_result = tokio::task::spawn_blocking(move || {
+                            let db = shared_c.blocking_read();
+                            let mut eng_guard = engines_c.lock().map_err(|e| {
+                                nietzsche_agency::AgencyError::Internal(format!("engine lock: {e}"))
+                            })?;
+                            if let Some(engine) = eng_guard.get_mut(&cn) {
+                                engine.tick(db.storage(), db.adjacency())
+                            } else {
+                                Err(nietzsche_agency::AgencyError::Internal("engine not found".into()))
+                            }
+                        }).await;
 
-                                // Persist cognitive dashboard + observation frame (before intents consume the report)
-                                {
-                                    let dashboard = nietzsche_agency::CognitiveDashboard::from_tick_report(&report, col_name);
-                                    if let Ok(json) = serde_json::to_vec(&dashboard) {
-                                        let _ = db.storage().put_meta(nietzsche_agency::CognitiveDashboard::meta_key(), &json);
-                                    }
-                                    // Observation frame for perspektive.js visualization
-                                    let obs_frame = nietzsche_agency::ObservationFrame::from_dashboard(&dashboard, &[]);
-                                    if let Ok(json) = serde_json::to_vec(&obs_frame) {
-                                        let _ = db.storage().put_meta(nietzsche_agency::ObservationFrame::meta_key(), &json);
-                                    }
-                                    // Avalanche stats snapshot for SOC monitoring API
+                        let report = match tick_result {
+                            Ok(Ok(r)) => r,
+                            Ok(Err(e)) => { warn!(collection = %col_name, error = %e, "Agency tick failed"); continue; }
+                            Err(e) => { warn!(collection = %col_name, error = %e, "Agency: spawn_blocking panicked"); continue; }
+                        };
+
+                        // Persist cognitive dashboard + observation frame (fast writes, async thread)
+                        {
+                            let db = shared.read().await;
+                            {
+                                let dashboard = nietzsche_agency::CognitiveDashboard::from_tick_report(&report, col_name);
+                                if let Ok(json) = serde_json::to_vec(&dashboard) {
+                                    let _ = db.storage().put_meta(nietzsche_agency::CognitiveDashboard::meta_key(), &json);
+                                }
+                                let obs_frame = nietzsche_agency::ObservationFrame::from_dashboard(&dashboard, &[]);
+                                if let Ok(json) = serde_json::to_vec(&obs_frame) {
+                                    let _ = db.storage().put_meta(nietzsche_agency::ObservationFrame::meta_key(), &json);
+                                }
+                            }
+                            // Avalanche stats — need engine lock briefly
+                            if let Ok(eng_guard) = engines.lock() {
+                                if let Some(engine) = eng_guard.get(col_name) {
                                     let avalanche_snap = nietzsche_agency::AvalancheSnapshot::from_stats(engine.avalanche_stats());
                                     if let Ok(json) = serde_json::to_vec(&avalanche_snap) {
                                         let _ = db.storage().put_meta(nietzsche_agency::AvalancheSnapshot::meta_key(), &json);
                                     }
                                 }
+                            }
+                        }
 
-                                // Execute intents produced by the reactor
-                                for intent in report.intents {
-                                    match intent {
+                        if let Some(ref health) = report.health_report {
+                            info!(
+                                collection       = %col_name,
+                                global_hausdorff = health.global_hausdorff,
+                                mean_energy      = health.mean_energy,
+                                coherence        = health.coherence_score,
+                                gap_count        = health.gap_count,
+                                entropy_spikes   = health.entropy_spike_count,
+                                duration_ms      = report.duration_ms,
+                                "Agency health report"
+                            );
+                        }
+
+                        // Execute intents on async thread (fast I/O writes)
+                        let mut db = shared.read().await;
+                        for intent in report.intents {
+                            match intent {
                                         nietzsche_agency::AgencyIntent::PersistHealthReport { report: hr } => {
                                             if let Err(e) = nietzsche_agency::put_health_report(db.storage(), &hr) {
                                                 warn!(error = %e, "agency: failed to persist health report");
@@ -899,7 +971,11 @@ async fn main() -> anyhow::Result<()> {
                                                 desc       = %description,
                                                 "agency: executing reflexive action (Code-as-Data)"
                                             );
-                                            match nietzsche_query::parse(&nql) {
+                                            // NAQ Layer 2: cached parse — same NQL parsed once, reused on every firing
+                                            let parse_result = naq_cache.lock()
+                                                .map_err(|e| nietzsche_query::QueryError::Parse(e.to_string()))
+                                                .and_then(|mut cache| cache.get_or_parse(&nql));
+                                            match parse_result {
                                                 Ok(query) => {
                                                     match nietzsche_query::execute(&query, db.storage(), db.adjacency(), &Default::default()) {
                                                         Ok(_) => {
@@ -1356,20 +1432,16 @@ async fn main() -> anyhow::Result<()> {
                                                 "agency: geometric uncertainty detected"
                                             );
                                         }
-                                    }
-                                }
-
-
-                                if !report.desires.is_empty() {
-                                    info!(
-                                        collection   = %col_name,
-                                        desires      = report.desires.len(),
-                                        top_priority = report.desires.first().map(|d| d.priority).unwrap_or(0.0),
-                                        "Motor de Desejo: desires available"
-                                    );
-                                }
                             }
-                            Err(e) => warn!(collection = %col_name, error = %e, "Agency tick failed"),
+                        }
+
+                        if !report.desires.is_empty() {
+                            info!(
+                                collection   = %col_name,
+                                desires      = report.desires.len(),
+                                top_priority = report.desires.first().map(|d| d.priority).unwrap_or(0.0),
+                                "Motor de Desejo: desires available"
+                            );
                         }
                     }
                 }
