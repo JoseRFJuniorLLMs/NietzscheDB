@@ -43,6 +43,7 @@ nietzsche-narrative   = { workspace = true }
 nietzsche-neural      = { workspace = true }
 nietzsche-sensory     = { workspace = true }
 nietzsche-dsi         = { workspace = true }
+nietzsche-naq         = { workspace = true }
 tokio           = { workspace = true }
 tonic           = { workspace = true }
 tracing         = { workspace = true }

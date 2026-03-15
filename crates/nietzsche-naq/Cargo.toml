@@ -1,0 +1,16 @@
+[package]
+name        = "nietzsche-naq"
+version     = "0.1.0"
+edition     = "2021"
+description = "NAQ — NietzscheDB Agent Query: Builder API, AST cache, and compact agent protocol"
+
+[dependencies]
+nietzsche-query = { path = "../nietzsche-query" }
+nietzsche-graph = { path = "../nietzsche-graph" }
+serde           = { workspace = true }
+serde_json      = { workspace = true }
+lru             = { workspace = true }
+uuid            = { workspace = true }
+tracing         = { workspace = true }
+
+[dev-dependencies]
