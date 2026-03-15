@@ -5,6 +5,7 @@ package nietzsche
 
 import (
 	"fmt"
+	"sync"
 
 	pb "nietzsche-sdk/pb"
 
@@ -13,9 +14,11 @@ import (
 )
 
 // NietzscheClient wraps a gRPC connection to NietzscheDB.
+// It is safe for concurrent use; gRPC multiplexes all calls over a single connection.
 type NietzscheClient struct {
-	conn *grpc.ClientConn
-	stub pb.NietzscheDBClient
+	conn     *grpc.ClientConn
+	stub     pb.NietzscheDBClient
+	closeOnce sync.Once
 }
 
 // Connect establishes a gRPC connection to NietzscheDB at the given address.
@@ -37,10 +40,13 @@ func ConnectInsecure(addr string) (*NietzscheClient, error) {
 	return Connect(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 }
 
-// Close releases the underlying gRPC connection.
+// Close releases the underlying gRPC connection. Safe to call multiple times.
 func (c *NietzscheClient) Close() error {
-	if c.conn != nil {
-		return c.conn.Close()
-	}
-	return nil
+	var closeErr error
+	c.closeOnce.Do(func() {
+		if c.conn != nil {
+			closeErr = c.conn.Close()
+		}
+	})
+	return closeErr
 }

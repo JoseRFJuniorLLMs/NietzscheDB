@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc"
@@ -26,8 +27,9 @@ type CDCEvent struct {
 
 // CDCSubscription is a live server-streaming connection for CDC events.
 type CDCSubscription struct {
-	stream grpc.ServerStreamingClient[pb.CdcEvent]
-	cancel context.CancelFunc
+	stream    grpc.ServerStreamingClient[pb.CdcEvent]
+	cancel    context.CancelFunc
+	closeOnce sync.Once
 }
 
 // SubscribeCDC opens a server-streaming CDC subscription.
@@ -79,7 +81,9 @@ func (s *CDCSubscription) Recv() (CDCEvent, error) {
 	}, nil
 }
 
-// Close cancels the CDC subscription.
+// Close cancels the CDC subscription. Safe to call multiple times.
 func (s *CDCSubscription) Close() {
-	s.cancel()
+	s.closeOnce.Do(func() {
+		s.cancel()
+	})
 }

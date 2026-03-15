@@ -113,7 +113,10 @@ func nodeResponseToResult(resp *pb.NodeResponse) NodeResult {
 
 	if len(resp.Content) > 0 {
 		var content map[string]interface{}
-		if err := json.Unmarshal(resp.Content, &content); err == nil {
+		if err := json.Unmarshal(resp.Content, &content); err != nil {
+			// Fallback: treat as raw string if not valid JSON object
+			result.Content = map[string]interface{}{"_raw": string(resp.Content)}
+		} else {
 			result.Content = content
 		}
 	}

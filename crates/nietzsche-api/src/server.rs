@@ -3682,7 +3682,7 @@ impl NietzscheDb for NietzscheServer {
                 let node_type = extract_param_str(&statement, "AS")
                     .map(|s| parse_node_type(&s))
                     .unwrap_or(NodeType::Semantic);
-                let energy = extract_param_f32(&upper, "ENERGY").unwrap_or(0.6);
+                let energy = extract_param_f32(&upper, "ENERGY").unwrap_or(0.6).clamp(0.0, 1.0);
 
                 let id = Uuid::new_v4();
                 let node_type_str = format!("{:?}", node_type);
@@ -3734,6 +3734,7 @@ impl NietzscheDb for NietzscheServer {
                 let edge_type = extract_param_str(&statement, "TYPE")
                     .map(|s| parse_edge_type(&s))
                     .unwrap_or(EdgeType::Association);
+                let edge_type_str = format!("{:?}", edge_type);
                 let weight = extract_param_f32(&upper, "WEIGHT").unwrap_or(1.0);
 
                 let mut db = shared.write().await;
@@ -3745,7 +3746,7 @@ impl NietzscheDb for NietzscheServer {
                     edges: vec![nietzsche::AqlCognitiveEdge {
                         source: from_id.to_string(),
                         target: to_id.to_string(),
-                        edge_type: "Association".into(),
+                        edge_type: edge_type_str,
                         weight,
                     }],
                     metadata: Some(aql_metadata("ASSOCIATE", 1, start)),
@@ -3799,52 +3800,71 @@ impl NietzscheDb for NietzscheServer {
 
                 let db = shared.read().await;
                 let fts = nietzsche_graph::FullTextIndex::new(db.storage());
-                let fts_results = fts.search(&query_text, 1).map_err(graph_err)?;
+                let fts_results = fts.search(&query_text, 5).map_err(graph_err)?;
 
-                if let Some(seed) = fts_results.first() {
+                // Try multiple seeds — first one with BFS neighbors wins
+                let mut best_nodes: Vec<nietzsche::AqlCognitiveNode> = Vec::new();
+                for seed in &fts_results {
                     let config = BfsConfig { max_depth: depth, ..Default::default() };
                     let visited = bfs(db.storage(), db.adjacency(), seed.node_id, &config)
                         .map_err(graph_err)?;
 
-                    let nodes: Vec<nietzsche::AqlCognitiveNode> = visited.iter().filter_map(|nid| {
-                        let node = db.storage().get_node(nid).ok()??;
-                        Some(aql_node_from_graph(&node, 0.0))
-                    }).collect();
-                    let count = nodes.len() as u32;
-
-                    Ok(Response::new(nietzsche::AqlResponse {
-                        status: "ok".into(),
-                        nodes,
-                        metadata: Some(aql_metadata("RESONATE", count, start)),
-                        ..Default::default()
-                    }))
-                } else {
-                    Ok(Response::new(nietzsche::AqlResponse {
-                        status: "ok".into(),
-                        metadata: Some(aql_metadata("RESONATE", 0, start)),
-                        ..Default::default()
-                    }))
+                    if visited.len() > 1 || best_nodes.is_empty() {
+                        best_nodes = visited.iter().filter_map(|nid| {
+                            let node = db.storage().get_node(nid).ok()??;
+                            Some(aql_node_from_graph(&node, 0.0))
+                        }).collect();
+                        if best_nodes.len() > 1 { break; }
+                    }
                 }
+                let count = best_nodes.len() as u32;
+
+                Ok(Response::new(nietzsche::AqlResponse {
+                    status: "ok".into(),
+                    nodes: best_nodes,
+                    metadata: Some(aql_metadata("RESONATE", count, start)),
+                    ..Default::default()
+                }))
             }
             "DISTILL" => {
                 let limit = extract_param_u32(&upper, "LIMIT").unwrap_or(10) as usize;
 
                 let db = shared.read().await;
-                let config = nietzsche_algo::PageRankConfig {
-                    damping_factor: 0.85,
-                    max_iterations: 20,
-                    convergence_threshold: 1e-7,
+                // DISTILL uses Louvain community detection (NOT PageRank like REFLECT)
+                // to find clusters and return one representative node per community
+                let config = nietzsche_algo::LouvainConfig {
+                    max_iterations: 10,
+                    resolution: 1.0,
                 };
-                let result = nietzsche_algo::pagerank(
+                let result = nietzsche_algo::louvain(
                     db.storage(), db.adjacency(), &config
                 ).map_err(graph_err)?;
 
-                let mut sorted: Vec<_> = result.scores.into_iter().collect();
-                sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                // Group by community, pick highest-energy node per community
+                let mut community_map: std::collections::HashMap<u64, Vec<Uuid>> = std::collections::HashMap::new();
+                for (nid, comm) in &result.communities {
+                    community_map.entry(*comm).or_default().push(*nid);
+                }
 
-                let nodes: Vec<nietzsche::AqlCognitiveNode> = sorted.into_iter().take(limit).filter_map(|(nid, score)| {
+                let mut representatives: Vec<(Uuid, f32)> = Vec::new();
+                for (_comm, members) in &community_map {
+                    let mut best: Option<(Uuid, f32)> = None;
+                    for nid in members {
+                        if let Ok(Some(node)) = db.storage().get_node(nid) {
+                            if best.is_none() || node.energy > best.unwrap().1 {
+                                best = Some((*nid, node.energy));
+                            }
+                        }
+                    }
+                    if let Some(b) = best {
+                        representatives.push(b);
+                    }
+                }
+                representatives.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+                let nodes: Vec<nietzsche::AqlCognitiveNode> = representatives.into_iter().take(limit).filter_map(|(nid, _)| {
                     let node = db.storage().get_node(&nid).ok()??;
-                    Some(aql_node_from_graph(&node, score as f32))
+                    Some(aql_node_from_graph(&node, 0.0))
                 }).collect();
                 let count = nodes.len() as u32;
 
@@ -3859,12 +3879,14 @@ impl NietzscheDb for NietzscheServer {
                 let tokens: Vec<&str> = statement.split_whitespace().collect();
                 let node_str = tokens.get(1).unwrap_or(&"");
                 let node_id = parse_uuid(node_str, "node_id")?;
-                let delta = extract_param_f32(&upper, "BY").unwrap_or(0.1);
+                let delta = extract_param_f32(&upper, "BY").unwrap_or(0.1).abs();
 
                 let mut db = shared.write().await;
                 let node = db.storage().get_node(&node_id).map_err(graph_err)?
                     .ok_or_else(|| Status::not_found(format!("Node {} not found", node_id)))?;
                 let old_energy = node.energy;
+                let content_str = node.content.as_str().unwrap_or("").to_string();
+                drop(node); // Release borrow before mutations
                 let new_energy = (old_energy - delta).max(0.0);
 
                 if new_energy <= 0.01 {
@@ -3877,7 +3899,6 @@ impl NietzscheDb for NietzscheServer {
                     }))
                 } else {
                     db.update_energy(node_id, new_energy).map_err(graph_err)?;
-                    let content_str = node.content.as_str().unwrap_or("").to_string();
                     Ok(Response::new(nietzsche::AqlResponse {
                         status: "ok".into(),
                         nodes: vec![nietzsche::AqlCognitiveNode {

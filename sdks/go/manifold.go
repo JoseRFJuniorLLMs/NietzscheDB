@@ -5,6 +5,7 @@ package nietzsche
 
 import (
 	"context"
+	"fmt"
 
 	pb "nietzsche-sdk/pb"
 )
@@ -70,7 +71,7 @@ func (c *NietzscheClient) Synthesis(ctx context.Context, nodeIDA, nodeIDB, colle
 		Collection: collection,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("nietzsche Synthesis: %w", err)
 	}
 	return &SynthesisResult{
 		SynthesisCoords: resp.GetSynthesisCoords(),
@@ -89,7 +90,7 @@ func (c *NietzscheClient) SynthesisMulti(ctx context.Context, nodeIDs []string, 
 		Collection: collection,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("nietzsche SynthesisMulti: %w", err)
 	}
 	return &SynthesisResult{
 		SynthesisCoords: resp.GetSynthesisCoords(),
@@ -114,7 +115,7 @@ func (c *NietzscheClient) CausalNeighbors(ctx context.Context, nodeID, direction
 		Collection: collection,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("nietzsche CausalNeighbors: %w", err)
 	}
 	return convertCausalEdges(resp.GetEdges()), nil
 }
@@ -136,7 +137,7 @@ func (c *NietzscheClient) CausalChain(ctx context.Context, nodeID string, maxDep
 		Collection: collection,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("nietzsche CausalChain: %w", err)
 	}
 	return &CausalChainResult{
 		ChainIDs: resp.GetChainIds(),
@@ -159,7 +160,7 @@ func (c *NietzscheClient) KleinPath(ctx context.Context, startNodeID, goalNodeID
 		Collection:  collection,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("nietzsche KleinPath: %w", err)
 	}
 	return &KleinPathResult{
 		Found: resp.GetFound(),
@@ -180,7 +181,7 @@ func (c *NietzscheClient) IsOnShortestPath(ctx context.Context, nodeIDA, nodeIDB
 		Collection: collection,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("nietzsche IsOnShortestPath: %w", err)
 	}
 	return &ShortestPathCheckResult{
 		OnPath:   resp.GetOnPath(),
