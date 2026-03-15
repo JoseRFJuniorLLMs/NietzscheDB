@@ -3686,9 +3686,13 @@ impl NietzscheDb for NietzscheServer {
 
                 let id = Uuid::new_v4();
                 let node_type_str = format!("{:?}", node_type);
-                // Use 128-dim zero vector as default (relational data)
-                let dim = 128;
-                let pv = PoincareVector { coords: vec![0.0f32; dim], dim };
+                // Use collection's configured dimension for zero-vector
+                // (avoids dim mismatch crash on 3072D or other non-128D collections)
+                let col_dim: usize = {
+                    let guard = shared.read().await;
+                    guard.vector_dim()
+                };
+                let pv = PoincareVector::origin(col_dim);
                 let json_content = serde_json::Value::String(content.clone());
 
                 let mut node = Node::new(id, pv, json_content);
