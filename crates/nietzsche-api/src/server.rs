@@ -3627,6 +3627,308 @@ impl NietzscheDb for NietzscheServer {
             threshold_crossed,
         }))
     }
+
+    // ── AQL — Agent Query Language ────────────────────────────────────────────
+
+    #[instrument(skip(self, req))]
+    async fn execute_aql(
+        &self,
+        req: Request<nietzsche::AqlRequest>,
+    ) -> Result<Response<nietzsche::AqlResponse>, Status> {
+        let r = req.into_inner();
+        let statement = r.aql_statement.trim().to_string();
+        if statement.is_empty() {
+            return Err(Status::invalid_argument("aql_statement must not be empty"));
+        }
+
+        let start = std::time::Instant::now();
+        let collection = if r.collection.is_empty() { "default" } else { &r.collection };
+        let shared = get_col!(self.cm, collection);
+
+        // Parse AQL verb from the statement prefix
+        let upper = statement.to_uppercase();
+        let verb = upper.split_whitespace().next().unwrap_or("");
+
+        match verb {
+            "RECALL" => {
+                let query_text = extract_quoted(&statement).unwrap_or_default();
+                let limit = extract_param_u32(&upper, "LIMIT").unwrap_or(10) as usize;
+                if query_text.is_empty() {
+                    return Err(Status::invalid_argument("RECALL requires a quoted query string"));
+                }
+
+                let db = shared.read().await;
+                let fts = nietzsche_graph::FullTextIndex::new(db.storage());
+                let results = fts.search(&query_text, limit).map_err(graph_err)?;
+
+                let nodes: Vec<nietzsche::AqlCognitiveNode> = results.into_iter().filter_map(|r| {
+                    let node = db.storage().get_node(&r.node_id).ok()??;
+                    Some(aql_node_from_graph(&node, r.score as f32))
+                }).collect();
+                let count = nodes.len() as u32;
+
+                Ok(Response::new(nietzsche::AqlResponse {
+                    status: "ok".into(),
+                    nodes,
+                    metadata: Some(aql_metadata("RECALL", count, start)),
+                    ..Default::default()
+                }))
+            }
+            "IMPRINT" => {
+                let content = extract_quoted(&statement).unwrap_or_default();
+                if content.is_empty() {
+                    return Err(Status::invalid_argument("IMPRINT requires quoted content"));
+                }
+                let node_type = extract_param_str(&statement, "AS")
+                    .map(|s| parse_node_type(&s))
+                    .unwrap_or(NodeType::Semantic);
+                let energy = extract_param_f32(&upper, "ENERGY").unwrap_or(0.6);
+
+                let id = Uuid::new_v4();
+                let node_type_str = format!("{:?}", node_type);
+                // Use 128-dim zero vector as default (relational data)
+                let dim = 128;
+                let pv = PoincareVector { coords: vec![0.0f32; dim], dim };
+                let json_content = serde_json::Value::String(content.clone());
+
+                let mut node = Node::new(id, pv, json_content);
+                node.node_type = node_type;
+                node.energy = energy;
+
+                let mut db = shared.write().await;
+                db.insert_node(node).map_err(graph_err)?;
+
+                // Side-effect: link if requested
+                if let Some(link_to) = extract_param_str(&statement, "LINK_TO") {
+                    if let Ok(target_id) = link_to.parse::<Uuid>() {
+                        let edge = Edge::new(id, target_id, EdgeType::Association, 1.0);
+                        let _ = db.insert_edge(edge);
+                    }
+                }
+
+                Ok(Response::new(nietzsche::AqlResponse {
+                    status: "ok".into(),
+                    nodes: vec![nietzsche::AqlCognitiveNode {
+                        id: id.to_string(),
+                        content,
+                        node_type: node_type_str,
+                        energy,
+                        ..Default::default()
+                    }],
+                    metadata: Some(aql_metadata("IMPRINT", 1, start)),
+                    ..Default::default()
+                }))
+            }
+            "ASSOCIATE" => {
+                let tokens: Vec<&str> = statement.split_whitespace().collect();
+                let from_str = tokens.get(1).unwrap_or(&"");
+                let to_str = extract_param_str(&statement, "TO").unwrap_or_default();
+                let from_id = parse_uuid(from_str, "from")?;
+                let to_id = parse_uuid(&to_str, "to")?;
+                let edge_type = extract_param_str(&statement, "TYPE")
+                    .map(|s| parse_edge_type(&s))
+                    .unwrap_or(EdgeType::Association);
+                let weight = extract_param_f32(&upper, "WEIGHT").unwrap_or(1.0);
+
+                let mut db = shared.write().await;
+                let edge = Edge::new(from_id, to_id, edge_type, weight);
+                db.insert_edge(edge).map_err(graph_err)?;
+
+                Ok(Response::new(nietzsche::AqlResponse {
+                    status: "ok".into(),
+                    edges: vec![nietzsche::AqlCognitiveEdge {
+                        source: from_id.to_string(),
+                        target: to_id.to_string(),
+                        edge_type: "Association".into(),
+                        weight,
+                    }],
+                    metadata: Some(aql_metadata("ASSOCIATE", 1, start)),
+                    ..Default::default()
+                }))
+            }
+            "TRACE" => {
+                let tokens: Vec<&str> = statement.split_whitespace().collect();
+                let from_str = tokens.get(1).unwrap_or(&"");
+                let to_str = extract_param_str(&statement, "TO").unwrap_or_default();
+                let from_id = parse_uuid(from_str, "from")?;
+                let _to_id = parse_uuid(&to_str, "to")?;
+                let max_depth = extract_param_u32(&upper, "MAX_DEPTH").unwrap_or(5);
+
+                let db = shared.read().await;
+                let config = BfsConfig { max_depth: max_depth as usize, ..Default::default() };
+                let visited = bfs(db.storage(), db.adjacency(), from_id, &config)
+                    .map_err(graph_err)?;
+
+                let nodes: Vec<nietzsche::AqlCognitiveNode> = visited.iter().filter_map(|nid| {
+                    let node = db.storage().get_node(nid).ok()??;
+                    Some(aql_node_from_graph(&node, 0.0))
+                }).collect();
+                let count = nodes.len() as u32;
+
+                Ok(Response::new(nietzsche::AqlResponse {
+                    status: "ok".into(),
+                    nodes,
+                    metadata: Some(aql_metadata("TRACE", count, start)),
+                    ..Default::default()
+                }))
+            }
+            "RESONATE" => {
+                let query_text = extract_quoted(&statement).unwrap_or_default();
+                let depth = extract_param_u32(&upper, "DEPTH").unwrap_or(3) as usize;
+                if query_text.is_empty() {
+                    return Err(Status::invalid_argument("RESONATE requires a quoted query string"));
+                }
+
+                let db = shared.read().await;
+                let fts = nietzsche_graph::FullTextIndex::new(db.storage());
+                let fts_results = fts.search(&query_text, 1).map_err(graph_err)?;
+
+                if let Some(seed) = fts_results.first() {
+                    let config = BfsConfig { max_depth: depth, ..Default::default() };
+                    let visited = bfs(db.storage(), db.adjacency(), seed.node_id, &config)
+                        .map_err(graph_err)?;
+
+                    let nodes: Vec<nietzsche::AqlCognitiveNode> = visited.iter().filter_map(|nid| {
+                        let node = db.storage().get_node(nid).ok()??;
+                        Some(aql_node_from_graph(&node, 0.0))
+                    }).collect();
+                    let count = nodes.len() as u32;
+
+                    Ok(Response::new(nietzsche::AqlResponse {
+                        status: "ok".into(),
+                        nodes,
+                        metadata: Some(aql_metadata("RESONATE", count, start)),
+                        ..Default::default()
+                    }))
+                } else {
+                    Ok(Response::new(nietzsche::AqlResponse {
+                        status: "ok".into(),
+                        metadata: Some(aql_metadata("RESONATE", 0, start)),
+                        ..Default::default()
+                    }))
+                }
+            }
+            "DISTILL" => {
+                let limit = extract_param_u32(&upper, "LIMIT").unwrap_or(10) as usize;
+
+                let db = shared.read().await;
+                let config = nietzsche_algo::PageRankConfig {
+                    damping_factor: 0.85,
+                    max_iterations: 20,
+                    convergence_threshold: 1e-7,
+                };
+                let result = nietzsche_algo::pagerank(
+                    db.storage(), db.adjacency(), &config
+                ).map_err(graph_err)?;
+
+                let mut sorted: Vec<_> = result.scores.into_iter().collect();
+                sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+                let nodes: Vec<nietzsche::AqlCognitiveNode> = sorted.into_iter().take(limit).filter_map(|(nid, score)| {
+                    let node = db.storage().get_node(&nid).ok()??;
+                    Some(aql_node_from_graph(&node, score as f32))
+                }).collect();
+                let count = nodes.len() as u32;
+
+                Ok(Response::new(nietzsche::AqlResponse {
+                    status: "ok".into(),
+                    nodes,
+                    metadata: Some(aql_metadata("DISTILL", count, start)),
+                    ..Default::default()
+                }))
+            }
+            "FADE" => {
+                let tokens: Vec<&str> = statement.split_whitespace().collect();
+                let node_str = tokens.get(1).unwrap_or(&"");
+                let node_id = parse_uuid(node_str, "node_id")?;
+                let delta = extract_param_f32(&upper, "BY").unwrap_or(0.1);
+
+                let mut db = shared.write().await;
+                let node = db.storage().get_node(&node_id).map_err(graph_err)?
+                    .ok_or_else(|| Status::not_found(format!("Node {} not found", node_id)))?;
+                let old_energy = node.energy;
+                let new_energy = (old_energy - delta).max(0.0);
+
+                if new_energy <= 0.01 {
+                    db.delete_node(node_id).map_err(graph_err)?;
+                    Ok(Response::new(nietzsche::AqlResponse {
+                        status: "ok".into(),
+                        metadata: Some(aql_metadata("FADE", 1, start)),
+                        execution_plan: format!("Node {} deleted (energy depleted)", node_id),
+                        ..Default::default()
+                    }))
+                } else {
+                    db.update_energy(node_id, new_energy).map_err(graph_err)?;
+                    let content_str = node.content.as_str().unwrap_or("").to_string();
+                    Ok(Response::new(nietzsche::AqlResponse {
+                        status: "ok".into(),
+                        nodes: vec![nietzsche::AqlCognitiveNode {
+                            id: node_id.to_string(),
+                            content: content_str,
+                            energy: new_energy,
+                            ..Default::default()
+                        }],
+                        metadata: Some(aql_metadata("FADE", 1, start)),
+                        ..Default::default()
+                    }))
+                }
+            }
+            "DREAM" => {
+                let topic = extract_quoted(&statement).unwrap_or_default();
+
+                let config = SleepConfig::default();
+                let seed: u64 = rand::random();
+                let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(seed);
+
+                let mut db = shared.write().await;
+                let report = SleepCycle::run(&config, &mut *db, &mut rng)
+                    .map_err(|e| Status::internal(format!("DREAM failed: {e}")))?;
+
+                Ok(Response::new(nietzsche::AqlResponse {
+                    status: "ok".into(),
+                    metadata: Some(aql_metadata("DREAM", report.nodes_perturbed as u32, start)),
+                    execution_plan: format!(
+                        "Dream cycle: hausdorff {:.4} → {:.4}, {} nodes perturbed, committed={}. Topic: {}",
+                        report.hausdorff_before, report.hausdorff_after,
+                        report.nodes_perturbed, report.committed,
+                        if topic.is_empty() { "free" } else { &topic }
+                    ),
+                    ..Default::default()
+                }))
+            }
+            _ => {
+                // Fallback: try to execute as NQL
+                match parse(&statement) {
+                    Ok(ast) => {
+                        let params = HashMap::new();
+                        let db = shared.read().await;
+                        let results = execute(&ast, db.storage(), db.adjacency(), &params)
+                            .map_err(|e| Status::internal(format!("NQL fallback: {e}")))?;
+
+                        use nietzsche_query::QueryResult;
+                        let mut nodes = Vec::new();
+                        for r in results {
+                            if let QueryResult::Node(n) = r {
+                                nodes.push(aql_node_from_graph(&n, 0.0));
+                            }
+                        }
+                        let count = nodes.len() as u32;
+
+                        Ok(Response::new(nietzsche::AqlResponse {
+                            status: "ok".into(),
+                            nodes,
+                            metadata: Some(aql_metadata("NQL_FALLBACK", count, start)),
+                            execution_plan: format!("Executed as NQL: {}", statement),
+                            ..Default::default()
+                        }))
+                    }
+                    Err(e) => Err(Status::invalid_argument(format!(
+                        "Unknown AQL verb '{}' and NQL fallback failed: {}", verb, e
+                    ))),
+                }
+            }
+        }
+    }
 }
 
 // ── Helpers (Dream) ──────────────────────────────────────────────────────────
@@ -3654,4 +3956,61 @@ fn dream_session_to_proto(s: nietzsche_dream::DreamSession) -> nietzsche::DreamS
         }).collect(),
         generated_node: s.generated_node.map(|id| id.to_string()).unwrap_or_default(),
     }
+}
+
+// ── Helpers (AQL) ───────────────────────────────────────────────────────────
+
+/// Convert a graph Node to an AQL cognitive node proto.
+fn aql_node_from_graph(node: &Node, magnitude: f32) -> nietzsche::AqlCognitiveNode {
+    nietzsche::AqlCognitiveNode {
+        id: node.id.to_string(),
+        content: node.content.to_string(),
+        node_type: format!("{:?}", node.node_type),
+        energy: node.energy,
+        magnitude,
+        ..Default::default()
+    }
+}
+
+/// Build AQL result metadata.
+fn aql_metadata(verb: &str, count: u32, start: std::time::Instant) -> nietzsche::AqlResultMetadata {
+    nietzsche::AqlResultMetadata {
+        verb: verb.into(),
+        count,
+        execution_ms: start.elapsed().as_millis() as u64,
+        ..Default::default()
+    }
+}
+
+/// Extract first double-quoted string from input.
+fn extract_quoted(input: &str) -> Option<String> {
+    let start = input.find('"')?;
+    let rest = &input[start + 1..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
+/// Extract a u32 parameter after a keyword (e.g., "LIMIT 10" → 10).
+fn extract_param_u32(input: &str, keyword: &str) -> Option<u32> {
+    let upper = input.to_uppercase();
+    let pos = upper.find(keyword)?;
+    let after = &input[pos + keyword.len()..].trim_start();
+    after.split_whitespace().next()?.parse().ok()
+}
+
+/// Extract a f32 parameter after a keyword.
+fn extract_param_f32(input: &str, keyword: &str) -> Option<f32> {
+    let upper = input.to_uppercase();
+    let pos = upper.find(keyword)?;
+    let after = &input[pos + keyword.len()..].trim_start();
+    after.split_whitespace().next()?.parse().ok()
+}
+
+/// Extract a string parameter after a keyword (e.g., "AS Episodic" → "Episodic").
+fn extract_param_str(input: &str, keyword: &str) -> Option<String> {
+    let upper = input.to_uppercase();
+    let kw_upper = keyword.to_uppercase();
+    let pos = upper.find(&kw_upper)?;
+    let after = &input[pos + keyword.len()..].trim_start();
+    Some(after.split_whitespace().next()?.to_string())
 }

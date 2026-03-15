@@ -160,6 +160,54 @@ service NietzscheDB {
 
   // ── Quantum Fidelity (Bloch Sphere) ────────────────────────────────
   rpc CalculateFidelity (QuantumFidelityRequest) returns (QuantumFidelityResponse);
+
+  // ── AQL — Agent Query Language (Phase AQL) ──────────────────────────
+  rpc ExecuteAql (AqlRequest) returns (AqlResponse);
+}
+
+// ── AQL messages ──────────────────────────────────────────────────────────
+
+message AqlRequest {
+  string collection    = 1;  // target collection; "" → "default"
+  string aql_statement = 2;  // raw AQL statement (e.g. 'RECALL "quantum physics" LIMIT 5')
+  map<string, bytes> context = 3;  // optional execution context (session_id, agent_id, etc.)
+}
+
+message AqlResponse {
+  string status              = 1;  // "ok" | "error"
+  string error               = 2;  // error message if status == "error"
+  repeated AqlCognitiveNode nodes = 3;
+  repeated AqlCognitiveEdge edges = 4;
+  AqlResultMetadata metadata = 5;
+  string execution_plan      = 6;  // debug/explain output
+}
+
+message AqlCognitiveNode {
+  string id        = 1;
+  string content   = 2;
+  string node_type = 3;
+  float  energy    = 4;
+  float  magnitude = 5;
+  float  valence   = 6;
+  float  arousal   = 7;
+  bytes  metadata  = 8;  // JSON-encoded arbitrary metadata
+}
+
+message AqlCognitiveEdge {
+  string source    = 1;
+  string target    = 2;
+  string edge_type = 3;
+  float  weight    = 4;
+}
+
+message AqlResultMetadata {
+  uint32 count          = 1;
+  float  avg_energy     = 2;
+  float  max_energy     = 3;
+  uint64 execution_ms   = 4;
+  string backend        = 5;
+  string verb           = 6;
+  repeated string side_effects = 7;
 }
 
 // ── Neural messages ────────────────────────────────────────────────────────
