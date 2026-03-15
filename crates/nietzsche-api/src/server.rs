@@ -3706,7 +3706,9 @@ impl NietzscheDb for NietzscheServer {
                 if let Some(link_to) = extract_param_str(&statement, "LINK_TO") {
                     if let Ok(target_id) = link_to.parse::<Uuid>() {
                         let edge = Edge::new(id, target_id, EdgeType::Association, 1.0);
-                        let _ = db.insert_edge(edge);
+                        if let Err(e) = db.insert_edge(edge) {
+                            warn!(node_id = %id, "IMPRINT LINK_TO edge creation failed: {}", e);
+                        }
                     }
                 }
 
@@ -3755,17 +3757,29 @@ impl NietzscheDb for NietzscheServer {
                 let from_str = tokens.get(1).unwrap_or(&"");
                 let to_str = extract_param_str(&statement, "TO").unwrap_or_default();
                 let from_id = parse_uuid(from_str, "from")?;
-                let _to_id = parse_uuid(&to_str, "to")?;
+                let to_id = parse_uuid(&to_str, "to")?;
                 let max_depth = extract_param_u32(&upper, "MAX_DEPTH").unwrap_or(5);
 
                 let db = shared.read().await;
-                let config = BfsConfig { max_depth: max_depth as usize, ..Default::default() };
-                let visited = bfs(db.storage(), db.adjacency(), from_id, &config)
+                let config = DijkstraConfig {
+                    max_nodes: max_depth as usize * 100,
+                    ..Default::default()
+                };
+                let costs = dijkstra(db.storage(), db.adjacency(), from_id, &config)
                     .map_err(graph_err)?;
 
-                let nodes: Vec<nietzsche::AqlCognitiveNode> = visited.iter().filter_map(|nid| {
+                // Sort by distance and stop at target node
+                let mut entries: Vec<(Uuid, f64)> = costs.into_iter().collect();
+                entries.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+                // If target was found, truncate to only include nodes up to target
+                if let Some(pos) = entries.iter().position(|(id, _)| *id == to_id) {
+                    entries.truncate(pos + 1);
+                }
+
+                let nodes: Vec<nietzsche::AqlCognitiveNode> = entries.iter().filter_map(|(nid, dist)| {
                     let node = db.storage().get_node(nid).ok()??;
-                    Some(aql_node_from_graph(&node, 0.0))
+                    Some(aql_node_from_graph(&node, *dist as f32))
                 }).collect();
                 let count = nodes.len() as u32;
 
