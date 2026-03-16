@@ -737,25 +737,16 @@ impl NietzscheDb for NietzscheServer {
         let mut explain      = String::new();
         let mut scalar_rows  = Vec::new();
         let mut dream_result = None;
+        // Collect node IDs for deferred energy backprop (Recall Boost).
+        // Instead of cycling read→write→read per node, we batch all boosts
+        // and apply them in a single write pass after the result loop.
+        let mut energy_boost_ids: Vec<Uuid> = Vec::new();
 
         for r in results {
             match r {
                 QueryResult::Node(n) => {
-                    let id = n.id;
+                    energy_boost_ids.push(n.id);
                     nodes.push(node_to_proto(n));
-                    
-                    // Energy Backprop (Recall Boost): 
-                    // Successful retrieval strengthens the memory trace.
-                    // We drop the read lock and acquire a write lock briefly.
-                    drop(db);
-                    {
-                        let db_w = shared.write().await;
-                        if let Ok(Some(mut meta)) = db_w.storage().get_node_meta(&id) {
-                            meta.energy = (meta.energy + 0.01).min(1.0);
-                            let _ = db_w.storage().put_node_meta(&meta);
-                        }
-                    }
-                    db = shared.read().await;
                 }
                 QueryResult::NodePair { from, to } => node_pairs.push(nietzsche::NodePair {
                     from: Some(node_to_proto(from)),
@@ -1227,6 +1218,22 @@ impl NietzscheDb for NietzscheServer {
                         space, target, limit));
                 }
             }
+        }
+
+        // ── Deferred Energy Backprop (Recall Boost) ──────────────────
+        // Apply all energy boosts in a single write pass instead of
+        // cycling read→write→read per node (eliminates TOCTOU races
+        // and reduces lock contention).
+        if !energy_boost_ids.is_empty() {
+            drop(db);
+            let db_w = shared.write().await;
+            for id in &energy_boost_ids {
+                if let Ok(Some(mut meta)) = db_w.storage().get_node_meta(id) {
+                    meta.energy = (meta.energy + 0.01).min(1.0);
+                    let _ = db_w.storage().put_node_meta(&meta);
+                }
+            }
+            drop(db_w);
         }
 
         Ok(Response::new(nietzsche::QueryResponse {
@@ -3775,6 +3782,8 @@ impl NietzscheDb for NietzscheServer {
                 let entries: Vec<(Uuid, f64)> = if costs.contains_key(&to_id) {
                     let mut path = vec![(to_id, costs[&to_id])];
                     let mut current = to_id;
+                    let mut visited = std::collections::HashSet::new();
+                    visited.insert(to_id);
                     while current != from_id {
                         let cur_cost = costs[&current];
                         // Find the neighbor (via incoming edges) that is on the shortest path
@@ -3785,6 +3794,9 @@ impl NietzscheDb for NietzscheServer {
                         // Also check outgoing in case of undirected/bidirectional edges
                         candidates.extend(db.adjacency().neighbors_out(&current));
                         for neighbor_id in candidates {
+                            if visited.contains(&neighbor_id) {
+                                continue;
+                            }
                             if let Some(&nc) = costs.get(&neighbor_id) {
                                 if nc < cur_cost {
                                     if best.is_none() || nc < best.unwrap().1 {
@@ -3795,6 +3807,7 @@ impl NietzscheDb for NietzscheServer {
                         }
                         match best {
                             Some((nid, nc)) => {
+                                visited.insert(nid);
                                 path.push((nid, nc));
                                 current = nid;
                             }
@@ -3855,6 +3868,42 @@ impl NietzscheDb for NietzscheServer {
                     status: "ok".into(),
                     nodes: best_nodes,
                     metadata: Some(aql_metadata("RESONATE", count, start)),
+                    ..Default::default()
+                }))
+            }
+            "REFLECT" => {
+                // REFLECT uses PageRank to surface the most central/influential
+                // nodes in the collection — the agent's meta-cognitive mirror.
+                let limit = extract_param_u32(&upper, "LIMIT").unwrap_or(10) as usize;
+
+                let db = shared.read().await;
+                let config = nietzsche_algo::PageRankConfig {
+                    damping_factor: 0.85,
+                    max_iterations: 20,
+                    convergence_threshold: 1e-7,
+                };
+                let result = nietzsche_algo::pagerank(
+                    db.storage(), db.adjacency(), &config
+                ).map_err(graph_err)?;
+
+                // Sort by score descending and take top `limit`
+                let mut scored: Vec<(Uuid, f64)> = result.scores.into_iter().collect();
+                scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+                // Hydrate nodes with full content via get_node
+                let nodes: Vec<nietzsche::AqlCognitiveNode> = scored.into_iter()
+                    .take(limit)
+                    .filter_map(|(nid, score)| {
+                        let node = db.storage().get_node(&nid).ok()??;
+                        Some(aql_node_from_graph(&node, score as f32))
+                    })
+                    .collect();
+                let count = nodes.len() as u32;
+
+                Ok(Response::new(nietzsche::AqlResponse {
+                    status: "ok".into(),
+                    nodes,
+                    metadata: Some(aql_metadata("REFLECT", count, start)),
                     ..Default::default()
                 }))
             }
