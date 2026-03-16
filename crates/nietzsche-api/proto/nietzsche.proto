@@ -191,6 +191,9 @@ message AqlCognitiveNode {
   float  valence   = 6;
   float  arousal   = 7;
   bytes  metadata  = 8;  // JSON-encoded arbitrary metadata
+  float  confidence = 9;  // node energy as confidence proxy
+  string created_at = 10; // RFC3339 timestamp
+  string updated_at = 11; // RFC3339 timestamp (same as created_at if no updates)
 }
 
 message AqlCognitiveEdge {

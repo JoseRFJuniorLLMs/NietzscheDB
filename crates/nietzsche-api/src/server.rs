@@ -3664,19 +3664,33 @@ impl NietzscheDb for NietzscheServer {
                     return Err(Status::invalid_argument("RECALL requires a quoted query string"));
                 }
 
-                let db = shared.read().await;
+                // Use write lock so we can apply recall energy boosts
+                let db = shared.write().await;
                 let fts = nietzsche_graph::FullTextIndex::new(db.storage());
                 let results = fts.search(&query_text, limit).map_err(graph_err)?;
 
+                let mut side_effects = Vec::new();
                 let nodes: Vec<nietzsche::AqlCognitiveNode> = results.into_iter().filter_map(|r| {
                     let node = db.storage().get_node(&r.node_id).ok()??;
+                    // Recall energy boost: recalled nodes get a small energy bump
+                    let delta = 0.01f32;
+                    let new_energy = (node.energy + delta).min(1.0);
+                    if let Ok(Some(mut meta)) = db.storage().get_node_meta(&r.node_id) {
+                        meta.energy = new_energy;
+                        if db.storage().put_node_meta(&meta).is_ok() {
+                            side_effects.push(format!("EnergyBoost({}, +{})", r.node_id, delta));
+                        }
+                    }
                     Some(aql_node_from_graph(&node, r.score as f32))
                 }).collect();
                 let count = nodes.len() as u32;
 
+                let mut meta = aql_metadata_with_energy("RECALL", count, start, &nodes);
+                meta.side_effects = side_effects;
+
                 Ok(Response::new(nietzsche::AqlResponse {
                     status: "ok".into(),
-                    metadata: Some(aql_metadata_with_energy("RECALL", count, start, &nodes)),
+                    metadata: Some(meta),
                     nodes,
                     ..Default::default()
                 }))
@@ -3726,15 +3740,22 @@ impl NietzscheDb for NietzscheServer {
                 let mut db = shared.write().await;
                 db.insert_node(node).map_err(graph_err)?;
 
+                let mut side_effects = vec![format!("NodeCreated({})", id)];
+
                 // Side-effect: link if requested
                 if let Some(link_to) = extract_param_str(&statement, "LINK_TO") {
                     if let Ok(target_id) = link_to.parse::<Uuid>() {
                         let edge = Edge::new(id, target_id, EdgeType::Association, 1.0);
                         if let Err(e) = db.insert_edge(edge) {
                             warn!(node_id = %id, "IMPRINT LINK_TO edge creation failed: {}", e);
+                        } else {
+                            side_effects.push(format!("EdgeCreated({} -> {})", id, target_id));
                         }
                     }
                 }
+
+                let mut meta = aql_metadata("IMPRINT", 1, start);
+                meta.side_effects = side_effects;
 
                 Ok(Response::new(nietzsche::AqlResponse {
                     status: "ok".into(),
@@ -3745,7 +3766,7 @@ impl NietzscheDb for NietzscheServer {
                         energy,
                         ..Default::default()
                     }],
-                    metadata: Some(aql_metadata("IMPRINT", 1, start)),
+                    metadata: Some(meta),
                     ..Default::default()
                 }))
             }
@@ -3776,6 +3797,9 @@ impl NietzscheDb for NietzscheServer {
                 let edge = Edge::new(from_id, to_id, edge_type, weight);
                 db.insert_edge(edge).map_err(graph_err)?;
 
+                let mut meta = aql_metadata("ASSOCIATE", 1, start);
+                meta.side_effects.push(format!("EdgeCreated({} -> {})", from_id, to_id));
+
                 Ok(Response::new(nietzsche::AqlResponse {
                     status: "ok".into(),
                     edges: vec![nietzsche::AqlCognitiveEdge {
@@ -3784,7 +3808,7 @@ impl NietzscheDb for NietzscheServer {
                         edge_type: edge_type_str,
                         weight,
                     }],
-                    metadata: Some(aql_metadata("ASSOCIATE", 1, start)),
+                    metadata: Some(meta),
                     ..Default::default()
                 }))
             }
@@ -4043,14 +4067,18 @@ impl NietzscheDb for NietzscheServer {
 
                 if new_energy <= 0.01 {
                     db.delete_node(node_id).map_err(graph_err)?;
+                    let mut meta = aql_metadata("FADE", 1, start);
+                    meta.side_effects.push(format!("NodeDeleted({})", node_id));
                     Ok(Response::new(nietzsche::AqlResponse {
                         status: "ok".into(),
-                        metadata: Some(aql_metadata("FADE", 1, start)),
+                        metadata: Some(meta),
                         execution_plan: format!("Node {} deleted (energy depleted)", node_id),
                         ..Default::default()
                     }))
                 } else {
                     db.update_energy(node_id, new_energy).map_err(graph_err)?;
+                    let mut meta = aql_metadata("FADE", 1, start);
+                    meta.side_effects.push(format!("EnergyDecay({}, -{:.2})", node_id, delta));
                     Ok(Response::new(nietzsche::AqlResponse {
                         status: "ok".into(),
                         nodes: vec![nietzsche::AqlCognitiveNode {
@@ -4059,7 +4087,7 @@ impl NietzscheDb for NietzscheServer {
                             energy: new_energy,
                             ..Default::default()
                         }],
-                        metadata: Some(aql_metadata("FADE", 1, start)),
+                        metadata: Some(meta),
                         ..Default::default()
                     }))
                 }
@@ -4259,12 +4287,20 @@ fn aql_node_from_graph(node: &Node, magnitude: f32) -> nietzsche::AqlCognitiveNo
         serde_json::Value::String(s) => s.clone(),
         other => other.to_string(),
     };
+    // Format unix timestamp as ISO 8601 UTC string.
+    // NodeMeta only has created_at (i64 seconds); no separate updated_at.
+    let created_rfc = unix_to_rfc3339(node.created_at);
     nietzsche::AqlCognitiveNode {
         id: node.id.to_string(),
         content,
         node_type: format!("{:?}", node.node_type),
         energy: node.energy,
         magnitude,
+        valence: node.valence,
+        arousal: node.arousal,
+        confidence: node.energy, // use energy as confidence proxy
+        created_at: created_rfc.clone(),
+        updated_at: created_rfc, // no separate updated_at in NodeMeta; mirror created_at
         ..Default::default()
     }
 }
@@ -4351,4 +4387,44 @@ fn extract_param_str(input: &str, keyword: &str) -> Option<String> {
     let pos = find_keyword_word(input, keyword)?;
     let after = &input[pos + keyword.len()..].trim_start();
     Some(after.split_whitespace().next()?.to_string())
+}
+
+/// Convert a unix timestamp (seconds since epoch) to an RFC 3339 / ISO 8601 UTC string.
+/// Returns empty string for invalid timestamps.
+fn unix_to_rfc3339(secs: i64) -> String {
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    if secs < 0 { return String::new(); }
+    let st = UNIX_EPOCH + Duration::from_secs(secs as u64);
+    // Format as "YYYY-MM-DDTHH:MM:SSZ" using the humantime crate-free approach.
+    // SystemTime → duration since epoch → manual date components.
+    // For simplicity, use the Display impl of httpdate-style formatting.
+    // Actually, the simplest robust approach: format as unix seconds string
+    // and let the client interpret. But RFC3339 is better for interop.
+    let dur = st.duration_since(UNIX_EPOCH).unwrap_or_default();
+    let total_secs = dur.as_secs();
+    // Calculate date components (UTC)
+    let days = total_secs / 86400;
+    let time_secs = total_secs % 86400;
+    let hours = time_secs / 3600;
+    let minutes = (time_secs % 3600) / 60;
+    let seconds = time_secs % 60;
+    // Days since 1970-01-01 to (year, month, day) — civil calendar algorithm
+    let (y, m, d) = civil_from_days(days as i64);
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, m, d, hours, minutes, seconds)
+}
+
+/// Convert days since 1970-01-01 to (year, month, day).
+/// Algorithm from Howard Hinnant's `chrono`-compatible date library.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
 }
