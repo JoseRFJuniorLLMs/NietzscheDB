@@ -3769,14 +3769,46 @@ impl NietzscheDb for NietzscheServer {
                 let costs = dijkstra(db.storage(), db.adjacency(), from_id, &config)
                     .map_err(graph_err)?;
 
-                // Sort by distance and stop at target node
-                let mut entries: Vec<(Uuid, f64)> = costs.into_iter().collect();
-                entries.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-
-                // If target was found, truncate to only include nodes up to target
-                if let Some(pos) = entries.iter().position(|(id, _)| *id == to_id) {
-                    entries.truncate(pos + 1);
-                }
+                // Reconstruct actual shortest path from source to target
+                // by backtracking: at each step pick the neighbor with the
+                // lowest cost that is strictly less than the current node's cost.
+                let entries: Vec<(Uuid, f64)> = if costs.contains_key(&to_id) {
+                    let mut path = vec![(to_id, costs[&to_id])];
+                    let mut current = to_id;
+                    while current != from_id {
+                        let cur_cost = costs[&current];
+                        // Find the neighbor (via incoming edges) that is on the shortest path
+                        let mut best: Option<(Uuid, f64)> = None;
+                        // Predecessors: nodes with outgoing edges TO current
+                        // (dijkstra follows neighbors_out, so backtrack via neighbors_in)
+                        let mut candidates = db.adjacency().neighbors_in(&current);
+                        // Also check outgoing in case of undirected/bidirectional edges
+                        candidates.extend(db.adjacency().neighbors_out(&current));
+                        for neighbor_id in candidates {
+                            if let Some(&nc) = costs.get(&neighbor_id) {
+                                if nc < cur_cost {
+                                    if best.is_none() || nc < best.unwrap().1 {
+                                        best = Some((neighbor_id, nc));
+                                    }
+                                }
+                            }
+                        }
+                        match best {
+                            Some((nid, nc)) => {
+                                path.push((nid, nc));
+                                current = nid;
+                            }
+                            None => break, // no predecessor found, path is broken
+                        }
+                    }
+                    path.reverse();
+                    path
+                } else {
+                    // Target not reachable — return all visited sorted by distance
+                    let mut all: Vec<(Uuid, f64)> = costs.into_iter().collect();
+                    all.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+                    all
+                };
 
                 let nodes: Vec<nietzsche::AqlCognitiveNode> = entries.iter().filter_map(|(nid, dist)| {
                     let node = db.storage().get_node(nid).ok()??;
@@ -4001,9 +4033,13 @@ fn dream_session_to_proto(s: nietzsche_dream::DreamSession) -> nietzsche::DreamS
 
 /// Convert a graph Node to an AQL cognitive node proto.
 fn aql_node_from_graph(node: &Node, magnitude: f32) -> nietzsche::AqlCognitiveNode {
+    let content = match &node.content {
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    };
     nietzsche::AqlCognitiveNode {
         id: node.id.to_string(),
-        content: node.content.to_string(),
+        content,
         node_type: format!("{:?}", node.node_type),
         energy: node.energy,
         magnitude,
@@ -4029,27 +4065,39 @@ fn extract_quoted(input: &str) -> Option<String> {
     Some(rest[..end].to_string())
 }
 
+/// Find a keyword in `haystack` that appears as a whole word (surrounded by
+/// whitespace or string boundaries). Returns the byte offset of the match.
+fn find_keyword_word(haystack: &str, keyword: &str) -> Option<usize> {
+    let hay_upper = haystack.to_uppercase();
+    let kw_upper = keyword.to_uppercase();
+    for (i, _) in hay_upper.match_indices(&kw_upper) {
+        let before_ok = i == 0 || haystack.as_bytes()[i - 1].is_ascii_whitespace();
+        let after = i + kw_upper.len();
+        let after_ok = after >= haystack.len() || haystack.as_bytes()[after].is_ascii_whitespace();
+        if before_ok && after_ok {
+            return Some(i);
+        }
+    }
+    None
+}
+
 /// Extract a u32 parameter after a keyword (e.g., "LIMIT 10" → 10).
 fn extract_param_u32(input: &str, keyword: &str) -> Option<u32> {
-    let upper = input.to_uppercase();
-    let pos = upper.find(keyword)?;
+    let pos = find_keyword_word(input, keyword)?;
     let after = &input[pos + keyword.len()..].trim_start();
     after.split_whitespace().next()?.parse().ok()
 }
 
 /// Extract a f32 parameter after a keyword.
 fn extract_param_f32(input: &str, keyword: &str) -> Option<f32> {
-    let upper = input.to_uppercase();
-    let pos = upper.find(keyword)?;
+    let pos = find_keyword_word(input, keyword)?;
     let after = &input[pos + keyword.len()..].trim_start();
     after.split_whitespace().next()?.parse().ok()
 }
 
 /// Extract a string parameter after a keyword (e.g., "AS Episodic" → "Episodic").
 fn extract_param_str(input: &str, keyword: &str) -> Option<String> {
-    let upper = input.to_uppercase();
-    let kw_upper = keyword.to_uppercase();
-    let pos = upper.find(&kw_upper)?;
+    let pos = find_keyword_word(input, keyword)?;
     let after = &input[pos + keyword.len()..].trim_start();
     Some(after.split_whitespace().next()?.to_string())
 }
