@@ -3676,8 +3676,8 @@ impl NietzscheDb for NietzscheServer {
 
                 Ok(Response::new(nietzsche::AqlResponse {
                     status: "ok".into(),
+                    metadata: Some(aql_metadata_with_energy("RECALL", count, start, &nodes)),
                     nodes,
-                    metadata: Some(aql_metadata("RECALL", count, start)),
                     ..Default::default()
                 }))
             }
@@ -3699,7 +3699,24 @@ impl NietzscheDb for NietzscheServer {
                     let guard = shared.read().await;
                     guard.vector_dim()
                 };
-                let pv = PoincareVector::origin(col_dim);
+                // Place the new node at a random position in the Poincaré ball
+                // (magnitude 0.1–0.3) instead of origin, so KNN works between IMPRINT nodes.
+                let pv = {
+                    use rand::Rng;
+                    let mut rng = rand::thread_rng();
+                    let magnitude = rng.gen_range(0.1f32..0.3);
+                    let mut coords = vec![0.0f32; col_dim];
+                    for c in coords.iter_mut() {
+                        *c = rng.gen_range(-1.0f32..1.0);
+                    }
+                    let norm: f32 = coords.iter().map(|x| x * x).sum::<f32>().sqrt();
+                    if norm > 0.0 {
+                        for c in coords.iter_mut() {
+                            *c = *c / norm * magnitude;
+                        }
+                    }
+                    PoincareVector::new(coords)
+                };
                 let json_content = serde_json::Value::String(content.clone());
 
                 let mut node = Node::new(id, pv, json_content);
@@ -3745,6 +3762,17 @@ impl NietzscheDb for NietzscheServer {
                 let weight = extract_param_f32(&upper, "WEIGHT").unwrap_or(1.0);
 
                 let mut db = shared.write().await;
+
+                // Verify both endpoints exist before creating edge
+                let source_exists = db.storage().get_node(&from_id).map_err(graph_err)?.is_some();
+                let target_exists = db.storage().get_node(&to_id).map_err(graph_err)?.is_some();
+                if !source_exists || !target_exists {
+                    let missing = if !source_exists { from_id } else { to_id };
+                    return Err(Status::not_found(format!(
+                        "ASSOCIATE failed: node {} not found", missing
+                    )));
+                }
+
                 let edge = Edge::new(from_id, to_id, edge_type, weight);
                 db.insert_edge(edge).map_err(graph_err)?;
 
@@ -3790,10 +3818,9 @@ impl NietzscheDb for NietzscheServer {
                         let mut best: Option<(Uuid, f64)> = None;
                         // Predecessors: nodes with outgoing edges TO current
                         // (dijkstra follows neighbors_out, so backtrack via neighbors_in)
-                        let mut candidates = db.adjacency().neighbors_in(&current);
-                        // Also check outgoing in case of undirected/bidirectional edges
-                        candidates.extend(db.adjacency().neighbors_out(&current));
-                        for neighbor_id in candidates {
+                        // Only follow incoming edges for backtracking: Dijkstra explores
+                        // forward via neighbors_out, so predecessors are reached via neighbors_in.
+                        for neighbor_id in db.adjacency().neighbors_in(&current) {
                             if visited.contains(&neighbor_id) {
                                 continue;
                             }
@@ -3866,8 +3893,8 @@ impl NietzscheDb for NietzscheServer {
 
                 Ok(Response::new(nietzsche::AqlResponse {
                     status: "ok".into(),
+                    metadata: Some(aql_metadata_with_energy("RESONATE", count, start, &best_nodes)),
                     nodes: best_nodes,
-                    metadata: Some(aql_metadata("RESONATE", count, start)),
                     ..Default::default()
                 }))
             }
@@ -3902,8 +3929,8 @@ impl NietzscheDb for NietzscheServer {
 
                 Ok(Response::new(nietzsche::AqlResponse {
                     status: "ok".into(),
+                    metadata: Some(aql_metadata_with_energy("REFLECT", count, start, &nodes)),
                     nodes,
-                    metadata: Some(aql_metadata("REFLECT", count, start)),
                     ..Default::default()
                 }))
             }
@@ -3911,6 +3938,50 @@ impl NietzscheDb for NietzscheServer {
                 let limit = extract_param_u32(&upper, "LIMIT").unwrap_or(10) as usize;
 
                 let db = shared.read().await;
+
+                // Scope-limit Louvain: on large collections (>10K nodes), use
+                // a local subgraph seeded from FTS or PageRank top nodes to
+                // avoid running full Louvain on 865K+ nodes.
+                let node_count = db.storage().scan_nodes_meta()
+                    .map(|v| v.len()).unwrap_or(0);
+                const MAX_LOUVAIN_NODES: usize = 10_000;
+
+                if node_count > MAX_LOUVAIN_NODES {
+                    // For large collections, use PageRank top-N as a fast proxy
+                    // instead of running unbounded Louvain.
+                    let pr_config = nietzsche_algo::PageRankConfig {
+                        damping_factor: 0.85,
+                        max_iterations: 10,
+                        convergence_threshold: 1e-5,
+                    };
+                    let pr_result = nietzsche_algo::pagerank(
+                        db.storage(), db.adjacency(), &pr_config
+                    ).map_err(graph_err)?;
+
+                    let mut scored: Vec<(Uuid, f64)> = pr_result.scores.into_iter().collect();
+                    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+                    let nodes: Vec<nietzsche::AqlCognitiveNode> = scored.into_iter()
+                        .take(limit)
+                        .filter_map(|(nid, score)| {
+                            let node = db.storage().get_node(&nid).ok()??;
+                            Some(aql_node_from_graph(&node, score as f32))
+                        })
+                        .collect();
+                    let count = nodes.len() as u32;
+
+                    return Ok(Response::new(nietzsche::AqlResponse {
+                        status: "ok".into(),
+                        metadata: Some(aql_metadata_with_energy("DISTILL", count, start, &nodes)),
+                        nodes,
+                        execution_plan: format!(
+                            "DISTILL: collection too large ({} nodes > {}), used PageRank proxy",
+                            node_count, MAX_LOUVAIN_NODES
+                        ),
+                        ..Default::default()
+                    }));
+                }
+
                 // DISTILL uses Louvain community detection (NOT PageRank like REFLECT)
                 // to find clusters and return one representative node per community
                 let config = nietzsche_algo::LouvainConfig {
@@ -3951,8 +4022,8 @@ impl NietzscheDb for NietzscheServer {
 
                 Ok(Response::new(nietzsche::AqlResponse {
                     status: "ok".into(),
+                    metadata: Some(aql_metadata_with_energy("DISTILL", count, start, &nodes)),
                     nodes,
-                    metadata: Some(aql_metadata("DISTILL", count, start)),
                     ..Default::default()
                 }))
             }
@@ -4004,17 +4075,119 @@ impl NietzscheDb for NietzscheServer {
                 let report = SleepCycle::run(&config, &mut *db, &mut rng)
                     .map_err(|e| Status::internal(format!("DREAM failed: {e}")))?;
 
+                let topic_label = if topic.is_empty() { "free".to_string() } else { topic.clone() };
+                let mut meta = aql_metadata("DREAM", report.nodes_perturbed as u32, start);
+                if !topic.is_empty() {
+                    meta.side_effects.push(format!("topic={}", topic));
+                }
+
                 Ok(Response::new(nietzsche::AqlResponse {
                     status: "ok".into(),
-                    metadata: Some(aql_metadata("DREAM", report.nodes_perturbed as u32, start)),
+                    metadata: Some(meta),
                     execution_plan: format!(
                         "Dream cycle: hausdorff {:.4} → {:.4}, {} nodes perturbed, committed={}. Topic: {}",
                         report.hausdorff_before, report.hausdorff_after,
                         report.nodes_perturbed, report.committed,
-                        if topic.is_empty() { "free" } else { &topic }
+                        topic_label
                     ),
                     ..Default::default()
                 }))
+            }
+            "DESCEND" | "ASCEND" | "ORBIT" => {
+                // Navigate the Poincaré hierarchy by magnitude.
+                // DESCEND: deeper nodes (higher magnitude).
+                // ASCEND:  shallower nodes (lower magnitude).
+                // ORBIT:   nodes at similar depth (magnitude within tolerance).
+                let query_text = extract_quoted(&statement).unwrap_or_default();
+                let depth = extract_param_u32(&upper, "DEPTH").unwrap_or(3) as usize;
+                let limit = extract_param_u32(&upper, "LIMIT").unwrap_or(20) as usize;
+                let tolerance = extract_param_f32(&upper, "RADIUS").unwrap_or(0.2) as f64;
+
+                if query_text.is_empty() {
+                    return Err(Status::invalid_argument(format!("{} requires a quoted seed query", verb)));
+                }
+
+                let db = shared.read().await;
+
+                // Find the seed node via full-text search
+                let fts = nietzsche_graph::FullTextIndex::new(db.storage());
+                let fts_results = fts.search(&query_text, 1).map_err(graph_err)?;
+                let seed = fts_results.first().ok_or_else(|| {
+                    Status::not_found(format!("No node found matching '{}'", query_text))
+                })?;
+
+                let seed_node = db.storage().get_node(&seed.node_id).map_err(graph_err)?
+                    .ok_or_else(|| Status::not_found("Seed node not found in storage"))?;
+                let seed_mag = seed_node.embedding.norm();
+
+                // BFS from seed, then filter by magnitude comparison
+                let config = BfsConfig { max_depth: depth, ..Default::default() };
+                let visited = bfs(db.storage(), db.adjacency(), seed.node_id, &config)
+                    .map_err(graph_err)?;
+
+                let nodes: Vec<nietzsche::AqlCognitiveNode> = visited.iter().filter_map(|nid| {
+                    let node = db.storage().get_node(nid).ok()??;
+                    let mag = node.embedding.norm();
+                    let keep = match verb {
+                        "DESCEND" => mag > seed_mag,
+                        "ASCEND"  => mag < seed_mag,
+                        "ORBIT"   => (mag - seed_mag).abs() < tolerance,
+                        _ => false,
+                    };
+                    if keep {
+                        Some(aql_node_from_graph(&node, mag as f32))
+                    } else {
+                        None
+                    }
+                }).take(limit).collect();
+
+                let count = nodes.len() as u32;
+                Ok(Response::new(nietzsche::AqlResponse {
+                    status: "ok".into(),
+                    metadata: Some(aql_metadata_with_energy(verb, count, start, &nodes)),
+                    nodes,
+                    execution_plan: format!(
+                        "{} from seed '{}' (mag={:.4}), depth={}, found {} nodes",
+                        verb, query_text, seed_mag, depth, count
+                    ),
+                    ..Default::default()
+                }))
+            }
+            "IMAGINE" => {
+                // Creative generation stub — runs KNN/FTS search and returns results.
+                // TODO: integrate with generative model for creative synthesis.
+                let query_text = extract_quoted(&statement).unwrap_or_default();
+                let limit = extract_param_u32(&upper, "LIMIT").unwrap_or(5) as usize;
+                if query_text.is_empty() {
+                    return Err(Status::invalid_argument("IMAGINE requires a quoted prompt"));
+                }
+
+                let db = shared.read().await;
+                let fts = nietzsche_graph::FullTextIndex::new(db.storage());
+                let results = fts.search(&query_text, limit).map_err(graph_err)?;
+
+                let nodes: Vec<nietzsche::AqlCognitiveNode> = results.into_iter().filter_map(|r| {
+                    let node = db.storage().get_node(&r.node_id).ok()??;
+                    Some(aql_node_from_graph(&node, r.score as f32))
+                }).collect();
+                let count = nodes.len() as u32;
+
+                Ok(Response::new(nietzsche::AqlResponse {
+                    status: "ok".into(),
+                    metadata: Some(aql_metadata_with_energy("IMAGINE", count, start, &nodes)),
+                    nodes,
+                    execution_plan: format!(
+                        "IMAGINE '{}': returned {} seed concepts (creative generation pending)",
+                        query_text, count
+                    ),
+                    ..Default::default()
+                }))
+            }
+            "WATCH" => {
+                // Subscription verb — not supported in synchronous gRPC unary mode.
+                Err(Status::unimplemented(
+                    "WATCH not supported in synchronous mode; use streaming RPC or polling"
+                ))
             }
             _ => {
                 // Fallback: try to execute as NQL
@@ -4036,8 +4209,8 @@ impl NietzscheDb for NietzscheServer {
 
                         Ok(Response::new(nietzsche::AqlResponse {
                             status: "ok".into(),
+                            metadata: Some(aql_metadata_with_energy("NQL_FALLBACK", count, start, &nodes)),
                             nodes,
-                            metadata: Some(aql_metadata("NQL_FALLBACK", count, start)),
                             execution_plan: format!("Executed as NQL: {}", statement),
                             ..Default::default()
                         }))
@@ -4106,12 +4279,41 @@ fn aql_metadata(verb: &str, count: u32, start: std::time::Instant) -> nietzsche:
     }
 }
 
-/// Extract first double-quoted string from input.
+/// Enrich metadata with energy statistics computed from the result nodes.
+fn aql_metadata_with_energy(
+    verb: &str,
+    count: u32,
+    start: std::time::Instant,
+    nodes: &[nietzsche::AqlCognitiveNode],
+) -> nietzsche::AqlResultMetadata {
+    let mut meta = aql_metadata(verb, count, start);
+    if !nodes.is_empty() {
+        let energies: Vec<f32> = nodes.iter().map(|n| n.energy).collect();
+        meta.avg_energy = energies.iter().sum::<f32>() / energies.len() as f32;
+        meta.max_energy = energies.iter().cloned().fold(0.0f32, f32::max);
+    }
+    meta
+}
+
+/// Extract first double-quoted string from input, supporting escaped quotes (`\"`).
 fn extract_quoted(input: &str) -> Option<String> {
-    let start = input.find('"')?;
-    let rest = &input[start + 1..];
-    let end = rest.find('"')?;
-    Some(rest[..end].to_string())
+    let bytes = input.as_bytes();
+    let start = bytes.iter().position(|&b| b == b'"')? + 1;
+    let mut i = start;
+    let mut result = String::new();
+    while i < bytes.len() {
+        if bytes[i] == b'\\' && i + 1 < bytes.len() {
+            // Push the escaped character (e.g., `\"` → `"`)
+            result.push(bytes[i + 1] as char);
+            i += 2;
+        } else if bytes[i] == b'"' {
+            return Some(result);
+        } else {
+            result.push(bytes[i] as char);
+            i += 1;
+        }
+    }
+    None
 }
 
 /// Find a keyword in `haystack` that appears as a whole word (surrounded by
