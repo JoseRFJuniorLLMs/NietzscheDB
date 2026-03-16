@@ -3731,7 +3731,13 @@ impl NietzscheDb for NietzscheServer {
                     }
                     PoincareVector::new(coords)
                 };
-                let json_content = serde_json::Value::String(content.clone());
+                // Store content as JSON map (matches Go IMPRINT: {"content": "...", "epistemic_type": "..."})
+                // so FTS indexes consistently across backends.
+                let json_content = serde_json::json!({
+                    "content": content,
+                    "description": content,
+                    "epistemic_type": node_type_str,
+                });
 
                 let mut node = Node::new(id, pv, json_content);
                 node.node_type = node_type;
@@ -3771,10 +3777,15 @@ impl NietzscheDb for NietzscheServer {
                 }))
             }
             "ASSOCIATE" => {
-                let tokens: Vec<&str> = statement.split_whitespace().collect();
-                let from_str = tokens.get(1).unwrap_or(&"");
+                // Support: ASSOCIATE <uuid> TO <uuid>  or  ASSOCIATE FROM <uuid> TO <uuid>
+                let from_str = extract_param_str(&statement, "FROM")
+                    .or_else(|| {
+                        let tokens: Vec<&str> = statement.split_whitespace().collect();
+                        tokens.get(1).map(|s| s.to_string())
+                    })
+                    .unwrap_or_default();
                 let to_str = extract_param_str(&statement, "TO").unwrap_or_default();
-                let from_id = parse_uuid(from_str, "from")?;
+                let from_id = parse_uuid(&from_str, "from")?;
                 let to_id = parse_uuid(&to_str, "to")?;
                 let edge_type = extract_param_str(&statement, "TYPE")
                     .map(|s| parse_edge_type(&s))
@@ -3813,10 +3824,16 @@ impl NietzscheDb for NietzscheServer {
                 }))
             }
             "TRACE" => {
-                let tokens: Vec<&str> = statement.split_whitespace().collect();
-                let from_str = tokens.get(1).unwrap_or(&"");
+                // Support both: TRACE <uuid> TO <uuid>  and  TRACE FROM <uuid> TO <uuid>
+                let from_str = extract_param_str(&statement, "FROM")
+                    .or_else(|| {
+                        // Fallback: second token (TRACE <uuid> TO <uuid>)
+                        let tokens: Vec<&str> = statement.split_whitespace().collect();
+                        tokens.get(1).map(|s| s.to_string())
+                    })
+                    .unwrap_or_default();
                 let to_str = extract_param_str(&statement, "TO").unwrap_or_default();
-                let from_id = parse_uuid(from_str, "from")?;
+                let from_id = parse_uuid(&from_str, "from")?;
                 let to_id = parse_uuid(&to_str, "to")?;
                 let max_depth = extract_param_u32(&upper, "MAX_DEPTH").unwrap_or(5);
 
@@ -4052,9 +4069,22 @@ impl NietzscheDb for NietzscheServer {
                 }))
             }
             "FADE" => {
-                let tokens: Vec<&str> = statement.split_whitespace().collect();
-                let node_str = tokens.get(1).unwrap_or(&"");
-                let node_id = parse_uuid(node_str, "node_id")?;
+                // Support both UUID and quoted text query:
+                // FADE <uuid>  or  FADE "consciousness"
+                let node_id = if let Some(quoted) = extract_quoted(&statement) {
+                    // Text query — find node via FTS
+                    let db_r = shared.read().await;
+                    let fts = nietzsche_graph::FullTextIndex::new(db_r.storage());
+                    let results = fts.search(&quoted, 1).map_err(graph_err)?;
+                    drop(db_r);
+                    results.first()
+                        .map(|r| r.node_id)
+                        .ok_or_else(|| Status::not_found(format!("No node found matching '{}'", quoted)))?
+                } else {
+                    let tokens: Vec<&str> = statement.split_whitespace().collect();
+                    let node_str = tokens.get(1).unwrap_or(&"");
+                    parse_uuid(node_str, "node_id")?
+                };
                 let delta = extract_param_f32(&upper, "BY").unwrap_or(0.1).abs();
 
                 let mut db = shared.write().await;
@@ -4130,6 +4160,8 @@ impl NietzscheDb for NietzscheServer {
                 let depth = extract_param_u32(&upper, "DEPTH").unwrap_or(3) as usize;
                 let limit = extract_param_u32(&upper, "LIMIT").unwrap_or(20) as usize;
                 let tolerance = extract_param_f32(&upper, "RADIUS").unwrap_or(0.2) as f64;
+                // MAGNITUDE range filter: MAGNITUDE 0.3 means min magnitude
+                let mag_filter = extract_param_f32(&upper, "MAGNITUDE");
 
                 if query_text.is_empty() {
                     return Err(Status::invalid_argument(format!("{} requires a quoted seed query", verb)));
@@ -4162,7 +4194,9 @@ impl NietzscheDb for NietzscheServer {
                         "ORBIT"   => (mag - seed_mag).abs() < tolerance,
                         _ => false,
                     };
-                    if keep {
+                    // Apply MAGNITUDE filter if specified
+                    let mag_ok = mag_filter.map_or(true, |m| mag as f32 >= m);
+                    if keep && mag_ok {
                         Some(aql_node_from_graph(&node, mag as f32))
                     } else {
                         None
@@ -4353,16 +4387,46 @@ fn extract_quoted(input: &str) -> Option<String> {
 }
 
 /// Find a keyword in `haystack` that appears as a whole word (surrounded by
-/// whitespace or string boundaries). Returns the byte offset of the match.
+/// whitespace or string boundaries), ignoring content inside quoted strings.
+/// Returns the byte offset of the match in the original haystack.
 fn find_keyword_word(haystack: &str, keyword: &str) -> Option<usize> {
     let hay_upper = haystack.to_uppercase();
     let kw_upper = keyword.to_uppercase();
-    for (i, _) in hay_upper.match_indices(&kw_upper) {
-        let before_ok = i == 0 || haystack.as_bytes()[i - 1].is_ascii_whitespace();
-        let after = i + kw_upper.len();
-        let after_ok = after >= haystack.len() || haystack.as_bytes()[after].is_ascii_whitespace();
+
+    // Build a set of byte ranges that are inside quoted strings (to skip)
+    let mut in_quotes: Vec<(usize, usize)> = Vec::new();
+    let bytes = haystack.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            let start = i;
+            i += 1;
+            while i < bytes.len() {
+                if bytes[i] == b'\\' && i + 1 < bytes.len() {
+                    i += 2;
+                } else if bytes[i] == b'"' {
+                    i += 1;
+                    break;
+                } else {
+                    i += 1;
+                }
+            }
+            in_quotes.push((start, i));
+        } else {
+            i += 1;
+        }
+    }
+
+    for (pos, _) in hay_upper.match_indices(&kw_upper) {
+        // Skip if this match falls inside a quoted string
+        if in_quotes.iter().any(|&(qs, qe)| pos >= qs && pos < qe) {
+            continue;
+        }
+        let before_ok = pos == 0 || bytes[pos - 1].is_ascii_whitespace();
+        let after = pos + kw_upper.len();
+        let after_ok = after >= bytes.len() || bytes[after].is_ascii_whitespace();
         if before_ok && after_ok {
-            return Some(i);
+            return Some(pos);
         }
     }
     None
