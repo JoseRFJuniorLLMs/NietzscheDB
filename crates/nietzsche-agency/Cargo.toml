@@ -9,6 +9,7 @@ default = []
 cuda = ["dep:cudarc"]
 
 [dependencies]
+nietzsche-core       = { path = "../nietzsche-core" }
 nietzsche-graph      = { path = "../nietzsche-graph" }
 nietzsche-hyp-ops    = { path = "../nietzsche-hyp-ops" }
 nietzsche-epistemics = { path = "../nietzsche-epistemics" }

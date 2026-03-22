@@ -286,10 +286,16 @@ impl CogEvolver {
     }
 
     fn tournament_select(&mut self) -> CognitiveGenome {
+        let pop_len = self.population.len();
+        // Pre-generate random indices to avoid borrow conflict
+        let indices: Vec<usize> = (0..self.config.tournament_size)
+            .map(|_| {
+                let idx = (self.next_rand() * pop_len as f64) as usize;
+                idx.min(pop_len.saturating_sub(1))
+            })
+            .collect();
         let mut best: Option<&CognitiveGenome> = None;
-        for _ in 0..self.config.tournament_size {
-            let idx = (self.next_rand() * self.population.len() as f64) as usize;
-            let idx = idx.min(self.population.len().saturating_sub(1));
+        for idx in indices {
             let candidate = &self.population[idx];
             if best.map_or(true, |b| candidate.fitness > b.fitness) {
                 best = Some(candidate);
