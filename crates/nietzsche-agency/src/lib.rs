@@ -117,6 +117,14 @@ pub mod cognitive_layer;
 // Phase 27 — Epistemic Evolution (autoresearch-style knowledge evolution)
 pub mod evolution_27;
 
+// Phase 28 — Phantom Reaper (automatic cleanup of empty-content nodes)
+pub mod reap_phantoms;
+
+// NietzscheEvolve — Evolutionary tuning (AlphaEvolve-inspired)
+pub mod energy_evolve;
+pub mod cog_evolve;
+pub mod evolve_persist;
+
 // Neural Structural Evolution (ONNX-driven L-System strategy)
 pub mod neural_evolution;
 
@@ -267,6 +275,34 @@ pub use cognitive_layer::{
 pub use evolution_27::{
     Evolution27Config, Evolution27Report, EvolutionProposal, EvolutionMutationType,
     build_evolution_27_config, run_evolution_27_scan,
+};
+
+// Phase 28 — Phantom Reaper
+pub use reap_phantoms::{
+    ReapPhantomConfig, ReapPhantomReport,
+    build_reap_phantom_config, scan_reap_phantoms,
+};
+
+// NietzscheEvolve — Energy Evolution
+pub use energy_evolve::{
+    EnergyGenome, EnergyEvolveConfig, EnergyEvolveReport, SimNode, SimulationResult,
+    simulate_energy_genome, energy_fitness, run_energy_evolution,
+};
+
+// NietzscheEvolve — Genome Persistence & Auto-Apply
+pub use evolve_persist::{
+    persist_genome, load_genome,
+    persist_energy_genome, persist_cog_genome, persist_hnsw_genome,
+    apply_evolved_energy, apply_evolved_cog, apply_evolved_hnsw,
+    apply_all_evolved_params,
+    EvolvedEnergyParams, EvolvedCogParams, EvolvedHnswParams,
+    META_ENERGY_GENOME, META_COG_GENOME, META_HNSW_GENOME,
+};
+
+// NietzscheEvolve — Cognitive Strategy Evolution
+pub use cog_evolve::{
+    CognitiveGenome, CogEvolveConfig, CogEvolveReport, CogSimResult,
+    CogEvolver, cognitive_fitness,
 };
 
 // Neural Structural Evolution

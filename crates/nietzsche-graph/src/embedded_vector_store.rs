@@ -74,6 +74,9 @@ trait DynHnsw: Send + Sync {
 
     /// Nominal vector dimension this index was created for.
     fn dim(&self) -> usize;
+
+    /// Access the shared HNSW GlobalConfig (atomic ef_search/ef_construction/m).
+    fn global_config(&self) -> Arc<GlobalConfig>;
 }
 
 // ─── Concrete Cosine HNSW wrapper ────────────────────────────────────────────
@@ -162,6 +165,10 @@ impl<const N: usize> DynHnsw for HnswCosineWrapper<N> {
     fn dim(&self) -> usize {
         N
     }
+
+    fn global_config(&self) -> Arc<GlobalConfig> {
+        self.index.config.clone()
+    }
 }
 
 // ─── Concrete Raw (non-normalizing) HNSW wrapper — BUG-EVS-001 fix ───────────
@@ -233,6 +240,10 @@ impl<const N: usize> DynHnsw for HnswRawWrapper<N> {
 
     fn dim(&self) -> usize {
         N
+    }
+
+    fn global_config(&self) -> Arc<GlobalConfig> {
+        self.index.config.clone()
     }
 }
 
@@ -308,6 +319,10 @@ impl<const N: usize> DynHnsw for HnswPoincareWrapper<N> {
 
     fn dim(&self) -> usize {
         N
+    }
+
+    fn global_config(&self) -> Arc<GlobalConfig> {
+        self.index.config.clone()
     }
 }
 
@@ -616,6 +631,11 @@ impl VectorStore for EmbeddedVectorStore {
 }
 
 impl EmbeddedVectorStore {
+    /// Access the shared HNSW GlobalConfig for runtime parameter tuning.
+    pub fn global_config(&self) -> Arc<GlobalConfig> {
+        self.inner.global_config()
+    }
+
     /// Convert HNSW (id, dist) pairs back to (Uuid, dist).
     fn hnsw_results_to_uuids(&self, raw: Vec<(u32, f64)>) -> Vec<(Uuid, f64)> {
         raw.into_iter()
@@ -738,6 +758,17 @@ impl AnyVectorStore {
     /// ```
     pub fn tpu(store: Box<dyn crate::db::VectorStore>) -> Self {
         Self::Tpu(store)
+    }
+
+    /// Access the HNSW GlobalConfig for runtime parameter tuning.
+    ///
+    /// Returns `None` for Mock/GPU/TPU backends (they don't use the embedded
+    /// HNSW GlobalConfig). Only the `Embedded` backend exposes it.
+    pub fn global_config(&self) -> Option<Arc<GlobalConfig>> {
+        match self {
+            Self::Embedded(s) => Some(s.global_config()),
+            _ => None,
+        }
     }
 
     pub fn backend_name(&self) -> &'static str {

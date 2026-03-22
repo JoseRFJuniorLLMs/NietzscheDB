@@ -14,6 +14,7 @@
 pub mod auto_tuner;
 pub mod config;
 pub mod gpu;
+pub mod param_evolve;
 pub mod vector;
 
 pub use config::GlobalConfig;

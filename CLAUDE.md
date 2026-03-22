@@ -198,13 +198,23 @@ Sem dependencias externas (usa apenas urllib + json da stdlib).
 | 26 | Cognitive Layer | cognitive_interval(30) | Cluster → concept nodes |
 | 27 | Epistemic Evolution | evolution_27_interval(40) | autoresearch-style knowledge evolution |
 
+### NietzscheEvolve (AlphaEvolve-inspired, 2026-03-19)
+Evolucao autonoma de parametros, energia, e estrategias cognitivas:
+- **Phase 27 ACTIVO**: agora ligado ao engine.tick() e executa mutations reais
+- **ParameterEvolve**: `crates/nietzsche-core/src/param_evolve.rs` — HNSW tuning evolutivo
+- **EnergyEvolve**: `crates/nietzsche-agency/src/energy_evolve.rs` — funcoes de energia evoluidas
+- **CogEvolve**: `crates/nietzsche-agency/src/cog_evolve.rs` — estrategias cognitivas da EVA
+- **HypothesisEvolve**: `nietzsche-lab/prompt_evolve.py` — meta-evolucao de prompts LLM
+- **Dashboard**: `GET /api/agency/nietzsche-evolve?collection=X`
+- Docs: `docs/roadmap/NietzscheEvolve.md`
+
 ### Padrao de intents
 O engine produz `AgencyIntent` (read-only) → server handler executa mutations (write lock):
 - `ApplyTemporalDecay` → `storage().get_edge()` + `storage().put_edge()`
 - `PruneDecayedEdge` → `delete_edge(id)`
 - `ProposeEdge` → `insert_edge(Edge::new(...))`
 - `ProposeConcept` → `insert_node(concept)` + `insert_edge()` por membro
-- `EpistemicMutation` → avalia qualidade epistemica + aplica/rejeita mutacao
+- `EpistemicMutation` → executa ProposeEdge/EnergyBoost/Reclassify/PruneEdge (Phase 27 ACTIVO)
 
 ### Config env vars (todas com prefixo AGENCY_)
 

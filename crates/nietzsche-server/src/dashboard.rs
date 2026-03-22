@@ -228,6 +228,7 @@ pub async fn serve(
         .route("/api/agency/desires/:id/fulfill", post(agency_fulfill_desire))
         .route("/api/agency/observer", get(agency_observer))
         .route("/api/agency/evolution", get(agency_evolution))
+        .route("/api/agency/nietzsche-evolve", get(agency_nietzsche_evolve))
         .route("/api/agency/narrative", get(agency_narrative))
         .route("/api/agency/dashboard", get(agency_dashboard))
         .route("/api/agency/observation", get(agency_observation))
@@ -2140,6 +2141,67 @@ async fn agency_evolution(
         })).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
     }
+}
+
+// GET /api/agency/nietzsche-evolve?collection= — NietzscheEvolve dashboard
+// Shows Phase 27 epistemic evolution status + evolved parameters
+async fn agency_nietzsche_evolve(
+    State((cm, _ops)): State<AppState>,
+    Query(cq): Query<CollectionQuery>,
+) -> impl IntoResponse {
+    let shared = resolve_col!(cm, cq.collection);
+    let db = shared.read().await;
+
+    // Phase 27 epistemic evolution state
+    let evolution_state = nietzsche_agency::RuleEvolution::load_state(db.storage()).ok();
+
+    // Try to read persisted evolution report from CF_META
+    let evolve_report = db.storage().get_meta("agency:nietzsche_evolve_report")
+        .ok()
+        .flatten()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+
+    // Energy genome (if evolved)
+    let energy_genome = db.storage().get_meta("agency:evolved_energy_genome")
+        .ok()
+        .flatten()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+
+    // Cognitive genome (if evolved)
+    let cog_genome = db.storage().get_meta("agency:evolved_cog_genome")
+        .ok()
+        .flatten()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+
+    // HNSW parameter genome (if evolved)
+    let hnsw_genome = db.storage().get_meta("agency:evolved_hnsw_genome")
+        .ok()
+        .flatten()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+
+    Json(serde_json::json!({
+        "nietzsche_evolve": {
+            "description": "AlphaEvolve-inspired evolutionary optimization for NietzscheDB",
+            "phase_27_active": evolution_state.as_ref().map(|s| s.generation > 0).unwrap_or(false),
+            "evolution_state": evolution_state.map(|s| serde_json::json!({
+                "generation": s.generation,
+                "last_strategy": s.last_strategy,
+                "fitness_history": s.fitness_history,
+            })),
+            "evolved_parameters": {
+                "energy_genome": energy_genome,
+                "cognitive_genome": cog_genome,
+                "hnsw_genome": hnsw_genome,
+            },
+            "last_report": evolve_report,
+            "components": [
+                {"name": "ParameterEvolve", "phase": 1, "target": "HNSW ef_search/M/ef_construction"},
+                {"name": "EnergyEvolve", "phase": 2, "target": "decay_rate, hub_bonus, depth_scaling"},
+                {"name": "HypothesisEvolve", "phase": 3, "target": "LLM system prompts"},
+                {"name": "CogEvolve", "phase": 4, "target": "EVA cognitive parameters"},
+            ],
+        }
+    })).into_response()
 }
 
 // GET /api/agency/narrative?collection=

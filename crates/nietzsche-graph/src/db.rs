@@ -1207,6 +1207,8 @@ impl<V: VectorStore> NietzscheDB<V> {
     /// Get a shared Arc reference to the GraphStorage for Swartz SQL engine.
     pub fn storage_arc(&self) -> Arc<GraphStorage> { Arc::clone(&self.storage) }
     pub fn adjacency(&self) -> &AdjacencyIndex { &self.adjacency }
+    /// Access the vector store backend (e.g. for runtime HNSW parameter tuning).
+    pub fn vector_store(&self) -> &V { &self.vector_store }
 
     // ── Ego-Cache (Phase XVII) ────────────────────────
 

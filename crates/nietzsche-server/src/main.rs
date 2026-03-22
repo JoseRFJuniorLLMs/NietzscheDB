@@ -778,6 +778,13 @@ async fn main() -> anyhow::Result<()> {
                                     }
                                 }
                             }
+
+                            // NietzscheEvolve: apply evolved HNSW params to GlobalConfig atomics.
+                            // The engine already applies energy/cog params; HNSW needs the
+                            // vector store's GlobalConfig which only the server layer has access to.
+                            if let Some(gc) = db.vector_store().global_config() {
+                                let _ = nietzsche_agency::evolve_persist::apply_evolved_hnsw(db.storage(), &gc);
+                            }
                         }
 
                         if let Some(ref health) = report.health_report {
@@ -1410,7 +1417,7 @@ async fn main() -> anyhow::Result<()> {
                                                 break; // db was dropped, exit intent loop
                                             }
                                         }
-                                        // ── Phase 27: Epistemic Mutation ──────
+                                        // ── Phase 27: Epistemic Mutation (NietzscheEvolve) ──
                                         nietzsche_agency::AgencyIntent::EpistemicMutation {
                                             mutation_type, node_ids, reason, estimated_delta
                                         } => {
@@ -1420,8 +1427,63 @@ async fn main() -> anyhow::Result<()> {
                                                 nodes      = node_ids.len(),
                                                 delta      = estimated_delta,
                                                 reason     = %reason,
-                                                "Phase 27: epistemic mutation proposed (logged only)"
+                                                "Phase 27: executing epistemic mutation"
                                             );
+                                            match mutation_type.as_str() {
+                                                "ProposeEdge" if node_ids.len() >= 2 => {
+                                                    drop(db);
+                                                    {
+                                                        let mut db_w = shared.write().await;
+                                                        let edge = nietzsche_graph::Edge::new(
+                                                            node_ids[0], node_ids[1],
+                                                            nietzsche_graph::EdgeType::Association,
+                                                            1.0,
+                                                        );
+                                                        if let Err(e) = db_w.insert_edge(edge) {
+                                                            warn!(error = %e, "Phase 27: edge insert failed");
+                                                        }
+                                                    }
+                                                    db = shared.read().await;
+                                                }
+                                                "EnergyBoost" if !node_ids.is_empty() => {
+                                                    if let Ok(Some(mut meta)) = db.storage().get_node_meta(&node_ids[0]) {
+                                                        meta.energy = (meta.energy + 0.05).min(1.0);
+                                                        drop(db);
+                                                        {
+                                                            let mut db_w = shared.write().await;
+                                                            let _ = db_w.storage().put_node_meta(&meta);
+                                                        }
+                                                        db = shared.read().await;
+                                                    }
+                                                }
+                                                "Reclassify" if node_ids.len() >= 2 => {
+                                                    // Swap depth ordering: move source shallower
+                                                    if let Ok(Some(mut src)) = db.storage().get_node_meta(&node_ids[0]) {
+                                                        if let Ok(Some(dst)) = db.storage().get_node_meta(&node_ids[1]) {
+                                                            if src.depth > dst.depth + 0.1 {
+                                                                src.depth = dst.depth * 0.95;
+                                                                drop(db);
+                                                                {
+                                                                    let mut db_w = shared.write().await;
+                                                                    let _ = db_w.storage().put_node_meta(&src);
+                                                                }
+                                                                db = shared.read().await;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                "PruneEdge" if !node_ids.is_empty() => {
+                                                    drop(db);
+                                                    {
+                                                        let mut db_w = shared.write().await;
+                                                        let _ = db_w.delete_edge(&node_ids[0]);
+                                                    }
+                                                    db = shared.read().await;
+                                                }
+                                                _ => {
+                                                    // Unknown mutation type — log only
+                                                }
+                                            }
                                         }
                                         nietzsche_agency::AgencyIntent::GeometricUncertainty { node_id, variance, uncertainty, suggested_action } => {
                                             info!(

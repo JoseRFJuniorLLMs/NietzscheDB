@@ -23,6 +23,10 @@ use crate::hyperbolic_training::{TrainingResult, build_training_config, train_hy
 use crate::temporal_decay::{TemporalDecayReport, build_decay_config, scan_temporal_decay};
 use crate::graph_growth::{GraphGrowthReport, build_growth_config, run_graph_growth_scan};
 use crate::cognitive_layer::{CognitiveLayerReport, build_cognitive_config, run_cognitive_scan};
+use crate::evolution_27::{Evolution27Report, build_evolution_27_config, run_evolution_27_scan};
+use crate::reap_phantoms::{ReapPhantomReport, build_reap_phantom_config, scan_reap_phantoms};
+use crate::evolve_persist::{apply_all_evolved_params, persist_energy_genome};
+use crate::energy_evolve::{EnergyEvolveConfig, SimNode, run_energy_evolution};
 use crate::avalanche::AvalancheStats;
 use crate::axiom_registry::AxiomRegistry;
 use crate::centroid_guardian::CentroidGuardian;
@@ -90,6 +94,10 @@ pub struct AgencyTickReport {
     pub growth_report: Option<GraphGrowthReport>,
     /// Cognitive layer report (Phase E).
     pub cognitive_report: Option<CognitiveLayerReport>,
+    /// Epistemic evolution report (Phase 27).
+    pub evolution_27_report: Option<Evolution27Report>,
+    /// Phantom reaper report (Phase 28).
+    pub reap_phantoms_report: Option<ReapPhantomReport>,
     pub duration_ms: u64,
 }
 
@@ -165,6 +173,10 @@ pub struct AgencyEngine {
     growth_tick: u64,
     /// Cognitive layer tick counter (Phase E).
     cognitive_tick: u64,
+    /// Epistemic evolution tick counter (Phase 27).
+    evolution_27_tick: u64,
+    /// Phantom reaper tick counter (Phase 28).
+    reap_phantoms_tick: u64,
     /// Avalanche size tracker for SOC (Self-Organized Criticality) monitoring.
     avalanche_stats: AvalancheStats,
 }
@@ -230,6 +242,8 @@ impl AgencyEngine {
             temporal_decay_tick: 0,
             growth_tick: 0,
             cognitive_tick: 0,
+            evolution_27_tick: 0,
+            reap_phantoms_tick: 0,
             avalanche_stats: AvalancheStats::default(),
             config,
         }
@@ -452,6 +466,15 @@ impl AgencyEngine {
 
         // 0. Drain dirty set from previous tick (FIX #5: prevents unbounded growth)
         let _dirty_ids = self.dirty_set.drain();
+
+        // 0.1 NietzscheEvolve: reload evolved parameters from CF_META every 100 ticks.
+        // This closes the loop: evolvers persist genomes → engine loads them → system adapts.
+        if self.evolution_27_tick % 100 == 0 {
+            let applied = apply_all_evolved_params(storage, &mut self.config);
+            if applied > 0 {
+                info!(applied, "NietzscheEvolve: loaded {} evolved parameter sets from CF_META", applied);
+            }
+        }
 
         // 1. Tick each daemon
         let mut daemon_reports = Vec::with_capacity(self.daemons.len());
@@ -1094,6 +1117,109 @@ impl AgencyEngine {
             None
         };
 
+        // 27. Epistemic Evolution — autoresearch-style knowledge mutation (Phase 27)
+        self.evolution_27_tick += 1;
+        let evolution_27_report: Option<Evolution27Report> = if self.config.evolution_27_enabled
+            && self.config.evolution_27_interval > 0
+            && self.evolution_27_tick % self.config.evolution_27_interval == 0
+        {
+            let evo_config = build_evolution_27_config(&self.config);
+            let report = run_evolution_27_scan(storage, adjacency, &evo_config);
+
+            if report.mutations_proposed > 0 {
+                info!(
+                    evaluated = report.nodes_evaluated,
+                    score     = %format!("{:.3}", report.epistemic_score.composite),
+                    proposals = report.mutations_proposed,
+                    "Phase 27: epistemic evolution scan complete"
+                );
+
+                for proposal in &report.proposals {
+                    let mutation_type = format!("{:?}", proposal.mutation_type);
+                    intents.push(AgencyIntent::EpistemicMutation {
+                        mutation_type,
+                        node_ids: proposal.node_ids.clone(),
+                        reason: proposal.reason.clone(),
+                        estimated_delta: proposal.estimated_delta,
+                    });
+                    for &nid in &proposal.node_ids {
+                        self.dirty_set.mark(nid);
+                    }
+                }
+            }
+
+            Some(report)
+        } else {
+            None
+        };
+
+        // 27.5 NietzscheEvolve: periodic energy function evolution (every 200 ticks).
+        // Samples current graph state, runs a quick evolution, persists best genome.
+        if self.config.evolution_27_enabled && self.evolution_27_tick % 200 == 0 && self.evolution_27_tick > 0 {
+            let mut sim_nodes = Vec::new();
+            let mut count = 0usize;
+            for result in storage.iter_nodes_meta() {
+                if count >= 200 { break; }
+                if let Ok(meta) = result {
+                    if !meta.is_phantom && meta.energy > 0.001 {
+                        sim_nodes.push(SimNode {
+                            energy: meta.energy,
+                            depth: meta.depth,
+                            degree: adjacency.neighbors_both(&meta.id).len(),
+                            coherence: 0.5, // approximate
+                            accessed: meta.energy > 0.5,
+                        });
+                        count += 1;
+                    }
+                }
+            }
+            if sim_nodes.len() >= 20 {
+                let evo_config = EnergyEvolveConfig {
+                    population_size: 6,
+                    max_generations: 4,
+                    sim_ticks: 10,
+                    ..Default::default()
+                };
+                let report = run_energy_evolution(evo_config, &sim_nodes);
+                if report.best.fitness > 0.0 {
+                    let _ = persist_energy_genome(storage, &report.best);
+                    info!(
+                        fitness = %format!("{:.4}", report.best.fitness),
+                        decay = %format!("{:.4}", report.best.decay_rate),
+                        hub_bonus = %format!("{:.4}", report.best.hub_bonus_factor),
+                        "NietzscheEvolve: energy genome evolved and persisted"
+                    );
+                }
+            }
+        }
+
+        // 28. Phantom Reaper — clean up empty-content nodes (Phase 28)
+        self.reap_phantoms_tick += 1;
+        let reap_phantoms_report: Option<ReapPhantomReport> = if self.config.reap_phantoms_enabled
+            && self.config.reap_phantoms_interval > 0
+            && self.reap_phantoms_tick % self.config.reap_phantoms_interval == 0
+        {
+            let reap_config = build_reap_phantom_config(&self.config);
+            let report = scan_reap_phantoms(storage, &reap_config);
+
+            if report.phantoms_found > 0 {
+                info!(
+                    scanned = report.nodes_scanned,
+                    phantoms = report.phantoms_found,
+                    "Phase 28: phantom reaper found empty-content nodes"
+                );
+
+                for &node_id in &report.phantom_ids {
+                    intents.push(AgencyIntent::Phantomize { node_id });
+                    self.dirty_set.mark(node_id);
+                }
+            }
+
+            Some(report)
+        } else {
+            None
+        };
+
         // FIX #6: Cap Hebbian traces to prevent unbounded growth
         if self.hebbian_state.trace_count() > 10_000 {
             let aggressive_cfg = HebbianConfig { trace_decay: 0.1, ..Default::default() };
@@ -1131,6 +1257,8 @@ impl AgencyEngine {
             decay_report,
             growth_report,
             cognitive_report,
+            evolution_27_report,
+            reap_phantoms_report,
             duration_ms: t0.elapsed().as_millis() as u64,
         })
     }

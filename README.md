@@ -103,6 +103,11 @@ NietzscheDB doesn't just store data; it projects it across four distinct manifol
 │   · Morning Report (post-sleep discovery summary)      │
 │   · NodeLedger (per-action CPU cost tracking)          │
 │   · force_evolution MCP tool (LLM mutation bridge)     │
+│   · NietzscheEvolve (AlphaEvolve-inspired self-tuning)│
+│   · ParameterEvolve (evolutionary HNSW optimization)  │
+│   · EnergyEvolve (evolved energy landscape functions) │
+│   · CogEvolve (evolved cognitive strategies for EVA)  │
+│   · HypothesisEvolve (LLM prompt meta-evolution)     │
 │   · React Dashboard via rust-embed (zero external deps)│
 │   · Poincaré 3D coords in /api/graph visualization    │
 │                                                         │

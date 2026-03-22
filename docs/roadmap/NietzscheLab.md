@@ -7,6 +7,11 @@
 > - FASE 1: `nietzsche-lab/` (Python) — hypothesis loop externo ✅
 > - FASE 2: `crates/nietzsche-epistemics/` (Rust) — métricas epistémicas ✅
 > - FASE 3: Phase 27 no `crates/nietzsche-agency/` (Rust) — integração no Agency Engine ✅
+>
+> **Update 2026-03-19**: NietzscheEvolve (AlphaEvolve-inspired) extende o NietzscheLab com:
+> - Phase 27 agora **ligado ao engine.tick()** e executa mutations reais ✅
+> - `prompt_evolve.py` — meta-evolução de prompts LLM ✅
+> - Ver: [`docs/roadmap/NietzscheEvolve.md`](NietzscheEvolve.md)
 
 ---
 
