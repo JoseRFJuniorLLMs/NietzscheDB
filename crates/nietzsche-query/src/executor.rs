@@ -1078,6 +1078,23 @@ fn execute_match(
     }
 }
 
+// ── Label matching helper ─────────────────────
+// FIX 2026-03-22: Check both built-in node_type AND content.node_label for custom types.
+// This allows MATCH (s:EvaSession) to work server-side without client-side NQL rewriting.
+#[inline]
+fn node_matches_label(node: &Node, label: &str) -> bool {
+    let label_lc = label.to_lowercase();
+    // Built-in type match (Semantic, Episodic, Concept, DreamSnapshot)
+    if format!("{:?}", node.node_type).to_lowercase() == label_lc {
+        return true;
+    }
+    // Content node_label match (custom types stored as Semantic + node_label field)
+    if let Some(serde_json::Value::String(nl)) = node.content.get("node_label") {
+        return nl.to_lowercase() == label_lc;
+    }
+    false
+}
+
 // ── Node match ────────────────────────────────
 
 fn execute_node_match(
@@ -1105,10 +1122,9 @@ fn execute_node_match(
         for id in ids {
             if let Some(node) = storage.get_node(&id)? {
                 gas.d_node()?;
-                // If label is specified, check it
+                // If label is specified, check it (built-in type OR content.node_label)
                 if let Some(label) = &np.label {
-                    let label_lc = label.to_lowercase();
-                    if format!("{:?}", node.node_type).to_lowercase() != label_lc {
+                    if !node_matches_label(&node, label) {
                         continue;
                     }
                 }
@@ -1140,11 +1156,10 @@ fn execute_node_match(
     };
 
     // Gas consumption for nodes scanned
-    // Filter by label (node_type)
+    // Filter by label (node_type OR content.node_label for custom types)
     let typed: Vec<Node> = if let Some(label) = &np.label {
-        let label_lc = label.to_lowercase();
         nodes.into_iter()
-            .filter(|n| format!("{:?}", n.node_type).to_lowercase() == label_lc)
+            .filter(|n| node_matches_label(n, label))
             .collect()
     } else {
         nodes
@@ -1256,7 +1271,7 @@ fn execute_path_match(
             None    => continue,
         };
         if let Some(label) = &pp.from.label {
-            if format!("{:?}", from_node.node_type).to_lowercase() != label.to_lowercase() {
+            if !node_matches_label(&from_node, label) {
                 continue;
             }
         }
@@ -1265,7 +1280,7 @@ fn execute_path_match(
             None    => continue,
         };
         if let Some(label) = &pp.to.label {
-            if format!("{:?}", to_node.node_type).to_lowercase() != label.to_lowercase() {
+            if !node_matches_label(&to_node, label) {
                 continue;
             }
         }
@@ -1354,9 +1369,8 @@ fn execute_multi_hop_path(
     // Collect all candidate start nodes (filtered by from-label if any)
     let all_nodes = storage.scan_nodes()?;
     let start_nodes: Vec<&Node> = if let Some(label) = &pp.from.label {
-        let label_lc = label.to_lowercase();
         all_nodes.iter()
-            .filter(|n| format!("{:?}", n.node_type).to_lowercase() == label_lc)
+            .filter(|n| node_matches_label(n, label))
             .collect()
     } else {
         all_nodes.iter().collect()
@@ -1382,8 +1396,7 @@ fn execute_multi_hop_path(
                 None    => continue,
             };
             if let Some(label) = &pp.to.label {
-                let label_lc = label.to_lowercase();
-                if format!("{:?}", to_node.node_type).to_lowercase() != label_lc {
+                if !node_matches_label(&to_node, label) {
                     continue;
                 }
             }
@@ -1664,9 +1677,8 @@ fn resolve_match_nodes(
             let alias = &np.alias;
 
             let typed: Vec<Node> = if let Some(label) = &np.label {
-                let label_lc = label.to_lowercase();
                 nodes.into_iter()
-                    .filter(|n| format!("{:?}", n.node_type).to_lowercase() == label_lc)
+                    .filter(|n| node_matches_label(n, label))
                     .collect()
             } else {
                 nodes
@@ -1732,11 +1744,10 @@ fn resolve_match_ids(
             }
             let alias = &np.alias;
 
-            // Filter by label
+            // Filter by label (built-in type OR content.node_label)
             let typed: Vec<Node> = if let Some(label) = &np.label {
-                let label_lc = label.to_lowercase();
                 nodes.into_iter()
-                    .filter(|n| format!("{:?}", n.node_type).to_lowercase() == label_lc)
+                    .filter(|n| node_matches_label(n, label))
                     .collect()
             } else {
                 nodes
@@ -1984,9 +1995,8 @@ fn eval_condition_with_edges_depth(
                     let nodes = storage.scan_nodes()
                         .map_err(|e| QueryError::Execution(e.to_string()))?;
                     let typed: Vec<&Node> = if let Some(label) = &np.label {
-                        let label_lc = label.to_lowercase();
                         nodes.iter()
-                            .filter(|n| format!("{:?}", n.node_type).to_lowercase() == label_lc)
+                            .filter(|n| node_matches_label(n, label))
                             .collect()
                     } else {
                         nodes.iter().collect()
@@ -2254,6 +2264,24 @@ fn find_node<'a>(alias: &str, binding: &[(&str, &'a Node)]) -> Result<&'a Node, 
 }
 
 fn eval_field(node: &Node, field: &str) -> Result<Value, QueryError> {
+    // FIX 2026-03-22: Content fields take priority over built-in fields when both exist.
+    // This fixes the "id" field shadowing bug: nodes store "id" in content (e.g. session_id)
+    // but eval_field resolved "id" as the node UUID, making WHERE s.id = "browser-..." fail.
+    // Now: content.get(field) is checked FIRST. If not found, fall back to built-in fields.
+    // This is safe because content fields are user-defined and should take precedence
+    // in WHERE clauses (the UUID is always available via the node itself).
+
+    // 1. Check content JSON first (user-defined fields)
+    if let Some(val) = node.content.get(field) {
+        return json_to_value(val);
+    }
+
+    // 2. Check metadata HashMap
+    if let Some(val) = node.metadata.get(field) {
+        return json_to_value(val);
+    }
+
+    // 3. Fall back to built-in node properties
     match field {
         "energy"            => Ok(Value::Float(node.energy as f64)),
         "depth"             => Ok(Value::Float(node.depth as f64)),
@@ -2263,17 +2291,7 @@ fn eval_field(node: &Node, field: &str) -> Result<Value, QueryError> {
         "created_at"        => Ok(Value::Float(node.created_at as f64)),
         "node_type"         => Ok(Value::Str(format!("{:?}", node.node_type))),
         "expires_at"        => Ok(Value::Float(node.expires_at.unwrap_or(0) as f64)),
-        _ => {
-            // Fall back to content JSON (arbitrary fields stored on the node)
-            if let Some(val) = node.content.get(field) {
-                return json_to_value(val);
-            }
-            // Fall back to metadata HashMap
-            if let Some(val) = node.metadata.get(field) {
-                return json_to_value(val);
-            }
-            Err(QueryError::UnknownField { field: field.to_string() })
-        }
+        _                   => Err(QueryError::UnknownField { field: field.to_string() }),
     }
 }
 
