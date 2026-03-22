@@ -1476,7 +1476,7 @@ async fn main() -> anyhow::Result<()> {
                                                     drop(db);
                                                     {
                                                         let mut db_w = shared.write().await;
-                                                        let _ = db_w.delete_edge(&node_ids[0]);
+                                                        let _ = db_w.delete_edge(node_ids[0]);
                                                     }
                                                     db = shared.read().await;
                                                 }
