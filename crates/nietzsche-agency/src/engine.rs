@@ -1200,17 +1200,26 @@ impl AgencyEngine {
             && self.reap_phantoms_tick % self.config.reap_phantoms_interval == 0
         {
             let reap_config = build_reap_phantom_config(&self.config);
-            let report = scan_reap_phantoms(storage, &reap_config);
+            let report = scan_reap_phantoms(storage, &reap_config, |id| {
+                adjacency.degree_out(id) + adjacency.degree_in(id)
+            });
 
             if report.phantoms_found > 0 {
                 info!(
                     scanned = report.nodes_scanned,
-                    phantoms = report.phantoms_found,
-                    "Phase 28: phantom reaper found empty-content nodes"
+                    phantoms = report.phantom_ids.len(),
+                    hydration_candidates = report.hydration_ids.len(),
+                    "Phase 28: phantom reaper scan complete"
                 );
 
                 for &node_id in &report.phantom_ids {
                     intents.push(AgencyIntent::Phantomize { node_id });
+                    self.dirty_set.mark(node_id);
+                }
+
+                // High-degree phantoms get flagged for hydration, not deleted
+                for &node_id in &report.hydration_ids {
+                    intents.push(AgencyIntent::MarkHydrationCandidate { node_id });
                     self.dirty_set.mark(node_id);
                 }
             }

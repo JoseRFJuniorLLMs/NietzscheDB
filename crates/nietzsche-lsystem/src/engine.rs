@@ -120,6 +120,17 @@ pub struct LSystemEngine {
     ///
     /// Default: [`LOCAL_K`] (12).
     pub hausdorff_k: usize,
+    /// Maximum number of nodes to spawn per tick (children + siblings).
+    ///
+    /// Once this limit is reached, remaining spawn actions are silently
+    /// dropped (prune and energy-update actions still apply). This prevents
+    /// runaway growth when the Hausdorff gate and circuit breaker are
+    /// insufficient to contain the L-System.
+    ///
+    /// - `0` = unlimited (legacy behaviour)
+    ///
+    /// Default: `0` (unlimited). Set `LSYSTEM_MAX_SPAWNS_PER_TICK` to override.
+    pub max_spawns_per_tick: usize,
 }
 
 impl LSystemEngine {
@@ -134,6 +145,7 @@ impl LSystemEngine {
             angular_jitter: 0.3,
             hausdorff_sample_size: DEFAULT_HAUSDORFF_SAMPLE,
             hausdorff_k: LOCAL_K,
+            max_spawns_per_tick: 0,
         }
     }
 
@@ -301,7 +313,7 @@ impl LSystemEngine {
         }
 
         // ── Step 6: apply mutations ──────────────────────────────────────
-        let (nodes_spawned, nodes_pruned, edges_created) = apply_pending(db, pending)?;
+        let (nodes_spawned, nodes_pruned, edges_created) = apply_pending(db, pending, self.max_spawns_per_tick)?;
 
         // ── Step 7: global Hausdorff (sampled, no full re-scan) ──────────
         //
@@ -459,6 +471,7 @@ fn make_pending(
 fn apply_pending<V: VectorStore>(
     db:      &mut NietzscheDB<V>,
     pending: Vec<PendingAction>,
+    max_spawns: usize,
 ) -> Result<(usize, usize, usize), LSystemError> {
     let mut nodes_spawned = 0usize;
     let mut nodes_pruned  = 0usize;
@@ -470,6 +483,9 @@ fn apply_pending<V: VectorStore>(
             PendingAction::SpawnChild {
                 parent_id, parent_generation, child_coords, weight, content, rule_name,
             } => {
+                if max_spawns > 0 && nodes_spawned >= max_spawns {
+                    continue; // spawn cap reached
+                }
                 if pruned.contains(&parent_id) {
                     continue; // parent was pruned earlier in this tick
                 }
@@ -493,6 +509,9 @@ fn apply_pending<V: VectorStore>(
             PendingAction::SpawnSibling {
                 parent_id, parent_generation, sibling_coords, weight, content, rule_name,
             } => {
+                if max_spawns > 0 && nodes_spawned >= max_spawns {
+                    continue; // spawn cap reached
+                }
                 if pruned.contains(&parent_id) {
                     continue;
                 }

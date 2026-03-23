@@ -198,6 +198,14 @@ pub enum AgencyIntent {
         node_id: Uuid,
     },
 
+    /// Mark a node as a hydration candidate (Phase 28/29).
+    /// Sets `metadata["hydration_candidate"] = true` instead of
+    /// phantomizing, preserving the node for the content hydration
+    /// pipeline (Semantic Bloom).
+    MarkHydrationCandidate {
+        node_id: Uuid,
+    },
+
     // ── Phase XVIII: Hyperbolic Contrastive Training ────────────
 
     /// Batch update embeddings after hyperbolic contrastive training.

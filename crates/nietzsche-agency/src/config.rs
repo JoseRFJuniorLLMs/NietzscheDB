@@ -376,6 +376,9 @@ pub struct AgencyConfig {
     pub reap_phantoms_max_scan: usize,
     /// Minimum node age in seconds before eligible for reaping (default: 300 = 5 min).
     pub reap_phantoms_min_age: i64,
+    /// Minimum degree (in+out edges) to mark as hydration candidate instead of
+    /// deleting. Nodes with this many connections have topological value (default: 8).
+    pub reap_phantoms_hydration_degree: usize,
 
     // -- Phase 27: Epistemic Evolution --
     /// Whether Phase 27 evolution is enabled (default: true).
@@ -551,6 +554,7 @@ impl Default for AgencyConfig {
             reap_phantoms_interval: 15,
             reap_phantoms_max_scan: 5_000,
             reap_phantoms_min_age: 300,
+            reap_phantoms_hydration_degree: 8,
             // Phase 27 — Epistemic Evolution
             evolution_27_enabled: true,
             evolution_27_interval: 40,
@@ -781,6 +785,7 @@ impl AgencyConfig {
             reap_phantoms_interval:  env_u64("AGENCY_REAP_PHANTOMS_INTERVAL", 15),
             reap_phantoms_max_scan:  env_usize("AGENCY_REAP_PHANTOMS_MAX_SCAN", 5_000),
             reap_phantoms_min_age:   env_u64("AGENCY_REAP_PHANTOMS_MIN_AGE", 300) as i64,
+            reap_phantoms_hydration_degree: env_usize("AGENCY_REAP_PHANTOMS_HYDRATION_DEGREE", 8),
             // Phase 27 — Epistemic Evolution
             evolution_27_enabled: std::env::var("AGENCY_EVOLUTION_27_ENABLED")
                 .map(|v| v != "0" && v.to_lowercase() != "false")

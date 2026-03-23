@@ -865,6 +865,12 @@ async fn main() -> anyhow::Result<()> {
                                                     if v >= 3 { lsystem.hausdorff_k = v; }
                                                 }
                                             }
+                                            // Max spawns per tick (default 0 = unlimited).
+                                            if let Ok(s) = std::env::var("LSYSTEM_MAX_SPAWNS_PER_TICK") {
+                                                if let Ok(v) = s.parse::<usize>() {
+                                                    lsystem.max_spawns_per_tick = v;
+                                                }
+                                            }
                                             match lsystem.tick(&mut *db_w) {
                                                 Ok(r) => info!(spawned = r.nodes_spawned, pruned = r.nodes_pruned, "agency L-System tick complete"),
                                                 Err(e) => warn!(error = %e, "agency L-System tick failed"),
@@ -1152,6 +1158,16 @@ async fn main() -> anyhow::Result<()> {
                                                 let mut db_w = shared.write().await;
                                                 if let Err(e) = db_w.phantomize_node(node_id) {
                                                     warn!(node = %node_id, error = %e, "healing: phantomize failed");
+                                                }
+                                            }
+                                            break;
+                                        }
+                                        nietzsche_agency::AgencyIntent::MarkHydrationCandidate { node_id } => {
+                                            drop(db);
+                                            {
+                                                let mut db_w = shared.write().await;
+                                                if let Err(e) = db_w.mark_hydration_candidate(node_id) {
+                                                    warn!(node = %node_id, error = %e, "Phase 29: mark hydration candidate failed");
                                                 }
                                             }
                                             break;

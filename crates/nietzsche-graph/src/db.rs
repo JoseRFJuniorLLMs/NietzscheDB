@@ -818,6 +818,26 @@ impl<V: VectorStore> NietzscheDB<V> {
         Ok(())
     }
 
+    /// Mark a node as a hydration candidate by setting a metadata flag.
+    ///
+    /// This preserves the node's energy, vector store presence, and topology.
+    /// The content hydration pipeline (Phase 29) will later fill these nodes
+    /// with real content based on their neighbours.
+    pub fn mark_hydration_candidate(&mut self, id: Uuid) -> Result<bool, GraphError> {
+        let mut meta = match self.storage.get_node_meta(&id)? {
+            Some(m) => m,
+            None => return Ok(false),
+        };
+
+        meta.metadata.insert(
+            "hydration_candidate".to_string(),
+            serde_json::Value::Bool(true),
+        );
+        let old_energy = meta.energy;
+        self.storage.put_node_meta_update_energy(&meta, old_energy)?;
+        Ok(true)
+    }
+
     /// Reanimate a phantom node, restoring it to active state.
     ///
     /// Re-inserts the embedding into the vector store and sets the new energy.
