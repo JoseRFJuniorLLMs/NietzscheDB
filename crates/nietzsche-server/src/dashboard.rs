@@ -263,16 +263,36 @@ pub async fn serve(
         .layer(Extension(cluster))
         .layer(middleware::from_fn(auth_middleware))
         .layer(Extension(auth))
-        .layer(
+        .layer({
+            // Allow CORS origins from env var, falling back to localhost + VM IP.
+            let extra_origins: Vec<String> = std::env::var("NIETZSCHE_DASHBOARD_ORIGINS")
+                .ok()
+                .map(|v| v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+                .unwrap_or_default();
             CorsLayer::new()
-                .allow_origin(AllowOrigin::predicate(|origin, _| {
-                    // Allow localhost origins for development
+                .allow_origin(AllowOrigin::predicate(move |origin, _| {
                     let o = origin.as_bytes();
-                    o.starts_with(b"http://localhost") || o.starts_with(b"http://127.0.0.1") || o.starts_with(b"https://136.111.0.47")
+                    // Always allow localhost for development
+                    if o.starts_with(b"http://localhost") || o.starts_with(b"http://127.0.0.1") {
+                        return true;
+                    }
+                    // Always allow the production VM
+                    if o.starts_with(b"https://136.111.0.47") {
+                        return true;
+                    }
+                    // Check env-configured additional origins
+                    let origin_str = std::str::from_utf8(o).unwrap_or("");
+                    extra_origins.iter().any(|allowed| {
+                        if allowed == "*" {
+                            true
+                        } else {
+                            origin_str.starts_with(allowed.as_str())
+                        }
+                    })
                 }))
                 .allow_methods(tower_http::cors::Any)
-                .allow_headers(tower_http::cors::Any),
-        )
+                .allow_headers(tower_http::cors::Any)
+        })
         .with_state(state);
 
     info!(%addr, "NietzscheDB dashboard listening");

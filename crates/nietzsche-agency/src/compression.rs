@@ -192,28 +192,66 @@ pub fn scan_compression(
     report.nodes_scanned = scanned;
 
     // ── Phase 2: Near-duplicate detection ───────
-    // Brute-force pairwise (bounded by max_scan)
+    // O(n·log n) via grid-bucket hashing: assign each vector to a coarse
+    // grid cell (first 4 coords quantized to bucket_size), then only compare
+    // vectors in the same cell.  This avoids O(n²) brute-force for large scans.
     let mut merged_into: HashMap<Uuid, Uuid> = HashMap::new();
 
+    // Build bucket index: key = quantized first-4-coords, value = candidate indices
+    let bucket_size = (config.duplicate_epsilon * 2.0).max(0.01);
+    let mut buckets: HashMap<(i32, i32, i32, i32), Vec<usize>> = HashMap::new();
+    for (idx, c) in candidates.iter().enumerate() {
+        let key = (
+            (c.embedding.get(0).copied().unwrap_or(0.0) as f64 / bucket_size) as i32,
+            (c.embedding.get(1).copied().unwrap_or(0.0) as f64 / bucket_size) as i32,
+            (c.embedding.get(2).copied().unwrap_or(0.0) as f64 / bucket_size) as i32,
+            (c.embedding.get(3).copied().unwrap_or(0.0) as f64 / bucket_size) as i32,
+        );
+        // Insert into this cell AND its 3^4-1=80 neighbors is too costly.
+        // Instead, check adjacent cells during lookup.
+        buckets.entry(key).or_default().push(idx);
+    }
+
+    // For each candidate, check same bucket + 1-ring neighbors (3^4=81 cells)
     for i in 0..candidates.len() {
         if merged_into.contains_key(&candidates[i].id) { continue; }
         if report.merge_proposals.len() >= config.max_merges_per_tick { break; }
 
         let ei: Vec<f64> = candidates[i].embedding.iter().map(|c| *c as f64).collect();
+        if ei.is_empty() { continue; }
+
+        let base_key = (
+            (candidates[i].embedding.get(0).copied().unwrap_or(0.0) as f64 / bucket_size) as i32,
+            (candidates[i].embedding.get(1).copied().unwrap_or(0.0) as f64 / bucket_size) as i32,
+            (candidates[i].embedding.get(2).copied().unwrap_or(0.0) as f64 / bucket_size) as i32,
+            (candidates[i].embedding.get(3).copied().unwrap_or(0.0) as f64 / bucket_size) as i32,
+        );
 
         let mut group = Vec::new();
 
-        for j in (i + 1)..candidates.len() {
-            if merged_into.contains_key(&candidates[j].id) { continue; }
+        // Check neighboring cells (±1 in each of 4 dims)
+        for d0 in -1..=1i32 {
+            for d1 in -1..=1i32 {
+                for d2 in -1..=1i32 {
+                    for d3 in -1..=1i32 {
+                        let neighbor_key = (base_key.0 + d0, base_key.1 + d1, base_key.2 + d2, base_key.3 + d3);
+                        if let Some(cell) = buckets.get(&neighbor_key) {
+                            for &j in cell {
+                                if j <= i { continue; }
+                                if merged_into.contains_key(&candidates[j].id) { continue; }
 
-            let ej: Vec<f64> = candidates[j].embedding.iter().map(|c| *c as f64).collect();
+                                let ej: Vec<f64> = candidates[j].embedding.iter().map(|c| *c as f64).collect();
+                                if ei.len() != ej.len() { continue; }
 
-            if ei.len() != ej.len() || ei.is_empty() { continue; }
-
-            let dist = poincare_distance(&ei, &ej);
-            if dist < config.duplicate_epsilon {
-                group.push((candidates[j].id, dist));
-                merged_into.insert(candidates[j].id, candidates[i].id);
+                                let dist = poincare_distance(&ei, &ej);
+                                if dist < config.duplicate_epsilon {
+                                    group.push((candidates[j].id, dist));
+                                    merged_into.insert(candidates[j].id, candidates[i].id);
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 

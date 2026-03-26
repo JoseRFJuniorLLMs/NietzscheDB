@@ -231,8 +231,12 @@ impl<const N: usize> Metric<N> for PoincareMetric {
         a.poincare_distance_sq_to_float(b)
     }
 
-    fn distance_binary(a: &BinaryHyperVector<N>, b: &HyperVector<N>) -> f64 {
-        a.poincare_distance_sq_to_float(b)
+    fn distance_binary(_a: &BinaryHyperVector<N>, _b: &HyperVector<N>) -> f64 {
+        panic!(
+            "Binary quantization is not supported for the Poincaré model. \
+             sign(x) destroys hierarchical information encoded in the vector magnitude. \
+             Use ScalarI8 quantization instead."
+        );
     }
 }
 

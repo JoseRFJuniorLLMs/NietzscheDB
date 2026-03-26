@@ -119,11 +119,8 @@ pub fn start_gossip_loop(registry: ClusterRegistry, local_id: Uuid, interval_sec
                 continue;
             }
 
-            // Pick a random peer (simple random gossip target selection)
-            let idx = (std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos() as usize) % peers.len();
+            // Pick a random peer using proper RNG to avoid synchronized gossip storms.
+            let idx = rand::random::<usize>() % peers.len();
             let target = &peers[idx];
             let addr = target.addr.clone();
 

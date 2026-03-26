@@ -104,8 +104,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
     #[cfg(feature = "persistence")]
     pub fn save_snapshot(&self, path: &std::path::Path) -> Result<(), String> {
-        let max_layer = self.max_layer.load(Ordering::Relaxed);
-        let entry_point = self.entry_point.load(Ordering::Relaxed);
+        let (max_layer, entry_point) = self.get_entry_state();
 
         let nodes_guard = self.nodes.read();
         let mut snapshot_nodes = Vec::with_capacity(nodes_guard.len());
@@ -331,8 +330,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 deleted: RwLock::new(deleted),
                 forward,
             },
-            entry_point: AtomicU32::new(deserialized.entry_point),
-            max_layer: AtomicU32::new(deserialized.max_layer),
+            entry_state: std::sync::atomic::AtomicU64::new(pack_entry(deserialized.max_layer, deserialized.entry_point)),
             storage,
             mode,
             storage_f32: false,
@@ -342,8 +340,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         })
     }
     pub fn save_to_bytes(&self) -> Result<Vec<u8>, String> {
-        let max_layer = self.max_layer.load(Ordering::Relaxed);
-        let entry_point = self.entry_point.load(Ordering::Relaxed);
+        let (max_layer, entry_point) = self.get_entry_state();
 
         let nodes_guard = self.nodes.read();
         let mut snapshot_nodes = Vec::with_capacity(nodes_guard.len());
@@ -479,8 +476,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 deleted: RwLock::new(deleted),
                 forward,
             },
-            entry_point: AtomicU32::new(deserialized.entry_point),
-            max_layer: AtomicU32::new(deserialized.max_layer),
+            entry_state: std::sync::atomic::AtomicU64::new(pack_entry(deserialized.max_layer, deserialized.entry_point)),
             storage,
             mode,
             storage_f32: false,
@@ -500,6 +496,19 @@ pub type NodeId = u32;
 
 const MAX_LAYERS: usize = 16;
 
+/// Packs `(max_layer, entry_point)` into a single `u64` for atomic updates.
+/// High 32 bits = max_layer, low 32 bits = entry_point node ID.
+#[inline]
+fn pack_entry(max_layer: u32, entry_point: u32) -> u64 {
+    ((max_layer as u64) << 32) | (entry_point as u64)
+}
+
+/// Unpacks `(max_layer, entry_point)` from a packed `u64`.
+#[inline]
+fn unpack_entry(packed: u64) -> (u32, u32) {
+    ((packed >> 32) as u32, packed as u32)
+}
+
 #[derive(Debug)]
 pub struct HnswIndex<const N: usize, M: Metric<N>> {
     // Topology storage. Index in vector = NodeId.
@@ -508,11 +517,11 @@ pub struct HnswIndex<const N: usize, M: Metric<N>> {
     // Metadata storage
     pub metadata: MetadataIndex,
 
-    // Graph entry point (top level)
-    entry_point: AtomicU32,
-
-    // Current max layer
-    max_layer: AtomicU32,
+    /// Combined (max_layer, entry_point) packed into a single AtomicU64.
+    /// This eliminates the race condition where a reader could observe
+    /// max_layer updated but entry_point still pointing to the old node.
+    /// Use `pack_entry`/`unpack_entry` helpers to access.
+    entry_state: std::sync::atomic::AtomicU64,
 
     // Reference to data (raw vectors)
     storage: Arc<VectorStore>,
@@ -527,6 +536,28 @@ pub struct HnswIndex<const N: usize, M: Metric<N>> {
     has_nonempty_metadata: AtomicBool,
 
     _marker: PhantomData<M>,
+}
+
+impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
+    /// Read current (max_layer, entry_point) atomically.
+    #[inline]
+    fn get_entry_state(&self) -> (u32, u32) {
+        unpack_entry(self.entry_state.load(Ordering::Acquire))
+    }
+
+    /// Read just entry_point.
+    #[inline]
+    #[allow(dead_code)]
+    fn entry_point(&self) -> u32 {
+        self.get_entry_state().1
+    }
+
+    /// Read just max_layer.
+    #[inline]
+    #[allow(dead_code)]
+    fn max_layer(&self) -> u32 {
+        self.get_entry_state().0
+    }
 }
 
 #[derive(Debug, Default)]
@@ -619,8 +650,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         Self {
             nodes: RwLock::new(Vec::new()),
             metadata: MetadataIndex::default(),
-            entry_point: AtomicU32::new(0),
-            max_layer: AtomicU32::new(0),
+            entry_state: std::sync::atomic::AtomicU64::new(pack_entry(0, 0)),
             storage,
             mode,
             storage_f32,
@@ -633,6 +663,97 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
     #[inline]
     pub fn has_nonempty_metadata(&self) -> bool {
         self.has_nonempty_metadata.load(Ordering::Relaxed)
+    }
+
+    /// Recursively evaluate a `FilterExpr` against the metadata index.
+    /// Returns `Some(bitmap)` of matching node IDs, or `None` if the filter
+    /// cannot match anything (e.g. unknown tag).
+    fn evaluate_filter_expr(&self, expr: &FilterExpr) -> Option<RoaringBitmap> {
+        match expr {
+            FilterExpr::Match { key, value } => {
+                let tag = format!("{key}:{value}");
+                self.metadata.inverted.get(&tag).map(|bm| bm.clone())
+            }
+            FilterExpr::Range { key, gte, lte } => {
+                let mut range_union = RoaringBitmap::new();
+                if let Some(tree) = self.metadata.numeric.get(key) {
+                    let start = gte.map_or(i64::MIN, |x| x.ceil() as i64);
+                    let end = lte.map_or(i64::MAX, |x| x.floor() as i64);
+                    if start <= end {
+                        for (_, bm) in tree.range(start..=end) {
+                            range_union |= bm;
+                        }
+                    }
+                }
+                // Forward index fallback
+                for item in &self.metadata.forward {
+                    if range_union.contains(*item.key()) { continue; }
+                    let Some(num) = Self::metadata_numeric_value(item.value(), key) else { continue; };
+                    if let Some(min) = gte { if num < *min { continue; } }
+                    if let Some(max) = lte { if num > *max { continue; } }
+                    range_union.insert(*item.key());
+                }
+                if range_union.is_empty() { None } else { Some(range_union) }
+            }
+            FilterExpr::And(subs) => {
+                let mut result: Option<RoaringBitmap> = None;
+                for sub in subs {
+                    match self.evaluate_filter_expr(sub) {
+                        Some(bm) => {
+                            if let Some(ref mut acc) = result {
+                                *acc &= &bm;
+                            } else {
+                                result = Some(bm);
+                            }
+                        }
+                        None => return None,
+                    }
+                }
+                result
+            }
+            FilterExpr::Or(subs) => {
+                let mut result = RoaringBitmap::new();
+                for sub in subs {
+                    if let Some(bm) = self.evaluate_filter_expr(sub) {
+                        result |= &bm;
+                    }
+                }
+                if result.is_empty() { None } else { Some(result) }
+            }
+            FilterExpr::Not(inner) => {
+                // Not matching = all nodes minus inner.
+                let nodes_guard = self.nodes.read();
+                let mut all = RoaringBitmap::new();
+                for i in 0..nodes_guard.len() as u32 { all.insert(i); }
+                drop(nodes_guard);
+                if let Some(inner_bm) = self.evaluate_filter_expr(inner) {
+                    Some(all - inner_bm)
+                } else {
+                    Some(all) // inner matched nothing → Not matches everything
+                }
+            }
+            FilterExpr::Contains { key, value } => {
+                let mut bm = RoaringBitmap::new();
+                let value_str = value.to_string();
+                for item in &self.metadata.forward {
+                    if let Some(v) = item.value().get(key) {
+                        if v.contains(&value_str) || v == &value_str {
+                            bm.insert(*item.key());
+                        }
+                    }
+                }
+                if bm.is_empty() { None } else { Some(bm) }
+            }
+            FilterExpr::Exists { key } => {
+                let mut bm = RoaringBitmap::new();
+                for item in &self.metadata.forward {
+                    if item.value().contains_key(key) {
+                        bm.insert(*item.key());
+                    }
+                }
+                if bm.is_empty() { None } else { Some(bm) }
+            }
+        }
     }
 
     // Support Soft Delete
@@ -742,13 +863,75 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                         }
                         apply_mask(&range_union);
                     }
-                    _ => {
-                        // Point 10 Audit Fix: Other complex filters (And/Or/Not/Contains/Exists) 
-                        // are handled by the graph-layer `collect_filter` but not yet 
-                        // accelerated by the HNSW secondary index. 
-                        // For now we return empty to avoid false positives, 
-                        // or we could skip and let the final filter handle it.
-                        return Vec::new(); 
+                    FilterExpr::And(sub_filters) => {
+                        // Recursive intersection of sub-filter bitmaps.
+                        let mut and_bitmap: Option<RoaringBitmap> = None;
+                        for sub in sub_filters {
+                            let sub_bm = self.evaluate_filter_expr(sub);
+                            match sub_bm {
+                                Some(bm) => {
+                                    if let Some(ref mut acc) = and_bitmap {
+                                        *acc &= &bm;
+                                    } else {
+                                        and_bitmap = Some(bm);
+                                    }
+                                }
+                                None => return Vec::new(), // sub-filter matched nothing
+                            }
+                        }
+                        if let Some(bm) = and_bitmap {
+                            if bm.is_empty() { return Vec::new(); }
+                            apply_mask(&bm);
+                        }
+                    }
+                    FilterExpr::Or(sub_filters) => {
+                        // Recursive union of sub-filter bitmaps.
+                        let mut or_bitmap = RoaringBitmap::new();
+                        for sub in sub_filters {
+                            if let Some(bm) = self.evaluate_filter_expr(sub) {
+                                or_bitmap |= &bm;
+                            }
+                        }
+                        if or_bitmap.is_empty() { return Vec::new(); }
+                        apply_mask(&or_bitmap);
+                    }
+                    FilterExpr::Not(inner) => {
+                        // Negate: all nodes minus the inner match.
+                        if let Some(inner_bm) = self.evaluate_filter_expr(inner) {
+                            let nodes_guard = self.nodes.read();
+                            let mut all = RoaringBitmap::new();
+                            for i in 0..nodes_guard.len() as u32 {
+                                all.insert(i);
+                            }
+                            let not_bitmap = all - inner_bm;
+                            apply_mask(&not_bitmap);
+                        }
+                        // If inner matched nothing, Not matches everything — skip mask.
+                    }
+                    FilterExpr::Contains { key, value } => {
+                        // Check forward metadata for JSON containment.
+                        let mut contains_bitmap = RoaringBitmap::new();
+                        let value_str = value.to_string();
+                        for item in &self.metadata.forward {
+                            if let Some(v) = item.value().get(key) {
+                                if v.contains(&value_str) || v == &value_str {
+                                    contains_bitmap.insert(*item.key());
+                                }
+                            }
+                        }
+                        if contains_bitmap.is_empty() { return Vec::new(); }
+                        apply_mask(&contains_bitmap);
+                    }
+                    FilterExpr::Exists { key } => {
+                        // Check forward metadata for key existence.
+                        let mut exists_bitmap = RoaringBitmap::new();
+                        for item in &self.metadata.forward {
+                            if item.value().contains_key(key) {
+                                exists_bitmap.insert(*item.key());
+                            }
+                        }
+                        if exists_bitmap.is_empty() { return Vec::new(); }
+                        apply_mask(&exists_bitmap);
                     }
                 }
             }
@@ -779,7 +962,8 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
         M::validate(&aligned_query).expect("Invalid Query Vector for this Metric");
         let q_vec = HyperVector::new_unchecked(aligned_query);
 
-        let entry_node = self.entry_point.load(Ordering::Relaxed);
+        // Read (max_layer, entry_point) atomically — no race between the two.
+        let (_max_layer, entry_node) = self.get_entry_state();
 
         let start_layer = {
             let guard = self.nodes.read();
@@ -787,7 +971,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
                 return vec![];
             }
             if (entry_node as usize) >= guard.len() {
-                // Fallback to layer 0 if entry_point is out of bounds (race condition safety).
+                // Fallback to layer 0 if entry_point is out of bounds.
                 0
             } else {
                 guard[entry_node as usize].layers.len().saturating_sub(1)
@@ -1351,8 +1535,7 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
 
         let q_vec = self.get_vector(id); // Helper reads from storage
 
-        let max_layer = self.max_layer.load(Ordering::Relaxed);
-        let entry_point = self.entry_point.load(Ordering::Relaxed);
+        let (max_layer, entry_point) = self.get_entry_state();
 
         // Generate Level
         let new_level = self.random_level();
@@ -1468,17 +1651,14 @@ impl<const N: usize, M: Metric<N>> HnswIndex<N, M> {
             }
         }
 
-        // Update global entry point if needed.
-        // TODO(safety): max_layer and entry_point are separate AtomicU32s updated non-atomically.
-        // A concurrent reader can observe max_layer updated but entry_point still pointing to the
-        // old node (which may not have layers up to the new max_layer), causing out-of-bounds
-        // layer access. The proper fix is to combine both into a single AtomicU64:
-        //   high 32 bits = max_layer, low 32 bits = entry_point internal node ID
-        // and swap with a single compare_exchange. For now, update entry_point FIRST so that
-        // any reader seeing the new max_layer will also see the new entry_point.
+        // Update global entry point if needed — single atomic swap of
+        // (max_layer, entry_point) via packed AtomicU64.  No race condition
+        // possible: readers always see a consistent pair.
         if (new_level as u32) > max_layer {
-            self.entry_point.store(id, Ordering::SeqCst);
-            self.max_layer.store(new_level as u32, Ordering::SeqCst);
+            self.entry_state.store(
+                pack_entry(new_level as u32, id),
+                Ordering::Release,
+            );
         }
 
         Ok(())

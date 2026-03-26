@@ -90,7 +90,7 @@ impl Config {
     /// Load configuration from environment variables, applying defaults where
     /// a variable is absent or unparseable.
     pub fn from_env() -> Self {
-        Self {
+        let cfg = Self {
             data_dir:            env_str("NIETZSCHE_DATA_DIR", "/data/nietzsche"),
             port:                env_parse("NIETZSCHE_PORT", 50051),
             log_level:           env_str("NIETZSCHE_LOG_LEVEL", "info"),
@@ -110,6 +110,31 @@ impl Config {
             indexed_fields:          env_csv("NIETZSCHE_INDEXED_FIELDS"),
             model_dir:               env_str("NIETZSCHE_MODEL_DIR", "/data/nietzsche/models"),
             sensory_neural_enabled:  env_bool("SENSORY_NEURAL_ENABLED"),
+        };
+        cfg.validate();
+        cfg
+    }
+
+    /// Fail-fast on clearly invalid configuration.
+    fn validate(&self) {
+        assert!(self.port > 0, "NIETZSCHE_PORT must be > 0");
+        assert!(
+            self.max_connections > 0,
+            "NIETZSCHE_MAX_CONNECTIONS must be > 0"
+        );
+        assert!(
+            !self.data_dir.is_empty(),
+            "NIETZSCHE_DATA_DIR must not be empty"
+        );
+        if self.sleep_interval_secs > 0 {
+            assert!(
+                self.sleep_noise >= 0.0,
+                "NIETZSCHE_SLEEP_NOISE must be >= 0"
+            );
+            assert!(
+                self.hausdorff_threshold > 0.0,
+                "NIETZSCHE_HAUSDORFF_THRESHOLD must be > 0"
+            );
         }
     }
 }

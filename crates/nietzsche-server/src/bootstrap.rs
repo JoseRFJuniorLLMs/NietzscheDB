@@ -14,6 +14,18 @@ use std::sync::Arc;
 use tracing::info;
 use uuid::Uuid;
 
+/// Generate a deterministic UUID v5 from a namespace + name.
+/// This makes bootstrap idempotent across backup/restore cycles —
+/// the same logical entity always gets the same UUID.
+fn deterministic_uuid(name: &str) -> Uuid {
+    // NietzscheDB namespace UUID (randomly generated, fixed forever)
+    const NIETZSCHE_NS: Uuid = Uuid::from_bytes([
+        0x6b, 0xa7, 0xb8, 0x10, 0x9d, 0xad, 0x11, 0xd1,
+        0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8,
+    ]);
+    Uuid::new_v5(&NIETZSCHE_NS, name.as_bytes())
+}
+
 use nietzsche_graph::{
     CollectionManager, Edge, EdgeType, Node, NodeType, PoincareVector,
 };
@@ -64,7 +76,8 @@ pub async fn run_bootstrap(cm: &Arc<CollectionManager>) -> anyhow::Result<bool> 
     };
 
     // ── 1. Ur-Cortex — Concept node at the origin ───────────────────────
-    let cortex_id = Uuid::new_v4();
+    // Deterministic UUID so bootstrap survives backup/restore cycles.
+    let cortex_id = deterministic_uuid("cortex_zero");
     let mut cortex = Node::new(
         cortex_id,
         make_embedding(0.0, 0.0, 0.0, 0.0),
@@ -134,7 +147,7 @@ pub async fn run_bootstrap(cm: &Arc<CollectionManager>) -> anyhow::Result<bool> 
     let mut lens_ids = Vec::with_capacity(lenses.len());
 
     for lens in &lenses {
-        let lens_id = Uuid::new_v4();
+        let lens_id = deterministic_uuid(lens.content_id);
         let mut node = Node::new(
             lens_id,
             make_embedding(lens.coords[0], lens.coords[1], lens.coords[2], lens.coords[3]),

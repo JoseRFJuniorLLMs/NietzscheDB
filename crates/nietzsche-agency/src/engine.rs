@@ -313,6 +313,12 @@ impl AgencyEngine {
         // Pre-allocated buffer for f32->f64 conversion (FIX #2: avoids 24KB alloc per node)
         let mut coords_buf: Vec<f64> = Vec::with_capacity(dim);
 
+        // Fix #14: Fair round-robin scanning — skip a random offset so that
+        // different ticks evaluate different portions of the node space.
+        // This prevents later-inserted nodes from never being promoted when
+        // the max_eval cap is hit.
+        let skip_offset = rand::random::<usize>() % (self.config.maturity_max_eval.max(1) * 2);
+
         for result in storage.iter_nodes_meta() {
             let meta = match result {
                 Ok(m) => m,
@@ -324,8 +330,12 @@ impl AgencyEngine {
                 continue;
             }
 
+            // Round-robin: skip the first `skip_offset` eligible nodes
             scanned += 1;
-            if scanned > self.config.maturity_max_eval {
+            if scanned <= skip_offset {
+                continue;
+            }
+            if scanned > skip_offset + self.config.maturity_max_eval {
                 break;
             }
 

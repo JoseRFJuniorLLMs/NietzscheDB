@@ -27,12 +27,19 @@ impl<const N: usize> HyperVector<N> {
     }
 
     /// Creates a `HyperVector` without validation.
+    ///
+    /// # Safety contract
+    /// The caller **must** ensure `||coords||² < 1.0` for Poincaré metrics.
+    /// For Euclidean/Cosine workloads alpha is unused, so any coords are fine.
+    /// If `sq_norm >= 1.0`, alpha is clamped to avoid NaN/Inf in distance calculations.
     pub fn new_unchecked(coords: [f64; N]) -> Self {
         let sq_norm: f64 = coords.iter().map(|&x| x * x).sum();
-        // Calculate alpha anyway, but handle >= 1.0 gracefully (though unused for L2)
-        // If sq_norm >= 1.0, alpha becomes negative or infinite.
-        // We store it as-is; usage must handle these cases.
-        let alpha = 1.0 / (1.0 - sq_norm);
+        // Clamp denominator to avoid negative/infinite alpha when vector is
+        // outside or on the boundary of the Poincaré ball.  This makes
+        // Euclidean workloads safe and gives a loud but non-crashing result
+        // for misused Poincaré vectors (alpha will be very large → distances
+        // will be enormous, signalling the problem).
+        let alpha = 1.0 / (1.0 - sq_norm).max(1e-15);
         Self { coords, alpha }
     }
 
@@ -318,9 +325,16 @@ impl<const N: usize> QuantizedHyperVector<N> {
     }
 }
 
-/// Binary Quantized (1 bit per dimension)
-/// With Fixed Storage Buffer (512 bytes) to support up to 4096 dimensions
-/// safely without `generic_const_exprs`.
+/// Binary Quantized (1 bit per dimension).
+///
+/// Uses `N.div_ceil(8)` bytes for the bit buffer plus 4 bytes for alpha.
+/// The fixed 512-byte buffer wastes memory for small N; however, changing
+/// to `[u8; N.div_ceil(8)]` requires `generic_const_exprs` (unstable).
+/// As a compromise the buffer is kept at 512 bytes for layout stability,
+/// but all operations only touch the first `N.div_ceil(8)` bytes.
+///
+/// **WARNING**: Binary quantization is **rejected** for Poincaré and Lorentz
+/// metrics.  Only use for Euclidean/Cosine workloads.
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct BinaryHyperVector<const N: usize> {
@@ -357,25 +371,20 @@ impl<const N: usize> BinaryHyperVector<N> {
         dist
     }
 
-    pub fn poincare_distance_sq_to_float(&self, query: &HyperVector<N>) -> f64 {
-        let val = 1.0 / (N as f64).sqrt() * 0.99;
-        let mut sum_sq_diff = 0.0;
-
-        for i in 0..N {
-            if i >= 4096 {
-                break;
-            }
-            let byte_idx = i / 8;
-            let bit_idx = i % 8;
-            let bit = (self.bits[byte_idx] >> bit_idx) & 1;
-
-            let recon = if bit == 1 { val } else { -val };
-            let diff = recon - query.coords[i];
-            sum_sq_diff += diff * diff;
-        }
-
-        let delta = sum_sq_diff * f64::from(self.alpha) * query.alpha;
-        1.0 + 2.0 * delta
+    /// Binary quantization is **permanently rejected** for Poincaré metrics.
+    ///
+    /// `sign(x)` destroys magnitude information which encodes hierarchical
+    /// depth in the Poincaré ball.  See `docs/analysis/risco_hiperbolico.md`
+    /// PARTE 4, committee decision 2026-02-19.
+    ///
+    /// # Panics
+    /// Always panics.  Use `QuantizedHyperVector` (ScalarI8) instead.
+    pub fn poincare_distance_sq_to_float(&self, _query: &HyperVector<N>) -> f64 {
+        panic!(
+            "Binary quantization is not supported for the Poincaré model. \
+             sign(x) destroys hierarchical information encoded in the vector magnitude. \
+             Use ScalarI8 quantization instead."
+        );
     }
 
     pub fn l2_distance_sq_to_float(&self, query: &HyperVector<N>) -> f64 {

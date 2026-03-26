@@ -13,6 +13,65 @@ use std::time::Instant;
 use nietzsche_graph::CollectionManager;
 use nietzsche_sensory::SensoryMetrics;
 
+/// Histogram bucket boundaries in microseconds for latency tracking.
+/// Buckets: 100us, 500us, 1ms, 5ms, 10ms, 50ms, 100ms, 500ms, 1s, 5s, +Inf
+const HISTOGRAM_BOUNDS_US: [u64; 10] = [100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000];
+
+/// Lock-free histogram with fixed buckets.
+pub struct LatencyHistogram {
+    /// Counts per bucket: bucket[i] counts values <= HISTOGRAM_BOUNDS_US[i].
+    buckets: [AtomicU64; 10],
+    /// Count for values > last bucket boundary (+Inf).
+    overflow: AtomicU64,
+    /// Total count (sum of all buckets + overflow).
+    total_count: AtomicU64,
+    /// Total sum of latencies in us.
+    total_sum: AtomicU64,
+}
+
+impl LatencyHistogram {
+    pub fn new() -> Self {
+        Self {
+            buckets: std::array::from_fn(|_| AtomicU64::new(0)),
+            overflow: AtomicU64::new(0),
+            total_count: AtomicU64::new(0),
+            total_sum: AtomicU64::new(0),
+        }
+    }
+
+    /// Record a latency observation in microseconds.
+    #[inline]
+    pub fn observe(&self, value_us: u64) {
+        self.total_count.fetch_add(1, Ordering::Relaxed);
+        self.total_sum.fetch_add(value_us, Ordering::Relaxed);
+        for (i, &bound) in HISTOGRAM_BOUNDS_US.iter().enumerate() {
+            if value_us <= bound {
+                self.buckets[i].fetch_add(1, Ordering::Relaxed);
+                return;
+            }
+        }
+        self.overflow.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Format as Prometheus histogram buckets.
+    pub fn to_prometheus(&self, name: &str) -> String {
+        let mut out = format!(
+            "# HELP {name} Latency histogram in microseconds\n\
+             # TYPE {name} histogram\n"
+        );
+        let mut cumulative = 0u64;
+        for (i, &bound) in HISTOGRAM_BOUNDS_US.iter().enumerate() {
+            cumulative += self.buckets[i].load(Ordering::Relaxed);
+            out.push_str(&format!("{name}_bucket{{le=\"{bound}\"}} {cumulative}\n"));
+        }
+        cumulative += self.overflow.load(Ordering::Relaxed);
+        out.push_str(&format!("{name}_bucket{{le=\"+Inf\"}} {cumulative}\n"));
+        out.push_str(&format!("{name}_sum {}\n", self.total_sum.load(Ordering::Relaxed)));
+        out.push_str(&format!("{name}_count {}\n", self.total_count.load(Ordering::Relaxed)));
+        out
+    }
+}
+
 /// Lock-free operation counters for the NietzscheDB gRPC server.
 pub struct OperationMetrics {
     // ── Node operations ──
@@ -35,6 +94,11 @@ pub struct OperationMetrics {
     pub knn_count:              AtomicU64,
     pub knn_latency_us:         AtomicU64,
 
+    // ── Latency histograms (P50/P95/P99 support) ──
+    pub knn_histogram:          LatencyHistogram,
+    pub query_histogram:        LatencyHistogram,
+    pub insert_histogram:       LatencyHistogram,
+
     // ── Traversal ──
     pub traversal_count:        AtomicU64,
 
@@ -44,6 +108,12 @@ pub struct OperationMetrics {
 
     // ── Errors ──
     pub error_count:            AtomicU64,
+
+    // ── Blocking pool ──
+    /// Number of spawn_blocking tasks currently active.
+    pub blocking_tasks_active:  AtomicU64,
+    /// High-water mark for active blocking tasks.
+    pub blocking_tasks_peak:    AtomicU64,
 
     // ── Startup ──
     pub start_time:             Instant,
@@ -64,10 +134,15 @@ impl OperationMetrics {
             query_latency_us:        AtomicU64::new(0),
             knn_count:               AtomicU64::new(0),
             knn_latency_us:          AtomicU64::new(0),
+            knn_histogram:           LatencyHistogram::new(),
+            query_histogram:         LatencyHistogram::new(),
+            insert_histogram:        LatencyHistogram::new(),
             traversal_count:         AtomicU64::new(0),
             sleep_count:             AtomicU64::new(0),
             zaratustra_count:        AtomicU64::new(0),
             error_count:             AtomicU64::new(0),
+            blocking_tasks_active:   AtomicU64::new(0),
+            blocking_tasks_peak:     AtomicU64::new(0),
             start_time:              Instant::now(),
         }
     }
@@ -83,6 +158,31 @@ impl OperationMetrics {
     pub fn record(&self, counter: &AtomicU64, latency: &AtomicU64, elapsed_us: u64) {
         counter.fetch_add(1, Ordering::Relaxed);
         latency.fetch_add(elapsed_us, Ordering::Relaxed);
+    }
+
+    /// Track a blocking task entering the pool.  Call when `spawn_blocking` starts.
+    #[inline]
+    pub fn blocking_task_start(&self) {
+        let active = self.blocking_tasks_active.fetch_add(1, Ordering::Relaxed) + 1;
+        // Update peak (non-atomic CAS loop, but contention is very low here)
+        let mut peak = self.blocking_tasks_peak.load(Ordering::Relaxed);
+        while active > peak {
+            match self.blocking_tasks_peak.compare_exchange_weak(
+                peak, active, Ordering::Relaxed, Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(p) => peak = p,
+            }
+        }
+        if active > 100 {
+            tracing::warn!(active, "blocking thread pool pressure: {active} tasks active");
+        }
+    }
+
+    /// Track a blocking task leaving the pool.
+    #[inline]
+    pub fn blocking_task_end(&self) {
+        self.blocking_tasks_active.fetch_sub(1, Ordering::Relaxed);
     }
 
     /// Format all metrics as Prometheus text exposition.
@@ -109,7 +209,7 @@ impl OperationMetrics {
         let knn_n = self.knn_count.load(Ordering::Relaxed);
         let knn_lat = self.knn_latency_us.load(Ordering::Relaxed);
 
-        format!(
+        let mut result = format!(
             "\
 # HELP nietzsche_node_count Total nodes across all collections
 # TYPE nietzsche_node_count gauge
@@ -208,6 +308,25 @@ nietzsche_sensory_neural_fallback_total {sensory_neural_fallback}
             sensory_neural_audio = SensoryMetrics::neural_audio_count(),
             sensory_passthrough = SensoryMetrics::passthrough_count(),
             sensory_neural_fallback = SensoryMetrics::neural_fallback_count(),
-        )
+        );
+
+        // Blocking thread pool metrics.
+        result.push_str(&format!(
+            "# HELP nietzsche_blocking_tasks_active Currently active spawn_blocking tasks\n\
+             # TYPE nietzsche_blocking_tasks_active gauge\n\
+             nietzsche_blocking_tasks_active {}\n\
+             # HELP nietzsche_blocking_tasks_peak Peak active spawn_blocking tasks\n\
+             # TYPE nietzsche_blocking_tasks_peak gauge\n\
+             nietzsche_blocking_tasks_peak {}\n",
+            self.blocking_tasks_active.load(Ordering::Relaxed),
+            self.blocking_tasks_peak.load(Ordering::Relaxed),
+        ));
+
+        // Append latency histograms for P50/P95/P99 support.
+        result.push_str(&self.knn_histogram.to_prometheus("nietzsche_knn_latency_us"));
+        result.push_str(&self.query_histogram.to_prometheus("nietzsche_query_latency_us"));
+        result.push_str(&self.insert_histogram.to_prometheus("nietzsche_insert_latency_us"));
+
+        result
     }
 }

@@ -59,8 +59,23 @@ mod metrics;
 use config::Config;
 use metrics::OperationMetrics;
 
+/// Shutdown signal: background tasks subscribe to this watch channel.
+/// When the main task receives SIGINT, it sends `true` to signal all
+/// background tasks to exit their loops gracefully.
+static SHUTDOWN: std::sync::OnceLock<tokio::sync::watch::Sender<bool>> = std::sync::OnceLock::new();
+
+/// Create a shutdown receiver.  Background tasks should `select!` on
+/// `shutdown_rx.changed()` alongside their work loop.
+fn shutdown_rx() -> tokio::sync::watch::Receiver<bool> {
+    SHUTDOWN.get().expect("SHUTDOWN not initialized").subscribe()
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // ── Shutdown channel ──────────────────────────────────────────────────────
+    let (shutdown_tx, _) = tokio::sync::watch::channel(false);
+    SHUTDOWN.set(shutdown_tx).expect("SHUTDOWN already initialized");
+
     // ── Tracing ───────────────────────────────────────────────────────────────
     let config = Config::from_env();
 
@@ -263,6 +278,36 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
+            // Fix #7: Async warm-up — trigger initial GPU index build for large
+            // collections so that the first search doesn't incur a cold-start penalty.
+            let cm_warmup = Arc::clone(&cm);
+            tokio::spawn(async move {
+                // Wait for server to be fully ready before warm-up.
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                info!("GPU warm-up: pre-building CAGRA index for existing collections");
+                for col in cm_warmup.list() {
+                    if col.node_count < 1000 {
+                        continue; // Below CAGRA threshold
+                    }
+                    if let Some(shared) = cm_warmup.get(&col.name) {
+                        let db = shared.read().await;
+                        if let Err(e) = db.optimize_vector_store().await {
+                            warn!(
+                                collection = %col.name,
+                                error      = %e,
+                                "GPU warm-up failed"
+                            );
+                        } else {
+                            info!(
+                                collection = %col.name,
+                                nodes      = col.node_count,
+                                "GPU warm-up: CAGRA index built"
+                            );
+                        }
+                    }
+                }
+                info!("GPU warm-up complete");
+            });
         } else {
             info!("GPU feature compiled in but NIETZSCHE_VECTOR_BACKEND != gpu — using CPU HNSW");
         }
@@ -605,12 +650,31 @@ async fn main() -> anyhow::Result<()> {
                                 }
                             }
                             nietzsche_wiederkehr::DaemonIntent::DiffuseFromNode { node_id, t_values, max_hops } => {
-                                info!(
-                                    node_id  = %node_id,
-                                    t_values = ?t_values,
-                                    max_hops = max_hops,
-                                    "daemon diffuse intent (logged)"
-                                );
+                                // Execute diffusion via Pregel heat kernel.
+                                let diffuser = nietzsche_pregel::HeatKernelDiffuser::new_with_hops(max_hops);
+                                match diffuser.diffuse(
+                                    db_w.storage(),
+                                    db_w.adjacency(),
+                                    &[node_id],
+                                    &t_values,
+                                ) {
+                                    Ok(results) => {
+                                        let total_updates: usize = results.iter().map(|r| r.scores.len()).sum();
+                                        info!(
+                                            node_id  = %node_id,
+                                            updates  = total_updates,
+                                            t_count  = results.len(),
+                                            "daemon diffuse intent executed"
+                                        );
+                                    }
+                                    Err(e) => {
+                                        warn!(
+                                            node_id  = %node_id,
+                                            error    = %e,
+                                            "daemon diffuse intent failed"
+                                        );
+                                    }
+                                }
                             }
                         }
                     }
@@ -672,27 +736,45 @@ async fn main() -> anyhow::Result<()> {
             let narrative_engine = NarrativeEngine::new(NarrativeConfig::default());
 
             tokio::spawn(async move {
+                let mut shutdown = shutdown_rx();
                 info!(
                     tick_secs   = tick_dur.as_secs(),
                     collections = engines.lock().map(|e| e.len()).unwrap_or(0),
                     "Agency engine started (multi-collection)"
                 );
-                loop {
-                    tokio::time::sleep(tick_dur).await;
 
-                    // Runtime skip/always overrides via env vars (read once per tick cycle)
-                    let env_skip: Vec<String> = std::env::var("AGENCY_SKIP_COLLECTIONS")
+                // Cache env vars — re-read only every 10 ticks (~10 min at 60s default)
+                // to avoid redundant parsing on every cycle.
+                let parse_env_csv = |key: &str| -> Vec<String> {
+                    std::env::var(key)
                         .unwrap_or_default()
                         .split(',')
                         .map(|s| s.trim().to_string())
                         .filter(|s| !s.is_empty())
-                        .collect();
-                    let env_always: Vec<String> = std::env::var("AGENCY_ALWAYS_COLLECTIONS")
-                        .unwrap_or_default()
-                        .split(',')
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty())
-                        .collect();
+                        .collect()
+                };
+                let mut cached_skip = parse_env_csv("AGENCY_SKIP_COLLECTIONS");
+                let mut cached_always = parse_env_csv("AGENCY_ALWAYS_COLLECTIONS");
+                let mut env_refresh_counter = 0u64;
+
+                loop {
+                    // Graceful shutdown: exit loop when SIGINT received.
+                    tokio::select! {
+                        _ = shutdown.changed() => {
+                            info!("Agency engine: shutdown signal received, exiting");
+                            break;
+                        }
+                        _ = tokio::time::sleep(tick_dur) => {}
+                    }
+
+                    // Refresh env var cache every 10 ticks
+                    env_refresh_counter += 1;
+                    if env_refresh_counter % 10 == 0 {
+                        cached_skip = parse_env_csv("AGENCY_SKIP_COLLECTIONS");
+                        cached_always = parse_env_csv("AGENCY_ALWAYS_COLLECTIONS");
+                    }
+                    let env_skip = &cached_skip;
+                    let env_always = &cached_always;
 
                     // Collect collection names to process
                     let col_names: Vec<String> = engines.lock()
@@ -738,7 +820,9 @@ async fn main() -> anyhow::Result<()> {
                         let shared_c = Arc::clone(&shared);
                         let engines_c = Arc::clone(&engines);
                         let cn = col_name.clone();
+                        let tick_start = std::time::Instant::now();
                         let tick_result = tokio::task::spawn_blocking(move || {
+                            // Read lock only — write lock is acquired later for intents.
                             let db = shared_c.blocking_read();
                             let mut eng_guard = engines_c.lock().map_err(|e| {
                                 nietzsche_agency::AgencyError::Internal(format!("engine lock: {e}"))
@@ -749,6 +833,15 @@ async fn main() -> anyhow::Result<()> {
                                 Err(nietzsche_agency::AgencyError::Internal("engine not found".into()))
                             }
                         }).await;
+
+                        let tick_elapsed = tick_start.elapsed();
+                        if tick_elapsed.as_secs() > 30 {
+                            warn!(
+                                collection = %col_name,
+                                elapsed_ms = tick_elapsed.as_millis() as u64,
+                                "Agency tick took >30s — consider increasing AGENCY_TICK_SECS or reducing collection size"
+                            );
+                        }
 
                         let report = match tick_result {
                             Ok(Ok(r)) => r,
@@ -1608,7 +1701,13 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         _ = tokio::signal::ctrl_c() => {
-            info!("received SIGINT — shutting down gracefully");
+            info!("received SIGINT — signalling background tasks to stop");
+            // Signal all background tasks to exit their loops.
+            if let Some(tx) = SHUTDOWN.get() {
+                let _ = tx.send(true);
+            }
+            // Give background tasks a moment to finish current work.
+            tokio::time::sleep(Duration::from_secs(2)).await;
         }
     }
 
