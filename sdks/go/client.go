@@ -40,6 +40,12 @@ func ConnectInsecure(addr string) (*NietzscheClient, error) {
 	return Connect(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 }
 
+// Conn returns the underlying gRPC ClientConn for advanced operations
+// (e.g., health monitoring, state inspection, forced reconnect via ResetConnectBackoff).
+func (c *NietzscheClient) Conn() *grpc.ClientConn {
+	return c.conn
+}
+
 // Close releases the underlying gRPC connection. Safe to call multiple times.
 func (c *NietzscheClient) Close() error {
 	var closeErr error
