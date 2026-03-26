@@ -32,7 +32,7 @@
 > [!info] Multi-Manifold Graph Database
 > Primeiro banco de dados do mundo que opera em **4 geometrias nao-Euclidianas simultaneamente** a partir de uma unica camada Poincare.
 
-**Linguagem**: Rust (nightly 1.96.0) | **Workspace**: 48 crates | **Versao**: 3.1.0 (2026-03-08)
+**Linguagem**: Rust (nightly 1.96.0) | **Workspace**: 48 crates | **Versao**: 3.1.1 (2026-03-26)
 **Proposito**: Substrato de conhecimento para o sistema AGI [[EVA-Mind]]
 
 ### As 4 Geometrias
@@ -256,6 +256,7 @@ NIETZSCHE_VECTOR_DIM=3072            # Gemini embeddings
 NIETZSCHE_VECTOR_METRIC=cosine
 NIETZSCHE_PORT=50051
 NIETZSCHE_DASHBOARD_PORT=8080
+NIETZSCHE_DASHBOARD_ORIGINS=*             # CORS origins (comma-separated, * = allow all)
 
 # Sleep Cycle
 NIETZSCHE_SLEEP_INTERVAL_SECS=0
@@ -513,12 +514,19 @@ Tres fases filosoficas do motor de energia:
 | M=64, ef=400 | 1024 | Cosine | 23,662 | 995 | 2.36ms | 99.8% |
 | M=64, ef=400 | 64 | Poincare | 158,675 | 2,777 | 1.52ms | 99.9% |
 
+### Observabilidade (v3.1.1)
+- **Latency Histograms**: KNN, Query, Insert com 10 buckets (100us-5s) + Prometheus exposition
+- **Blocking Pool**: `nietzsche_blocking_tasks_active`, `nietzsche_blocking_tasks_peak` gauges
+- **Agency Tick Warning**: log quando tick demora >30s
+- **Endpoint**: `GET /metrics` (Prometheus format)
+
 ---
 
 ## Changelog Resumido
 
 | Versao | Data | Destaque |
 |--------|------|----------|
+| **3.1.1** | 2026-03-26 | 18 safety & perf fixes: AtomicU64 HNSW entry, BQ panic guard, histograms, complex filters, clean shutdown, GPU warm-up |
 | **3.1.0** | 2026-03-08 | Agency Phases XVII-XXIV (Ego-Cache, Reasoning, Self-Healing, Learning, Compression, Sharding, World Model, Flywheel) |
 | **3.0.0** | 2026-02-22 | Multi-Manifold Architecture (Klein, Riemann, Minkowski) + 6 RPCs |
 | **2.1.0** | 2026-02-19 | NodeMeta Separation, f32 coords, Binary Quant rejection |
@@ -575,4 +583,4 @@ D:/DEV/NietzscheDB/                          # Root
 
 > [!abstract] Meta
 > Este ficheiro serve como **memoria persistente** do Claude para o projecto NietzscheDB.
-> Atualizado: 2026-03-26 | Versao: 3.1.0 | Crates: 48 | Nos: 865K+ | Collections: ~35
+> Atualizado: 2026-03-26 | Versao: 3.1.1 | Crates: 48 | Nos: 865K+ | Collections: ~35

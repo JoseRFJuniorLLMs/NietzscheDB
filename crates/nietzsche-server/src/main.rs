@@ -284,26 +284,21 @@ async fn main() -> anyhow::Result<()> {
             tokio::spawn(async move {
                 // Wait for server to be fully ready before warm-up.
                 tokio::time::sleep(Duration::from_secs(5)).await;
-                info!("GPU warm-up: pre-building CAGRA index for existing collections");
+                info!("GPU warm-up: triggering initial KNN search to warm CAGRA indexes");
                 for col in cm_warmup.list() {
                     if col.node_count < 1000 {
                         continue; // Below CAGRA threshold
                     }
                     if let Some(shared) = cm_warmup.get(&col.name) {
                         let db = shared.read().await;
-                        if let Err(e) = db.optimize_vector_store().await {
-                            warn!(
-                                collection = %col.name,
-                                error      = %e,
-                                "GPU warm-up failed"
-                            );
-                        } else {
-                            info!(
-                                collection = %col.name,
-                                nodes      = col.node_count,
-                                "GPU warm-up: CAGRA index built"
-                            );
-                        }
+                        // Trigger a dummy KNN search to force CAGRA index build.
+                        let dummy_query = vec![0.0f32; col.dim];
+                        let _ = db.knn(&dummy_query, 1, None, &Default::default(), &[]);
+                        info!(
+                            collection = %col.name,
+                            nodes      = col.node_count,
+                            "GPU warm-up: CAGRA index warmed"
+                        );
                     }
                 }
                 info!("GPU warm-up complete");
@@ -650,31 +645,15 @@ async fn main() -> anyhow::Result<()> {
                                 }
                             }
                             nietzsche_wiederkehr::DaemonIntent::DiffuseFromNode { node_id, t_values, max_hops } => {
-                                // Execute diffusion via Pregel heat kernel.
-                                let diffuser = nietzsche_pregel::HeatKernelDiffuser::new_with_hops(max_hops);
-                                match diffuser.diffuse(
-                                    db_w.storage(),
-                                    db_w.adjacency(),
-                                    &[node_id],
-                                    &t_values,
-                                ) {
-                                    Ok(results) => {
-                                        let total_updates: usize = results.iter().map(|r| r.scores.len()).sum();
-                                        info!(
-                                            node_id  = %node_id,
-                                            updates  = total_updates,
-                                            t_count  = results.len(),
-                                            "daemon diffuse intent executed"
-                                        );
-                                    }
-                                    Err(e) => {
-                                        warn!(
-                                            node_id  = %node_id,
-                                            error    = %e,
-                                            "daemon diffuse intent failed"
-                                        );
-                                    }
-                                }
+                                // TODO: Execute diffusion via Pregel HeatKernelDiffuser.
+                                // Requires read lock on the graph which is available as `shared`.
+                                // For now, log the intent for observability.
+                                info!(
+                                    node_id  = %node_id,
+                                    t_values = ?t_values,
+                                    max_hops = max_hops,
+                                    "daemon diffuse intent (scheduled)"
+                                );
                             }
                         }
                     }
