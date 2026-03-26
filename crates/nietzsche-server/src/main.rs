@@ -291,9 +291,11 @@ async fn main() -> anyhow::Result<()> {
                     }
                     if let Some(shared) = cm_warmup.get(&col.name) {
                         let db = shared.read().await;
-                        // Trigger a dummy KNN search to force CAGRA index build.
-                        let dummy_query = vec![0.0f32; col.dim];
-                        let _ = db.knn(&dummy_query, 1, None, &Default::default(), &[]);
+                        // Trigger a dummy KNN search with a zero vector to force
+                        // the GpuVectorStore to build its CAGRA index.
+                        let zero_coords = vec![0.0f32; col.dim];
+                        let dummy_query = nietzsche_graph::PoincareVector::new(zero_coords);
+                        let _ = db.knn(&dummy_query, 1);
                         info!(
                             collection = %col.name,
                             nodes      = col.node_count,
