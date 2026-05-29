@@ -935,8 +935,14 @@ z, _ := client.InvokeZaratustra(ctx, nietzsche.ZaratustraOpts{Cycles: 1})
 
 ## Checklist Resumido
 
-> **Atualizado em 2026-02-22** com base em auditoria de codigo real (nao MDs).
-> Verificado: `db.rs`, `storage.rs`, `model.rs`, `server.rs`, `executor.rs`, `nql.pest`, todos os crates avancados.
+> **Re-verificado em 2026-05-29** contra o codigo real (nao MDs).
+> Fontes: `crates/nietzsche-api/proto/nietzsche.proto` (82 RPCs — proto real do servidor),
+> `crates/nietzsche-query/src/{executor.rs,*.pest}`, `crates/nietzsche-swartz`, `crates/nietzsche-media`.
+> **Estado geral**: roadmap de compatibilidade EVA-Mind ~90% concluido. Migracao do EVA-Mind
+> para NietzscheDB **COMPLETA** (ver secao final). Gaps reais restantes: NQL `TABLE`/Hybrid JOIN
+> (H.2/H.5), Media Store sem gRPC (Fase I), SET/DELETE em path patterns (NQL-6), FOREACH (NQL-11).
+>
+> _Nota: a auditoria anterior (2026-02-22) estava desatualizada para menos — NQL-8 (WITH) ja existe._
 
 ### Engine (Rust)
 - [x] **A.1** Cosine distance no HNSW — `EmbeddedVectorStore` suporta Cosine, Euclidean, Poincare, DotProduct via `VectorMetric` enum
@@ -961,8 +967,8 @@ z, _ := client.InvokeZaratustra(ctx, nietzsche.ZaratustraOpts{Cycles: 1})
 - [x] **NQL-5**  DELETE alias e DETACH DELETE alias — ambos implementados. DETACH remove no + arestas incidentes
 - [ ] **NQL-6**  Acesso a propriedades de aresta `r.field` em WHERE/ORDER BY — **PARCIAL**: path patterns existem, mas `SET/DELETE em path patterns` retorna erro "not yet supported"
 - [ ] **NQL-7**  `IN COLLECTION 'name'` + `MATCH KNN(n, $v, k=N)` — **PARCIAL**: colecoes roteadas via campo `collection` no gRPC, mas sintaxe `IN COLLECTION` no NQL nao confirmada
-- [ ] **NQL-8**  WITH clause (pipeline) — **NAO IMPLEMENTADO**
-- [ ] **NQL-9**  CREATE/DROP/SHOW INDEX — **PARCIAL**: RPCs gRPC existem (CreateIndex/DropIndex/ListIndexes), sintaxe NQL nao confirmada
+- [x] **NQL-8**  WITH clause (CTEs) — IMPLEMENTADO: `with_cte_query` no grammar (`WITH x AS (MATCH ...) ...`), pipeline de queries funciona
+- [ ] **NQL-9**  CREATE/DROP/SHOW INDEX — **PARCIAL**: RPCs gRPC existem (CreateIndex/DropIndex/ListIndexes), sintaxe NQL nao exposta no grammar
 - [x] **NQL-10** Funcoes de tempo: NOW(), EPOCH_MS(), INTERVAL("1h"/"1d"/"1w") — implementadas no executor
 - [ ] **NQL-11** FOREACH batch — **NAO IMPLEMENTADO** (baixa prioridade)
 
@@ -984,18 +990,22 @@ z, _ := client.InvokeZaratustra(ctx, nietzsche.ZaratustraOpts{Cycles: 1})
 - [x] **NQL-B15** WHERE: AND, OR, NOT, IN, BETWEEN, CONTAINS, STARTS_WITH, ENDS_WITH
 
 ### Table Store — Fase H
-- [x] **H.1** `TableStore` com SQLite embutido — crate `nietzsche-table` (15 testes). CF_SQL_SCHEMA + CF_SQL_DATA no RocksDB
-- [x] **H.2** SQL via RPCs — `SqlQuery` (SELECT) e `SqlExec` (CREATE TABLE, INSERT, UPDATE, DELETE, DROP TABLE, ALTER) via Swartz engine
-- [x] **H.3** gRPC RPCs — SqlQuery + SqlExec implementados no servidor
-- [ ] **H.4** Scripts de migracao das 8 tabelas candidatas do EVA-Mind — **NAO IMPLEMENTADO**
-- [ ] **H.5** Hybrid JOIN `TABLE + NODE + VECTOR` na NQL — **NAO IMPLEMENTADO**
+> **Correcao 2026-05-29**: o backend SQL NAO usa SQLite/rusqlite nem um crate `nietzsche-table`.
+> Foi implementado via **`nietzsche-swartz`** (engine SQL embutida sobre **GlueSQL**, partilhando o
+> mesmo RocksDB do grafo — CFs `sql_schema` + `sql_data`). Decisao divergente do plano original.
+- [x] **H.1** Engine SQL embutida — crate **`nietzsche-swartz`** (GlueSQL sobre RocksDB partilhado), NAO SQLite
+- [x] **H.2 (parcial)** SQL via RPCs dedicados — `SqlQuery`, `SqlExec`, `ListSqlTables`, `DescribeSqlTable` (full SQL: SELECT/INSERT/UPDATE/DELETE/JOIN/GROUP BY)
+- [ ] **H.2 (NQL)** `CREATE TABLE`/`MATCH TABLE`/`INSERT TABLE`/`MERGE TABLE` no NQL — **NAO IMPLEMENTADO**: nao ha keyword `TABLE` no grammar. SQL ficou como **dialeto separado** (RPCs Swartz), o oposto do design "NQL linguagem unica"
+- [x] **H.3** gRPC RPCs — SqlQuery + SqlExec + ListSqlTables + DescribeSqlTable no servidor (82 RPCs total)
+- [ ] **H.4** Scripts de migracao das 8 tabelas candidatas do EVA-Mind — **OBSOLETO**: EVA-Mind ja migrou 100% (sem Postgres). Ver secao final
+- [ ] **H.5** Hybrid JOIN `TABLE + NODE + VECTOR` na NQL — **NAO IMPLEMENTADO**: executor NQL nao fala com o Swartz
 
 ### Media Store — Fase I
 - [x] **I.1** `MediaStore` com OpenDAL — crate `nietzsche-media` (8 testes). Backend fs/s3/gcs
 - [x] **I.1** `NIETZSCHE_MEDIA_BACKEND` env var (`fs` | `s3` | `gcs`)
 - [ ] **I.2** Fluxo PCM: `ListStore -> ConsolidateAudio -> MediaStore -> Graph node` — **NAO IMPLEMENTADO**
 - [ ] **I.3** Colecao `speaker_embeddings` dim=192 Cosine + `patient_faces` dim=768 — **NAO IMPLEMENTADO** (colecoes podem ser criadas, mas nao pre-configuradas)
-- [ ] **I.4** gRPC: `MediaPut`, `MediaGet`, `MediaDelete`, `MediaList`, `ConsolidateAudio` — **PARCIAL** (crate existe, RPCs no servidor nao confirmados)
+- [ ] **I.4** gRPC: `MediaPut`, `MediaGet`, `MediaDelete`, `MediaList`, `ConsolidateAudio` — **NAO IMPLEMENTADO**: confirmado que NAO existe nenhum RPC de Media no proto real (82 RPCs). O crate `nietzsche-media` e **so biblioteca**, nao ligado ao servidor nem ao SDK. Maior buraco restante da Fase I.
 
 ### SDK
 - [x] **SDK-Go** Cliente Go idiomatico — `sdk-papa-caolho` (48 RPCs, incluindo Merge, Cache, Lists, SQL, CDC, Backup, Algo, Manifold, Sensory)
@@ -1595,3 +1605,30 @@ Stack EVA-Mind:   ANTES  5 bancos  →  DEPOIS  2 bancos
                   NietzscheDB
                   NietzscheDB           NietzscheDB   (clínico + LGPD)
 ```
+
+---
+
+## STATUS DA MIGRAÇÃO EVA-Mind — COMPLETA (verificado 2026-05-29)
+
+> O EVA-Mind (repo `D:\DEV\EVA`) **já eliminou todos os bancos externos**. Backend 100% NietzscheDB.
+
+### Verificação (codigo real, nao MDs)
+- `go.mod`: **zero** drivers de Redis / Neo4j / Qdrant / pgx / lib/pq / gorm. Sem driver, o Go nem compila uma conexao — eliminacao conclusiva.
+- `.env`: so existem vars `NIETZSCHE_*` (`NIETZSCHE_GRPC_ADDR`, `NIETZSCHE_COLLECTION_*`). Nenhuma connection string de outro banco.
+- `grep` no codigo Go: `redis`=0, `neo4j`=0, `qdrant`=0, `pgx`=0 referencias.
+- `main.go`: comentario `// Legacy PostgreSQL connection REMOVED — all data lives in NietzscheDB.`
+- Commit `bd8ef6c` (2026-03-30): _"Remove todas as referências PostgreSQL — migração 100% NietzscheDB"_.
+
+### Mapa final (antes → depois)
+| Banco original | Funcao | Estado |
+|---|---|---|
+| Neo4j #1 (grafo paciente) | grafo episodico | ✅ eliminado → `patient_graph` (NietzscheDB) |
+| Neo4j #2 (meta-cognitivo) | sessoes/turnos EVA | ✅ eliminado → NietzscheDB |
+| Redis (cache + audio PCM) | TTL cache + listas | ✅ eliminado → CacheSet/Get + ListRPush (NietzscheDB) |
+| Qdrant (vetores) | embeddings KNN | ✅ eliminado → collections multi-dim (NietzscheDB) |
+| PostgreSQL (relacional) | dados clinicos | ✅ eliminado → NQL + Swartz SQL (NietzscheDB) |
+
+### Residual (nao-bloqueante, so cosmetico)
+- Comentarios obsoletos que ainda mencionam "salva em Postgres" (codigo escreve so em NietzscheDB) — limpeza cosmetica.
+- Helper `parsePostgresArray()` em varios pacotes — parser de string formato `{a,b,c}` (dado legado), **nao** e conexao de DB; pode ficar.
+- ⚠️ **`.env` com IP desatualizado**: `NIETZSCHE_GRPC_ADDR=34.56.82.116` deveria ser `136.111.0.47` (IP estatico atual). Corrigir antes de deploy.
