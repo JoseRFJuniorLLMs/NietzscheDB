@@ -1,0 +1,1952 @@
+{
+  "nietzsche-agency/src/attention_cycle.rs": {
+    "mtime": 1773376033.8944035,
+    "ast_hash": "b7e65e01eac33687a1b115f3e3697cb7",
+    "semantic_hash": "b7e65e01eac33687a1b115f3e3697cb7"
+  },
+  "nietzsche-agency/src/attention_economy.rs": {
+    "mtime": 1773376035.7144172,
+    "ast_hash": "51cfda2935cc271925104b054229a1d3",
+    "semantic_hash": "51cfda2935cc271925104b054229a1d3"
+  },
+  "nietzsche-agency/src/avalanche.rs": {
+    "mtime": 1773376037.0174847,
+    "ast_hash": "a8e328cd99fe48cd4f00032eb37f7cfb",
+    "semantic_hash": "a8e328cd99fe48cd4f00032eb37f7cfb"
+  },
+  "nietzsche-agency/src/axiom_registry.rs": {
+    "mtime": 1773376038.2207165,
+    "ast_hash": "f08055453f6493ebcde88a59e623cf53",
+    "semantic_hash": "f08055453f6493ebcde88a59e623cf53"
+  },
+  "nietzsche-agency/src/bin/experiment_amnesia.rs": {
+    "mtime": 1773376039.582352,
+    "ast_hash": "17f989e99c9e6400ebc6905ec2c86725",
+    "semantic_hash": "17f989e99c9e6400ebc6905ec2c86725"
+  },
+  "nietzsche-agency/src/bin/experiment_bridge_judge.rs": {
+    "mtime": 1773376040.9204855,
+    "ast_hash": "48ca1bbcb49d1030f29bda1b1653ffe2",
+    "semantic_hash": "48ca1bbcb49d1030f29bda1b1653ffe2"
+  },
+  "nietzsche-agency/src/bin/experiment_link_prediction.rs": {
+    "mtime": 1773376042.2553372,
+    "ast_hash": "d3583dc6f3ba6039d1b77bf0406290a7",
+    "semantic_hash": "d3583dc6f3ba6039d1b77bf0406290a7"
+  },
+  "nietzsche-agency/src/bin/simulate_forgetting.rs": {
+    "mtime": 1773376043.3661847,
+    "ast_hash": "67d7d616081c7bf469496b0b127b845c",
+    "semantic_hash": "67d7d616081c7bf469496b0b127b845c"
+  },
+  "nietzsche-agency/src/centroid_guardian.rs": {
+    "mtime": 1773376044.7365537,
+    "ast_hash": "177c0f1a23fccededc667c6e95255a30",
+    "semantic_hash": "177c0f1a23fccededc667c6e95255a30"
+  },
+  "nietzsche-agency/src/circuit_breaker.rs": {
+    "mtime": 1773376045.9481623,
+    "ast_hash": "22cb9b40c2fd0b37ded19736ae271047",
+    "semantic_hash": "22cb9b40c2fd0b37ded19736ae271047"
+  },
+  "nietzsche-agency/src/code_as_data.rs": {
+    "mtime": 1773376047.1407669,
+    "ast_hash": "41d222bf4a7f8203ce68b3a2f1e12d60",
+    "semantic_hash": "41d222bf4a7f8203ce68b3a2f1e12d60"
+  },
+  "nietzsche-agency/src/cog_evolve.rs": {
+    "mtime": 1774218404.3174076,
+    "ast_hash": "1f02c2ef1473301592cd9f19914ced19",
+    "semantic_hash": "1f02c2ef1473301592cd9f19914ced19"
+  },
+  "nietzsche-agency/src/cognitive_dashboard.rs": {
+    "mtime": 1773376048.460977,
+    "ast_hash": "e724a5199583f445327099a2aa493ebb",
+    "semantic_hash": "e724a5199583f445327099a2aa493ebb"
+  },
+  "nietzsche-agency/src/cognitive_layer.rs": {
+    "mtime": 1773376049.5155501,
+    "ast_hash": "627508b0c402e53532068b6551a97d3e",
+    "semantic_hash": "627508b0c402e53532068b6551a97d3e"
+  },
+  "nietzsche-agency/src/compression.rs": {
+    "mtime": 1774566999.5738285,
+    "ast_hash": "9c4dd8a9d7bdb718a67462f977cee22f",
+    "semantic_hash": "9c4dd8a9d7bdb718a67462f977cee22f"
+  },
+  "nietzsche-agency/src/config.rs": {
+    "mtime": 1774224909.5586338,
+    "ast_hash": "352d21d321b131e54876ef56b7babe3b",
+    "semantic_hash": "352d21d321b131e54876ef56b7babe3b"
+  },
+  "nietzsche-agency/src/counterfactual/mod.rs": {
+    "mtime": 1773376053.1880207,
+    "ast_hash": "a13bd77956929bb0a1d34591ffeb0386",
+    "semantic_hash": "a13bd77956929bb0a1d34591ffeb0386"
+  },
+  "nietzsche-agency/src/counterfactual/shadow.rs": {
+    "mtime": 1773376054.376453,
+    "ast_hash": "4ce8e640a5ff7321f65729323a5e226f",
+    "semantic_hash": "4ce8e640a5ff7321f65729323a5e226f"
+  },
+  "nietzsche-agency/src/counterfactual/simulator.rs": {
+    "mtime": 1773376055.7920337,
+    "ast_hash": "9c7511188e82dbe5a8d3e35eed965d97",
+    "semantic_hash": "9c7511188e82dbe5a8d3e35eed965d97"
+  },
+  "nietzsche-agency/src/curiosity_engine.rs": {
+    "mtime": 1773376056.9861543,
+    "ast_hash": "39ece9f65e8e6daed688b17672cd85b2",
+    "semantic_hash": "39ece9f65e8e6daed688b17672cd85b2"
+  },
+  "nietzsche-agency/src/daemons/coherence.rs": {
+    "mtime": 1773376058.0252182,
+    "ast_hash": "e76530bbb08debbdb02fe44ff44a8d59",
+    "semantic_hash": "e76530bbb08debbdb02fe44ff44a8d59"
+  },
+  "nietzsche-agency/src/daemons/entropy.rs": {
+    "mtime": 1773376064.190097,
+    "ast_hash": "70c252755079ae5bd2cce05449c2eb33",
+    "semantic_hash": "70c252755079ae5bd2cce05449c2eb33"
+  },
+  "nietzsche-agency/src/daemons/epistemology.rs": {
+    "mtime": 1773376074.3927894,
+    "ast_hash": "7d0eb001795e1e7f6fea48cf13f124dd",
+    "semantic_hash": "7d0eb001795e1e7f6fea48cf13f124dd"
+  },
+  "nietzsche-agency/src/daemons/evolution_daemon.rs": {
+    "mtime": 1773376082.9887214,
+    "ast_hash": "abed757269c7cd99fc47aaa4fbdb6dfe",
+    "semantic_hash": "abed757269c7cd99fc47aaa4fbdb6dfe"
+  },
+  "nietzsche-agency/src/daemons/gap.rs": {
+    "mtime": 1773376092.0336237,
+    "ast_hash": "8429040fa6bddd24cc5a7942d2ebb4cf",
+    "semantic_hash": "8429040fa6bddd24cc5a7942d2ebb4cf"
+  },
+  "nietzsche-agency/src/daemons/ltd_daemon.rs": {
+    "mtime": 1773376093.9706259,
+    "ast_hash": "d96a3679e05c4258f925332c23de1a2b",
+    "semantic_hash": "d96a3679e05c4258f925332c23de1a2b"
+  },
+  "nietzsche-agency/src/daemons/mod.rs": {
+    "mtime": 1773376095.9411294,
+    "ast_hash": "b44992900ead3b40542c1909734b4862",
+    "semantic_hash": "b44992900ead3b40542c1909734b4862"
+  },
+  "nietzsche-agency/src/daemons/neural_threshold.rs": {
+    "mtime": 1773376098.1250591,
+    "ast_hash": "918646aaf325acd564edba02e469aab4",
+    "semantic_hash": "918646aaf325acd564edba02e469aab4"
+  },
+  "nietzsche-agency/src/daemons/nezhmetdinov.rs": {
+    "mtime": 1773376100.0439186,
+    "ast_hash": "464546ad83e0905c48179c422e3e7a95",
+    "semantic_hash": "464546ad83e0905c48179c422e3e7a95"
+  },
+  "nietzsche-agency/src/daemons/niilista.rs": {
+    "mtime": 1773376101.7802734,
+    "ast_hash": "40a6565cce9ca2ce6fe043910929fbd4",
+    "semantic_hash": "40a6565cce9ca2ce6fe043910929fbd4"
+  },
+  "nietzsche-agency/src/desire.rs": {
+    "mtime": 1773376103.1765249,
+    "ast_hash": "2a6d18105082bc96e8b91cb26ada9317",
+    "semantic_hash": "2a6d18105082bc96e8b91cb26ada9317"
+  },
+  "nietzsche-agency/src/dialectic.rs": {
+    "mtime": 1773376105.0343943,
+    "ast_hash": "20b61844b9c78817e737eb1b818ad478",
+    "semantic_hash": "20b61844b9c78817e737eb1b818ad478"
+  },
+  "nietzsche-agency/src/dirty_set.rs": {
+    "mtime": 1773376106.5426633,
+    "ast_hash": "8b8b4f531803dc06aa80f6c7b3b1c8a1",
+    "semantic_hash": "8b8b4f531803dc06aa80f6c7b3b1c8a1"
+  },
+  "nietzsche-agency/src/energy_evolve.rs": {
+    "mtime": 1774218453.9123452,
+    "ast_hash": "1c523d7ef7630986941aa3ab5c4b47b4",
+    "semantic_hash": "1c523d7ef7630986941aa3ab5c4b47b4"
+  },
+  "nietzsche-agency/src/engine.rs": {
+    "mtime": 1774566905.6844082,
+    "ast_hash": "5e489fa49176511a701dcd60faebc41b",
+    "semantic_hash": "5e489fa49176511a701dcd60faebc41b"
+  },
+  "nietzsche-agency/src/error.rs": {
+    "mtime": 1773376109.6782012,
+    "ast_hash": "2e63c19aadb76531cb50bdfd64802bd3",
+    "semantic_hash": "2e63c19aadb76531cb50bdfd64802bd3"
+  },
+  "nietzsche-agency/src/event_bus.rs": {
+    "mtime": 1773376110.9452038,
+    "ast_hash": "4824de480d0f4d355ee4688feb56eb18",
+    "semantic_hash": "4824de480d0f4d355ee4688feb56eb18"
+  },
+  "nietzsche-agency/src/evolution.rs": {
+    "mtime": 1773376112.1421363,
+    "ast_hash": "a1d9a112fc091662a5a54529f5ed219d",
+    "semantic_hash": "a1d9a112fc091662a5a54529f5ed219d"
+  },
+  "nietzsche-agency/src/evolution_27.rs": {
+    "mtime": 1773376113.3438346,
+    "ast_hash": "63682a6cdf0fe669bdf73bbcdd8edf6c",
+    "semantic_hash": "63682a6cdf0fe669bdf73bbcdd8edf6c"
+  },
+  "nietzsche-agency/src/evolve_persist.rs": {
+    "mtime": 1773952283.6171975,
+    "ast_hash": "28e56602e4c6f294ecdb2f8670e5ee86",
+    "semantic_hash": "28e56602e4c6f294ecdb2f8670e5ee86"
+  },
+  "nietzsche-agency/src/flywheel.rs": {
+    "mtime": 1773376114.4741912,
+    "ast_hash": "ad0c88b886422ae8865333ebb7c76617",
+    "semantic_hash": "ad0c88b886422ae8865333ebb7c76617"
+  },
+  "nietzsche-agency/src/forgetting/anti_gaming.rs": {
+    "mtime": 1773376115.9364357,
+    "ast_hash": "d62bba0496792036c855c960c04eb7bd",
+    "semantic_hash": "d62bba0496792036c855c960c04eb7bd"
+  },
+  "nietzsche-agency/src/forgetting/bounds.rs": {
+    "mtime": 1773376117.2771046,
+    "ast_hash": "ed3d82f45b9e94cbfee2df21245a3b31",
+    "semantic_hash": "ed3d82f45b9e94cbfee2df21245a3b31"
+  },
+  "nietzsche-agency/src/forgetting/causal_immunity.rs": {
+    "mtime": 1773376118.658555,
+    "ast_hash": "4d5c78212d4d420a480aad3c993fb255",
+    "semantic_hash": "4d5c78212d4d420a480aad3c993fb255"
+  },
+  "nietzsche-agency/src/forgetting/cycle_engine.rs": {
+    "mtime": 1773376120.4586575,
+    "ast_hash": "c5ca57d84ea7d62aad2fae51f5e3c425",
+    "semantic_hash": "c5ca57d84ea7d62aad2fae51f5e3c425"
+  },
+  "nietzsche-agency/src/forgetting/elite_drift.rs": {
+    "mtime": 1773376121.966835,
+    "ast_hash": "0cf0e897873351bf4287cab41aa2a6ed",
+    "semantic_hash": "0cf0e897873351bf4287cab41aa2a6ed"
+  },
+  "nietzsche-agency/src/forgetting/friction.rs": {
+    "mtime": 1773376123.4825628,
+    "ast_hash": "101e6543554fef45d3e9be69824e02c8",
+    "semantic_hash": "101e6543554fef45d3e9be69824e02c8"
+  },
+  "nietzsche-agency/src/forgetting/judgment.rs": {
+    "mtime": 1773376125.002926,
+    "ast_hash": "18760a38a7bfeb9eecd744da44775be1",
+    "semantic_hash": "18760a38a7bfeb9eecd744da44775be1"
+  },
+  "nietzsche-agency/src/forgetting/ledger.rs": {
+    "mtime": 1773376126.2330391,
+    "ast_hash": "24d201f80a0f15a63828ceeeaad5d354",
+    "semantic_hash": "24d201f80a0f15a63828ceeeaad5d354"
+  },
+  "nietzsche-agency/src/forgetting/mod.rs": {
+    "mtime": 1773376127.4769118,
+    "ast_hash": "17f132d30132c7816417c061e3565656",
+    "semantic_hash": "17f132d30132c7816417c061e3565656"
+  },
+  "nietzsche-agency/src/forgetting/ricci.rs": {
+    "mtime": 1773376129.0077076,
+    "ast_hash": "af438d38d9929941eb65dc4c66b6aa4b",
+    "semantic_hash": "af438d38d9929941eb65dc4c66b6aa4b"
+  },
+  "nietzsche-agency/src/forgetting/stability.rs": {
+    "mtime": 1773376130.2263076,
+    "ast_hash": "7ea750e4571c2d1a58dab02ea8f5a01a",
+    "semantic_hash": "7ea750e4571c2d1a58dab02ea8f5a01a"
+  },
+  "nietzsche-agency/src/forgetting/structural_metrics.rs": {
+    "mtime": 1773376131.5862832,
+    "ast_hash": "bccf1b0d0918371383d1496d5a51403f",
+    "semantic_hash": "bccf1b0d0918371383d1496d5a51403f"
+  },
+  "nietzsche-agency/src/forgetting/telemetry.rs": {
+    "mtime": 1773376133.077521,
+    "ast_hash": "806b5e5bfb2a548df7eff8c5e1a13451",
+    "semantic_hash": "806b5e5bfb2a548df7eff8c5e1a13451"
+  },
+  "nietzsche-agency/src/forgetting/tgc.rs": {
+    "mtime": 1773376134.7142456,
+    "ast_hash": "795a468c0c9264ca3ba032b03f8b52e4",
+    "semantic_hash": "795a468c0c9264ca3ba032b03f8b52e4"
+  },
+  "nietzsche-agency/src/forgetting/vitality.rs": {
+    "mtime": 1773376137.058623,
+    "ast_hash": "d7efb3bcead5e506131c3332dd2b31a0",
+    "semantic_hash": "d7efb3bcead5e506131c3332dd2b31a0"
+  },
+  "nietzsche-agency/src/forgetting/vitality_variance.rs": {
+    "mtime": 1773376138.993224,
+    "ast_hash": "68c3a5e4030baf9dda9eb5fabbe6969f",
+    "semantic_hash": "68c3a5e4030baf9dda9eb5fabbe6969f"
+  },
+  "nietzsche-agency/src/forgetting/void_tracker.rs": {
+    "mtime": 1773376141.2954044,
+    "ast_hash": "63188e17a3fcc49cceb4bf288f340f52",
+    "semantic_hash": "63188e17a3fcc49cceb4bf288f340f52"
+  },
+  "nietzsche-agency/src/forgetting/zaratustra_cycle.rs": {
+    "mtime": 1773376142.6541905,
+    "ast_hash": "7ef7ca66f5d7545b70ac9069db9b4f4c",
+    "semantic_hash": "7ef7ca66f5d7545b70ac9069db9b4f4c"
+  },
+  "nietzsche-agency/src/graph_growth.rs": {
+    "mtime": 1773376143.8384085,
+    "ast_hash": "50d1582150b067e680a432503e176b4f",
+    "semantic_hash": "50d1582150b067e680a432503e176b4f"
+  },
+  "nietzsche-agency/src/gravity.rs": {
+    "mtime": 1773376145.1224258,
+    "ast_hash": "3d56f9eee56c6d8828c58b579db7bf92",
+    "semantic_hash": "3d56f9eee56c6d8828c58b579db7bf92"
+  },
+  "nietzsche-agency/src/hebbian.rs": {
+    "mtime": 1773376146.304657,
+    "ast_hash": "29d43b156a71cec2d0ffc47442ef87e9",
+    "semantic_hash": "29d43b156a71cec2d0ffc47442ef87e9"
+  },
+  "nietzsche-agency/src/hub_attenuation.rs": {
+    "mtime": 1773376147.5165174,
+    "ast_hash": "8c08595624b72de7f1a6a08476676f8a",
+    "semantic_hash": "8c08595624b72de7f1a6a08476676f8a"
+  },
+  "nietzsche-agency/src/hydraulic/conductivity.rs": {
+    "mtime": 1773376154.2076242,
+    "ast_hash": "0bc79274e20bfbb11e968b7d82971a20",
+    "semantic_hash": "0bc79274e20bfbb11e968b7d82971a20"
+  },
+  "nietzsche-agency/src/hydraulic/flow_ledger.rs": {
+    "mtime": 1773376156.8450468,
+    "ast_hash": "7b59b9321579b292cd45c001fb35f3d2",
+    "semantic_hash": "7b59b9321579b292cd45c001fb35f3d2"
+  },
+  "nietzsche-agency/src/hydraulic/mod.rs": {
+    "mtime": 1773376158.4665723,
+    "ast_hash": "77700840df1c62432983a625414d2fb9",
+    "semantic_hash": "77700840df1c62432983a625414d2fb9"
+  },
+  "nietzsche-agency/src/hydraulic/murray.rs": {
+    "mtime": 1773376160.234142,
+    "ast_hash": "c2f37dcd62090dcc018b3b7627d060f9",
+    "semantic_hash": "c2f37dcd62090dcc018b3b7627d060f9"
+  },
+  "nietzsche-agency/src/hydraulic/report.rs": {
+    "mtime": 1773376161.8822298,
+    "ast_hash": "c5af193e5ff03c839a205cdf17dec4cc",
+    "semantic_hash": "c5af193e5ff03c839a205cdf17dec4cc"
+  },
+  "nietzsche-agency/src/hyperbolic_health.rs": {
+    "mtime": 1773376163.12959,
+    "ast_hash": "b0d583a2b8be45d18042052b0a0b20c2",
+    "semantic_hash": "b0d583a2b8be45d18042052b0a0b20c2"
+  },
+  "nietzsche-agency/src/hyperbolic_training.rs": {
+    "mtime": 1773376164.459273,
+    "ast_hash": "40d50646d0e8575bf9c5e87a600a8fec",
+    "semantic_hash": "40d50646d0e8575bf9c5e87a600a8fec"
+  },
+  "nietzsche-agency/src/identity.rs": {
+    "mtime": 1773376165.9604404,
+    "ast_hash": "793d449db9322464e69ffee78c779992",
+    "semantic_hash": "793d449db9322464e69ffee78c779992"
+  },
+  "nietzsche-agency/src/learning.rs": {
+    "mtime": 1773376167.4065907,
+    "ast_hash": "54ab3d4380d3dc6e06c20cb8855c792c",
+    "semantic_hash": "54ab3d4380d3dc6e06c20cb8855c792c"
+  },
+  "nietzsche-agency/src/lib.rs": {
+    "mtime": 1774216660.6748805,
+    "ast_hash": "05677a82eaa9dd9e1805179503bcfbce",
+    "semantic_hash": "05677a82eaa9dd9e1805179503bcfbce"
+  },
+  "nietzsche-agency/src/maturity.rs": {
+    "mtime": 1773376170.2903352,
+    "ast_hash": "979550dc31cb4318eb95795d6e279f40",
+    "semantic_hash": "979550dc31cb4318eb95795d6e279f40"
+  },
+  "nietzsche-agency/src/morning_report.rs": {
+    "mtime": 1773376171.3669543,
+    "ast_hash": "494069b5ac478bdebbf8b5fe442dd802",
+    "semantic_hash": "494069b5ac478bdebbf8b5fe442dd802"
+  },
+  "nietzsche-agency/src/neural_evolution.rs": {
+    "mtime": 1773376172.4496713,
+    "ast_hash": "a82e27ac448024135402d4188803c64b",
+    "semantic_hash": "a82e27ac448024135402d4188803c64b"
+  },
+  "nietzsche-agency/src/observation.rs": {
+    "mtime": 1773376173.4671009,
+    "ast_hash": "3f08f98d16931a1748ca9dda82d5fd76",
+    "semantic_hash": "3f08f98d16931a1748ca9dda82d5fd76"
+  },
+  "nietzsche-agency/src/observer.rs": {
+    "mtime": 1773376174.3869252,
+    "ast_hash": "544823313e475c6ba5912441ee684f69",
+    "semantic_hash": "544823313e475c6ba5912441ee684f69"
+  },
+  "nietzsche-agency/src/orch_or/mod.rs": {
+    "mtime": 1773376175.5647762,
+    "ast_hash": "bb0a4185454ae7dd0fcf35ed5bb24789",
+    "semantic_hash": "bb0a4185454ae7dd0fcf35ed5bb24789"
+  },
+  "nietzsche-agency/src/orch_or/semantic_qudit.rs": {
+    "mtime": 1773376176.6455145,
+    "ast_hash": "cc680e120b6d11a31cf622d116b252bf",
+    "semantic_hash": "cc680e120b6d11a31cf622d116b252bf"
+  },
+  "nietzsche-agency/src/powerlaw.rs": {
+    "mtime": 1773376177.6923602,
+    "ast_hash": "46ef365dc3b731dd7a434bc426c78405",
+    "semantic_hash": "46ef365dc3b731dd7a434bc426c78405"
+  },
+  "nietzsche-agency/src/quantum.rs": {
+    "mtime": 1773376178.847728,
+    "ast_hash": "b0d7b385d48a7866517c994ce7e18b78",
+    "semantic_hash": "b0d7b385d48a7866517c994ce7e18b78"
+  },
+  "nietzsche-agency/src/reactor.rs": {
+    "mtime": 1774224979.502783,
+    "ast_hash": "a11734cd05cfa7bf868721cb70f98a8a",
+    "semantic_hash": "a11734cd05cfa7bf868721cb70f98a8a"
+  },
+  "nietzsche-agency/src/reap_phantoms.rs": {
+    "mtime": 1774224865.9627657,
+    "ast_hash": "8fbd563a557e16ad336666b71bdb617f",
+    "semantic_hash": "8fbd563a557e16ad336666b71bdb617f"
+  },
+  "nietzsche-agency/src/self_healing.rs": {
+    "mtime": 1773376181.4827442,
+    "ast_hash": "d7f1e4a0ef706d7fcf735c9e7bdc8b34",
+    "semantic_hash": "d7f1e4a0ef706d7fcf735c9e7bdc8b34"
+  },
+  "nietzsche-agency/src/sharding.rs": {
+    "mtime": 1773376183.1641853,
+    "ast_hash": "7de98cee0941a6290d0e82cd1882816f",
+    "semantic_hash": "7de98cee0941a6290d0e82cd1882816f"
+  },
+  "nietzsche-agency/src/shatter.rs": {
+    "mtime": 1773376184.3664708,
+    "ast_hash": "702664f3a3a29f139c0811f932e0a7d8",
+    "semantic_hash": "702664f3a3a29f139c0811f932e0a7d8"
+  },
+  "nietzsche-agency/src/store.rs": {
+    "mtime": 1773376185.4417834,
+    "ast_hash": "fc1403adf134fb3f032dabc7c49e7cb0",
+    "semantic_hash": "fc1403adf134fb3f032dabc7c49e7cb0"
+  },
+  "nietzsche-agency/src/temporal_decay.rs": {
+    "mtime": 1773376186.3422413,
+    "ast_hash": "0b0fc3115a98b4b68523c8249a35158f",
+    "semantic_hash": "0b0fc3115a98b4b68523c8249a35158f"
+  },
+  "nietzsche-agency/src/thermodynamics.rs": {
+    "mtime": 1773376187.4686694,
+    "ast_hash": "54cd35ad95978ada26b7e741dd744763",
+    "semantic_hash": "54cd35ad95978ada26b7e741dd744763"
+  },
+  "nietzsche-agency/src/world_model.rs": {
+    "mtime": 1773376188.5907702,
+    "ast_hash": "4589c70864a04cdce8f5cb4be3cef2cd",
+    "semantic_hash": "4589c70864a04cdce8f5cb4be3cef2cd"
+  },
+  "nietzsche-agi/examples/pipeline_ignition.rs": {
+    "mtime": 1773376189.8052895,
+    "ast_hash": "57cf4bdc4646cfe69aaf431977b57da4",
+    "semantic_hash": "57cf4bdc4646cfe69aaf431977b57da4"
+  },
+  "nietzsche-agi/src/certification.rs": {
+    "mtime": 1773376190.9482439,
+    "ast_hash": "1decb6f9bd4bcd8d1d66795b0f104e66",
+    "semantic_hash": "1decb6f9bd4bcd8d1d66795b0f104e66"
+  },
+  "nietzsche-agi/src/criticality.rs": {
+    "mtime": 1773376192.0106356,
+    "ast_hash": "7ff5859c70da0e299c11356f972532fd",
+    "semantic_hash": "7ff5859c70da0e299c11356f972532fd"
+  },
+  "nietzsche-agi/src/dialectic.rs": {
+    "mtime": 1773376193.086912,
+    "ast_hash": "4ddd80051cecc42320774584f75b272b",
+    "semantic_hash": "4ddd80051cecc42320774584f75b272b"
+  },
+  "nietzsche-agi/src/discovery.rs": {
+    "mtime": 1773376194.0982904,
+    "ast_hash": "db5a3c624b8c403d55cc272fb481b9b7",
+    "semantic_hash": "db5a3c624b8c403d55cc272fb481b9b7"
+  },
+  "nietzsche-agi/src/error.rs": {
+    "mtime": 1773376195.2143679,
+    "ast_hash": "871a5e6749a6f7b16f3f28385f8fcec4",
+    "semantic_hash": "871a5e6749a6f7b16f3f28385f8fcec4"
+  },
+  "nietzsche-agi/src/evolution.rs": {
+    "mtime": 1773376196.184207,
+    "ast_hash": "b20ba48127a9058c58bc72a286ec1ce4",
+    "semantic_hash": "b20ba48127a9058c58bc72a286ec1ce4"
+  },
+  "nietzsche-agi/src/feedback_loop.rs": {
+    "mtime": 1773376197.5304759,
+    "ast_hash": "dc9c004d1cf98e59baffa20e551768b6",
+    "semantic_hash": "dc9c004d1cf98e59baffa20e551768b6"
+  },
+  "nietzsche-agi/src/genome.rs": {
+    "mtime": 1773376198.827746,
+    "ast_hash": "e3ceb81a6b1fececb608d0d868526106",
+    "semantic_hash": "e3ceb81a6b1fececb608d0d868526106"
+  },
+  "nietzsche-agi/src/homeostasis.rs": {
+    "mtime": 1773376199.952377,
+    "ast_hash": "2960278e25484b9ebf1b48fe1544d613",
+    "semantic_hash": "2960278e25484b9ebf1b48fe1544d613"
+  },
+  "nietzsche-agi/src/identity.rs": {
+    "mtime": 1773376201.1411588,
+    "ast_hash": "1cf092586bb7c72c50c58d7a23a0d4c7",
+    "semantic_hash": "1cf092586bb7c72c50c58d7a23a0d4c7"
+  },
+  "nietzsche-agi/src/inference_engine.rs": {
+    "mtime": 1773376202.3590958,
+    "ast_hash": "361bd7df4b0e8a3a4680cd6161421711",
+    "semantic_hash": "361bd7df4b0e8a3a4680cd6161421711"
+  },
+  "nietzsche-agi/src/innovation.rs": {
+    "mtime": 1773376203.6566417,
+    "ast_hash": "6563c5f2558120238e509d39d5638068",
+    "semantic_hash": "6563c5f2558120238e509d39d5638068"
+  },
+  "nietzsche-agi/src/lib.rs": {
+    "mtime": 1773376204.956567,
+    "ast_hash": "883e698bdcb524c315a4e3f223967f2f",
+    "semantic_hash": "883e698bdcb524c315a4e3f223967f2f"
+  },
+  "nietzsche-agi/src/metabolism.rs": {
+    "mtime": 1773376206.4142141,
+    "ast_hash": "50d7c86ccf1e19a82cd8e0e585680914",
+    "semantic_hash": "50d7c86ccf1e19a82cd8e0e585680914"
+  },
+  "nietzsche-agi/src/rationale.rs": {
+    "mtime": 1773376207.896552,
+    "ast_hash": "cbdabcbc6dc8c025a53b674d4e85fb49",
+    "semantic_hash": "cbdabcbc6dc8c025a53b674d4e85fb49"
+  },
+  "nietzsche-agi/src/reasoning.rs": {
+    "mtime": 1773376209.2163231,
+    "ast_hash": "a0a6d20aed86c9f7df880839517e8393",
+    "semantic_hash": "a0a6d20aed86c9f7df880839517e8393"
+  },
+  "nietzsche-agi/src/relevance_decay.rs": {
+    "mtime": 1773376210.3924363,
+    "ast_hash": "5cb61ce73090ce60c225315f9a7e66d2",
+    "semantic_hash": "5cb61ce73090ce60c225315f9a7e66d2"
+  },
+  "nietzsche-agi/src/representation.rs": {
+    "mtime": 1773376211.546272,
+    "ast_hash": "663d3144ba147eba28d823a3285c68a5",
+    "semantic_hash": "663d3144ba147eba28d823a3285c68a5"
+  },
+  "nietzsche-agi/src/sandbox.rs": {
+    "mtime": 1773376212.6743479,
+    "ast_hash": "1f223720f195c94c60ec7fa55339b17c",
+    "semantic_hash": "1f223720f195c94c60ec7fa55339b17c"
+  },
+  "nietzsche-agi/src/spectral.rs": {
+    "mtime": 1773376213.7863991,
+    "ast_hash": "91f621906c6eee2eadb16cb5df19d104",
+    "semantic_hash": "91f621906c6eee2eadb16cb5df19d104"
+  },
+  "nietzsche-agi/src/stability.rs": {
+    "mtime": 1773376214.8143845,
+    "ast_hash": "7703c8b359da5ec5709b2cf7ff70a241",
+    "semantic_hash": "7703c8b359da5ec5709b2cf7ff70a241"
+  },
+  "nietzsche-agi/src/synthesis.rs": {
+    "mtime": 1773376215.8965538,
+    "ast_hash": "5d99c1bf8cef645367255b17c6c799e5",
+    "semantic_hash": "5d99c1bf8cef645367255b17c6c799e5"
+  },
+  "nietzsche-agi/src/trajectory.rs": {
+    "mtime": 1773376217.0202692,
+    "ast_hash": "f987870797264cc0a905a161d804fa81",
+    "semantic_hash": "f987870797264cc0a905a161d804fa81"
+  },
+  "nietzsche-algo/src/centrality.rs": {
+    "mtime": 1773376218.0366592,
+    "ast_hash": "9c99d0bd692fa3db519001115d146427",
+    "semantic_hash": "9c99d0bd692fa3db519001115d146427"
+  },
+  "nietzsche-algo/src/community.rs": {
+    "mtime": 1773376219.3341691,
+    "ast_hash": "b784c4533d1be608a403041dade5864e",
+    "semantic_hash": "b784c4533d1be608a403041dade5864e"
+  },
+  "nietzsche-algo/src/components.rs": {
+    "mtime": 1773376220.596303,
+    "ast_hash": "cee3b8a07c8cc56425609031d7f364ca",
+    "semantic_hash": "cee3b8a07c8cc56425609031d7f364ca"
+  },
+  "nietzsche-algo/src/lib.rs": {
+    "mtime": 1773376221.6709964,
+    "ast_hash": "3d6ae7f9ffaa512fbab32b4118fd77dc",
+    "semantic_hash": "3d6ae7f9ffaa512fbab32b4118fd77dc"
+  },
+  "nietzsche-algo/src/pagerank.rs": {
+    "mtime": 1773376222.690292,
+    "ast_hash": "fc946ecb0eae266c6d7fda12c8a7f798",
+    "semantic_hash": "fc946ecb0eae266c6d7fda12c8a7f798"
+  },
+  "nietzsche-algo/src/pathfinding.rs": {
+    "mtime": 1773376223.6890273,
+    "ast_hash": "6c53876bf9322bed8fe1644dde6f997c",
+    "semantic_hash": "6c53876bf9322bed8fe1644dde6f997c"
+  },
+  "nietzsche-algo/src/similarity.rs": {
+    "mtime": 1773376224.7664566,
+    "ast_hash": "f9147ee6480389069d941952f0d9c435",
+    "semantic_hash": "f9147ee6480389069d941952f0d9c435"
+  },
+  "nietzsche-api/build.rs": {
+    "mtime": 1773376225.7906415,
+    "ast_hash": "6a4ff6f79db11f7c341354182770d751",
+    "semantic_hash": "6a4ff6f79db11f7c341354182770d751"
+  },
+  "nietzsche-api/src/cdc.rs": {
+    "mtime": 1773376226.981354,
+    "ast_hash": "a71f81697951b4e5eaddd3127cd4e424",
+    "semantic_hash": "a71f81697951b4e5eaddd3127cd4e424"
+  },
+  "nietzsche-api/src/lib.rs": {
+    "mtime": 1773376228.012657,
+    "ast_hash": "4124ecf7a1b03fb8446186ce32f1fa22",
+    "semantic_hash": "4124ecf7a1b03fb8446186ce32f1fa22"
+  },
+  "nietzsche-api/src/rbac.rs": {
+    "mtime": 1773376229.1720865,
+    "ast_hash": "500c6004e83b01372088931a00dacc67",
+    "semantic_hash": "500c6004e83b01372088931a00dacc67"
+  },
+  "nietzsche-api/src/server.rs": {
+    "mtime": 1773677903.577966,
+    "ast_hash": "213cb7c50e56c4cab588261bdbe475e0",
+    "semantic_hash": "213cb7c50e56c4cab588261bdbe475e0"
+  },
+  "nietzsche-api/src/validation.rs": {
+    "mtime": 1773387524.1867414,
+    "ast_hash": "1324afe22d5d15cc8434b848aa40e63c",
+    "semantic_hash": "1324afe22d5d15cc8434b848aa40e63c"
+  },
+  "nietzsche-baseserver/src/collection.rs": {
+    "mtime": 1773376232.2853396,
+    "ast_hash": "466901e31da44428a4d7772f636a6628",
+    "semantic_hash": "466901e31da44428a4d7772f636a6628"
+  },
+  "nietzsche-baseserver/src/http_server.rs": {
+    "mtime": 1773382228.9160023,
+    "ast_hash": "5d6d70b35e95cd0066e2fdf263812c44",
+    "semantic_hash": "5d6d70b35e95cd0066e2fdf263812c44"
+  },
+  "nietzsche-baseserver/src/main.rs": {
+    "mtime": 1773376234.3923752,
+    "ast_hash": "5151f7af53a611dd73a1cea30d12a574",
+    "semantic_hash": "5151f7af53a611dd73a1cea30d12a574"
+  },
+  "nietzsche-baseserver/src/manager.rs": {
+    "mtime": 1773376235.356985,
+    "ast_hash": "3f85071f720dd114cc915bc8d842148a",
+    "semantic_hash": "3f85071f720dd114cc915bc8d842148a"
+  },
+  "nietzsche-baseserver/src/sync.rs": {
+    "mtime": 1773376236.5065515,
+    "ast_hash": "516cb6495c8c5cdfee17b3229a79ce11",
+    "semantic_hash": "516cb6495c8c5cdfee17b3229a79ce11"
+  },
+  "nietzsche-baseserver/src/tests.rs": {
+    "mtime": 1773376237.3762996,
+    "ast_hash": "8500abac5be41a4f939e672d5d2879b2",
+    "semantic_hash": "8500abac5be41a4f939e672d5d2879b2"
+  },
+  "nietzsche-cli/src/app.rs": {
+    "mtime": 1773376238.3798985,
+    "ast_hash": "5189e68bc326c39959ca47fb2f2eba59",
+    "semantic_hash": "5189e68bc326c39959ca47fb2f2eba59"
+  },
+  "nietzsche-cli/src/bin/cluster_test.rs": {
+    "mtime": 1773376239.448605,
+    "ast_hash": "b9baa92bd08f8fbe7a004f4926fb5296",
+    "semantic_hash": "b9baa92bd08f8fbe7a004f4926fb5296"
+  },
+  "nietzsche-cli/src/bin/full_sync_test.rs": {
+    "mtime": 1773376241.176978,
+    "ast_hash": "2054e8f7e04e4e18656a3af552cdf0c3",
+    "semantic_hash": "2054e8f7e04e4e18656a3af552cdf0c3"
+  },
+  "nietzsche-cli/src/bin/integration_tests.rs": {
+    "mtime": 1773376242.7894125,
+    "ast_hash": "0b21e528c507d3eb5220777080a0525a",
+    "semantic_hash": "0b21e528c507d3eb5220777080a0525a"
+  },
+  "nietzsche-cli/src/bin/stress.rs": {
+    "mtime": 1773376244.1587925,
+    "ast_hash": "8e371df24cf349249a92de286b8e1a4c",
+    "semantic_hash": "8e371df24cf349249a92de286b8e1a4c"
+  },
+  "nietzsche-cli/src/bin/test_l2_integrity.rs": {
+    "mtime": 1773376246.9448478,
+    "ast_hash": "64d4dde39538cb2127caa75ad597bfab",
+    "semantic_hash": "64d4dde39538cb2127caa75ad597bfab"
+  },
+  "nietzsche-cli/src/bin/test_sync.rs": {
+    "mtime": 1773376249.7323909,
+    "ast_hash": "3fad1f0376356fad2771df8a10933ab4",
+    "semantic_hash": "3fad1f0376356fad2771df8a10933ab4"
+  },
+  "nietzsche-cli/src/main.rs": {
+    "mtime": 1773376250.9800842,
+    "ast_hash": "45fa2d5fe4e18af31a522205c93a62ac",
+    "semantic_hash": "45fa2d5fe4e18af31a522205c93a62ac"
+  },
+  "nietzsche-cli/src/ui.rs": {
+    "mtime": 1773376252.6826556,
+    "ast_hash": "26c1bb2d54df81d3984004cd23fc67a2",
+    "semantic_hash": "26c1bb2d54df81d3984004cd23fc67a2"
+  },
+  "nietzsche-cli/tests/cli_tests.rs": {
+    "mtime": 1773376254.7616105,
+    "ast_hash": "8edb2d54b9c3d7d21443be68d79582e0",
+    "semantic_hash": "8edb2d54b9c3d7d21443be68d79582e0"
+  },
+  "nietzsche-cluster/src/archetype.rs": {
+    "mtime": 1773376255.8663142,
+    "ast_hash": "0641e8dee12f22ea6154e023e8ee0ebc",
+    "semantic_hash": "0641e8dee12f22ea6154e023e8ee0ebc"
+  },
+  "nietzsche-cluster/src/crdt.rs": {
+    "mtime": 1773376257.0423827,
+    "ast_hash": "ca9a237e189c8b3288d2e6ae89779536",
+    "semantic_hash": "ca9a237e189c8b3288d2e6ae89779536"
+  },
+  "nietzsche-cluster/src/error.rs": {
+    "mtime": 1773376258.1648264,
+    "ast_hash": "0d9472151b182e3b31d3d5eded65c041",
+    "semantic_hash": "0d9472151b182e3b31d3d5eded65c041"
+  },
+  "nietzsche-cluster/src/lib.rs": {
+    "mtime": 1773376259.4464154,
+    "ast_hash": "123ddf8605610485d6fa807fe3c7ca1e",
+    "semantic_hash": "123ddf8605610485d6fa807fe3c7ca1e"
+  },
+  "nietzsche-cluster/src/node.rs": {
+    "mtime": 1773376260.799632,
+    "ast_hash": "abe0b894a921e080341754d1ad6966b1",
+    "semantic_hash": "abe0b894a921e080341754d1ad6966b1"
+  },
+  "nietzsche-cluster/src/registry.rs": {
+    "mtime": 1773376261.9165497,
+    "ast_hash": "97d77b1ff192ae9175a260ed076b2f55",
+    "semantic_hash": "97d77b1ff192ae9175a260ed076b2f55"
+  },
+  "nietzsche-cluster/src/router.rs": {
+    "mtime": 1773376263.3164866,
+    "ast_hash": "8a96ffec3209be85af4840a9e03479f6",
+    "semantic_hash": "8a96ffec3209be85af4840a9e03479f6"
+  },
+  "nietzsche-cluster/src/scorer.rs": {
+    "mtime": 1773376264.4984386,
+    "ast_hash": "5c235f72f3354e8b81a62dce254d0d13",
+    "semantic_hash": "5c235f72f3354e8b81a62dce254d0d13"
+  },
+  "nietzsche-core/benches/distance_bench.rs": {
+    "mtime": 1773376265.7389615,
+    "ast_hash": "b8ad4486479ffdacf8d8380d8edea463",
+    "semantic_hash": "b8ad4486479ffdacf8d8380d8edea463"
+  },
+  "nietzsche-core/benches/metric_bench.rs": {
+    "mtime": 1773376266.7849874,
+    "ast_hash": "c43bb0ab37a903adeb60fe3bb2c89655",
+    "semantic_hash": "c43bb0ab37a903adeb60fe3bb2c89655"
+  },
+  "nietzsche-core/src/auto_tuner.rs": {
+    "mtime": 1773376268.0814273,
+    "ast_hash": "888f2f44c7d2afbf8682a7ab5bc1b5a1",
+    "semantic_hash": "888f2f44c7d2afbf8682a7ab5bc1b5a1"
+  },
+  "nietzsche-core/src/config.rs": {
+    "mtime": 1773376269.2873056,
+    "ast_hash": "5372aa517b23586489628dca5c5a3ce1",
+    "semantic_hash": "5372aa517b23586489628dca5c5a3ce1"
+  },
+  "nietzsche-core/src/gpu.rs": {
+    "mtime": 1773376270.629769,
+    "ast_hash": "6e3988717c78614e7f03c30edcf03fe2",
+    "semantic_hash": "6e3988717c78614e7f03c30edcf03fe2"
+  },
+  "nietzsche-core/src/lib.rs": {
+    "mtime": 1774566419.5459251,
+    "ast_hash": "6c8135dc3fed736049131ec83417fc29",
+    "semantic_hash": "6c8135dc3fed736049131ec83417fc29"
+  },
+  "nietzsche-core/src/param_evolve.rs": {
+    "mtime": 1773951503.2724423,
+    "ast_hash": "86e7788870169ff72b16d567ac016852",
+    "semantic_hash": "86e7788870169ff72b16d567ac016852"
+  },
+  "nietzsche-core/src/tests.rs": {
+    "mtime": 1773376273.3713386,
+    "ast_hash": "5ed51956eb400df1418603d305399641",
+    "semantic_hash": "5ed51956eb400df1418603d305399641"
+  },
+  "nietzsche-core/src/vector.rs": {
+    "mtime": 1774567015.363242,
+    "ast_hash": "970af7b4aa56a63b2eb3648279295328",
+    "semantic_hash": "970af7b4aa56a63b2eb3648279295328"
+  },
+  "nietzsche-cugraph/src/csr.rs": {
+    "mtime": 1773376275.4365938,
+    "ast_hash": "cf981d5e9a4c8d1a2c11e9b1748f036c",
+    "semantic_hash": "cf981d5e9a4c8d1a2c11e9b1748f036c"
+  },
+  "nietzsche-cugraph/src/error.rs": {
+    "mtime": 1773376276.726419,
+    "ast_hash": "d60fedbc5637b418ddbe8725eb53f87a",
+    "semantic_hash": "d60fedbc5637b418ddbe8725eb53f87a"
+  },
+  "nietzsche-cugraph/src/gpu/ffi.rs": {
+    "mtime": 1773376278.123127,
+    "ast_hash": "fd6f58ebf436f758bc041de239cfbbd7",
+    "semantic_hash": "fd6f58ebf436f758bc041de239cfbbd7"
+  },
+  "nietzsche-cugraph/src/gpu/mod.rs": {
+    "mtime": 1773376279.8516297,
+    "ast_hash": "96904ec65b96fcb9386fbec5e3b71207",
+    "semantic_hash": "96904ec65b96fcb9386fbec5e3b71207"
+  },
+  "nietzsche-cugraph/src/gpu/poincare.rs": {
+    "mtime": 1773376281.0836046,
+    "ast_hash": "11fb87d34cc3e963e89481e33f62da8a",
+    "semantic_hash": "11fb87d34cc3e963e89481e33f62da8a"
+  },
+  "nietzsche-cugraph/src/gpu/poincare_batch.rs": {
+    "mtime": 1773376282.5634468,
+    "ast_hash": "3b461df0d7e94a325770c2bd7eb2c0c3",
+    "semantic_hash": "3b461df0d7e94a325770c2bd7eb2c0c3"
+  },
+  "nietzsche-cugraph/src/lib.rs": {
+    "mtime": 1773376283.8360624,
+    "ast_hash": "234b52317ef00e903057534c9e98ac73",
+    "semantic_hash": "234b52317ef00e903057534c9e98ac73"
+  },
+  "nietzsche-cugraph/src/traversal.rs": {
+    "mtime": 1773376285.1693287,
+    "ast_hash": "3d6b4eb0502bdc42dfc46c2a076efef6",
+    "semantic_hash": "3d6b4eb0502bdc42dfc46c2a076efef6"
+  },
+  "nietzsche-cugraph/tests/cugraph_tests.rs": {
+    "mtime": 1773376286.401722,
+    "ast_hash": "0cbd6f30e7a3875b9919503925c3ba5e",
+    "semantic_hash": "0cbd6f30e7a3875b9919503925c3ba5e"
+  },
+  "nietzsche-dream/src/engine.rs": {
+    "mtime": 1773376287.8084614,
+    "ast_hash": "f0c056df4aa23f7d7949be56aec21e13",
+    "semantic_hash": "f0c056df4aa23f7d7949be56aec21e13"
+  },
+  "nietzsche-dream/src/error.rs": {
+    "mtime": 1773376289.0482543,
+    "ast_hash": "066d682ef0717d5b0749372e9224c91a",
+    "semantic_hash": "066d682ef0717d5b0749372e9224c91a"
+  },
+  "nietzsche-dream/src/generator.rs": {
+    "mtime": 1773376290.09641,
+    "ast_hash": "c417205db0693f833da56dddf8082402",
+    "semantic_hash": "c417205db0693f833da56dddf8082402"
+  },
+  "nietzsche-dream/src/lib.rs": {
+    "mtime": 1773376291.2109392,
+    "ast_hash": "9fa6c44976d9aafb89189c886bb8c7ef",
+    "semantic_hash": "9fa6c44976d9aafb89189c886bb8c7ef"
+  },
+  "nietzsche-dream/src/model.rs": {
+    "mtime": 1773376292.3599818,
+    "ast_hash": "ee7157d8649367b0ffe382f2efaecdd5",
+    "semantic_hash": "ee7157d8649367b0ffe382f2efaecdd5"
+  },
+  "nietzsche-dream/src/store.rs": {
+    "mtime": 1773376293.708686,
+    "ast_hash": "fa997ecc5cf4d1db993d12d2532e08f6",
+    "semantic_hash": "fa997ecc5cf4d1db993d12d2532e08f6"
+  },
+  "nietzsche-dream/src/world_model.rs": {
+    "mtime": 1773376294.8684661,
+    "ast_hash": "78ac48071ddf4cc330cf8c35e65a2e7e",
+    "semantic_hash": "78ac48071ddf4cc330cf8c35e65a2e7e"
+  },
+  "nietzsche-dsi/src/decoder.rs": {
+    "mtime": 1773376296.086352,
+    "ast_hash": "5d67a990c58098738991c7bfb90a819d",
+    "semantic_hash": "5d67a990c58098738991c7bfb90a819d"
+  },
+  "nietzsche-dsi/src/error.rs": {
+    "mtime": 1773376297.061681,
+    "ast_hash": "a9ca706685e9f915afd5ee5b72e34271",
+    "semantic_hash": "a9ca706685e9f915afd5ee5b72e34271"
+  },
+  "nietzsche-dsi/src/id.rs": {
+    "mtime": 1773376298.472129,
+    "ast_hash": "631d6ef588a9a71af57743033172e8d7",
+    "semantic_hash": "631d6ef588a9a71af57743033172e8d7"
+  },
+  "nietzsche-dsi/src/indexer.rs": {
+    "mtime": 1773376300.1491148,
+    "ast_hash": "415122c670624ec8b3d6b5663ea13494",
+    "semantic_hash": "415122c670624ec8b3d6b5663ea13494"
+  },
+  "nietzsche-dsi/src/lib.rs": {
+    "mtime": 1773376301.4293368,
+    "ast_hash": "510eb252f98cd717494cb6d03e90fd51",
+    "semantic_hash": "510eb252f98cd717494cb6d03e90fd51"
+  },
+  "nietzsche-dsi/src/pipeline.rs": {
+    "mtime": 1773376302.381529,
+    "ast_hash": "bf21652275c2bf5ca6c9b73640670a99",
+    "semantic_hash": "bf21652275c2bf5ca6c9b73640670a99"
+  },
+  "nietzsche-embed/src/lib.rs": {
+    "mtime": 1773376303.3712382,
+    "ast_hash": "2595a5034836c2883abda1c4e1d27bf1",
+    "semantic_hash": "2595a5034836c2883abda1c4e1d27bf1"
+  },
+  "nietzsche-embed/tests/embed_tests.rs": {
+    "mtime": 1773376304.37622,
+    "ast_hash": "30071e366e2e583fce3633eae50814a8",
+    "semantic_hash": "30071e366e2e583fce3633eae50814a8"
+  },
+  "nietzsche-epistemics/src/coherence.rs": {
+    "mtime": 1773376305.2864945,
+    "ast_hash": "01c0ba3de60e27c6abebcda3e1dce59a",
+    "semantic_hash": "01c0ba3de60e27c6abebcda3e1dce59a"
+  },
+  "nietzsche-epistemics/src/coverage.rs": {
+    "mtime": 1773376306.291498,
+    "ast_hash": "6208660def23a3cf2c98fbcbb31c1139",
+    "semantic_hash": "6208660def23a3cf2c98fbcbb31c1139"
+  },
+  "nietzsche-epistemics/src/hierarchy.rs": {
+    "mtime": 1773376307.6063864,
+    "ast_hash": "213e86673d507db527781196f5aa2ff6",
+    "semantic_hash": "213e86673d507db527781196f5aa2ff6"
+  },
+  "nietzsche-epistemics/src/lib.rs": {
+    "mtime": 1773376309.0674078,
+    "ast_hash": "4b943e975bb9b309b3bd94458298e838",
+    "semantic_hash": "4b943e975bb9b309b3bd94458298e838"
+  },
+  "nietzsche-epistemics/src/novelty.rs": {
+    "mtime": 1773376310.3132837,
+    "ast_hash": "6bff878caea0f58bbb6d426ae1440bbd",
+    "semantic_hash": "6bff878caea0f58bbb6d426ae1440bbd"
+  },
+  "nietzsche-epistemics/src/redundancy.rs": {
+    "mtime": 1773376311.4932473,
+    "ast_hash": "a27145ef3d12d6f82ae40d781c5a381a",
+    "semantic_hash": "a27145ef3d12d6f82ae40d781c5a381a"
+  },
+  "nietzsche-epistemics/src/scorer.rs": {
+    "mtime": 1773376312.5384157,
+    "ast_hash": "29682c3ad66fb3c3cb46f93ed86c1625",
+    "semantic_hash": "29682c3ad66fb3c3cb46f93ed86c1625"
+  },
+  "nietzsche-experiment/src/auc.rs": {
+    "mtime": 1773376313.7183456,
+    "ast_hash": "b82c8f089285e106125b63ae47377d90",
+    "semantic_hash": "b82c8f089285e106125b63ae47377d90"
+  },
+  "nietzsche-experiment/src/hyperbolic_loss.rs": {
+    "mtime": 1773376314.7063327,
+    "ast_hash": "152e48106b24cf3879f8015f48034fbf",
+    "semantic_hash": "152e48106b24cf3879f8015f48034fbf"
+  },
+  "nietzsche-experiment/src/lib.rs": {
+    "mtime": 1773376315.9096084,
+    "ast_hash": "7ecc33113675181d3ef3c86ab4cea622",
+    "semantic_hash": "7ecc33113675181d3ef3c86ab4cea622"
+  },
+  "nietzsche-experiment/src/main.rs": {
+    "mtime": 1773376317.0184615,
+    "ast_hash": "738488e7bd3b775989975d356e9b2066",
+    "semantic_hash": "738488e7bd3b775989975d356e9b2066"
+  },
+  "nietzsche-experiment/src/sampling.rs": {
+    "mtime": 1773376318.0772033,
+    "ast_hash": "d9e93abc539a9600f63ebec9a0b23c00",
+    "semantic_hash": "d9e93abc539a9600f63ebec9a0b23c00"
+  },
+  "nietzsche-experiment/src/telemetry.rs": {
+    "mtime": 1773376319.101091,
+    "ast_hash": "4b64e0d6ec9db1570ee54ed151390182",
+    "semantic_hash": "4b64e0d6ec9db1570ee54ed151390182"
+  },
+  "nietzsche-filtered-knn/src/error.rs": {
+    "mtime": 1773376320.2014115,
+    "ast_hash": "a1a2d1e39769bf6ea8a51c3bc4ffdc2c",
+    "semantic_hash": "a1a2d1e39769bf6ea8a51c3bc4ffdc2c"
+  },
+  "nietzsche-filtered-knn/src/filter.rs": {
+    "mtime": 1773376321.2913778,
+    "ast_hash": "19bc1bea53ece3b6ccbbe53e7d3408f3",
+    "semantic_hash": "19bc1bea53ece3b6ccbbe53e7d3408f3"
+  },
+  "nietzsche-filtered-knn/src/lib.rs": {
+    "mtime": 1773376322.5281925,
+    "ast_hash": "8143123fed330152474e2af1a1fb14bf",
+    "semantic_hash": "8143123fed330152474e2af1a1fb14bf"
+  },
+  "nietzsche-filtered-knn/src/search.rs": {
+    "mtime": 1773376323.5797193,
+    "ast_hash": "cdc5d263f2d26281b1b992b267f29d84",
+    "semantic_hash": "cdc5d263f2d26281b1b992b267f29d84"
+  },
+  "nietzsche-filtered-knn/tests/integration_tests.rs": {
+    "mtime": 1773376324.6130667,
+    "ast_hash": "59fc0112070fc3ecef0b0f6b2e29fd22",
+    "semantic_hash": "59fc0112070fc3ecef0b0f6b2e29fd22"
+  },
+  "nietzsche-gnn/src/edge_predictor.rs": {
+    "mtime": 1773376325.7232158,
+    "ast_hash": "e4af273e797dcc868d21feb3d3acfdce",
+    "semantic_hash": "e4af273e797dcc868d21feb3d3acfdce"
+  },
+  "nietzsche-gnn/src/engine.rs": {
+    "mtime": 1773376326.749881,
+    "ast_hash": "324b9e4b1356f6aee710f05cb63e6903",
+    "semantic_hash": "324b9e4b1356f6aee710f05cb63e6903"
+  },
+  "nietzsche-gnn/src/lib.rs": {
+    "mtime": 1773376328.0214586,
+    "ast_hash": "38474a6cd6f548a5dbc49b5ea3e127cc",
+    "semantic_hash": "38474a6cd6f548a5dbc49b5ea3e127cc"
+  },
+  "nietzsche-gnn/src/sampler.rs": {
+    "mtime": 1773376329.3999624,
+    "ast_hash": "3a85b8ee79d580d8d9b9631bbfdc260d",
+    "semantic_hash": "3a85b8ee79d580d8d9b9631bbfdc260d"
+  },
+  "nietzsche-graph/benches/graph_bench.rs": {
+    "mtime": 1773376330.6762085,
+    "ast_hash": "cf74eb4d102a04ecd285d0c4501280ec",
+    "semantic_hash": "cf74eb4d102a04ecd285d0c4501280ec"
+  },
+  "nietzsche-graph/src/adjacency.rs": {
+    "mtime": 1773376331.7463243,
+    "ast_hash": "32e7afd759b60f49c03a7f0b2fc9d69e",
+    "semantic_hash": "32e7afd759b60f49c03a7f0b2fc9d69e"
+  },
+  "nietzsche-graph/src/backup.rs": {
+    "mtime": 1773376332.824541,
+    "ast_hash": "8c56fcbe753044f0f1870e3a3cdcea2a",
+    "semantic_hash": "8c56fcbe753044f0f1870e3a3cdcea2a"
+  },
+  "nietzsche-graph/src/collection_manager.rs": {
+    "mtime": 1773376333.96546,
+    "ast_hash": "5f9adf7679cdb98c6f21995e901fa51a",
+    "semantic_hash": "5f9adf7679cdb98c6f21995e901fa51a"
+  },
+  "nietzsche-graph/src/concept_path.rs": {
+    "mtime": 1773376335.181539,
+    "ast_hash": "31b574223924115dde4e7161009fbf84",
+    "semantic_hash": "31b574223924115dde4e7161009fbf84"
+  },
+  "nietzsche-graph/src/db.rs": {
+    "mtime": 1774225048.5178971,
+    "ast_hash": "a1d38fa612a4e50ebdb959e365db244a",
+    "semantic_hash": "a1d38fa612a4e50ebdb959e365db244a"
+  },
+  "nietzsche-graph/src/ego_cache.rs": {
+    "mtime": 1773376339.2733655,
+    "ast_hash": "58447770a5f7971067acdeeffdf6b5e1",
+    "semantic_hash": "58447770a5f7971067acdeeffdf6b5e1"
+  },
+  "nietzsche-graph/src/embedded_vector_store.rs": {
+    "mtime": 1773954719.8387306,
+    "ast_hash": "e970576e11c36747ff19663c1c115f99",
+    "semantic_hash": "e970576e11c36747ff19663c1c115f99"
+  },
+  "nietzsche-graph/src/encryption.rs": {
+    "mtime": 1773376342.3349693,
+    "ast_hash": "2e489742bb03c63d1da6b0f5634a8e91",
+    "semantic_hash": "2e489742bb03c63d1da6b0f5634a8e91"
+  },
+  "nietzsche-graph/src/error.rs": {
+    "mtime": 1773376343.6499867,
+    "ast_hash": "4d352a7b5d7475b5a0dce81b1548197d",
+    "semantic_hash": "4d352a7b5d7475b5a0dce81b1548197d"
+  },
+  "nietzsche-graph/src/fulltext.rs": {
+    "mtime": 1773376344.8417797,
+    "ast_hash": "b5924e45da4d0055b124ea17e54ca5d6",
+    "semantic_hash": "b5924e45da4d0055b124ea17e54ca5d6"
+  },
+  "nietzsche-graph/src/hyperbolic_export.rs": {
+    "mtime": 1773376346.3062036,
+    "ast_hash": "71c008bff7983b5bfccf517f72f594d1",
+    "semantic_hash": "71c008bff7983b5bfccf517f72f594d1"
+  },
+  "nietzsche-graph/src/import_export.rs": {
+    "mtime": 1773376348.107784,
+    "ast_hash": "18e815f7d7004c622a27d3e2b91702e6",
+    "semantic_hash": "18e815f7d7004c622a27d3e2b91702e6"
+  },
+  "nietzsche-graph/src/lib.rs": {
+    "mtime": 1773376349.8464367,
+    "ast_hash": "2cf336357e2910d4067cba295e51b138",
+    "semantic_hash": "2cf336357e2910d4067cba295e51b138"
+  },
+  "nietzsche-graph/src/model.rs": {
+    "mtime": 1773376350.848496,
+    "ast_hash": "0008ce98e3ad21ee85f3f42e3a21fce7",
+    "semantic_hash": "0008ce98e3ad21ee85f3f42e3a21fce7"
+  },
+  "nietzsche-graph/src/schema.rs": {
+    "mtime": 1773376351.736458,
+    "ast_hash": "27b4a83a7b64fc983cbf57006a032440",
+    "semantic_hash": "27b4a83a7b64fc983cbf57006a032440"
+  },
+  "nietzsche-graph/src/schrodinger.rs": {
+    "mtime": 1773376352.7283275,
+    "ast_hash": "a87abfa6ff0260233f8999d7b2c628df",
+    "semantic_hash": "a87abfa6ff0260233f8999d7b2c628df"
+  },
+  "nietzsche-graph/src/storage.rs": {
+    "mtime": 1773376354.0028212,
+    "ast_hash": "e1b89d39f73ee0fd81d905157f19f9ce",
+    "semantic_hash": "e1b89d39f73ee0fd81d905157f19f9ce"
+  },
+  "nietzsche-graph/src/transaction.rs": {
+    "mtime": 1773376355.2713845,
+    "ast_hash": "2b36c6dae4c0579366c9247c1f29500f",
+    "semantic_hash": "2b36c6dae4c0579366c9247c1f29500f"
+  },
+  "nietzsche-graph/src/traversal.rs": {
+    "mtime": 1773376356.4712083,
+    "ast_hash": "d470e5df9fb13ab2c643294a18e6f7fe",
+    "semantic_hash": "d470e5df9fb13ab2c643294a18e6f7fe"
+  },
+  "nietzsche-graph/src/valence.rs": {
+    "mtime": 1773376357.7318728,
+    "ast_hash": "451e165f366369f9c6f2029227dfb0f4",
+    "semantic_hash": "451e165f366369f9c6f2029227dfb0f4"
+  },
+  "nietzsche-graph/src/wal.rs": {
+    "mtime": 1773376358.9665027,
+    "ast_hash": "882f2bc7d568fe7a43fb773620e6f0d6",
+    "semantic_hash": "882f2bc7d568fe7a43fb773620e6f0d6"
+  },
+  "nietzsche-hnsw-gpu/src/lib.rs": {
+    "mtime": 1773376379.7392201,
+    "ast_hash": "baff1b428dc9ee0f9d1a1f79270d3ec3",
+    "semantic_hash": "baff1b428dc9ee0f9d1a1f79270d3ec3"
+  },
+  "nietzsche-hnsw/src/lib.rs": {
+    "mtime": 1774568391.1210597,
+    "ast_hash": "a43cb2d4b8e26528de97339d8f70ecd4",
+    "semantic_hash": "a43cb2d4b8e26528de97339d8f70ecd4"
+  },
+  "nietzsche-hnsw/tests/concurrency_test.rs": {
+    "mtime": 1773376378.288468,
+    "ast_hash": "eafe2160c8ef5b9fdf18c1be9b672d7e",
+    "semantic_hash": "eafe2160c8ef5b9fdf18c1be9b672d7e"
+  },
+  "nietzsche-hnsw/tests/persistence_test.rs": {
+    "mtime": 1773376378.8065343,
+    "ast_hash": "c5d09979ec4d91a3cd918cc9912e5e4b",
+    "semantic_hash": "c5d09979ec4d91a3cd918cc9912e5e4b"
+  },
+  "nietzsche-hnsw/tests/prop_hnsw.rs": {
+    "mtime": 1773376379.2363653,
+    "ast_hash": "138edf1c0af1db65a737e7b27e9b9589",
+    "semantic_hash": "138edf1c0af1db65a737e7b27e9b9589"
+  },
+  "nietzsche-hyp-ops/benches/hyp_ops_bench.rs": {
+    "mtime": 1773376380.2116098,
+    "ast_hash": "3d82dd9cca710dba2dc891a6b82d542d",
+    "semantic_hash": "3d82dd9cca710dba2dc891a6b82d542d"
+  },
+  "nietzsche-hyp-ops/src/curvature.rs": {
+    "mtime": 1773376380.69133,
+    "ast_hash": "c7e9dac4200ba5423829482f6ea7fe08",
+    "semantic_hash": "c7e9dac4200ba5423829482f6ea7fe08"
+  },
+  "nietzsche-hyp-ops/src/error.rs": {
+    "mtime": 1773376381.166305,
+    "ast_hash": "72c33e58911f7bdede1ca3c8a87bf711",
+    "semantic_hash": "72c33e58911f7bdede1ca3c8a87bf711"
+  },
+  "nietzsche-hyp-ops/src/klein.rs": {
+    "mtime": 1773376381.6864264,
+    "ast_hash": "7179795b909f4243e8b5c4065861fbbc",
+    "semantic_hash": "7179795b909f4243e8b5c4065861fbbc"
+  },
+  "nietzsche-hyp-ops/src/lib.rs": {
+    "mtime": 1773376382.3413103,
+    "ast_hash": "657ccc74944d3cc1fb5d41dbeb93a046",
+    "semantic_hash": "657ccc74944d3cc1fb5d41dbeb93a046"
+  },
+  "nietzsche-hyp-ops/src/manifold.rs": {
+    "mtime": 1773376382.9914322,
+    "ast_hash": "e437caff771817acacc0ed82a132b714",
+    "semantic_hash": "e437caff771817acacc0ed82a132b714"
+  },
+  "nietzsche-hyp-ops/src/minkowski.rs": {
+    "mtime": 1773376383.5266016,
+    "ast_hash": "03dc0b125ab8fdc5966693fb39a4e9b7",
+    "semantic_hash": "03dc0b125ab8fdc5966693fb39a4e9b7"
+  },
+  "nietzsche-hyp-ops/src/riemann.rs": {
+    "mtime": 1773376384.5844376,
+    "ast_hash": "0b7827e796c2cfd33ff177071d2c10f2",
+    "semantic_hash": "0b7827e796c2cfd33ff177071d2c10f2"
+  },
+  "nietzsche-hyp-ops/tests/manifold_integration.rs": {
+    "mtime": 1773376385.1764393,
+    "ast_hash": "46342b1cffdb69bb1df703da4dd9a188",
+    "semantic_hash": "46342b1cffdb69bb1df703da4dd9a188"
+  },
+  "nietzsche-kafka/src/batch.rs": {
+    "mtime": 1773376385.911528,
+    "ast_hash": "10ac21080ba3b68d6d1c15d276573346",
+    "semantic_hash": "10ac21080ba3b68d6d1c15d276573346"
+  },
+  "nietzsche-kafka/src/error.rs": {
+    "mtime": 1773376386.4634812,
+    "ast_hash": "778f052021bfe6a99bd9fe0cd59ecb59",
+    "semantic_hash": "778f052021bfe6a99bd9fe0cd59ecb59"
+  },
+  "nietzsche-kafka/src/lib.rs": {
+    "mtime": 1773376386.928353,
+    "ast_hash": "e40cd5be192649d70b70fb04cc802b06",
+    "semantic_hash": "e40cd5be192649d70b70fb04cc802b06"
+  },
+  "nietzsche-kafka/src/message.rs": {
+    "mtime": 1773376387.4215481,
+    "ast_hash": "f8fe91fea0275d16b8229e6abd5ac49d",
+    "semantic_hash": "f8fe91fea0275d16b8229e6abd5ac49d"
+  },
+  "nietzsche-kafka/src/sink.rs": {
+    "mtime": 1773376388.0362632,
+    "ast_hash": "9ac39c3440fa4f8e4839285e261abfde",
+    "semantic_hash": "9ac39c3440fa4f8e4839285e261abfde"
+  },
+  "nietzsche-lsystem/src/circuit_breaker.rs": {
+    "mtime": 1773376388.5829546,
+    "ast_hash": "4335c3537a3a38ba417d0effe87e40ee",
+    "semantic_hash": "4335c3537a3a38ba417d0effe87e40ee"
+  },
+  "nietzsche-lsystem/src/engine.rs": {
+    "mtime": 1774224790.902414,
+    "ast_hash": "20542554b764ff63c8e4d08252b1b82b",
+    "semantic_hash": "20542554b764ff63c8e4d08252b1b82b"
+  },
+  "nietzsche-lsystem/src/hausdorff.rs": {
+    "mtime": 1773376389.6880834,
+    "ast_hash": "9e4cabc654c73c4eb43abe87d4e5aae2",
+    "semantic_hash": "9e4cabc654c73c4eb43abe87d4e5aae2"
+  },
+  "nietzsche-lsystem/src/lib.rs": {
+    "mtime": 1773376390.3812666,
+    "ast_hash": "e172d5b400a2cccf6d5bc48f0919a01f",
+    "semantic_hash": "e172d5b400a2cccf6d5bc48f0919a01f"
+  },
+  "nietzsche-lsystem/src/mobius.rs": {
+    "mtime": 1773376390.9988406,
+    "ast_hash": "b059266739a3a0891598d95005a97368",
+    "semantic_hash": "b059266739a3a0891598d95005a97368"
+  },
+  "nietzsche-lsystem/src/rules.rs": {
+    "mtime": 1773376391.671541,
+    "ast_hash": "ce7a03601cd1010c87ae833dd49c6df9",
+    "semantic_hash": "ce7a03601cd1010c87ae833dd49c6df9"
+  },
+  "nietzsche-mcp/src/error.rs": {
+    "mtime": 1773376392.131278,
+    "ast_hash": "146475350051b971ba4f377393b465ab",
+    "semantic_hash": "146475350051b971ba4f377393b465ab"
+  },
+  "nietzsche-mcp/src/lib.rs": {
+    "mtime": 1773376392.6263216,
+    "ast_hash": "b2b96c8fd715a0a38b859b126f5623e1",
+    "semantic_hash": "b2b96c8fd715a0a38b859b126f5623e1"
+  },
+  "nietzsche-mcp/src/protocol.rs": {
+    "mtime": 1773376393.1200728,
+    "ast_hash": "8d0d90cafd64b679aa3837ee909fd870",
+    "semantic_hash": "8d0d90cafd64b679aa3837ee909fd870"
+  },
+  "nietzsche-mcp/src/server.rs": {
+    "mtime": 1773376393.7964509,
+    "ast_hash": "087b2231785779f3a6c01c61d612bfa1",
+    "semantic_hash": "087b2231785779f3a6c01c61d612bfa1"
+  },
+  "nietzsche-mcp/src/tools.rs": {
+    "mtime": 1773376394.4183736,
+    "ast_hash": "4b16c042f9e4f28a4b2999c11597c610",
+    "semantic_hash": "4b16c042f9e4f28a4b2999c11597c610"
+  },
+  "nietzsche-mcts/src/advisor.rs": {
+    "mtime": 1773376394.843052,
+    "ast_hash": "cce1bd6abf9039a0440708398d690c40",
+    "semantic_hash": "cce1bd6abf9039a0440708398d690c40"
+  },
+  "nietzsche-mcts/src/lib.rs": {
+    "mtime": 1773376395.2878346,
+    "ast_hash": "8db5219f2ead3d026ceb552366a7fcba",
+    "semantic_hash": "8db5219f2ead3d026ceb552366a7fcba"
+  },
+  "nietzsche-mcts/src/tree.rs": {
+    "mtime": 1773376395.8096318,
+    "ast_hash": "9120433b15b40f5a44fb17cc8e7e0985",
+    "semantic_hash": "9120433b15b40f5a44fb17cc8e7e0985"
+  },
+  "nietzsche-mcts/src/value_network.rs": {
+    "mtime": 1773376397.046395,
+    "ast_hash": "37a9edeab69a86550bd36cb685bdc40b",
+    "semantic_hash": "37a9edeab69a86550bd36cb685bdc40b"
+  },
+  "nietzsche-media/src/error.rs": {
+    "mtime": 1773376397.6900916,
+    "ast_hash": "dda80a773107bf74c98e6751383d8bc9",
+    "semantic_hash": "dda80a773107bf74c98e6751383d8bc9"
+  },
+  "nietzsche-media/src/lib.rs": {
+    "mtime": 1773376398.2462265,
+    "ast_hash": "50c07a8e5f3853f618d371ed76f02fbd",
+    "semantic_hash": "50c07a8e5f3853f618d371ed76f02fbd"
+  },
+  "nietzsche-media/src/model.rs": {
+    "mtime": 1773376398.8401647,
+    "ast_hash": "8044c8c1e173c5b971e9a68a158b6d0f",
+    "semantic_hash": "8044c8c1e173c5b971e9a68a158b6d0f"
+  },
+  "nietzsche-media/src/store.rs": {
+    "mtime": 1773376399.4383247,
+    "ast_hash": "7a2a8d186b98461f974d5e34f7294a63",
+    "semantic_hash": "7a2a8d186b98461f974d5e34f7294a63"
+  },
+  "nietzsche-metrics/src/collectors.rs": {
+    "mtime": 1773376400.1339972,
+    "ast_hash": "80898319cbba4a9726085c0a8399477c",
+    "semantic_hash": "80898319cbba4a9726085c0a8399477c"
+  },
+  "nietzsche-metrics/src/lib.rs": {
+    "mtime": 1773376400.7165458,
+    "ast_hash": "11ef0cb79f64c02ae6a73df59bd86e3e",
+    "semantic_hash": "11ef0cb79f64c02ae6a73df59bd86e3e"
+  },
+  "nietzsche-metrics/src/registry.rs": {
+    "mtime": 1773376401.1918118,
+    "ast_hash": "b4e3f7b0c50d645cde032494b7398d70",
+    "semantic_hash": "b4e3f7b0c50d645cde032494b7398d70"
+  },
+  "nietzsche-named-vectors/src/error.rs": {
+    "mtime": 1773376401.8024335,
+    "ast_hash": "1b539ba1830d9d2f204ebade1e48416e",
+    "semantic_hash": "1b539ba1830d9d2f204ebade1e48416e"
+  },
+  "nietzsche-named-vectors/src/lib.rs": {
+    "mtime": 1773376402.4014192,
+    "ast_hash": "0a87b782d4eca9509a3d2bbf702ca6e5",
+    "semantic_hash": "0a87b782d4eca9509a3d2bbf702ca6e5"
+  },
+  "nietzsche-named-vectors/src/model.rs": {
+    "mtime": 1773376402.9027283,
+    "ast_hash": "68821d350559648edc2295e6afb10579",
+    "semantic_hash": "68821d350559648edc2295e6afb10579"
+  },
+  "nietzsche-named-vectors/src/store.rs": {
+    "mtime": 1773376403.4569166,
+    "ast_hash": "8709236eef6dc6b87aff975d99381339",
+    "semantic_hash": "8709236eef6dc6b87aff975d99381339"
+  },
+  "nietzsche-naq/src/builder/match_builder.rs": {
+    "mtime": 1773423861.281005,
+    "ast_hash": "09254d95cce19f9c9d63ec05dcf78b73",
+    "semantic_hash": "09254d95cce19f9c9d63ec05dcf78b73"
+  },
+  "nietzsche-naq/src/builder/mod.rs": {
+    "mtime": 1773423798.9762583,
+    "ast_hash": "ccd575f9f7ff415f42ccb4ed4e43d368",
+    "semantic_hash": "ccd575f9f7ff415f42ccb4ed4e43d368"
+  },
+  "nietzsche-naq/src/builder/mutation_builder.rs": {
+    "mtime": 1773423899.7762842,
+    "ast_hash": "ff45831bc04424c037ce900e0f4445db",
+    "semantic_hash": "ff45831bc04424c037ce900e0f4445db"
+  },
+  "nietzsche-naq/src/cache/mod.rs": {
+    "mtime": 1773424763.688868,
+    "ast_hash": "3a00fd4fd09b8e347cad01d912bb8dbd",
+    "semantic_hash": "3a00fd4fd09b8e347cad01d912bb8dbd"
+  },
+  "nietzsche-naq/src/lib.rs": {
+    "mtime": 1773424768.577662,
+    "ast_hash": "a559f802fc4382d38157832648234ab0",
+    "semantic_hash": "a559f802fc4382d38157832648234ab0"
+  },
+  "nietzsche-narrative/src/engine.rs": {
+    "mtime": 1773376404.0207963,
+    "ast_hash": "58cebf61c3323aa808034723aa97badc",
+    "semantic_hash": "58cebf61c3323aa808034723aa97badc"
+  },
+  "nietzsche-narrative/src/error.rs": {
+    "mtime": 1773376404.6166463,
+    "ast_hash": "ea15170ea79418a410e06b36485fa783",
+    "semantic_hash": "ea15170ea79418a410e06b36485fa783"
+  },
+  "nietzsche-narrative/src/lib.rs": {
+    "mtime": 1773376405.1843016,
+    "ast_hash": "5c1d3e3ff387e603e7aeb5f219c1bd37",
+    "semantic_hash": "5c1d3e3ff387e603e7aeb5f219c1bd37"
+  },
+  "nietzsche-narrative/src/model.rs": {
+    "mtime": 1773376405.7377467,
+    "ast_hash": "557f8d504271f41ce83d78119ea4e7cb",
+    "semantic_hash": "557f8d504271f41ce83d78119ea4e7cb"
+  },
+  "nietzsche-neural/src/cluster_scorer.rs": {
+    "mtime": 1773376406.3269444,
+    "ast_hash": "29659d79c15dbf994fbdd182ad610eff",
+    "semantic_hash": "29659d79c15dbf994fbdd182ad610eff"
+  },
+  "nietzsche-neural/src/lib.rs": {
+    "mtime": 1773376406.9086428,
+    "ast_hash": "78c5320b4fe810e432247f9d6b9698d7",
+    "semantic_hash": "78c5320b4fe810e432247f9d6b9698d7"
+  },
+  "nietzsche-neural/src/tensor.rs": {
+    "mtime": 1773376407.404722,
+    "ast_hash": "4d70589fa8c45c8f10fe141cd2a0cdfa",
+    "semantic_hash": "4d70589fa8c45c8f10fe141cd2a0cdfa"
+  },
+  "nietzsche-pq/src/codebook.rs": {
+    "mtime": 1773376407.900612,
+    "ast_hash": "37951acc72a860f3a27ee9b772b4259d",
+    "semantic_hash": "37951acc72a860f3a27ee9b772b4259d"
+  },
+  "nietzsche-pq/src/config.rs": {
+    "mtime": 1773376408.3517354,
+    "ast_hash": "9712eb667241e211c8a80f128d4459f7",
+    "semantic_hash": "9712eb667241e211c8a80f128d4459f7"
+  },
+  "nietzsche-pq/src/distance.rs": {
+    "mtime": 1773376408.828325,
+    "ast_hash": "456116b2e47cff7178b441ba12d2a70c",
+    "semantic_hash": "456116b2e47cff7178b441ba12d2a70c"
+  },
+  "nietzsche-pq/src/encoder.rs": {
+    "mtime": 1773376409.2934172,
+    "ast_hash": "eac7a569e769a230e72a75fe8ab6ca19",
+    "semantic_hash": "eac7a569e769a230e72a75fe8ab6ca19"
+  },
+  "nietzsche-pq/src/error.rs": {
+    "mtime": 1773376409.7573647,
+    "ast_hash": "283ba0a7e9a57ba711764d5300393bb3",
+    "semantic_hash": "283ba0a7e9a57ba711764d5300393bb3"
+  },
+  "nietzsche-pq/src/lib.rs": {
+    "mtime": 1773376410.2996716,
+    "ast_hash": "4fa4b3033ffe8e6265a8ef34b7a7c163",
+    "semantic_hash": "4fa4b3033ffe8e6265a8ef34b7a7c163"
+  },
+  "nietzsche-pregel/benches/chebyshev_bench.rs": {
+    "mtime": 1773376410.858546,
+    "ast_hash": "c1c9b6f32f372dbff662db97590bc53c",
+    "semantic_hash": "c1c9b6f32f372dbff662db97590bc53c"
+  },
+  "nietzsche-pregel/src/chebyshev.rs": {
+    "mtime": 1773376411.4085555,
+    "ast_hash": "4824fce37bbf6bb36e823a77a6dbe3c1",
+    "semantic_hash": "4824fce37bbf6bb36e823a77a6dbe3c1"
+  },
+  "nietzsche-pregel/src/diffusion.rs": {
+    "mtime": 1773376411.9804902,
+    "ast_hash": "b28d136e78d1d5a0f7a63f3b988ec965",
+    "semantic_hash": "b28d136e78d1d5a0f7a63f3b988ec965"
+  },
+  "nietzsche-pregel/src/laplacian.rs": {
+    "mtime": 1773376412.5653238,
+    "ast_hash": "006d5e210031146d88e15fe8be0f74fe",
+    "semantic_hash": "006d5e210031146d88e15fe8be0f74fe"
+  },
+  "nietzsche-pregel/src/lib.rs": {
+    "mtime": 1773376413.0278852,
+    "ast_hash": "243022a27b7a1a94e0e1ceaeff7dc653",
+    "semantic_hash": "243022a27b7a1a94e0e1ceaeff7dc653"
+  },
+  "nietzsche-proto/build.rs": {
+    "mtime": 1773376413.5712943,
+    "ast_hash": "880bd847aac15c61f052847501055f3f",
+    "semantic_hash": "880bd847aac15c61f052847501055f3f"
+  },
+  "nietzsche-proto/src/lib.rs": {
+    "mtime": 1773376414.1395643,
+    "ast_hash": "f415a00e6496c434333aee2eb321e2c8",
+    "semantic_hash": "f415a00e6496c434333aee2eb321e2c8"
+  },
+  "nietzsche-query/src/ast.rs": {
+    "mtime": 1773376414.841232,
+    "ast_hash": "a03269ee7005511b64b0da38c9b3edf7",
+    "semantic_hash": "a03269ee7005511b64b0da38c9b3edf7"
+  },
+  "nietzsche-query/src/cost.rs": {
+    "mtime": 1773376415.4311771,
+    "ast_hash": "3da6c061fc53f175c918051c20fb2835",
+    "semantic_hash": "3da6c061fc53f175c918051c20fb2835"
+  },
+  "nietzsche-query/src/error.rs": {
+    "mtime": 1773376415.9434116,
+    "ast_hash": "f420e2bd92af8404565361e24aed79ae",
+    "semantic_hash": "f420e2bd92af8404565361e24aed79ae"
+  },
+  "nietzsche-query/src/executor.rs": {
+    "mtime": 1774219447.2007458,
+    "ast_hash": "6fa970035138c7403d5d1932d2daaaa9",
+    "semantic_hash": "6fa970035138c7403d5d1932d2daaaa9"
+  },
+  "nietzsche-query/src/lib.rs": {
+    "mtime": 1773376416.9681432,
+    "ast_hash": "0ac4139e8289d86f4ce12159539a8248",
+    "semantic_hash": "0ac4139e8289d86f4ce12159539a8248"
+  },
+  "nietzsche-query/src/parser.rs": {
+    "mtime": 1773376417.5463147,
+    "ast_hash": "4f4afaebdd3f11e09b920ba509c1af3a",
+    "semantic_hash": "4f4afaebdd3f11e09b920ba509c1af3a"
+  },
+  "nietzsche-rl/src/env.rs": {
+    "mtime": 1773376418.2091966,
+    "ast_hash": "8d988eb0169ab2343c7be9d1056e1e57",
+    "semantic_hash": "8d988eb0169ab2343c7be9d1056e1e57"
+  },
+  "nietzsche-rl/src/error.rs": {
+    "mtime": 1773376418.7432303,
+    "ast_hash": "735aff2626f7379d8881358c27cf2827",
+    "semantic_hash": "735aff2626f7379d8881358c27cf2827"
+  },
+  "nietzsche-rl/src/lib.rs": {
+    "mtime": 1773376419.3471684,
+    "ast_hash": "9cd4fe2b5e37c62265bbf039bdb98b72",
+    "semantic_hash": "9cd4fe2b5e37c62265bbf039bdb98b72"
+  },
+  "nietzsche-rl/src/ppo.rs": {
+    "mtime": 1773376419.8801327,
+    "ast_hash": "f0fce0fabded3b22e3e350541c7082f8",
+    "semantic_hash": "f0fce0fabded3b22e3e350541c7082f8"
+  },
+  "nietzsche-rsdk/examples/basic.rs": {
+    "mtime": 1773376420.4565392,
+    "ast_hash": "0016b8e3ca7c63fce338e63016c7dde2",
+    "semantic_hash": "0016b8e3ca7c63fce338e63016c7dde2"
+  },
+  "nietzsche-rsdk/src/embedder.rs": {
+    "mtime": 1773376421.0363648,
+    "ast_hash": "7e0aa80bd605a906c04295961b3fb324",
+    "semantic_hash": "7e0aa80bd605a906c04295961b3fb324"
+  },
+  "nietzsche-rsdk/src/lib.rs": {
+    "mtime": 1773376421.652252,
+    "ast_hash": "a9f874e2161c891b4a4e49f3b94d2986",
+    "semantic_hash": "a9f874e2161c891b4a4e49f3b94d2986"
+  },
+  "nietzsche-rsdk/src/math.rs": {
+    "mtime": 1773376422.2056422,
+    "ast_hash": "6a890e9b9d7483c2f0f3db489094af00",
+    "semantic_hash": "6a890e9b9d7483c2f0f3db489094af00"
+  },
+  "nietzsche-sdk/examples/seed_100.rs": {
+    "mtime": 1773376422.7160656,
+    "ast_hash": "26cf06cdc48b4577d1c22e9becd0ea4c",
+    "semantic_hash": "26cf06cdc48b4577d1c22e9becd0ea4c"
+  },
+  "nietzsche-sdk/examples/seed_1gb.rs": {
+    "mtime": 1773376423.2666347,
+    "ast_hash": "e007646021d46d3570dcb41f69dc010c",
+    "semantic_hash": "e007646021d46d3570dcb41f69dc010c"
+  },
+  "nietzsche-sdk/python/nietzsche_db.py": {
+    "mtime": 1771423635.9372618,
+    "ast_hash": "e51aa7e8c4eed82d092bb95497c96358",
+    "semantic_hash": "e51aa7e8c4eed82d092bb95497c96358"
+  },
+  "nietzsche-sdk/src/client.rs": {
+    "mtime": 1773376423.788768,
+    "ast_hash": "0516066fed13ad5d73cac982502a7d18",
+    "semantic_hash": "0516066fed13ad5d73cac982502a7d18"
+  },
+  "nietzsche-sdk/src/lib.rs": {
+    "mtime": 1773376424.2713766,
+    "ast_hash": "2873010bfde5851753b635552be1773e",
+    "semantic_hash": "2873010bfde5851753b635552be1773e"
+  },
+  "nietzsche-sdk/tests/sdk_tests.rs": {
+    "mtime": 1773376424.8209436,
+    "ast_hash": "05ef780f295ae9440f31a53ea6468d85",
+    "semantic_hash": "05ef780f295ae9440f31a53ea6468d85"
+  },
+  "nietzsche-sdk/typescript/nietzsche_db.ts": {
+    "mtime": 1771423672.794506,
+    "ast_hash": "92bbac58ab39576ea04d6e41ed81ed09",
+    "semantic_hash": "92bbac58ab39576ea04d6e41ed81ed09"
+  },
+  "nietzsche-secondary-idx/src/builder.rs": {
+    "mtime": 1773376425.338784,
+    "ast_hash": "329a7e31a2e0d8d1851dc316d09f2160",
+    "semantic_hash": "329a7e31a2e0d8d1851dc316d09f2160"
+  },
+  "nietzsche-secondary-idx/src/error.rs": {
+    "mtime": 1773376425.9148972,
+    "ast_hash": "c2a3b33c5d05fcfa682e93d7715f55eb",
+    "semantic_hash": "c2a3b33c5d05fcfa682e93d7715f55eb"
+  },
+  "nietzsche-secondary-idx/src/lib.rs": {
+    "mtime": 1773376426.4599452,
+    "ast_hash": "fbe2c3e001230a375fa85d63e143c75e",
+    "semantic_hash": "fbe2c3e001230a375fa85d63e143c75e"
+  },
+  "nietzsche-secondary-idx/src/model.rs": {
+    "mtime": 1773376426.9935198,
+    "ast_hash": "230f50f30ca615fbd0765ee4d5e72e67",
+    "semantic_hash": "230f50f30ca615fbd0765ee4d5e72e67"
+  },
+  "nietzsche-secondary-idx/src/store.rs": {
+    "mtime": 1773376427.620543,
+    "ast_hash": "ab811deb102c7216edcedc1cc599a26d",
+    "semantic_hash": "ab811deb102c7216edcedc1cc599a26d"
+  },
+  "nietzsche-sensory/src/encoder.rs": {
+    "mtime": 1773376428.1885977,
+    "ast_hash": "91700d8d16c4b2e0f00d1fa6972c949b",
+    "semantic_hash": "91700d8d16c4b2e0f00d1fa6972c949b"
+  },
+  "nietzsche-sensory/src/lib.rs": {
+    "mtime": 1773376428.6935003,
+    "ast_hash": "72966759e5ae07fa41ec7e56d5aa3efd",
+    "semantic_hash": "72966759e5ae07fa41ec7e56d5aa3efd"
+  },
+  "nietzsche-sensory/src/neural_encoders.rs": {
+    "mtime": 1773376429.2599459,
+    "ast_hash": "ff4c169785e25563a2748161ebb9f5da",
+    "semantic_hash": "ff4c169785e25563a2748161ebb9f5da"
+  },
+  "nietzsche-sensory/src/storage.rs": {
+    "mtime": 1773376429.7707856,
+    "ast_hash": "a8e1b9ac5428889b7e4b81cb9e9fea5e",
+    "semantic_hash": "a8e1b9ac5428889b7e4b81cb9e9fea5e"
+  },
+  "nietzsche-sensory/src/translate.rs": {
+    "mtime": 1773376430.3523445,
+    "ast_hash": "c7fa037fa709f568af2b28d2c64e9ddc",
+    "semantic_hash": "c7fa037fa709f568af2b28d2c64e9ddc"
+  },
+  "nietzsche-sensory/src/types.rs": {
+    "mtime": 1773376430.8572872,
+    "ast_hash": "f799b9f55d65bc3e0b6eea705b395260",
+    "semantic_hash": "f799b9f55d65bc3e0b6eea705b395260"
+  },
+  "nietzsche-server/src/auth.rs": {
+    "mtime": 1773376431.3387153,
+    "ast_hash": "5befb8c9ddec3467bddaab956e89db14",
+    "semantic_hash": "5befb8c9ddec3467bddaab956e89db14"
+  },
+  "nietzsche-server/src/bootstrap.rs": {
+    "mtime": 1774566658.94336,
+    "ast_hash": "d7e5648df796454970cb48f92c47ae99",
+    "semantic_hash": "d7e5648df796454970cb48f92c47ae99"
+  },
+  "nietzsche-server/src/cdc.rs": {
+    "mtime": 1773376432.3064003,
+    "ast_hash": "88c57eff8d6a04f0f45294b474a280c5",
+    "semantic_hash": "88c57eff8d6a04f0f45294b474a280c5"
+  },
+  "nietzsche-server/src/cluster_service.rs": {
+    "mtime": 1774566664.723728,
+    "ast_hash": "f9d30f9f43b7d371432da454e0d06325",
+    "semantic_hash": "f9d30f9f43b7d371432da454e0d06325"
+  },
+  "nietzsche-server/src/config.rs": {
+    "mtime": 1774566629.4668088,
+    "ast_hash": "ee382c4a3805067d9d7c575d848857bc",
+    "semantic_hash": "ee382c4a3805067d9d7c575d848857bc"
+  },
+  "nietzsche-server/src/dashboard.rs": {
+    "mtime": 1774566640.9031198,
+    "ast_hash": "754c8f07d2a9d4592cdc694153db7ce6",
+    "semantic_hash": "754c8f07d2a9d4592cdc694153db7ce6"
+  },
+  "nietzsche-server/src/html.rs": {
+    "mtime": 1773376434.540395,
+    "ast_hash": "eb438117c0e9bfe7ab3784f7430ba15b",
+    "semantic_hash": "eb438117c0e9bfe7ab3784f7430ba15b"
+  },
+  "nietzsche-server/src/main.rs": {
+    "mtime": 1774568787.4363723,
+    "ast_hash": "99eff79695c785f70a6d5d09035fd157",
+    "semantic_hash": "99eff79695c785f70a6d5d09035fd157"
+  },
+  "nietzsche-server/src/metrics.rs": {
+    "mtime": 1774567053.7094297,
+    "ast_hash": "58c6b9c3069f2b8112f46e7c361e070f",
+    "semantic_hash": "58c6b9c3069f2b8112f46e7c361e070f"
+  },
+  "nietzsche-sleep/benches/riemannian_bench.rs": {
+    "mtime": 1773376436.1882849,
+    "ast_hash": "4dbed1a143609f18835a409d30933f58",
+    "semantic_hash": "4dbed1a143609f18835a409d30933f58"
+  },
+  "nietzsche-sleep/benches/sleep_query_bench.rs": {
+    "mtime": 1773376436.886333,
+    "ast_hash": "fbb7f19c4af775b0cf1adb4462414fa4",
+    "semantic_hash": "fbb7f19c4af775b0cf1adb4462414fa4"
+  },
+  "nietzsche-sleep/src/cycle.rs": {
+    "mtime": 1773376437.5334713,
+    "ast_hash": "2602e97101fd1097179d5be485136e50",
+    "semantic_hash": "2602e97101fd1097179d5be485136e50"
+  },
+  "nietzsche-sleep/src/fusion.rs": {
+    "mtime": 1773376438.111382,
+    "ast_hash": "1a5785c137f150ef956b9562834f8bce",
+    "semantic_hash": "1a5785c137f150ef956b9562834f8bce"
+  },
+  "nietzsche-sleep/src/lib.rs": {
+    "mtime": 1773376438.768343,
+    "ast_hash": "f42b5fd9ec89ac926d276a34660fdeee",
+    "semantic_hash": "f42b5fd9ec89ac926d276a34660fdeee"
+  },
+  "nietzsche-sleep/src/riemannian.rs": {
+    "mtime": 1773376439.3262305,
+    "ast_hash": "99e1224f8648e11abccd34519b4d1ff4",
+    "semantic_hash": "99e1224f8648e11abccd34519b4d1ff4"
+  },
+  "nietzsche-sleep/src/snapshot.rs": {
+    "mtime": 1773376439.8443894,
+    "ast_hash": "51a48372959b2a380aae081b8e626464",
+    "semantic_hash": "51a48372959b2a380aae081b8e626464"
+  },
+  "nietzsche-swartz/src/engine.rs": {
+    "mtime": 1772997673.7925472,
+    "ast_hash": "68b24d9f7f360fa80f242914a6392c1a",
+    "semantic_hash": "68b24d9f7f360fa80f242914a6392c1a"
+  },
+  "nietzsche-swartz/src/error.rs": {
+    "mtime": 1771759265.6555343,
+    "ast_hash": "a0be5887c59f7d5bde484250e60ad8e8",
+    "semantic_hash": "a0be5887c59f7d5bde484250e60ad8e8"
+  },
+  "nietzsche-swartz/src/lib.rs": {
+    "mtime": 1772069044.3110707,
+    "ast_hash": "d2508067bb575d579f4213bdece4bad7",
+    "semantic_hash": "d2508067bb575d579f4213bdece4bad7"
+  },
+  "nietzsche-swartz/src/store.rs": {
+    "mtime": 1771759914.2854688,
+    "ast_hash": "a6e6ccd87a61694362b5f5ed551d27e2",
+    "semantic_hash": "a6e6ccd87a61694362b5f5ed551d27e2"
+  },
+  "nietzsche-tpu/src/lib.rs": {
+    "mtime": 1773376440.5860891,
+    "ast_hash": "75f56e103d3c2f93d7555cf18debdce7",
+    "semantic_hash": "75f56e103d3c2f93d7555cf18debdce7"
+  },
+  "nietzsche-tpu/tests/tpu_tests.rs": {
+    "mtime": 1773376441.1313436,
+    "ast_hash": "8666b1436024c5728e3121b25a1171eb",
+    "semantic_hash": "8666b1436024c5728e3121b25a1171eb"
+  },
+  "nietzsche-vecstore/src/lib.rs": {
+    "mtime": 1773376441.722254,
+    "ast_hash": "22b35ed40c7f64640499d326a9ab7bb6",
+    "semantic_hash": "22b35ed40c7f64640499d326a9ab7bb6"
+  },
+  "nietzsche-vecstore/src/mmap_impl.rs": {
+    "mtime": 1773376442.3967657,
+    "ast_hash": "331a65eee00ca83a0f072b424a8392c2",
+    "semantic_hash": "331a65eee00ca83a0f072b424a8392c2"
+  },
+  "nietzsche-vecstore/src/ram_impl.rs": {
+    "mtime": 1773376443.114307,
+    "ast_hash": "20281e346ad936b53adc5e83136fd2f5",
+    "semantic_hash": "20281e346ad936b53adc5e83136fd2f5"
+  },
+  "nietzsche-vecstore/src/wal.rs": {
+    "mtime": 1773376443.6943982,
+    "ast_hash": "bda1f544fbc523829c079de76bffca98",
+    "semantic_hash": "bda1f544fbc523829c079de76bffca98"
+  },
+  "nietzsche-vecstore/tests/integrity.rs": {
+    "mtime": 1773376444.406279,
+    "ast_hash": "33566e1ce6945cbcc9eb477308cf6f9d",
+    "semantic_hash": "33566e1ce6945cbcc9eb477308cf6f9d"
+  },
+  "nietzsche-vecstore/tests/prop_wal.rs": {
+    "mtime": 1773376445.1368144,
+    "ast_hash": "2829e89ebd89c06d18be04fdbf4c9d74",
+    "semantic_hash": "2829e89ebd89c06d18be04fdbf4c9d74"
+  },
+  "nietzsche-vqvae/src/decoder.rs": {
+    "mtime": 1773376445.8268802,
+    "ast_hash": "be3eb86a5d9cff0b001d64af653030fd",
+    "semantic_hash": "be3eb86a5d9cff0b001d64af653030fd"
+  },
+  "nietzsche-vqvae/src/encoder.rs": {
+    "mtime": 1773376446.6161232,
+    "ast_hash": "bcf146292482293913f66545ec4240e1",
+    "semantic_hash": "bcf146292482293913f66545ec4240e1"
+  },
+  "nietzsche-vqvae/src/error.rs": {
+    "mtime": 1773376447.196838,
+    "ast_hash": "5c6b49d80ba87df0d70056485c112d71",
+    "semantic_hash": "5c6b49d80ba87df0d70056485c112d71"
+  },
+  "nietzsche-vqvae/src/lib.rs": {
+    "mtime": 1773376447.8582773,
+    "ast_hash": "c1c4504af7ee0e2e4502221923eca574",
+    "semantic_hash": "c1c4504af7ee0e2e4502221923eca574"
+  },
+  "nietzsche-vqvae/src/model.rs": {
+    "mtime": 1773376448.3391707,
+    "ast_hash": "b92bed466fd03a02beb3bf0beb9969a0",
+    "semantic_hash": "b92bed466fd03a02beb3bf0beb9969a0"
+  },
+  "nietzsche-wasm/src/lib.rs": {
+    "mtime": 1773376448.810861,
+    "ast_hash": "66900b25f312e5b4543fe25924474485",
+    "semantic_hash": "66900b25f312e5b4543fe25924474485"
+  },
+  "nietzsche-wasm/tests/wasm_tests.rs": {
+    "mtime": 1773376449.3314354,
+    "ast_hash": "e633a4fd66ea230aef4374db20e9376c",
+    "semantic_hash": "e633a4fd66ea230aef4374db20e9376c"
+  },
+  "nietzsche-wiederkehr/src/anomaly.rs": {
+    "mtime": 1773376449.8820016,
+    "ast_hash": "4cd1e0d0ab3abc1d7955b4caa0fdf1d9",
+    "semantic_hash": "4cd1e0d0ab3abc1d7955b4caa0fdf1d9"
+  },
+  "nietzsche-wiederkehr/src/config.rs": {
+    "mtime": 1773376450.6404533,
+    "ast_hash": "4ccfb0757056b5f9c3fa9664ae7b6f1d",
+    "semantic_hash": "4ccfb0757056b5f9c3fa9664ae7b6f1d"
+  },
+  "nietzsche-wiederkehr/src/engine.rs": {
+    "mtime": 1773376451.283139,
+    "ast_hash": "d258c6fc73bbce5d01ab060d0cf7a7fb",
+    "semantic_hash": "d258c6fc73bbce5d01ab060d0cf7a7fb"
+  },
+  "nietzsche-wiederkehr/src/error.rs": {
+    "mtime": 1773376452.484808,
+    "ast_hash": "f5027c9e50479b00afc647021c24af7d",
+    "semantic_hash": "f5027c9e50479b00afc647021c24af7d"
+  },
+  "nietzsche-wiederkehr/src/evaluator.rs": {
+    "mtime": 1773376453.0985315,
+    "ast_hash": "a7505a3656740ba195c65bcad131dc9a",
+    "semantic_hash": "a7505a3656740ba195c65bcad131dc9a"
+  },
+  "nietzsche-wiederkehr/src/lib.rs": {
+    "mtime": 1773376453.7460473,
+    "ast_hash": "ab2fecf0792b7deaf29f361e67339ff9",
+    "semantic_hash": "ab2fecf0792b7deaf29f361e67339ff9"
+  },
+  "nietzsche-wiederkehr/src/model.rs": {
+    "mtime": 1773376454.3411121,
+    "ast_hash": "95a1f42fe70f19ba651ebe83da4dbd2d",
+    "semantic_hash": "95a1f42fe70f19ba651ebe83da4dbd2d"
+  },
+  "nietzsche-wiederkehr/src/priority.rs": {
+    "mtime": 1773376454.9070604,
+    "ast_hash": "cd77319f56a4ea05e07ba351e45a9584",
+    "semantic_hash": "cd77319f56a4ea05e07ba351e45a9584"
+  },
+  "nietzsche-wiederkehr/src/store.rs": {
+    "mtime": 1773376455.4689896,
+    "ast_hash": "64172894b6ae22dc67ac51ec6ef282ca",
+    "semantic_hash": "64172894b6ae22dc67ac51ec6ef282ca"
+  },
+  "nietzsche-zaratustra/src/config.rs": {
+    "mtime": 1773376456.047776,
+    "ast_hash": "85ca8625f0ae3ac071ac1d8b896548c5",
+    "semantic_hash": "85ca8625f0ae3ac071ac1d8b896548c5"
+  },
+  "nietzsche-zaratustra/src/engine.rs": {
+    "mtime": 1773376456.7109454,
+    "ast_hash": "3908e35866df4c6ef4cdefd4c8206131",
+    "semantic_hash": "3908e35866df4c6ef4cdefd4c8206131"
+  },
+  "nietzsche-zaratustra/src/error.rs": {
+    "mtime": 1773376457.5922644,
+    "ast_hash": "9a8fcbcfd3b21f083fbf7bd470d372a8",
+    "semantic_hash": "9a8fcbcfd3b21f083fbf7bd470d372a8"
+  },
+  "nietzsche-zaratustra/src/eternal_recurrence.rs": {
+    "mtime": 1773376458.2378626,
+    "ast_hash": "8a5a9043ea4c690a37f5e0b660f767af",
+    "semantic_hash": "8a5a9043ea4c690a37f5e0b660f767af"
+  },
+  "nietzsche-zaratustra/src/lib.rs": {
+    "mtime": 1773376458.930431,
+    "ast_hash": "c36810d6aeb29aabb05c33c949dd3794",
+    "semantic_hash": "c36810d6aeb29aabb05c33c949dd3794"
+  },
+  "nietzsche-zaratustra/src/ubermensch.rs": {
+    "mtime": 1773376459.7745352,
+    "ast_hash": "24879751123792647d140ed7cd1a7ba0",
+    "semantic_hash": "24879751123792647d140ed7cd1a7ba0"
+  },
+  "nietzsche-zaratustra/src/will_to_power.rs": {
+    "mtime": 1773376460.4983094,
+    "ast_hash": "4f5ce7b232c3e6ef1941560ffcdc57b5",
+    "semantic_hash": "4f5ce7b232c3e6ef1941560ffcdc57b5"
+  },
+  "nietzsche-agency/AGENCY.md": {
+    "mtime": 1771955099.5079372,
+    "ast_hash": "5f2b3b75e1c2ea3de42e6cd826f17958",
+    "semantic_hash": "5f2b3b75e1c2ea3de42e6cd826f17958"
+  },
+  "nietzsche-agi/README.md": {
+    "mtime": 1772563576.3960857,
+    "ast_hash": "300b4523055053eba789b159d091abca",
+    "semantic_hash": "300b4523055053eba789b159d091abca"
+  },
+  "nietzsche-cli/CLUSTER_TEST.md": {
+    "mtime": 1771413328.4737895,
+    "ast_hash": "4d9e428f218b38abb38c687d949f0ab8",
+    "semantic_hash": "4d9e428f218b38abb38c687d949f0ab8"
+  },
+  "nietzsche-neural/errors.txt": {
+    "mtime": 1771880601.681445,
+    "ast_hash": "fea7f95ba46063d424cf87452004a33c",
+    "semantic_hash": "fea7f95ba46063d424cf87452004a33c"
+  },
+  "nietzsche-neural/errors_test.txt": {
+    "mtime": 1771880649.6674454,
+    "ast_hash": "9ab4e63d718dc5cf4342e36f00ef2e64",
+    "semantic_hash": "9ab4e63d718dc5cf4342e36f00ef2e64"
+  },
+  "nietzsche-rsdk/README.md": {
+    "mtime": 1772309768.7412298,
+    "ast_hash": "9cb3d77bf58a8935699e62686c33c645",
+    "semantic_hash": "9cb3d77bf58a8935699e62686c33c645"
+  },
+  "nietzsche-server/errors_server.txt": {
+    "mtime": 1771880826.3867478,
+    "ast_hash": "1726b7f486e1e5c1fab2d49cfb0d550d",
+    "semantic_hash": "1726b7f486e1e5c1fab2d49cfb0d550d"
+  },
+  "nietzsche-server/server_log.txt": {
+    "mtime": 1771889719.3694448,
+    "ast_hash": "b43437b7936caa7902699b7748bd0dc6",
+    "semantic_hash": "b43437b7936caa7902699b7748bd0dc6"
+  }
+}
