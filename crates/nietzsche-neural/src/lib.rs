@@ -1,6 +1,8 @@
 // Copyright (C) 2025-2026 Jose R F Junior <web2ajax@gmail.com>
 use std::path::PathBuf;
+
 use dashmap::DashMap;
+#[cfg(feature = "cuda")]
 use ort::execution_providers::CUDAExecutionProvider;
 use ort::session::Session;
 use serde::{Deserialize, Serialize};
@@ -45,17 +47,29 @@ impl ModelRegistry {
     }
 
     pub fn load_model(&self, meta: ModelMetadata) -> Result<()> {
-        let cuda_ep = CUDAExecutionProvider::default();
-        let session = Session::builder()?
-            .with_execution_providers([cuda_ep.build()])?
-            .commit_from_file(&meta.path)?;
+        #[cfg(feature = "cuda")]
+        let session = {
+            let builder = Session::builder()?;
+            let builder = builder
+                .with_execution_providers([CUDAExecutionProvider::default().build()])
+                .map_err(|e| {
+                    NeuralError::TensorError(format!(
+                        "failed to configure CUDA execution provider: {e}"
+                    ))
+                })?;
+            builder.commit_from_file(&meta.path)?
+        };
+
+        #[cfg(not(feature = "cuda"))]
+        let session = Session::builder()?.commit_from_file(&meta.path)?;
 
         #[cfg(feature = "cuda")]
         tracing::info!(model = %meta.name, "Model loaded with CUDA execution provider (GPU)");
         #[cfg(not(feature = "cuda"))]
-        tracing::warn!(model = %meta.name, "Model loaded WITHOUT CUDA (CPU fallback) — build with feature 'cuda' for GPU");
+        tracing::info!(model = %meta.name, "Model loaded with ONNX Runtime CPU execution provider");
 
-        self.sessions.insert(meta.name.clone(), Arc::new(Mutex::new(session)));
+        self.sessions
+            .insert(meta.name.clone(), Arc::new(Mutex::new(session)));
         self.metadata.insert(meta.name.clone(), meta);
         Ok(())
     }
