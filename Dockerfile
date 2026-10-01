@@ -1,6 +1,6 @@
 # ── Stage 1: builder ─────────────────────────────────────────────────────────
 #
-# Build nietzsche-server with full LTO + stripped symbols.
+# Build the portable CPU nietzsche-server image with full LTO + stripped symbols.
 # RocksDB links statically via the `rocksdb` crate — no shared .so needed at
 # runtime.
 FROM rustlang/rust:nightly-slim AS builder
@@ -25,7 +25,7 @@ COPY crates/ crates/
 # Build the production binary.
 # [profile.release] is already configured in workspace Cargo.toml:
 #   lto = true, codegen-units = 1, strip = true, panic = "abort"
-RUN cargo build --release --bin nietzsche-server
+RUN cargo build --release --bin nietzsche-server --no-default-features
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
 FROM ubuntu:24.04 AS runtime
@@ -46,7 +46,8 @@ COPY --from=builder /build/target/release/nietzsche-server ./nietzsche-server
 
 # ── Configuration (override at docker run / Kubernetes env) ──────────────────
 ENV NIETZSCHE_DATA_DIR=/data/nietzsche
-ENV NIETZSCHE_PORT=50052
+ENV NIETZSCHE_PORT=50051
+ENV NIETZSCHE_VECTOR_BACKEND=embedded
 ENV NIETZSCHE_LOG_LEVEL=info
 ENV NIETZSCHE_SLEEP_INTERVAL_SECS=300
 ENV NIETZSCHE_SLEEP_NOISE=0.02
@@ -59,10 +60,11 @@ ENV NIETZSCHE_DASHBOARD_PORT=8080
 VOLUME ["/data/nietzsche"]
 
 # gRPC port + HTTP dashboard
-EXPOSE 50052 8080
+EXPOSE 50051 8080
 
 LABEL org.opencontainers.image.title="NietzscheDB Server"
-LABEL org.opencontainers.image.description="Temporal Hyperbolic Graph Database — production gRPC server"
+LABEL org.opencontainers.image.description="Multi-Manifold Graph Database — production gRPC server"
+LABEL org.opencontainers.image.version="3.2.0"
 LABEL org.opencontainers.image.source="https://github.com/JoseRFJuniorLLMs/NietzscheDB"
 
 ENTRYPOINT ["./nietzsche-server"]
