@@ -46,16 +46,12 @@ fn ring_graph(n: usize) -> (NietzscheDB<MockVectorStore>, tempfile::TempDir, Vec
 
     // Connect as a ring
     for i in 0..n {
-        let e = Edge {
-            id:           Uuid::new_v4(),
-            from:         ids[i],
-            to:           ids[(i + 1) % n],
-            edge_type:    EdgeType::Association,
-            weight:       1.0,
-            lsystem_rule: None,
-            created_at:   0,
-            metadata:     Default::default(),
-        };
+        let e = Edge::new(
+            ids[i],
+            ids[(i + 1) % n],
+            EdgeType::Association,
+            1.0,
+        );
         db.insert_edge(e).unwrap();
     }
 
