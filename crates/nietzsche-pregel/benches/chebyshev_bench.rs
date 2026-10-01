@@ -32,7 +32,10 @@ fn ring_graph(n: usize) -> (NietzscheDB<MockVectorStore>, tempfile::TempDir, Vec
             let angle = i as f64 * 2.0 * std::f64::consts::PI / n as f64;
             let node  = Node::new(
                 Uuid::new_v4(),
-                PoincareVector::new(vec![angle.cos() * step * i as f64, angle.sin() * step * i as f64]),
+                PoincareVector::new(vec![
+                    (angle.cos() * step * i as f64) as f32,
+                    (angle.sin() * step * i as f64) as f32,
+                ]),
                 serde_json::json!({}),
             );
             let id = node.id;
