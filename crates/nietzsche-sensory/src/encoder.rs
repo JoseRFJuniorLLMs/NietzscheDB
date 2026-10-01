@@ -720,8 +720,17 @@ mod tests {
         }
     }
 
+    /// The sensory metrics are process-global atomics. Tests that reset them
+    /// must be serialized, otherwise one parallel test can zero another test's
+    /// counter between the operation and its assertion.
+    fn metrics_test_guard() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     #[test]
     fn with_raw_disabled_uses_passthrough() {
+        let _metrics_guard = metrics_test_guard();
         SensoryMetrics::reset();
         let euclidean: Vec<f32> = vec![0.1; 128];
         // Even with raw data, if neural is disabled, use passthrough
@@ -744,6 +753,7 @@ mod tests {
 
     #[test]
     fn with_raw_empty_raw_uses_passthrough() {
+        let _metrics_guard = metrics_test_guard();
         SensoryMetrics::reset();
         let euclidean: Vec<f32> = vec![0.1; 128];
 
@@ -763,6 +773,7 @@ mod tests {
 
     #[test]
     fn with_raw_enabled_but_no_model_falls_back() {
+        let _metrics_guard = metrics_test_guard();
         SensoryMetrics::reset();
         let euclidean: Vec<f32> = vec![0.1; 128];
         // Correct size raw data but model won't load (nonexistent dir)
