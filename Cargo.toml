@@ -80,7 +80,7 @@ proptest = "1.0"
 criterion = { version = "0.5", features = ["html_reports"] }
 rayon = "1.10"
 aes = "0.8"
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 ctr = "0.9"
 getrandom = "0.2"
 hkdf = "0.12"
