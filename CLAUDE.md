@@ -251,7 +251,7 @@ HYPERSPACE_WAL_SYNC_MODE=batch
 HYPERSPACE_WAL_BATCH_INTERVAL=100
 
 # NietzscheDB Vector Backend
-NIETZSCHE_VECTOR_BACKEND=embedded    # CRITICO: sem isto usa MockVectorStore (linear scan)
+NIETZSCHE_VECTOR_BACKEND=embedded    # opcional: embedded/HNSW e o default; use mock/linear apenas explicitamente
 NIETZSCHE_VECTOR_DIM=3072            # Gemini embeddings
 NIETZSCHE_VECTOR_METRIC=cosine
 NIETZSCHE_PORT=50051
@@ -265,8 +265,8 @@ NIETZSCHE_SLEEP_ADAM_STEPS=10
 NIETZSCHE_HAUSDORFF_THRESHOLD=0.15
 ```
 
-> [!warning] NIETZSCHE_VECTOR_BACKEND=embedded
-> Sem esta var, o servidor usa `MockVectorStore` (scan linear O(n)) em vez do HNSW real.
+> [!note] NIETZSCHE_VECTOR_BACKEND
+> O backend padrao atual e `embedded` (HNSW real). `mock`/`linear` so e usado quando solicitado explicitamente.
 
 ---
 
@@ -526,6 +526,7 @@ Tres fases filosoficas do motor de energia:
 
 | Versao | Data | Destaque |
 |--------|------|----------|
+| **3.2.0** | 2026-10-01 | Release integrity: versao publica consistente, CI nightly/CPU, Docker 50052→50051, docs revalidados |
 | **3.1.1** | 2026-03-26 | 18 safety & perf fixes: AtomicU64 HNSW entry, BQ panic guard, histograms, complex filters, clean shutdown, GPU warm-up |
 | **3.1.0** | 2026-03-08 | Agency Phases XVII-XXIV (Ego-Cache, Reasoning, Self-Healing, Learning, Compression, Sharding, World Model, Flywheel) |
 | **3.0.0** | 2026-02-22 | Multi-Manifold Architecture (Klein, Riemann, Minkowski) + 6 RPCs |
@@ -583,4 +584,4 @@ D:/DEV/NietzscheDB/                          # Root
 
 > [!abstract] Meta
 > Este ficheiro serve como **memoria persistente** do Claude para o projecto NietzscheDB.
-> Atualizado: 2026-03-26 | Versao: 3.1.1 | Crates: 48 | Nos: 865K+ | Collections: ~35
+> Atualizado: 2026-10-01 | Versao: 3.2.0 | Crates: 48 | Nos: 865K+ | Collections: ~35
