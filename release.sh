@@ -26,19 +26,23 @@ echo "ℹ️  Host: $OS-$ARCH"
 echo "🔎 Checking release metadata..."
 python3 scripts/check_release_version.py
 
-# 2. Full workspace tests
-echo "🧪 Running workspace tests..."
-cargo test --workspace
+# 2. Full portable workspace tests
+# Keep this aligned with CI. The generic release path must not require CUDA/cuVS.
+echo "🧪 Running workspace tests (portable CPU profile)..."
+cargo test --workspace --no-default-features
 
 # 3. Build release binaries
+# NietzscheDB 3.2.0's canonical runtime is nietzsche-server. The historical
+# nietzsche-baseserver is not the product binary for this release.
 echo "🔨 Building release binaries..."
-cargo build --release -p nietzsche-baseserver -p nietzsche-cli
+cargo build --release --bin nietzsche-server --no-default-features
+cargo build --release -p nietzsche-cli --no-default-features
 
 STAGING_DIR="target/release_pkg"
 rm -rf "$STAGING_DIR"
 mkdir -p "$STAGING_DIR"
 
-cp target/release/nietzsche-baseserver "$STAGING_DIR/"
+cp target/release/nietzsche-server "$STAGING_DIR/"
 cp target/release/nietzsche-cli "$STAGING_DIR/"
 cp VERSION "$STAGING_DIR/"
 cp CHANGELOG.md "$STAGING_DIR/"
@@ -89,7 +93,7 @@ git commit -m "chore: release v$VERSION artifacts" || echo "ℹ️  Nothing to c
 
 git push origin HEAD
 
-if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null 2>&1; then
     echo "ℹ️  Tag v$VERSION already exists. Skipping tag creation."
 else
     git tag -a "v$VERSION" -m "NietzscheDB v$VERSION"
