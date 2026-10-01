@@ -10,6 +10,6 @@ tokio = { workspace = true, features = ["full"] }
 nietzsche-proto = { workspace = true }
 nietzsche-core = { workspace = true }
 tonic = { workspace = true }
-rand = "0.8"
+rand = "0.10"
 nietzsche-rsdk = { path = "../nietzsche-rsdk" }
 chrono = "0.4"
