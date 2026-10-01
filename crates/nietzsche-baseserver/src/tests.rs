@@ -77,12 +77,15 @@ async fn test_rebuild_and_queue() {
         panic!("Collection not found after rebuild");
     }
 
-    // Verify optimized file exists
-    // Path structure changed to user_id/col_name/index? Or still flat?
-    // Storage says `userid_collectionname`.
+    // Verify the optimized HNSW snapshot was durably finalized.
+    // Hot Vacuum writes index.snap.new and atomically renames it to index.snap.
     let folder_name = format!("default_admin_{col_name}");
-    let index_path = tmp_dir.join(folder_name).join("index");
-    assert!(index_path.exists());
+    let index_path = tmp_dir.join(folder_name).join("index.snap");
+    assert!(
+        index_path.exists(),
+        "rebuilt snapshot missing at {}",
+        index_path.display()
+    );
 
     println!("Rebuild successful. Cleaning up.");
 
