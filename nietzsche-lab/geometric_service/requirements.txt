@@ -11,7 +11,7 @@ torch>=2.0
 gpytorch>=1.11
 
 # ONNX export (optional, for Rust runtime inference)
-onnx>=1.14
+onnx>=1.23.0
 
 # NietzscheDB communication
 grpcio>=1.78.0
