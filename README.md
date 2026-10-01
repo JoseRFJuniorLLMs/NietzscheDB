@@ -28,6 +28,53 @@
 
 ---
 
+## ✨ What's New in NietzscheDB v3.2.0
+
+**NietzscheDB 3.2.0** is a release-integrity and production-hardening update focused on making the public version, runtime, SDKs, CI and container deployment agree on what is actually being shipped.
+
+### Release integrity
+
+- **Canonical version source** — the root `VERSION` file is now the release source of truth.
+- **Version-drift CI gate** — `scripts/check_release_version.py` rejects mismatches between `VERSION`, server/API/CLI metadata, the Python SDK, changelog and OCI image metadata.
+- **Correct public version reporting** — `nietzsche-server`, `nietzsche-api`, `nietzsche-cli` and the Python SDK now report **3.2.0**, including runtime surfaces such as `GetStats`, `/api/stats` and startup metadata.
+
+### Runtime and deployment hardening
+
+- **Portable CPU-safe container build** — the generic Docker image builds `nietzsche-server --no-default-features` and uses the embedded HNSW backend; CUDA/cuVS remains available through the native GPU build path.
+- **Explicit container networking** — NietzscheDB listens on **50051 inside the container**, while Docker Compose exposes **50052 on the host** to avoid the legacy HyperspaceDB collision.
+- **Fixed HyperspaceDB proxy target** — internal traffic now points to `nietzsche:50051`.
+- **Writable persistent storage for the non-root runtime user** — `/data/nietzsche` is created with the correct ownership before dropping privileges.
+- **Docker build no longer assumes an uncommitted `Cargo.lock` exists.**
+
+### Engine and release-quality fixes
+
+- Fixed the ONNX Runtime CPU session builder path in `nietzsche-embed`.
+- Brain-scan edge counts now decode **typed protobuf `ScalarRow` values** instead of treating rows as strings.
+- Async collection insert tests now correctly await writes.
+- Graph, Pregel and Sleep benchmarks were migrated to the current `NietzscheDB::open(..., dim)` API.
+- Benchmarks now use the current causal-aware `Edge::new(...)` constructor, inheriting Minkowski defaults safely.
+- Benchmark coordinates were normalized to the current `Vec<f32>` Poincaré representation.
+
+### Compatibility
+
+- **No graph storage migration is required.**
+- **No protobuf field numbers changed.**
+- Existing external Docker clients can continue using host port **50052**; bare-metal/default NietzscheDB remains on **50051**.
+
+### Release qualification
+
+The v3.2.0 release branch was validated with a green GitHub CI run covering:
+
+- `cargo clippy`
+- workspace tests
+- benchmark compile checks
+- dashboard production build
+- Docker image build
+
+See the full release history in [CHANGELOG.md](CHANGELOG.md).
+
+---
+
 ## 🧠 The Manifesto: Why Nietzsche?
 
 > *"There are no facts, only interpretations."*  
