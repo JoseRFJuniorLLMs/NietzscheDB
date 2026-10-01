@@ -106,7 +106,7 @@ jobs:
 
           cp target/release/nietzsche-server "$STAGING/"
           cp target/release/nietzsche-cli "$STAGING/"
-          cp VERSION CHANGELOG.md README.md "$STAGING/"
+          cp VERSION CHANGELOG.md README.md LICENSE LICENSE_AGPLv3.md "$STAGING/"
 
           tar -czf "$ARCHIVE" -C "$STAGING" .
           sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
