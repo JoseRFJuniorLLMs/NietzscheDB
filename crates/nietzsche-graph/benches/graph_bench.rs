@@ -23,7 +23,11 @@ fn open_db() -> (NietzscheDB<MockVectorStore>, tempfile::TempDir) {
 }
 
 fn mk_node(x: f64, y: f64) -> Node {
-    Node::new(Uuid::new_v4(), PoincareVector::new(vec![x, y]), serde_json::json!({}))
+    Node::new(
+        Uuid::new_v4(),
+        PoincareVector::new(vec![x as f32, y as f32]),
+        serde_json::json!({}),
+    )
 }
 
 fn populate(db: &mut NietzscheDB<MockVectorStore>, n: usize) -> Vec<Uuid> {
