@@ -2,7 +2,7 @@
 # Install: pip install -r requirements.txt
 
 # Core (required)
-geometric-kernels>=1.0
+geometric-kernels>=1.0.0
 numpy>=2.0,<2.4
 scipy>=1.3
 
