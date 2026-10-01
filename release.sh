@@ -1,71 +1,100 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-VERSION="2.0.0"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT_DIR"
 
-OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-ARCH=$(uname -m)
+if [[ ! -f VERSION ]]; then
+    echo "❌ VERSION file not found"
+    exit 1
+fi
+
+VERSION="$(tr -d '[:space:]' < VERSION)"
+if [[ -z "$VERSION" ]]; then
+    echo "❌ VERSION is empty"
+    exit 1
+fi
+
+OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+ARCH="$(uname -m)"
 ARCHIVE_NAME="nietzsche-db-v$VERSION-$OS-$ARCH.tar.gz"
 
-echo "🚀 Publishing NietzscheDBDB v$VERSION..."
+echo "🚀 Publishing NietzscheDB v$VERSION..."
 echo "ℹ️  Host: $OS-$ARCH"
 
-# 1. Run Tests (Fast check)
-echo "🧪 Running Tests (NietzscheDB Core)..."
-cargo test -p nietzsche-core --release
+# 1. Release metadata gate
+echo "🔎 Checking release metadata..."
+python3 scripts/check_release_version.py
 
-# 2. Build Release Binaries
-echo "🔨 Building Release Binaries..."
+# 2. Full workspace tests
+echo "🧪 Running workspace tests..."
+cargo test --workspace
+
+# 3. Build release binaries
+echo "🔨 Building release binaries..."
 cargo build --release -p nietzsche-baseserver -p nietzsche-cli
 
-# Use target directory for staging (cleaner)
 STAGING_DIR="target/release_pkg"
 rm -rf "$STAGING_DIR"
 mkdir -p "$STAGING_DIR"
 
 cp target/release/nietzsche-baseserver "$STAGING_DIR/"
 cp target/release/nietzsche-cli "$STAGING_DIR/"
+cp VERSION "$STAGING_DIR/"
+cp CHANGELOG.md "$STAGING_DIR/"
 
-# 3. Create Archive
-echo "📦 Creating Release Archive: $ARCHIVE_NAME"
+# 4. Create archive
+echo "📦 Creating release archive: $ARCHIVE_NAME"
 tar -czf "$ARCHIVE_NAME" -C "$STAGING_DIR" .
 echo "✅ Archive created: $ARCHIVE_NAME"
 
-# 4. Docker Build & Push (Multi-arch)
-echo "🐳 Building & Pushing Docker Image (amd64 & arm64)..."
-# Ensure builder exists
-if ! docker buildx inspect nietzsche-builder >/dev/null 2>&1; then
-    docker buildx create --name nietzsche-builder --use
-else
-    docker buildx use nietzsche-builder
+# 5. Optional Docker publish
+#
+# Publishing is intentionally opt-in. The old script pushed to historical
+# third-party namespaces. Set one or both variables explicitly:
+#   DOCKER_IMAGE=your-dockerhub-user/nietzsche-db
+#   GHCR_IMAGE=ghcr.io/owner/nietzsche-db
+DOCKER_IMAGE="${DOCKER_IMAGE:-}"
+GHCR_IMAGE="${GHCR_IMAGE:-}"
+
+TAGS=()
+if [[ -n "$DOCKER_IMAGE" ]]; then
+    TAGS+=("-t" "$DOCKER_IMAGE:latest" "-t" "$DOCKER_IMAGE:$VERSION")
+fi
+if [[ -n "$GHCR_IMAGE" ]]; then
+    TAGS+=("-t" "$GHCR_IMAGE:latest" "-t" "$GHCR_IMAGE:$VERSION")
 fi
 
-if docker buildx version >/dev/null 2>&1; then
-    docker buildx build --platform linux/amd64,linux/arm64 \
-        -t glukhota/nietzsche-db:latest \
-        -t glukhota/nietzsche-db:$VERSION \
-        -t ghcr.io/yarlabs/nietzsche-db:latest \
-        -t ghcr.io/yarlabs/nietzsche-db:$VERSION \
+if (( ${#TAGS[@]} > 0 )); then
+    echo "🐳 Building and pushing Docker image(s)..."
+    if ! docker buildx inspect nietzsche-builder >/dev/null 2>&1; then
+        docker buildx create --name nietzsche-builder --use
+    else
+        docker buildx use nietzsche-builder
+    fi
+
+    docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        "${TAGS[@]}" \
         --push .
+    echo "✅ Docker images pushed."
 else
-    echo "❌ docker buildx not found. Cannot push multi-arch."
-    exit 1
+    echo "ℹ️  Docker publish skipped. Set DOCKER_IMAGE and/or GHCR_IMAGE to enable it."
 fi
-echo "✅ Docker images pushed."
 
-# 5. Git Release
-echo "🐙 Deploying to GitHub..."
-git add .
-# Commit any pending changes (e.g. version bumps)
-git commit -m "chore: release v$VERSION artifacts" || echo "Nothing to commit"
+# 6. Commit/tag/push
+echo "🐙 Preparing Git tag v$VERSION..."
+git add VERSION CHANGELOG.md release.sh
+git commit -m "chore: release v$VERSION artifacts" || echo "ℹ️  Nothing to commit"
+
 git push origin HEAD
-# Create tag if not exists
+
 if git rev-parse "v$VERSION" >/dev/null 2>&1; then
     echo "ℹ️  Tag v$VERSION already exists. Skipping tag creation."
 else
-    git tag "v$VERSION"
+    git tag -a "v$VERSION" -m "NietzscheDB v$VERSION"
 fi
-git push origin "v$VERSION"
-echo "✅ GitHub release deployed."
 
-echo "🎉 Release v$VERSION Complete! All artifacts published."
+git push origin "v$VERSION"
+echo "✅ Git tag v$VERSION pushed."
+echo "🎉 NietzscheDB v$VERSION release package ready: $ARCHIVE_NAME"
