@@ -39,5 +39,5 @@ futures-core      = "0.3"
 ordered-float     = { workspace = true }
 
 [build-dependencies]
-tonic-build = "0.10"
+tonic-build = "0.14"
 protoc-bin-vendored = "3"
