@@ -10,7 +10,6 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      "@nietzsche/perspektive": path.resolve(__dirname, "../../perspektive.js/src"),
     },
     dedupe: ["react", "react-dom", "three", "@react-three/fiber", "@react-three/drei", "zustand"],
   },
