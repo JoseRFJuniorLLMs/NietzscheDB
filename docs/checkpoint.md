@@ -1,6 +1,8 @@
 # CHECKPOINT - Nietzsche-Database
-**Data:** 2026-02-22
-**Status:** ~95% completo - engine core funcional, multi-manifold implementado, EVA em produção
+**Data:** 2026-10-01
+**Status:** release 3.2.0 em hardening - engine core funcional, multi-manifold implementado, EVA em produção
+
+**Baseline 3.2.0:** branch `release/3.2.0`, derivada do `main` em `087a301c4fbafa227b00a0411d99c86a29065151`.
 
 ---
 
@@ -113,12 +115,12 @@ Banco de dados grafico **multi-manifold** em Rust, fork do NietzscheDB com graph
 
 ---
 
-## BUGS
-1. **EmbeddedVectorStore usa CosineMetric para TODAS metricas** - HnswRawWrapper<N> usa HnswIndex<N, CosineMetric> mesmo para Euclidean e Poincare. Busca Poincare roda com distancia Cosine internamente
-2. **Dashboard API mismatch** - React dashboard chama /api/status e /api/cluster/status que NAO EXISTEM. Server tem /api/stats e /api/health
-3. **Reconstruct RPC hardcoda collection "default"** - ReconstructRequest proto nao tem campo collection, impossivel reconstruir de non-default collections
-4. **Dockerfile port mismatch** - NIETZSCHE_PORT=50051 no Dockerfile vs 50052 no docker-compose
-5. **audit_resultado.md conteudo errado** - contem audit de EVA-Mobile/Aurora, projeto completamente diferente
+## BUGS / DIVIDAS REVALIDADOS PARA 3.2.0
+1. ~~**EmbeddedVectorStore usa CosineMetric para todas as metricas**~~ **RESOLVIDO** - o codigo atual possui wrappers separados para Cosine, Euclidean e Poincare; `HnswPoincareWrapper` usa `PoincareMetric` nativamente.
+2. ~~**Dashboard API mismatch**~~ **RESOLVIDO** - `nietzsche-server` expoe `/api/status` como alias de `/api/stats` e implementa `/api/cluster/status`.
+3. ~~**Reconstruct RPC hardcoda collection "default"**~~ **RESOLVIDO** - `ReconstructRequest` carrega `collection = 3` e o handler resolve a collection solicitada.
+4. ~~**Dockerfile / Docker Compose divergiam em 50051/50052**~~ **RESOLVIDO NA 3.2.0** - container escuta `50051`; host Docker Compose publica `50052:50051`.
+5. **Documentacao historica obsoleta** - auditorias e roadmaps antigos continuam preservados como registro historico; nao devem ser usados como fonte de verdade do estado atual sem confronto com `main`/release.
 
 ---
 
