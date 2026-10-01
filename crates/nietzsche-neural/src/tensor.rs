@@ -58,7 +58,17 @@ mod tests {
     use super::*;
     use ndarray::array;
 
+    /// Integration-level tensor roundtrip.
+    ///
+    /// Creating an `ort::Value` loads the native ONNX Runtime shared library.
+    /// The default workspace CI intentionally does not provision
+    /// `libonnxruntime.so`, so keep this test explicit instead of making every
+    /// unit-test runner depend on a system runtime.
+    ///
+    /// Run on an ONNX-enabled host with:
+    /// `cargo test -p nietzsche-neural test_tensor_roundtrip -- --ignored`
     #[test]
+    #[ignore = "requires the native ONNX Runtime shared library"]
     fn test_tensor_roundtrip() {
         let arr = array![[1.0f32, 2.0], [3.0, 4.0]].into_dyn();
         let val = from_ndarray(arr.clone()).unwrap();
