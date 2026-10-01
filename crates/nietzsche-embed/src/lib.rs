@@ -92,7 +92,7 @@ impl OnnxVectorizer {
         let builder = builder
             .with_optimization_level(GraphOptimizationLevel::Level3)
             .map_err(|e| anyhow::anyhow!("Failed to set ONNX optimization level: {e}"))?;
-        let builder = builder
+        let mut builder = builder
             .with_intra_threads(4)
             .map_err(|e| anyhow::anyhow!("Failed to configure ONNX intra-op threads: {e}"))?;
         let session = builder.commit_from_file(model_path)?;
