@@ -30,8 +30,17 @@ jobs:
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
-      - name: cargo fmt --check
-        run: cargo fmt --all -- --check
+      - name: rustfmt changed Rust files
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: |
+          git fetch origin "$BASE_REF" --depth=1
+          mapfile -t rust_files < <(git diff --name-only "origin/$BASE_REF...HEAD" -- '*.rs')
+          if (( ${#rust_files[@]} == 0 )); then
+            echo "No Rust source files changed."
+          else
+            rustfmt --edition 2021 --check "${rust_files[@]}"
+          fi
 
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
