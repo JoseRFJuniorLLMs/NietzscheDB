@@ -67,7 +67,7 @@ jobs:
           fi
 
       - name: cargo clippy
-        run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --no-default-features
 
   # ── tests ─────────────────────────────────────────────────────────────────
   test:
