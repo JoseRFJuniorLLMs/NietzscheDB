@@ -46,6 +46,8 @@ cp target/release/nietzsche-server "$STAGING_DIR/"
 cp target/release/nietzsche-cli "$STAGING_DIR/"
 cp VERSION "$STAGING_DIR/"
 cp CHANGELOG.md "$STAGING_DIR/"
+cp README.md "$STAGING_DIR/"
+cp LICENSE LICENSE_AGPLv3.md "$STAGING_DIR/"
 
 # 4. Create archive
 echo "📦 Creating release archive: $ARCHIVE_NAME"
