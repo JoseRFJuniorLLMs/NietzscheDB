@@ -25,6 +25,7 @@ def toml_version(relative: str) -> str:
 checks = {
     "crates/nietzsche-server/Cargo.toml": toml_version("crates/nietzsche-server/Cargo.toml"),
     "crates/nietzsche-api/Cargo.toml": toml_version("crates/nietzsche-api/Cargo.toml"),
+    "crates/nietzsche-cli/Cargo.toml": toml_version("crates/nietzsche-cli/Cargo.toml"),
     "sdks/python/pyproject.toml": toml_version("sdks/python/pyproject.toml"),
 }
 
