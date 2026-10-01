@@ -13,12 +13,12 @@
 - Pre-filter com oversampling >=30x e rescore obrigatorio: **UNICA excecao**
 - Decisao unanime 2026-02-19 — ref: `docs/analysis/risco_hiperbolico.md` PARTE 4
 
-### Feature GPU e OBRIGATORIA
-- O server **SEMPRE** compila com `--features gpu` (default no Cargo.toml)
-- **NUNCA** compilar sem GPU — o binary em producao depende de CUDA + cuVS
-- Feature `gpu` ativa `nietzsche-neural/cuda` → `ort/cuda` → 12 modelos ONNX usam `CUDAExecutionProvider`
-- Sem `ort/cuda`, fallback silencioso para CPU (performance catastrofica)
-- Para testar crates individuais: `cargo check -p <crate>` sem o server
+### Perfis CPU e GPU
+- O perfil de **producao GPU** continua sendo o padrao do `nietzsche-server` e exige CUDA + cuVS.
+- A release 3.2.0 adiciona um perfil **CPU portatil suportado** via `--no-default-features`, usado por CI e pelo Docker generico.
+- Feature `gpu` ativa `nietzsche-neural/cuda` → `ort/cuda`; sem ela, os modelos ONNX usam o execution provider CPU.
+- `NIETZSCHE_VECTOR_BACKEND=embedded` usa HNSW CPU; `NIETZSCHE_VECTOR_BACKEND=gpu` exige build com feature `gpu`.
+- O perfil CPU e para portabilidade, validacao e workloads sem NVIDIA; a implantacao principal pode continuar GPU.
 
 ### VM (nietzsche-eva-gpu) - JAMAIS DESLIGAR
 - IP: `136.111.0.47` — **NUNCA** executar `gcloud compute instances stop` ou `sudo shutdown`
@@ -79,7 +79,7 @@ Centro = abstrato, fronteira = especifico. E por isso que Binary Quantization (`
 ### Camada Autonomia (Agency)
 | Crate | Responsabilidade |
 |-------|-----------------|
-| `nietzsche-agency` | Motor de autonomia: 27 fases, daemons, desejos, intents |
+| `nietzsche-agency` | Motor de autonomia evolutivo (27+ fases), daemons, desejos, intents |
 | `nietzsche-agi` | Stack de inferencia: 8 camadas (representacao → metabolica) |
 | `nietzsche-lsystem` | Crescimento fractal L-System com Mobius + poda Hausdorff |
 | `nietzsche-epistemics` | Metricas epistemicas: coerencia, cobertura, freshness |
@@ -307,14 +307,14 @@ export LIBRARY_PATH=$CUVS_ROOT/lib
 ```
 Sem estas vars: `cuvs/core/c_api.h not found`
 
-### Compilacao LOCAL (Windows, sem GPU)
+### Compilacao local / CPU portatil
 ```bash
-# Apenas check/test de crates individuais
-cargo check -p nietzsche-agency
-cargo check -p nietzsche-hyp-ops
-cargo test -p nietzsche-hyp-ops
-# NAO compila localmente: nietzsche-server, nietzsche-hnsw-gpu, nietzsche-lsystem(cuda)
+# Workspace e server sem CUDA/cuVS
+cargo check --workspace --no-default-features
+cargo test --workspace --no-default-features
+cargo build -p nietzsche-server --no-default-features
 ```
+O backend GPU continua exigindo Linux + CUDA/cuVS; o perfil CPU nao exige toolchain NVIDIA.
 
 ---
 
