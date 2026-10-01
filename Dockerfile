@@ -1,6 +1,15 @@
-# ── Stage 1: builder ─────────────────────────────────────────────────────────
+# ── Stage 1: dashboard builder ────────────────────────────────────────────────
+FROM node:22-bookworm-slim AS dashboard-builder
+
+WORKDIR /dashboard
+COPY dashboard/package.json ./
+RUN npm install --no-audit --no-fund
+COPY dashboard/ ./
+RUN npm run build
+
+# ── Stage 2: Rust builder ─────────────────────────────────────────────────────
 #
-# Build nietzsche-server with full LTO + stripped symbols.
+# Build the portable CPU nietzsche-server image with full LTO + stripped symbols.
 # RocksDB links statically via the `rocksdb` crate — no shared .so needed at
 # runtime.
 FROM rustlang/rust:nightly-slim AS builder
@@ -18,16 +27,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# Copy workspace manifests (Cargo.lock* makes it optional if not committed).
-COPY Cargo.toml Cargo.lock* ./
+# Copy the workspace manifest. This repository currently does not commit Cargo.lock.
+COPY Cargo.toml ./
 COPY crates/ crates/
+COPY --from=dashboard-builder /dashboard/dist dashboard/dist
 
 # Build the production binary.
 # [profile.release] is already configured in workspace Cargo.toml:
 #   lto = true, codegen-units = 1, strip = true, panic = "abort"
-RUN cargo build --release --bin nietzsche-server
+RUN cargo build --release --bin nietzsche-server --no-default-features
 
-# ── Stage 2: runtime ──────────────────────────────────────────────────────────
+# ── Stage 3: runtime ──────────────────────────────────────────────────────────
 FROM ubuntu:24.04 AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -36,8 +46,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 
-# Non-root user
-RUN useradd -ms /bin/bash nietzsche
+# Non-root runtime user. Pre-create the persistent data directory with
+# matching ownership so a fresh named volume is writable on first boot.
+RUN useradd -ms /bin/bash nietzsche \
+    && mkdir -p /data/nietzsche \
+    && chown -R nietzsche:nietzsche /data/nietzsche
 USER nietzsche
 WORKDIR /home/nietzsche
 
@@ -46,7 +59,8 @@ COPY --from=builder /build/target/release/nietzsche-server ./nietzsche-server
 
 # ── Configuration (override at docker run / Kubernetes env) ──────────────────
 ENV NIETZSCHE_DATA_DIR=/data/nietzsche
-ENV NIETZSCHE_PORT=50052
+ENV NIETZSCHE_PORT=50051
+ENV NIETZSCHE_VECTOR_BACKEND=embedded
 ENV NIETZSCHE_LOG_LEVEL=info
 ENV NIETZSCHE_SLEEP_INTERVAL_SECS=300
 ENV NIETZSCHE_SLEEP_NOISE=0.02
@@ -59,10 +73,11 @@ ENV NIETZSCHE_DASHBOARD_PORT=8080
 VOLUME ["/data/nietzsche"]
 
 # gRPC port + HTTP dashboard
-EXPOSE 50052 8080
+EXPOSE 50051 8080
 
 LABEL org.opencontainers.image.title="NietzscheDB Server"
-LABEL org.opencontainers.image.description="Temporal Hyperbolic Graph Database — production gRPC server"
+LABEL org.opencontainers.image.description="Multi-Manifold Graph Database — production gRPC server"
+LABEL org.opencontainers.image.version="3.2.0"
 LABEL org.opencontainers.image.source="https://github.com/JoseRFJuniorLLMs/NietzscheDB"
 
 ENTRYPOINT ["./nietzsche-server"]

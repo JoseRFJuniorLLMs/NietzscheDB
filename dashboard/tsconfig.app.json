@@ -31,17 +31,10 @@
     "paths": {
       "@/*": [
         "./src/*"
-      ],
-      "@nietzsche/perspektive": [
-        "../../perspektive.js/src/index.ts"
-      ],
-      "@nietzsche/perspektive/*": [
-        "../../perspektive.js/src/*"
       ]
     }
   },
   "include": [
-    "src",
-    "../../perspektive.js/src"
+    "src"
   ]
 }

@@ -901,9 +901,31 @@ async fn brain_scan(
         ).await {
             if let Ok(r) = resp {
                 let inner = r.into_inner();
-                // scalar_rows typically returns the count as a string
-                if let Some(count_str) = inner.scalar_rows.first() {
-                    if let Ok(count) = count_str.parse::<u64>() {
+                // Scalar rows are typed protobuf entries. COUNT normally arrives
+                // as IntVal, but accept float/string for compatibility with older
+                // query executors and proxies.
+                if let Some(entry) = inner
+                    .scalar_rows
+                    .first()
+                    .and_then(|row| row.entries.first())
+                {
+                    let count = match entry.value.as_ref() {
+                        Some(nietzsche_api::pb::scalar_entry::Value::IntVal(value))
+                            if *value >= 0 =>
+                        {
+                            Some(*value as u64)
+                        }
+                        Some(nietzsche_api::pb::scalar_entry::Value::FloatVal(value))
+                            if value.is_finite() && *value >= 0.0 =>
+                        {
+                            Some(*value as u64)
+                        }
+                        Some(nietzsche_api::pb::scalar_entry::Value::StringVal(value)) => {
+                            value.parse::<u64>().ok()
+                        }
+                        _ => None,
+                    };
+                    if let Some(count) = count {
                         col_info.edge_count = count;
                         total_edges += count;
                     }

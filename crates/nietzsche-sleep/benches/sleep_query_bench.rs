@@ -20,7 +20,7 @@ use uuid::Uuid;
 
 fn build_chain(n: usize) -> (NietzscheDB<MockVectorStore>, Vec<Uuid>, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
-    let mut db = NietzscheDB::open(dir.path(), MockVectorStore::default()).unwrap();
+    let mut db = NietzscheDB::open(dir.path(), MockVectorStore::default(), 2).unwrap();
     let step = 0.9 / n as f64;
     let ids: Vec<Uuid> = (0..n)
         .map(|i| {

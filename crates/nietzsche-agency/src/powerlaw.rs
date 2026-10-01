@@ -135,24 +135,29 @@ pub fn estimate_tau(sizes: &[u32], s_min: u32) -> Option<f64> {
     Some(tau)
 }
 
-/// Kolmogorov-Smirnov goodness-of-fit test for the power-law hypothesis.
+/// Kolmogorov-Smirnov goodness-of-fit test for the discrete power-law hypothesis.
 ///
 /// Computes `D = max |F_empirical(s) − F_model(s)|` over the tail (s ≥ s_min).
-///
-/// The theoretical CDF uses the continuous approximation:
+/// The model CDF is discrete:
 ///
 /// ```text
-/// F_model(s) = 1 − (s / s_min)^{1−τ}
+/// F_model(s) = 1 − ζ(τ, s + 1) / ζ(τ, s_min)
 /// ```
 ///
-/// Returns `f64::INFINITY` if there are fewer than 2 data points in the tail
-/// or if `s_min` is 0.
+/// where `ζ(τ, q)` is the Hurwitz zeta function. We evaluate it with a
+/// short Euler-Maclaurin expansion, which avoids the large bias produced by
+/// applying a continuous CDF directly to integer avalanche sizes.
+///
+/// Duplicate observations are handled as a single empirical CDF jump. Treating
+/// every duplicate as a separate step artificially inflates the KS distance.
+///
+/// Returns `f64::INFINITY` if there are fewer than 2 data points in the tail,
+/// if `s_min` is 0, or if `tau <= 1`.
 pub fn ks_test(sizes: &[u32], tau: f64, s_min: u32) -> f64 {
-    if s_min == 0 {
+    if s_min == 0 || tau <= 1.0 || !tau.is_finite() {
         return f64::INFINITY;
     }
 
-    // Extract and sort the tail
     let mut tail: Vec<u32> = sizes.iter().copied().filter(|&s| s >= s_min).collect();
     if tail.len() < 2 {
         return f64::INFINITY;
@@ -160,35 +165,81 @@ pub fn ks_test(sizes: &[u32], tau: f64, s_min: u32) -> f64 {
     tail.sort_unstable();
 
     let n = tail.len() as f64;
-    let s_min_f = s_min as f64;
-    let exponent = 1.0 - tau; // negative for τ > 1
+    let mut max_d = 0.0_f64;
+    let mut i = 0usize;
 
-    let mut max_d: f64 = 0.0;
-
-    for (i, &s) in tail.iter().enumerate() {
-        // Empirical CDF: fraction of points ≤ s
-        // Since tail is sorted, F_emp at this point = (i+1)/n
-        let f_emp = (i as f64 + 1.0) / n;
-
-        // Theoretical CDF: F(s) = 1 − (s / s_min)^{1−τ}
-        let f_model = 1.0 - (s as f64 / s_min_f).powf(exponent);
-
-        let d = (f_emp - f_model).abs();
-        if d > max_d {
-            max_d = d;
+    while i < tail.len() {
+        let s = tail[i];
+        let mut j = i + 1;
+        while j < tail.len() && tail[j] == s {
+            j += 1;
         }
 
-        // Also check the left side of the step: (i)/n
-        if i > 0 {
-            let f_emp_left = (i as f64) / n;
-            let d_left = (f_emp_left - f_model).abs();
-            if d_left > max_d {
-                max_d = d_left;
-            }
-        }
+        // Compare both sides of the discrete jump.
+        let f_emp_left = i as f64 / n;
+        let f_emp_right = j as f64 / n;
+
+        let f_model_left = if s == s_min {
+            0.0
+        } else {
+            discrete_power_law_cdf(s - 1, tau, s_min)
+        };
+        let f_model_right = discrete_power_law_cdf(s, tau, s_min);
+
+        max_d = max_d
+            .max((f_emp_left - f_model_left).abs())
+            .max((f_emp_right - f_model_right).abs());
+
+        i = j;
     }
 
     max_d
+}
+
+/// Discrete power-law CDF using a Hurwitz-zeta ratio.
+fn discrete_power_law_cdf(s: u32, tau: f64, s_min: u32) -> f64 {
+    if s < s_min || s_min == 0 || tau <= 1.0 || !tau.is_finite() {
+        return 0.0;
+    }
+
+    let norm = hurwitz_zeta(tau, s_min as f64);
+    if !norm.is_finite() || norm <= 0.0 {
+        return 0.0;
+    }
+
+    let tail = hurwitz_zeta(tau, s as f64 + 1.0);
+    (1.0 - tail / norm).clamp(0.0, 1.0)
+}
+
+/// Hurwitz-zeta approximation ζ(s, q) for s > 1 and q > 0.
+///
+/// Sums a finite prefix and closes the remaining tail with Euler-Maclaurin
+/// corrections. Sixty-four prefix terms are ample for the parameter range
+/// used by the SOC diagnostics while keeping KS evaluation inexpensive.
+fn hurwitz_zeta(s: f64, q: f64) -> f64 {
+    if s <= 1.0 || q <= 0.0 || !s.is_finite() || !q.is_finite() {
+        return f64::INFINITY;
+    }
+
+    const PREFIX_TERMS: usize = 64;
+
+    let mut sum = 0.0_f64;
+    for k in 0..PREFIX_TERMS {
+        sum += (q + k as f64).powf(-s);
+    }
+
+    let x = q + PREFIX_TERMS as f64;
+
+    // Euler-Maclaurin tail:
+    // ∫_x^∞ t^-s dt + 1/2 f(x)
+    // + B2/2! f'(boundary correction)
+    // + B4/4! ... .
+    sum += x.powf(1.0 - s) / (s - 1.0);
+    sum += 0.5 * x.powf(-s);
+    sum += (s / 12.0) * x.powf(-s - 1.0);
+    sum -= (s * (s + 1.0) * (s + 2.0) / 720.0) * x.powf(-s - 3.0);
+
+    sum
 }
 
 /// Perform a complete power-law analysis on avalanche size data.
@@ -345,14 +396,14 @@ mod tests {
 
     #[test]
     fn test_estimate_tau_known_distribution() {
-        // Generate a synthetic discrete power-law sample with known τ.
-        // Use inverse transform sampling: s = floor(u^{-1/(τ-1)}) for u ~ Uniform(0,1)
-        // With τ_true = 2.0 and s_min = 1, we expect τ̂ ≈ 2.0 for large n.
+        // The CSN discrete MLE used here is the standard (s_min - 0.5)
+        // approximation, which is accurate once the lower cutoff is not tiny.
         let tau_true = 2.0;
         let n = 5000;
-        let sizes = generate_power_law_sample(n, tau_true, 1);
+        let s_min = 10;
+        let sizes = generate_power_law_sample(n, tau_true, s_min);
 
-        let tau_hat = estimate_tau(&sizes, 1).unwrap();
+        let tau_hat = estimate_tau(&sizes, s_min).unwrap();
 
         // MLE should be within ±0.15 of the true value for n = 5000
         assert!(
@@ -366,9 +417,10 @@ mod tests {
         // τ_true = 2.5 (steeper — more small events, fewer large ones)
         let tau_true = 2.5;
         let n = 5000;
-        let sizes = generate_power_law_sample(n, tau_true, 1);
+        let s_min = 10;
+        let sizes = generate_power_law_sample(n, tau_true, s_min);
 
-        let tau_hat = estimate_tau(&sizes, 1).unwrap();
+        let tau_hat = estimate_tau(&sizes, s_min).unwrap();
 
         assert!(
             (tau_hat - tau_true).abs() < 0.20,
@@ -381,9 +433,10 @@ mod tests {
     #[test]
     fn test_ks_test_perfect_fit() {
         // A power-law sample tested against its own τ̂ should have low KS
-        let sizes = generate_power_law_sample(1000, 2.0, 1);
-        let tau = estimate_tau(&sizes, 1).unwrap();
-        let ks = ks_test(&sizes, tau, 1);
+        let s_min = 5;
+        let sizes = generate_power_law_sample(1000, 2.0, s_min);
+        let tau = estimate_tau(&sizes, s_min).unwrap();
+        let ks = ks_test(&sizes, tau, s_min);
 
         // KS should be small for a good fit
         assert!(ks < 0.10, "KS = {ks:.4}, expected < 0.10 for true power-law data");
@@ -552,26 +605,44 @@ mod tests {
         }
     }
 
-    /// Generate a discrete power-law sample with known τ and s_min via
-    /// inverse transform sampling.
+    /// Generate an exact discrete power-law sample for the model
+    /// P(s) ∝ s^{-τ}, s >= s_min, using inverse-CDF sampling.
     ///
-    /// For a discrete power law P(s) ∝ s^{-τ}, the inverse CDF is:
-    ///
-    /// ```text
-    /// s = floor(s_min · (1 − u)^{−1/(τ−1)})
-    /// ```
-    ///
-    /// where u ~ Uniform(0, 1).
+    /// The previous helper sampled a continuous Pareto variate and then
+    /// floored it. That distribution is only asymptotically proportional to
+    /// s^{-τ} and biases tests heavily when s_min = 1.
     fn generate_power_law_sample(n: usize, tau: f64, s_min: u32) -> Vec<u32> {
+        assert!(tau > 1.0);
+        assert!(s_min > 0);
+
         let mut rng = SimpleLcg::new(42);
-        let inv_alpha = 1.0 / (tau - 1.0);
-        let s_min_f = s_min as f64;
 
         (0..n)
             .map(|_| {
                 let u = rng.next_f64();
-                let s = (s_min_f * (1.0 - u).powf(-inv_alpha)).floor() as u32;
-                s.max(s_min) // ensure s ≥ s_min
+
+                // Find an upper bracket whose CDF contains u.
+                let mut lo = s_min;
+                let mut hi = s_min;
+                while discrete_power_law_cdf(hi, tau, s_min) < u {
+                    if hi >= u32::MAX / 2 {
+                        hi = u32::MAX;
+                        break;
+                    }
+                    hi = hi.saturating_mul(2).max(hi + 1);
+                }
+
+                // Integer inverse CDF by binary search.
+                while lo < hi {
+                    let mid = lo + (hi - lo) / 2;
+                    if discrete_power_law_cdf(mid, tau, s_min) >= u {
+                        hi = mid;
+                    } else {
+                        lo = mid + 1;
+                    }
+                }
+
+                lo
             })
             .collect()
     }

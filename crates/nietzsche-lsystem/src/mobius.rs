@@ -357,7 +357,13 @@ mod tests {
     fn spawn_sibling_stays_in_ball() {
         let mut rng = rand::thread_rng();
         let parent = vec![0.4, 0.2];
-        for angle in [0.0_f64, 0.5, 1.0, 1.57, 3.14] {
+        for angle in [
+            0.0_f64,
+            0.5,
+            1.0,
+            std::f64::consts::FRAC_PI_2,
+            std::f64::consts::PI,
+        ] {
             let sib = spawn_sibling(&parent, angle, 0.15, &mut rng);
             let norm: f64 = sib.iter().map(|x| x * x).sum::<f64>().sqrt();
             assert!(norm < 1.0, "sibling outside ball at angle={angle}: norm={norm}");

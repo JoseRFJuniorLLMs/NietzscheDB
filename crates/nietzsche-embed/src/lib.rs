@@ -2,8 +2,9 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use ndarray::{Array, ArrayViewD};
+#[cfg(feature = "cuda")]
+use ort::execution_providers::CUDAExecutionProvider;
 use ort::{
-    execution_providers::CUDAExecutionProvider,
     session::{builder::GraphOptimizationLevel, Session},
     value::Value,
 };
@@ -81,11 +82,20 @@ impl OnnxVectorizer {
         let tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {e}"))?;
 
-        let session = Session::builder()?
-            .with_execution_providers([CUDAExecutionProvider::default().build()])?
-            .with_optimization_level(GraphOptimizationLevel::Level3)?
-            .with_intra_threads(4)?
-            .commit_from_file(model_path)?;
+        let builder = Session::builder()?;
+
+        #[cfg(feature = "cuda")]
+        let builder = builder
+            .with_execution_providers([CUDAExecutionProvider::default().build()])
+            .map_err(|e| anyhow::anyhow!("Failed to configure CUDA execution provider: {e}"))?;
+
+        let builder = builder
+            .with_optimization_level(GraphOptimizationLevel::Level3)
+            .map_err(|e| anyhow::anyhow!("Failed to set ONNX optimization level: {e}"))?;
+        let mut builder = builder
+            .with_intra_threads(4)
+            .map_err(|e| anyhow::anyhow!("Failed to configure ONNX intra-op threads: {e}"))?;
+        let session = builder.commit_from_file(model_path)?;
 
         Ok(Self {
             tokenizer,

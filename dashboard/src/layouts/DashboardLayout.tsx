@@ -67,8 +67,8 @@ export function DashboardLayout() {
                 <div className="p-4 border-t border-border/50">
                     <div className="flex items-center justify-between">
                         <div className="text-xs text-muted-foreground">
-                            <p>Version 2.1.0</p>
-                            <p className="opacity-50">38 crates · Hyperbolic Engine</p>
+                            <p>Version 3.2.0</p>
+                            <p className="opacity-50">Multi-Manifold Engine</p>
                         </div>
                         <ThemeToggle />
                     </div>

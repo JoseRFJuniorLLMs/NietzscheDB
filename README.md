@@ -23,6 +23,7 @@
   <img src="https://img.shields.io/badge/geometry-Poincar%C3%A9%20%C2%B7%20Klein%20%C2%B7%20Riemann%20%C2%B7%20Minkowski-purple.svg" alt="Multi-Manifold">
   <img src="https://img.shields.io/badge/GPU-cuVS%20CAGRA-76b900.svg" alt="GPU">
   <img src="https://img.shields.io/badge/TPU-PJRT%20Ironwood-4285F4.svg" alt="TPU">
+  <img src="https://img.shields.io/badge/release-3.2.0-blue.svg" alt="NietzscheDB 3.2.0">
 </p>
 
 ---
@@ -1554,7 +1555,7 @@ Modular plugin-based runner comparing NietzscheDB against Milvus, NietzscheDB, a
 
 ## Production Deployment
 
-### Docker Compose (recommended)
+### Docker Compose (portable CPU / embedded HNSW, recommended)
 
 ```yaml
 # docker-compose.yaml
@@ -1859,7 +1860,7 @@ Then set `NIETZSCHE_VECTOR_BACKEND=gpu` in `/etc/nietzschedb/nietzschedb.env`.
 
 ### Windows — Development Setup
 
-Windows is supported for **development only** (individual crate checks and tests). The full server binary requires CUDA/cuVS and must be compiled on Linux.
+Windows is supported for **development and CPU-only validation**. The portable server/container can run with the embedded HNSW backend without CUDA; the production GPU backend requires Linux + CUDA/cuVS.
 
 #### Requirements
 

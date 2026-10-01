@@ -204,10 +204,10 @@ mod tests {
         db.insert_node(node(0.1, 0.0)).unwrap();
 
         let lap = HyperbolicLaplacian::build(db.storage(), db.adjacency()).unwrap();
-        let x = vec![3.14];
+        let x = vec![std::f64::consts::PI];
         let lx = lap.apply_normalized(&x);
         // degree = 0, no neighbors → L̃·x = x
-        assert!((lx[0] - 3.14).abs() < 1e-10);
+        assert!((lx[0] - std::f64::consts::PI).abs() < 1e-10);
     }
 
     #[test]

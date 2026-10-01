@@ -18,12 +18,16 @@ use uuid::Uuid;
 
 fn open_db() -> (NietzscheDB<MockVectorStore>, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
-    let db  = NietzscheDB::open(dir.path(), MockVectorStore::default()).unwrap();
+    let db  = NietzscheDB::open(dir.path(), MockVectorStore::default(), 2).unwrap();
     (db, dir)
 }
 
 fn mk_node(x: f64, y: f64) -> Node {
-    Node::new(Uuid::new_v4(), PoincareVector::new(vec![x, y]), serde_json::json!({}))
+    Node::new(
+        Uuid::new_v4(),
+        PoincareVector::new(vec![x as f32, y as f32]),
+        serde_json::json!({}),
+    )
 }
 
 fn populate(db: &mut NietzscheDB<MockVectorStore>, n: usize) -> Vec<Uuid> {
@@ -41,16 +45,7 @@ fn populate(db: &mut NietzscheDB<MockVectorStore>, n: usize) -> Vec<Uuid> {
 fn populate_chain(db: &mut NietzscheDB<MockVectorStore>, n: usize) -> Vec<Uuid> {
     let ids = populate(db, n);
     for w in ids.windows(2) {
-        let e = Edge {
-            id:           Uuid::new_v4(),
-            from:         w[0],
-            to:           w[1],
-            edge_type:    EdgeType::Association,
-            weight:       1.0,
-            lsystem_rule: None,
-            created_at:   0,
-            metadata:     Default::default(),
-        };
+        let e = Edge::new(w[0], w[1], EdgeType::Association, 1.0);
         db.insert_edge(e).unwrap();
     }
     ids

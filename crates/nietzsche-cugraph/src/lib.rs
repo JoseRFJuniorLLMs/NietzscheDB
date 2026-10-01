@@ -29,6 +29,12 @@
 //! # Example
 //! ```rust,no_run
 //! use nietzsche_cugraph::CuGraphIndex;
+//! use nietzsche_graph::AdjacencyIndex;
+//! use uuid::Uuid;
+//!
+//! // In production these come from the live database.
+//! let adjacency = AdjacencyIndex::new();
+//! let start_id = Uuid::new_v4();
 //!
 //! // Build from live adjacency
 //! let index = CuGraphIndex::from_adjacency(&adjacency).unwrap();

@@ -13,12 +13,12 @@
 - Pre-filter com oversampling >=30x e rescore obrigatorio: **UNICA excecao**
 - Decisao unanime 2026-02-19 — ref: `docs/analysis/risco_hiperbolico.md` PARTE 4
 
-### Feature GPU e OBRIGATORIA
-- O server **SEMPRE** compila com `--features gpu` (default no Cargo.toml)
-- **NUNCA** compilar sem GPU — o binary em producao depende de CUDA + cuVS
-- Feature `gpu` ativa `nietzsche-neural/cuda` → `ort/cuda` → 12 modelos ONNX usam `CUDAExecutionProvider`
-- Sem `ort/cuda`, fallback silencioso para CPU (performance catastrofica)
-- Para testar crates individuais: `cargo check -p <crate>` sem o server
+### Perfis CPU e GPU
+- O perfil de **producao GPU** continua sendo o padrao do `nietzsche-server` e exige CUDA + cuVS.
+- A release 3.2.0 adiciona um perfil **CPU portatil suportado** via `--no-default-features`, usado por CI e pelo Docker generico.
+- Feature `gpu` ativa `nietzsche-neural/cuda` → `ort/cuda`; sem ela, os modelos ONNX usam o execution provider CPU.
+- `NIETZSCHE_VECTOR_BACKEND=embedded` usa HNSW CPU; `NIETZSCHE_VECTOR_BACKEND=gpu` exige build com feature `gpu`.
+- O perfil CPU e para portabilidade, validacao e workloads sem NVIDIA; a implantacao principal pode continuar GPU.
 
 ### VM (nietzsche-eva-gpu) - JAMAIS DESLIGAR
 - IP: `136.111.0.47` — **NUNCA** executar `gcloud compute instances stop` ou `sudo shutdown`
@@ -32,7 +32,7 @@
 > [!info] Multi-Manifold Graph Database
 > Primeiro banco de dados do mundo que opera em **4 geometrias nao-Euclidianas simultaneamente** a partir de uma unica camada Poincare.
 
-**Linguagem**: Rust (nightly 1.96.0) | **Workspace**: 48 crates | **Versao**: 3.1.1 (2026-03-26)
+**Linguagem**: Rust (nightly 1.96.0) | **Workspace**: 48 crates | **Versao**: 3.2.0 (2026-10-01)
 **Proposito**: Substrato de conhecimento para o sistema AGI [[EVA-Mind]]
 
 ### As 4 Geometrias
@@ -79,7 +79,7 @@ Centro = abstrato, fronteira = especifico. E por isso que Binary Quantization (`
 ### Camada Autonomia (Agency)
 | Crate | Responsabilidade |
 |-------|-----------------|
-| `nietzsche-agency` | Motor de autonomia: 27 fases, daemons, desejos, intents |
+| `nietzsche-agency` | Motor de autonomia evolutivo (27+ fases), daemons, desejos, intents |
 | `nietzsche-agi` | Stack de inferencia: 8 camadas (representacao → metabolica) |
 | `nietzsche-lsystem` | Crescimento fractal L-System com Mobius + poda Hausdorff |
 | `nietzsche-epistemics` | Metricas epistemicas: coerencia, cobertura, freshness |
@@ -251,7 +251,7 @@ HYPERSPACE_WAL_SYNC_MODE=batch
 HYPERSPACE_WAL_BATCH_INTERVAL=100
 
 # NietzscheDB Vector Backend
-NIETZSCHE_VECTOR_BACKEND=embedded    # CRITICO: sem isto usa MockVectorStore (linear scan)
+NIETZSCHE_VECTOR_BACKEND=embedded    # opcional: embedded/HNSW e o default; use mock/linear apenas explicitamente
 NIETZSCHE_VECTOR_DIM=3072            # Gemini embeddings
 NIETZSCHE_VECTOR_METRIC=cosine
 NIETZSCHE_PORT=50051
@@ -265,8 +265,8 @@ NIETZSCHE_SLEEP_ADAM_STEPS=10
 NIETZSCHE_HAUSDORFF_THRESHOLD=0.15
 ```
 
-> [!warning] NIETZSCHE_VECTOR_BACKEND=embedded
-> Sem esta var, o servidor usa `MockVectorStore` (scan linear O(n)) em vez do HNSW real.
+> [!note] NIETZSCHE_VECTOR_BACKEND
+> O backend padrao atual e `embedded` (HNSW real). `mock`/`linear` so e usado quando solicitado explicitamente.
 
 ---
 
@@ -307,14 +307,14 @@ export LIBRARY_PATH=$CUVS_ROOT/lib
 ```
 Sem estas vars: `cuvs/core/c_api.h not found`
 
-### Compilacao LOCAL (Windows, sem GPU)
+### Compilacao local / CPU portatil
 ```bash
-# Apenas check/test de crates individuais
-cargo check -p nietzsche-agency
-cargo check -p nietzsche-hyp-ops
-cargo test -p nietzsche-hyp-ops
-# NAO compila localmente: nietzsche-server, nietzsche-hnsw-gpu, nietzsche-lsystem(cuda)
+# Workspace e server sem CUDA/cuVS
+cargo check --workspace --no-default-features
+cargo test --workspace --no-default-features
+cargo build -p nietzsche-server --no-default-features
 ```
+O backend GPU continua exigindo Linux + CUDA/cuVS; o perfil CPU nao exige toolchain NVIDIA.
 
 ---
 
@@ -526,6 +526,7 @@ Tres fases filosoficas do motor de energia:
 
 | Versao | Data | Destaque |
 |--------|------|----------|
+| **3.2.0** | 2026-10-01 | Release integrity: versao publica consistente, CI nightly/CPU, Docker 50052→50051, docs revalidados |
 | **3.1.1** | 2026-03-26 | 18 safety & perf fixes: AtomicU64 HNSW entry, BQ panic guard, histograms, complex filters, clean shutdown, GPU warm-up |
 | **3.1.0** | 2026-03-08 | Agency Phases XVII-XXIV (Ego-Cache, Reasoning, Self-Healing, Learning, Compression, Sharding, World Model, Flywheel) |
 | **3.0.0** | 2026-02-22 | Multi-Manifold Architecture (Klein, Riemann, Minkowski) + 6 RPCs |
@@ -583,4 +584,4 @@ D:/DEV/NietzscheDB/                          # Root
 
 > [!abstract] Meta
 > Este ficheiro serve como **memoria persistente** do Claude para o projecto NietzscheDB.
-> Atualizado: 2026-03-26 | Versao: 3.1.1 | Crates: 48 | Nos: 865K+ | Collections: ~35
+> Atualizado: 2026-10-01 | Versao: 3.2.0 | Crates: 48 | Nos: 865K+ | Collections: ~35

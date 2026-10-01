@@ -1,0 +1,135 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nietzschedb-release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish versioned release
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the exact CI-tested commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Read and validate release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          python3 scripts/check_release_version.py
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether the GitHub release already exists
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release $TAG already exists; nothing to publish."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node.js
+        if: steps.existing.outputs.exists != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build embedded dashboard
+        if: steps.existing.outputs.exists != 'true'
+        working-directory: dashboard
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - name: Set up Rust nightly
+        if: steps.existing.outputs.exists != 'true'
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Restore Rust build cache
+        if: steps.existing.outputs.exists != 'true'
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install native build dependencies
+        if: steps.existing.outputs.exists != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            protobuf-compiler \
+            libclang-dev \
+            clang \
+            cmake \
+            pkg-config \
+            libssl-dev \
+            build-essential
+
+      - name: Build portable release binaries
+        if: steps.existing.outputs.exists != 'true'
+        run: |
+          set -euo pipefail
+          cargo build --release --bin nietzsche-server --no-default-features
+          cargo build --release -p nietzsche-cli --no-default-features
+
+      - name: Package release archive
+        if: steps.existing.outputs.exists != 'true'
+        id: package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE="nietzsche-db-v${VERSION}-linux-x86_64.tar.gz"
+          STAGING="target/github-release"
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING"
+
+          cp target/release/nietzsche-server "$STAGING/"
+          cp target/release/nietzsche-cli "$STAGING/"
+          cp VERSION CHANGELOG.md README.md LICENSE LICENSE_AGPLv3.md "$STAGING/"
+
+          tar -czf "$ARCHIVE" -C "$STAGING" .
+          sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
+
+          echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
+          echo "checksum=$ARCHIVE.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag and GitHub Release
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+          CHECKSUM: ${{ steps.package.outputs.checksum }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            "$ARCHIVE" \
+            "$CHECKSUM" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --title "NietzscheDB v$VERSION" \
+            --generate-notes
