@@ -46,8 +46,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 
-# Non-root user
-RUN useradd -ms /bin/bash nietzsche
+# Non-root runtime user. Pre-create the persistent data directory with
+# matching ownership so a fresh named volume is writable on first boot.
+RUN useradd -ms /bin/bash nietzsche \
+    && mkdir -p /data/nietzsche \
+    && chown -R nietzsche:nietzsche /data/nietzsche
 USER nietzsche
 WORKDIR /home/nietzsche
 
