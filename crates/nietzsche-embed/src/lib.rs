@@ -89,10 +89,13 @@ impl OnnxVectorizer {
             .with_execution_providers([CUDAExecutionProvider::default().build()])
             .map_err(|e| anyhow::anyhow!("Failed to configure CUDA execution provider: {e}"))?;
 
-        let session = builder
-            .with_optimization_level(GraphOptimizationLevel::Level3)?
-            .with_intra_threads(4)?
-            .commit_from_file(model_path)?;
+        let builder = builder
+            .with_optimization_level(GraphOptimizationLevel::Level3)
+            .map_err(|e| anyhow::anyhow!("Failed to set ONNX optimization level: {e}"))?;
+        let builder = builder
+            .with_intra_threads(4)
+            .map_err(|e| anyhow::anyhow!("Failed to configure ONNX intra-op threads: {e}"))?;
+        let session = builder.commit_from_file(model_path)?;
 
         Ok(Self {
             tokenizer,
