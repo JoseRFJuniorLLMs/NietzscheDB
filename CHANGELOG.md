@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2026-10-01
+
+### Added — Release integrity
+* **Canonical product version**: root `VERSION` file is now the release source of truth.
+* **CI release metadata gate**: `scripts/check_release_version.py` rejects drift between `VERSION`, the public server/API crate versions, Python SDK metadata, the changelog, and the OCI image label.
+
+### Changed
+* **Public runtime version is now 3.2.0** in `nietzsche-server`, `nietzsche-api`, and the Python SDK. This fixes the previous situation where a 3.x product build could report `0.1.0` through `GetStats`, `/api/stats`, startup logs, or SDK metadata.
+* **Portable Docker image is CPU-safe**: the generic `Dockerfile` builds `nietzsche-server --no-default-features` and uses the embedded HNSW backend. CUDA/cuVS production builds remain available through the native GPU build path.
+* **Container port model is explicit**: NietzscheDB listens on `50051` inside the container; Docker Compose exposes it as host `50052` to avoid colliding with the legacy HyperspaceDB service.
+* **OCI metadata** now identifies NietzscheDB as a Multi-Manifold Graph Database and carries the product version.
+
+### Fixed
+* Docker/Compose gRPC port mismatch (`50052:50052` plus an inconsistent internal port).
+* Internal HyperspaceDB → NietzscheDB proxy target now uses the container port `nietzsche:50051`.
+* Release documentation no longer reports already-resolved defects as current bugs: Poincaré HNSW metric routing, dashboard compatibility endpoints, and collection-aware sensory reconstruction are present in current code.
+
+### Compatibility
+* No graph storage migration is required.
+* No protobuf field numbers were changed.
+* Existing external Docker clients may continue to use host port `50052`; bare-metal/default NietzscheDB remains on `50051`.
+
+## [3.1.1] - 2026-03-26
+
+### Fixed — Safety and performance hardening
+* Prevented binary hypervector use from silently destroying Poincaré magnitude semantics.
+* Removed an HNSW `entry_point` / `max_layer` race by publishing the pair atomically.
+* Added clean Agency shutdown, GPU warm-up, query/insert/KNN latency histograms, blocking-pool monitoring, and slow Agency tick warnings.
+* Added recursive complex filters, fail-fast configuration validation, configurable CORS, fairer maturity scanning, faster near-duplicate detection, deterministic bootstrap UUIDs, and improved diffusion execution.
+
 ## [3.1.0] - 2026-03-08
 
 ### Added — Agency Phases XVII–XXIV (Autonomous Intelligence Pipeline)
