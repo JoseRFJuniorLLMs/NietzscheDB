@@ -1,4 +1,13 @@
-# ── Stage 1: builder ─────────────────────────────────────────────────────────
+# ── Stage 1: dashboard builder ────────────────────────────────────────────────
+FROM node:22-bookworm-slim AS dashboard-builder
+
+WORKDIR /dashboard
+COPY dashboard/package.json ./
+RUN npm install --no-audit --no-fund
+COPY dashboard/ ./
+RUN npm run build
+
+# ── Stage 2: Rust builder ─────────────────────────────────────────────────────
 #
 # Build the portable CPU nietzsche-server image with full LTO + stripped symbols.
 # RocksDB links statically via the `rocksdb` crate — no shared .so needed at
@@ -21,13 +30,14 @@ WORKDIR /build
 # Copy workspace manifests (Cargo.lock* makes it optional if not committed).
 COPY Cargo.toml Cargo.lock* ./
 COPY crates/ crates/
+COPY --from=dashboard-builder /dashboard/dist dashboard/dist
 
 # Build the production binary.
 # [profile.release] is already configured in workspace Cargo.toml:
 #   lto = true, codegen-units = 1, strip = true, panic = "abort"
 RUN cargo build --release --bin nietzsche-server --no-default-features
 
-# ── Stage 2: runtime ──────────────────────────────────────────────────────────
+# ── Stage 3: runtime ──────────────────────────────────────────────────────────
 FROM ubuntu:24.04 AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
