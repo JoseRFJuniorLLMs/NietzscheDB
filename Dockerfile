@@ -27,8 +27,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# Copy workspace manifests (Cargo.lock* makes it optional if not committed).
-COPY Cargo.toml Cargo.lock* ./
+# Copy the workspace manifest. This repository currently does not commit Cargo.lock.
+COPY Cargo.toml ./
 COPY crates/ crates/
 COPY --from=dashboard-builder /dashboard/dist dashboard/dist
 
