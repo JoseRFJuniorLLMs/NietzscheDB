@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 fn open_db() -> (NietzscheDB<MockVectorStore>, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
-    let db  = NietzscheDB::open(dir.path(), MockVectorStore::default()).unwrap();
+    let db  = NietzscheDB::open(dir.path(), MockVectorStore::default(), 2).unwrap();
     (db, dir)
 }
 
