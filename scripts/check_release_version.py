@@ -32,6 +32,14 @@ init_text = (ROOT / "sdks/python/nietzschedb/__init__.py").read_text(encoding="u
 m = re.search(r'__version__\s*=\s*"([^"]+)"', init_text)
 checks["sdks/python/nietzschedb/__init__.py"] = m.group(1) if m else "<missing>"
 
+for dashboard_path in (
+    "dashboard/src/layouts/DashboardLayout.tsx",
+    "dashboard/src/components/MobileSidebar.tsx",
+):
+    dashboard_text = (ROOT / dashboard_path).read_text(encoding="utf-8")
+    m = re.search(r"Version\s+(\d+\.\d+\.\d+)", dashboard_text)
+    checks[dashboard_path] = m.group(1) if m else "<missing>"
+
 errors: list[str] = []
 for path, found in checks.items():
     if found != VERSION:
