@@ -489,7 +489,11 @@ mod tests {
         assert_eq!(degree_to_bin(4), 3);
         assert_eq!(degree_to_bin(7), 3);
         assert_eq!(degree_to_bin(8), 4);
-        assert_eq!(degree_to_bin(1_000_000), DEGREE_BINS - 1); // clamped
+        // floor(log2(1_000_000)) + 1 = 20; this value is not large enough
+        // to hit the final catch-all bin.
+        assert_eq!(degree_to_bin(1_000_000), 20);
+        // 2^31 maps beyond the 32-bin range and must clamp to the last bin.
+        assert_eq!(degree_to_bin(1usize << 31), DEGREE_BINS - 1);
     }
 
     #[test]
