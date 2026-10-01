@@ -32,7 +32,7 @@
 > [!info] Multi-Manifold Graph Database
 > Primeiro banco de dados do mundo que opera em **4 geometrias nao-Euclidianas simultaneamente** a partir de uma unica camada Poincare.
 
-**Linguagem**: Rust (nightly 1.96.0) | **Workspace**: 48 crates | **Versao**: 3.1.1 (2026-03-26)
+**Linguagem**: Rust (nightly 1.96.0) | **Workspace**: 48 crates | **Versao**: 3.2.0 (2026-10-01)
 **Proposito**: Substrato de conhecimento para o sistema AGI [[EVA-Mind]]
 
 ### As 4 Geometrias
