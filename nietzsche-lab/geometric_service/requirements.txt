@@ -14,7 +14,7 @@ gpytorch>=1.11
 onnx>=1.14
 
 # NietzscheDB communication
-grpcio>=1.78.0
+grpcio>=1.84.0
 grpcio-tools>=1.78.0
 
 # Testing
